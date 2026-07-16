@@ -1,0 +1,27 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+stages:
+- buildAar
+- deployAar
+
+buildAar:
+  stage: buildAar
+  script:
+    - ./gradlew assembleRelease
+  artifacts:
+    paths:
+      - ./app/build/outputs/aar/app-release.aar
+  only:
+    - tags
+  except:
+    - branches
+
+deployAar:
+  stage: deployAar
+  dependencies: 
+    - buildAar
+  script:
+    - cp ./app/build/outputs/aar/app-release.aar /var/www/html/polycentric-core-release-$(git describe --tags).aar
+  except:
+    - branches

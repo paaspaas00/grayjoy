@@ -1,0 +1,40 @@
+{
+    "name": "grayjay-bilibili-plugin",
+    "version": "1.0.0",
+    "description": "A BiliBili plugin for Grayjay",
+    "homepage": "https://gitlab.futo.org/videostreaming/plugins/bilibili",
+    "type": "module",
+    "repository": {
+        "type": "git",
+        "url": "git+https://gitlab.futo.org/videostreaming/plugins/bilibili.git"
+    },
+    "keywords": [
+        "bilibili",
+        "grayjay"
+    ],
+    "author": "Kai DeLorenzo",
+    "license": "MPL-2.0",
+    "bugs": {
+        "url": "https://gitlab.futo.org/videostreaming/plugins/bilibili/issues"
+    },
+    "devDependencies": {
+        "@types/node": "^24.3.0",
+        "@eslint/js": "^9.34.0",
+        "eslint": "^9.34.0",
+        "typescript": "^5.9.2",
+        "typescript-eslint": "^8.40.0",
+        "@kaidelorenzo/grayjay-polyfill": "gitlab:kaidelorenzo/grayjay-polyfill#4a1aa06988cb65f3042d0d971621caa95a331bd2",
+        "@types/grayjay-source": "gitlab:kaidelorenzo/grayjay-plugin-types#0ed76e018837be238ee867739006d96f2936e572",
+        "rollup": "^4.52.5",
+        "@rollup/plugin-typescript": "^11.1.6",
+        "rollup-plugin-copy": "^3.5.0",
+        "rollup-plugin-delete": "^2.0.0",
+        "tslib": "^2.8.1"
+    },
+    "scripts": {
+        "test": "node --experimental-transform-types --test 'src/**/*.test.ts'",
+        "build": "rollup -c",
+        "dev": "rollup -c -w",
+        "lint": "npx eslint ."
+    }
+}

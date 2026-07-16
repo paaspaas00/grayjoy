@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="license_email">ライセンスメール</string>
+    <string name="required_to_send_the_license_key">ライセンスキーを送信するために必要</string>
+    <string name="receipt_email_user_domain_com">受領メール（user@domain.com）</string>
+    <string name="payment_using">支払い方法</string>
+    <string name="country">国</string>
+    <string name="currency">通貨</string>
+    <string name="postal_code">郵便番号</string>
+    <string name="change">変更</string>
+    <string name="grayjay">グレイジェイ</string>
+    <string name="sales_tax">消費税（</string>
+    <string name="total">合計</string>
+    <string name="pay">支払う</string>
+    <string name="required_to_accurately_calculate_the_applicable_sales_tax">適用される消費税を正確に計算するために必要</string>
+    <string name="zip_code_36925">郵便番号（36925、...）</string>
+    <string name="submit">送信</string>
+    <string name="standard_payment_methods">標準的な支払い方法</string>
+    <string name="stripe_is_a_secure_online_payment_service_that_accepts_major_credit_cards_debit_cards_and_various_localized_payment_methods">Stripeは、主要なクレジットカード、デビットカード、およびさまざまな地域化された支払い方法を受け付ける安全なオンライン支払いサービスです。</string>
+    <string name="other">その他</string>
+    <string name="select_another_currency">別の通貨を選択</string>
+    <string name="add_to">追加する</string>
+    <string name="email_is_invalid">メールが無効です</string>
+    <string name="missing">欠落</string>
+    <string name="value_is_invalid_for">「値が無効です」</string>
+    <string name="enter_zip_code_e_g_12345_or_12345_6789">郵便番号を入力してください（例：12345または12345-6789）</string>
+    <string name="enter_postal_code_e_g_a1a_1a1">郵便番号を入力してください（例：A1A 1A1）</string>
+    <string name="enter_postal_code">郵便番号を入力</string>
+    <string name="mobile_carrier_methods">モバイルキャリア方法</string>
+    <string name="under_construction">工事中</string>
+    <string name="crypto_currency_payment">暗号通貨支払い</string>
+    <string name="payment_failed_if_you_are_charged_you_should_always_receive_the_key_in_your_mail">支払いに失敗しました\n課金された場合、常にメールでキーを受け取るはずです。</string>
+    <string name="country_of_residency">居住国</string>
+    <string name="currency_of_payment">支払い通貨</string>
+    <string name="failed_to_obtain_price_breakdown_exceptionmessage_try_again_later">価格内訳の取得に失敗しました\n（{exceptionMessage}）\n後で再試行してください</string>
+    <string name="failed_to_get_required_payment_data">必要な支払いデータの取得に失敗しました</string>
+    <string name="checkout">チェックアウト</string>
+</resources>

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://github.com/MithrilGoat/GrayJay-Plugin-Schema/releases/latest/download/Schema.json",
+  "name": "SoundCloud",
+  "description": "One of the biggest music distribution platforms, Privately owned",
+  "author": "FUTO",
+  "platformUrl": "https://soundcloud.com",
+  "authorUrl": "https://futo.tech",
+  "sourceUrl": "https://plugins.grayjay.app/Soundcloud/SoundcloudConfig.json",
+  "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/soundcloud",
+  "scriptUrl": "./SoundcloudScript.js",
+  "version": 29,
+  "iconUrl": "./soundcloud.png",
+  "id": "5fb74e28-2fba-406a-9418-38af04f63c08",
+  "scriptSignature": "",
+  "scriptPublicKey": "",
+  "packages": [
+    "Http"
+  ],
+  "packagesOptional": [
+    "HttpImp"
+  ],
+  "allowEval": false,
+  "allowUrls": [
+    "api-v2.soundcloud.com",
+    "soundcloud.com",
+    "a-v2.sndcdn.com",
+    "m.soundcloud.com",
+    "on.soundcloud.com"
+  ],
+  "authentication": {
+    "loginUrl": "https://soundcloud.com/you/library",
+    "domainHeadersToFind": {
+      ".soundcloud.com": [
+        "Authorization"
+      ]
+    },
+    "cookiesToFind": [
+      "oauth_token"
+    ],
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:138.0) Gecko/20100101 Firefox/138.0"
+  },
+  "settings": [
+    {
+      "variable": "hide_premium_content",
+      "name": "Hide premium content",
+      "description": "Hides premium content for non premium users instead of providing the 30 second snippet",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "preferred_protocol",
+      "name": "Preferred protocol",
+      "description": "Indicates the streaming protocol to use if available",
+      "type": "Dropdown",
+      "default": "0",
+      "options": [
+        "Progressive",
+        "HLS"
+      ]
+    },
+    {
+      "variable": "home_preference",
+      "name": "Logged in home page",
+      "description": "Pick the content to display one the Grayjay home page when logged into SoundCloud",
+      "type": "Dropdown",
+      "default": "0",
+      "options": [
+        "Discover",
+        "Feed",
+        "Charts"
+      ]
+    }
+  ],
+  "changelog": {
+    "29": [
+      "Improvement: Improve error type and message for unavailable tracks;",
+      "Fix: Search playlist pagination;"
+    ],
+    "28": [
+      "Fix: Loading artists and their tracks;",
+      "Fix: Thumbnail quality;",
+      "Improvement: Support tags as playlists;"
+    ],
+    "27": [
+      "Fix issue when deeplinking to HLS sources;"
+    ],
+    "26": [
+      "Fix regression where tracks with no views would not work"
+    ],
+    "25": [
+      "Fix playing some tracks"
+    ],
+    "24": [
+      "Fixed TODO in search without any filter on GrayJay desktop"
+    ],
+    "22": [
+      "Prevent login expiration and add profile links"
+    ],
+    "21": [
+      "Add login support, SoundCloud Go+ support, playlist search, and track search filtering"
+    ]
+  }
+}

@@ -1,0 +1,175 @@
+{
+	"name": "Patreon",
+	"description": "Patreon is a subscription platform allowing creators to release membership only content.",
+	"author": "FUTO",
+	"authorUrl": "https://futo.tech",
+	"platformUrl": "https://patreon.com",
+	"sourceUrl": "https://plugins.grayjay.app/Patreon/PatreonConfig.json",
+	"repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/patreon",
+	"scriptUrl": "./PatreonScript.js",
+	"version": 30,
+
+	"iconUrl": "./patreon_logo.png",
+	"id": "aac9e9f0-24b5-11ee-be56-0242ac120002",
+	
+	"scriptSignature": "",
+	"scriptPublicKey": "",
+	"packages": ["Http","DOMParser"],
+	
+	"allowEval": false,
+	"allowUrls": [
+		"www.patreon.com",
+		"patreon.com"
+	],
+	"changelog": {
+		"30": [
+			"Fix: Opening posts (video, audio, image, embed, members-only) on desktop;",
+			"Fix: Comments failing to load;",
+			"Fix: Recommendations failing to load;",
+			"Fix: Image post thumbnails;",
+			"Fix: Content failing to load during rate limits or captchas;",
+			"Fix: Recognizing channels opened via alternate or redirected URLs;",
+			"Feature: Add support for creators using custom domains;",
+			"Improvement: Show downloadable file attachments on posts;",
+			"Improvement: Load more content on Home;"
+		],
+		"29": [
+			"Fix: Home failing in some circumstances under VPNs;",
+			"Fix: Channel and channel content failing to load under VPNs;",
+			"Improvement: search within a creator's content",
+			"Improvement: expose creator collections as channel playlists (android);"
+		],
+		"28": [
+			"Fix: Audio-only posts (podcasts) not playing due to missing media container type;",
+			"Fix: Comment replies;"
+		],
+		"27": [
+			"Fix: Post content (text) support on Desktop;",
+			"Improvement: Enable article support for text and image posts (richer content) on Android app builds 381+;"
+		],
+		"26": [
+			"Fix: Change authorUrl from futo.org to futo.tech;",
+			"Fix: Missing post (text) content details;",
+			"Improvement: Prepare article support;"
+		],
+		"25": [
+			"Improvement: Show unavailable message for members-only content;",
+			"Fix: Use webview's user-agent instead of hardcoded one to avoid bot detection;"
+		],
+		"24": [
+			"Fix: Video playback for podcast posts containing video streams;"
+		],
+		"23": [
+			"Fix: Thumbnail for Nested Content (example Youtube);",
+			"Fix: Thumbnail for Podcasts (audio only);",
+			"Fix: Lower campaign ID min length to support shorter IDs;",
+			"Fix: Search channel pagination;",
+			"Improvement: Search posts;",
+			"Improvement: Add support for profile/creators URL pattern (patreon.com/profile/creators?u=ID);",
+			"Improvement: Add content recommendation support;",
+			"Improvement: Check all requests for captchas;",
+			"Improvement: Handle removed and non-existent pages;",
+			"Improvement: Extract social links;"
+		],
+		"21": [
+			"Fix: Adjust channel parsing;"
+		],
+		"20": [
+			"Improvement: Load content on home;",
+			"Improvement: Support deep linking to audio and video content types;",
+			"Improvement: Add captcha resolution support;"
+		],
+		"19": [
+			"fix playing content;"
+		],
+		"18": [
+			"support podcast post types;",
+			"fix comments pagination;",
+			"fix channel details description, banner and thumbnail for some creators;"
+		]
+	},
+	"settings": [
+		{
+			"variable": "hideUnpaidContent",
+			"name": "Hide unpaid content",
+			"description": "Hides content you do not have access for due to missing payment",
+			"type": "Boolean",
+			"default": "false"
+		},
+		{
+			"variable": "playlistsHeader",
+			"name": "Playlists",
+			"description": "Settings for creator collections shown as playlists.",
+			"type": "Header"
+		},
+		{
+			"variable": "playlistFetchExtraInfo",
+			"name": "Load extra playlist info",
+			"description": "Send extra (batched) requests when listing a creator's playlists to show accurate item counts and hide empty (non-media) collections. May slow down loading.",
+			"type": "Boolean",
+			"default": "false"
+		},
+		{
+			"variable": "playlistSortOrderIndex",
+			"name": "Playlist sort order",
+			"description": "Order of items inside a collection/playlist.",
+			"type": "Dropdown",
+			"default": "0",
+			"options": [
+				"Collection order",
+				"Newest first",
+				"Oldest first"
+			]
+		},
+		{
+			"variable": "advanced",
+			"name": "Advanced",
+			"description": "Settings not intended for most users, but may help with troubleshooting.",
+			"type": "Header"
+		},
+		{
+			"variable": "useRequestRetries",
+			"name": "Request Retries",
+			"description": "Retry failed HTTP requests (rate-limit and server errors) up to 3 times before failing.",
+			"type": "Boolean",
+			"default": "true",
+			"isAdvanced": "true"
+		},
+		{
+			"variable": "verboseNotifications",
+			"name": "Verbose notifications",
+			"description": "Show toast notifications for plugin trace messages and failed requests (useful for debugging).",
+			"type": "Boolean",
+			"default": "false",
+			"isAdvanced": "true"
+		}
+	],
+	
+	"authentication": {
+		"userAgent": null,
+		"loginUrl": "https://www.patreon.com/login",
+		"cookiesToFind": ["session_id"],
+		"cookiesExclOthers": false
+	},
+
+	"authenticationDesktop": {
+		"userAgent": null,
+		"loginUrl": "https://www.patreon.com/login",
+		"cookiesToFind": ["session_id"],
+		"cookiesExclOthers": false,
+		"useMobileEmulation": false
+	},
+
+	"captcha": {
+		"userAgent": null,
+		"captchaUrl": null,
+		"cookiesToFind": ["cf_clearance"]
+	},
+	"captchaDesktop": {
+		"captchaUrl": null,
+		"cookiesToFind": ["cf_clearance"],
+		"useMobileEmulation": false
+	},
+
+	"supportedClaimTypes": [12]
+}

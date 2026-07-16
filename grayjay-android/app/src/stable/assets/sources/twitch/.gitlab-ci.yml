@@ -1,0 +1,26 @@
+stages:
+  - deploy
+
+variables:
+  PLUGIN_NAME: Twitch
+  ICON_FILE: twitch.png
+  SCRIPT_FILE: TwitchScript.js 
+  CONFIG_FILE: TwitchConfig.json
+
+deploy-master:
+  stage: deploy
+  variables:
+    PRE_RELEASE: "false"
+  script:
+    - sh deploy.sh
+  only:
+    - master
+
+deploy-dev:
+  stage: deploy
+  variables:
+    PRE_RELEASE: "true"
+  script:
+    - sh deploy.sh
+  only:
+    - dev

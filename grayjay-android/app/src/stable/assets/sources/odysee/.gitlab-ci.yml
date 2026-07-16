@@ -1,0 +1,26 @@
+stages:
+  - deploy
+
+variables:
+  PLUGIN_NAME: Odysee
+  ICON_FILE: OdyseeIcon.png
+  SCRIPT_FILE: OdyseeScript.js
+  CONFIG_FILE: OdyseeConfig.json
+
+deploy-master:
+  stage: deploy
+  variables:
+    PRE_RELEASE: "false"
+  script:
+    - sh deploy.sh
+  only:
+    - master
+
+deploy-dev:
+  stage: deploy
+  variables:
+    PRE_RELEASE: "true"
+  script:
+    - sh deploy.sh
+  only:
+    - dev

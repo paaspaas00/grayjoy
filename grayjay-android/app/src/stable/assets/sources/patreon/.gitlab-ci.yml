@@ -1,0 +1,26 @@
+stages:
+  - deploy
+
+variables:
+  PLUGIN_NAME: Patreon
+  ICON_FILE: patreon_logo.png
+  SCRIPT_FILE: PatreonScript.js
+  CONFIG_FILE: PatreonConfig.json
+
+deploy-master:
+  stage: deploy
+  variables:
+    PRE_RELEASE: "false"
+  script:
+    - sh deploy.sh
+  only:
+    - master
+
+deploy-dev:
+  stage: deploy
+  variables:
+    PRE_RELEASE: "true"
+  script:
+    - sh deploy.sh
+  only:
+    - dev

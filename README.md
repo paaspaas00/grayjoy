@@ -33,7 +33,14 @@ it can be installed alongside the official Grayjay application.
 - `grayjay-android/grayjay-engine/` — compatibility layer around the legacy
   Grayjay plugin and playback backend.
 - `grayjay-android/app/` — upstream backend sources reused by the engine build.
+- `grayjay-android/app/src/*/assets/sources/` — vendored JavaScript source
+  plugins for stable and unstable builds.
+- `grayjay-android/dep/` — vendored Polycentric and FUTO Pay dependencies.
 - `grayjay-android/docs/compose-rewrite.md` — rewrite architecture and notes.
+
+The snapshot vendors the external source and dependency repositories directly.
+It does not require Git submodule initialization, and the bundled AAR files are
+stored as ordinary files rather than unresolved Git LFS pointers.
 
 ## Attribution and license
 

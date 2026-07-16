@@ -1,0 +1,124 @@
+{
+  "name": "Bitchute (Beta)",
+  "platformUrl": "https://bitchute.com",
+  "description": "BitChute is a video service that prioritizes creators and champions users' freedoms and privacy.",
+  "author": "FUTO",
+  "authorUrl": "https://futo.tech",
+  "sourceUrl": "https://plugins.grayjay.app/Bitchute/BitchuteConfig.json",
+  "scriptUrl": "./BitchuteScript.js",
+  "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/bitchute",
+  "version": 11,
+  "iconUrl": "./BitchuteIcon.png",
+  "id": "e8b1ad5f-0c6d-497d-a5fa-0a785a16d902",
+  "scriptSignature": "",
+  "scriptPublicKey": "",
+  "maxDownloadParallelism": 1,
+  "packages": [
+    "Http",
+    "DOMParser"
+  ],
+  "allowEval": false,
+  "allowAllHttpHeaderAccess": false,
+  "allowUrls": [
+    ".bitchute.com"
+  ],
+  "authentication": {
+    "loginUrl": "https://old.bitchute.com/accounts/login/?next=/subscriptions/",
+    "completionUrl": "https://old.bitchute.com/subscriptions/",
+    "cookiesToFind": [
+      "sessionid"
+    ],
+    "userAgent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36"
+  },
+  "settings": [
+    {
+      "variable": "contentSensitivityIndex",
+      "name": "Content Sensitivity",
+      "description": "Set the content sensitivity level.",
+      "type": "Dropdown",
+      "default": "1",
+      "options": [
+        "Safe - (BBFC U)",
+        "Normal - (BBFC 12)",
+        "NSFW - Not Suitable For Work (BBFC 15)",
+        "NSFL - Not Suitable For Life (BBFC 18)"
+      ]
+    },
+    {
+      "variable": "showLiveVideosOnHome",
+      "name": "Show Live Videos on Home",
+      "description": "Show live videos on the home page (may include recently finished lives).",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "cacheChannelContent",
+      "name": "Cache Channel Content",
+      "description": "Cache channel content for faster loading.",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "cacheChannelContentTimeToLiveIndex",
+      "name": "Cache Channel Content TTL",
+      "description": "Time to live for cached channel content (in minutes).",
+      "type": "Dropdown",
+      "default": "4",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "5",
+        "10",
+        "15",
+        "20",
+        "30",
+        "60",
+        "120"
+      ]
+    },
+    {
+      "variable": "RecommendedContentIndex",
+      "name": "Recommended Content",
+      "description": "Show recommended content on the video details.",
+      "type": "Dropdown",
+      "default": "0",
+      "options": [
+        "More from same channel",
+        "Related",
+        "For you",
+        "Recent Uploads"
+      ]
+    },
+    {
+      "variable": "homeContentFeedIndex",
+      "name": "Home Content Feed",
+      "description": "Select the default content feed displayed on the home page.",
+      "type": "Dropdown",
+      "default": "0",
+      "options": [
+        "Popular",
+        "All",
+        "Suggested",
+        "Trending Day",
+        "Trending Week",
+        "Trending Month"
+      ]
+    }
+  ],
+  "changelog": {
+    "11": [
+      "Improvement: Show channel join date, last upload date, video count, total views and category in the channel description;",
+      "Improvement: Show a clear error message when a channel cannot be fetched (e.g. removed or non-existent);",
+      "Improvement: Update plugin authorUrl from futo.org to futo.tech;"
+    ],
+    "10": [
+      "Fix: Fix search;",
+      "Improvement: Add live chat support;",
+      "Improvement: Improved playlist URL handling;"
+    ],
+    "9": [
+      "Fix: Resolved issue where videos in channel and subscription feeds were displaying without channel names and avatars;"
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "id": "5f6658bb-96cc-4965-ba04-c81f8686ab67",
+  "name": "Red Bull TV",
+  "description": "Watch all the action from the world of Red Bull.",
+  "author": "FUTO",
+  "authorUrl": "https://futo.org",
+  "platformUrl": "https://www.redbull.com/int-en/discover",
+  "version": 6,
+  "iconUrl": "./RedBullTvIcon.png",
+  "scriptUrl": "./RedBullTvScript.js",
+  "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/redbull-tv",
+  "sourceUrl": "https://plugins.grayjay.app/RedbullTv/RedBullTvConfig.json",
+  "scriptSignature": "",
+  "scriptPublicKey": "",
+  "packages": [
+    "Http"
+  ],
+  "packagesOptional": [
+    "HttpImp"
+  ],
+  "allowUrls": [
+    ".redbull.com"
+  ],
+  "changelog": {
+    "6": [
+      "Fix: Episodes with zero duration no longer filtered from playlists",
+      "Fix: Athlete search no longer requests duplicate pages (API ignores pagination)",
+      "Fix: Stop fetching empty pages when last page is partial"
+    ],
+    "5": [
+      "Improvement: Use browser impersonation;"
+    ]
+  }
+}

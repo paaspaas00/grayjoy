@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="license_email">Lizenz-E-Mail</string>
+    <string name="required_to_send_the_license_key">Erforderlich zum Versenden des Lizenzschlüssels</string>
+    <string name="receipt_email_user_domain_com">Empfangs-E-Mail (user@domain.com)</string>
+    <string name="payment_using">Zahlungsmethode</string>
+    <string name="country">Land</string>
+    <string name="currency">Währung</string>
+    <string name="postal_code">Postleitzahl</string>
+    <string name="change">Ändern</string>
+    <string name="grayjay">Grauschnäpper</string>
+    <string name="sales_tax">Umsatzsteuer (</string>
+    <string name="total">Gesamt</string>
+    <string name="pay">Zahlen</string>
+    <string name="required_to_accurately_calculate_the_applicable_sales_tax">Erforderlich zur genauen Berechnung der anwendbaren Umsatzsteuer</string>
+    <string name="zip_code_36925">PLZ (36925, …)</string>
+    <string name="submit">Absenden</string>
+    <string name="standard_payment_methods">Standard-Zahlungsmethoden</string>
+    <string name="stripe_is_a_secure_online_payment_service_that_accepts_major_credit_cards_debit_cards_and_various_localized_payment_methods">Stripe ist ein sicherer Online-Zahlungsdienst, der gängige Kreditkarten, Debitkarten und verschiedene lokalisierte Zahlungsmethoden akzeptiert.</string>
+    <string name="other">Andere</string>
+    <string name="select_another_currency">Wähle eine andere Währung</string>
+    <string name="add_to">Hinzufügen zu</string>
+    <string name="email_is_invalid">E-Mail ist ungültig</string>
+    <string name="missing">Fehlt</string>
+    <string name="value_is_invalid_for">"Wert ist ungültig für "</string>
+    <string name="enter_zip_code_e_g_12345_or_12345_6789">PLZ eingeben (z.B., 12345 oder 12345–6789)</string>
+    <string name="enter_postal_code_e_g_a1a_1a1">Postleitzahl eingeben (z.B., A1A 1A1)</string>
+    <string name="enter_postal_code">Postleitzahl eingeben</string>
+    <string name="mobile_carrier_methods">Mobilfunkanbieter-Methoden</string>
+    <string name="under_construction">In Arbeit</string>
+    <string name="crypto_currency_payment">Kryptowährungszahlung</string>
+    <string name="payment_failed_if_you_are_charged_you_should_always_receive_the_key_in_your_mail">Zahlung fehlgeschlagen\nWenn Ihnen etwas berechnet wurde, sollten Sie den Schlüssel immer in Ihrer Mail erhalten.</string>
+    <string name="country_of_residency">Wohnsitzland</string>
+    <string name="currency_of_payment">Zahlungswährung</string>
+    <string name="failed_to_obtain_price_breakdown_exceptionmessage_try_again_later">Preisaufstellung konnte nicht ermittelt werden\n({exceptionMessage})\n Versuchen Sie es später erneut</string>
+    <string name="failed_to_get_required_payment_data">Erforderliche Zahlungsdaten konnten nicht abgerufen werden</string>
+    <string name="checkout">Kasse</string>
+</resources>

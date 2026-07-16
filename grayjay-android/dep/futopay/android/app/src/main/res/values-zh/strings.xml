@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="license_email">许可证电子邮件</string>
+    <string name="required_to_send_the_license_key">发送许可证密钥所需</string>
+    <string name="receipt_email_user_domain_com">收据电子邮件（user@domain.com）</string>
+    <string name="payment_using">使用的支付方式</string>
+    <string name="country">国家</string>
+    <string name="currency">货币</string>
+    <string name="postal_code">邮政编码</string>
+    <string name="change">更改</string>
+    <string name="grayjay">灰松鸟</string>
+    <string name="sales_tax">销售税（</string>
+    <string name="total">总计</string>
+    <string name="pay">支付</string>
+    <string name="required_to_accurately_calculate_the_applicable_sales_tax">准确计算适用的销售税所需</string>
+    <string name="zip_code_36925">邮政编码（36925，…）</string>
+    <string name="submit">提交</string>
+    <string name="standard_payment_methods">标准支付方法</string>
+    <string name="stripe_is_a_secure_online_payment_service_that_accepts_major_credit_cards_debit_cards_and_various_localized_payment_methods">Stripe是一种安全的在线支付服务，接受主要信用卡、借记卡和各种本地化支付方式。</string>
+    <string name="other">其他</string>
+    <string name="select_another_currency">选择其他货币</string>
+    <string name="add_to">添加到</string>
+    <string name="email_is_invalid">电子邮件无效</string>
+    <string name="missing">缺失</string>
+    <string name="value_is_invalid_for">“对于…的值无效”</string>
+    <string name="enter_zip_code_e_g_12345_or_12345_6789">输入邮政编码（例如，12345或12345–6789）</string>
+    <string name="enter_postal_code_e_g_a1a_1a1">输入邮政编码（例如，A1A 1A1）</string>
+    <string name="enter_postal_code">输入邮政编码</string>
+    <string name="mobile_carrier_methods">移动运营商方法</string>
+    <string name="under_construction">正在施工</string>
+    <string name="crypto_currency_payment">加密货币支付</string>
+    <string name="payment_failed_if_you_are_charged_you_should_always_receive_the_key_in_your_mail">付款失败\n如果您被收费，您应始终在您的邮件中收到密钥。</string>
+    <string name="country_of_residency">居住国</string>
+    <string name="currency_of_payment">支付货币</string>
+    <string name="failed_to_obtain_price_breakdown_exceptionmessage_try_again_later">无法获取价格明细\n（{exceptionMessage}）\n请稍后再试</string>
+    <string name="failed_to_get_required_payment_data">无法获取所需的支付数据</string>
+    <string name="checkout">结账</string>
+</resources>

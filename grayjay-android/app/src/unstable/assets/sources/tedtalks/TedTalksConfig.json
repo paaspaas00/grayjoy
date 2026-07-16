@@ -1,0 +1,72 @@
+{
+  "name": "Ted Talks (Alpha)",
+  "platformUrl": "https://www.ted.com/talks",
+  "description": "TED Talks are influential videos from expert speakers on education, business, science, tech and creativity",
+  "author": "FUTO",
+  "authorUrl": "https://futo.tech",
+  "sourceUrl": "https://plugins.grayjay.app/TedTalks/TedTalksConfig.json",
+  "scriptUrl": "./TedTalksScript.js",
+  "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/tedtalks",
+  "version": 5,
+  "iconUrl": "./TedTalksIcon.png",
+  "id": "8d029a7f-5507-4e36-8bd8-c19a3b77d383",
+  "scriptSignature": "",
+  "scriptPublicKey": "",
+  "maxDownloadParallelism": 1,
+  "subscriptionRateLimit": 10,
+  "changelog": {
+    "5": [
+      "Fix: Home tab pagination;",
+      "Improvement: Set HLS as priority source;"
+    ],
+    "4": [
+      "Improvement: Add browser impersonation (HttpImp) for SSL resilience;",
+      "Improvement: New web-based home feed that avoids SSL-problematic search API;"
+    ],
+    "3": [
+      "Fix: Extracting profile videos;",
+      "Fix: Handling external content (podcasts hosted on youtube);",
+      "Improvement: Add setting to control external content visibility;",
+      "Fix: Searching channels (speakers);"
+    ],
+    "2": [
+      "Improvement: add playlist support;",
+      "improvement: improve performance opening videos;",
+      "Improvement: add support for TED topics as playlists;",
+      "Improvement: add subtitles support;"
+    ]
+  },
+  "packages": [
+    "Http",
+    "DOMParser"
+  ],
+  "packagesOptional": [
+    "HttpImp"
+  ],
+  "allowUrls": [
+    ".ted.com"
+  ],
+  "settings": [
+    {
+      "variable": "showExternalContent",
+      "name": "Show External Content",
+      "description": "Show content hosted on third party platforms (e.g., YouTube) as nested content that may require another plugin. If no plugin can handle the content it will be opened in the browser.",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "verboseNotifications",
+      "name": "Verbose notifications",
+      "description": "Show toast notifications for HTTP request details (useful for debugging)",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "useBrowserImpersonation",
+      "name": "Browser Impersonation",
+      "description": "Use TLS fingerprint impersonation (HttpImp) to bypass bot detection and SSL issues. Disable if you experience connection problems.",
+      "type": "Boolean",
+      "default": "true"
+    }
+  ]
+}

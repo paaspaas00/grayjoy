@@ -1,0 +1,72 @@
+{
+  "id": "d890ff43-7d9f-4f0e-a52d-239014fd512d",
+  "name": "FOSDEM (Alpha)",
+  "description": "FOSDEM is a two-day event organised by volunteers to promote the widespread use of free and open source software.",
+  "version": 4,
+  "author": "FUTO",
+  "authorUrl": "https://futo.org",
+  "platformUrl": "https://fosdem.org",
+  "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/fosdem",
+  "sourceUrl": "https://plugins.grayjay.app/FOSDEM/FOSDEMConfig.json",
+  "scriptUrl": "./FOSDEMScript.js",
+  "iconUrl": "./FOSDEMIcon.png",
+  "scriptSignature": "",
+  "scriptPublicKey": "",
+  "packages": [
+    "Http"
+  ],
+  "allowEval": false,
+  "allowUrls": [
+    "api.opensource-tv.com"
+  ],
+  "settings": [
+    {
+      "variable": "enableMp4",
+      "name": "MP4",
+      "description": "Enable MP4 (H.264) video source",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "enableWebm",
+      "name": "WebM",
+      "description": "Enable WebM (AV1/VP9) video source",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "prioritySource",
+      "name": "Priority Source",
+      "description": "Auto-select this format for playback. MP4 (H.264): widest hardware decode support, lower CPU usage, best for older devices. WebM (AV1): ~30% smaller files at same quality, sharper at low bitrates, requires newer hardware for smooth decode.",
+      "type": "Dropdown",
+      "default": "1",
+      "options": [
+        "MP4 (H.264)",
+        "WebM (AV1)"
+      ]
+    },
+    {
+      "variable": "playlistSort",
+      "name": "Playlist Content Sorting",
+      "description": "Controls the order of talks within playlists. Oldest first shows talks in chronological order. Newest first shows the most recent talks first.",
+      "type": "Dropdown",
+      "default": "0",
+      "options": [
+        "Oldest First",
+        "Newest First"
+      ]
+    }
+  ],
+  "changelog": {
+    "4": [
+      "Improvement: Videos from a FOSDEM edition now show that edition's channel as their author;",
+      "Improvement: Per-edition channels (FOSDEM 2026, 2025, ...) in channel search;"
+    ],
+    "3": [
+      "Fix: Decode percent-encoded speaker slugs to prevent double-encoding;"
+    ],
+    "1": [
+      "- Initial implementation;"
+    ]
+  }
+}

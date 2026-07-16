@@ -1,0 +1,15 @@
+stages:
+- deploy_unstable
+- deploy
+
+deploy:
+  stage: deploy
+  script:
+    - sh deploy.sh
+  when: manual
+
+deploy_unstable:
+  stage: deploy_unstable
+  script:
+    - sh deploy_unstable.sh
+  when: manual

@@ -1,0 +1,64 @@
+{
+  "id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
+  "name": "NASA+",
+  "description": "Explore the unknown in air and space. Watch original series, documentaries, and features from NASA's streaming service.",
+  "version": 5,
+  "author": "FUTO",
+  "authorUrl": "https://futo.tech",
+  "platformUrl": "https://plus.nasa.gov",
+  "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/nasa-plus",
+  "sourceUrl": "https://plugins.grayjay.app/NASA-Plus/NASA-PlusConfig.json",
+  "scriptUrl": "./NASA-PlusScript.js",
+  "iconUrl": "./NASA-PlusIcon.png",
+  "scriptSignature": "",
+  "scriptPublicKey": "",
+  "packages": [
+    "Http"
+  ],
+  "allowEval": false,
+  "allowUrls": [
+    "plus.nasa.gov"
+  ],
+  "settings": [],
+  "testing": {
+    "GetContentDetails": {
+      "urls": [
+        "https://plus.nasa.gov/video/moonbound-for-all-humanity/",
+        "https://plus.nasa.gov/video/far-out-sailing-on-sunlight/",
+        "https://plus.nasa.gov/video/cosmic-dawn-the-untold-story-of-the-james-webb-space-telescope/"
+      ]
+    },
+    "GetChannel": {
+      "urls": [
+        "https://plus.nasa.gov",
+        "https://plus.nasa.gov/series/moonbound/",
+        "https://plus.nasa.gov/series/nasa-explorers/",
+        "https://plus.nasa.gov/topics/earth/"
+      ]
+    }
+  },
+  "changelog": {
+    "5": [
+      "Fix: Live event detection when end time is unknown;",
+      "Fix: Hide empty series and topics from channel search results;",
+      "Fix: Use GMT timestamps so upload dates are consistent across timezones;",
+      "Improvement: Reliable pagination via WordPress _envelope responses;",
+      "Improvement: Decode additional HTML entities in titles and descriptions;"
+    ],
+    "4": [
+      "Improvement: Show past live events;"
+    ],
+    "3": [
+      "Improvement: Search playlists;",
+      "Improvement: Add series information to video descriptions;"
+    ],
+    "2": [
+      "Fix: Missing thumbnails on scheduled/live videos;",
+      "Improvement: Show live/upcoming events on NASA channel page;",
+      "Improvement: Add thumbnails to series playlists;"
+    ],
+    "1": [
+      "Initial implementation;"
+    ]
+  }
+}

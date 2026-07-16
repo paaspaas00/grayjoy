@@ -1,0 +1,271 @@
+{
+  "name": "Odysee",
+  "description": "A video platform running on the LBRY blockchain.",
+  "author": "FUTO",
+  "authorUrl": "https://futo.tech",
+  "platformUrl": "https://odysee.com",
+  "sourceUrl": "https://plugins.grayjay.app/Odysee/OdyseeConfig.json",
+  "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/odysee",
+  "scriptUrl": "./OdyseeScript.js",
+  "version": 62,
+  "iconUrl": "./OdyseeIcon.png",
+  "id": "1c05bfc3-08b9-42d0-93d3-6d52e0fd34d8",
+  "scriptSignature": "",
+  "scriptPublicKey": "",
+  "packages": [
+    "Http"
+  ],
+  "allowEval": false,
+  "allowUrls": [
+    "api.na-backend.odysee.com",
+    "odysee.com",
+    "recsys.odysee.tv",
+    "api.odysee.com",
+    "lighthouse.odysee.tv",
+    "cdn.lbryplayer.xyz",
+    "player.odycdn.com",
+    "comments.odysee.tv",
+    "watchman.na-backend.odysee.com",
+    "secure.odycdn.com",
+    "api.odysee.live",
+    "cloud.odysee.live"
+  ],
+  "supportedClaimTypes": [
+    3
+  ],
+  "authentication": {
+    "loginUrl": "https://odysee.com/$/signin",
+    "userAgent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36",
+    "domainHeadersToFind": {
+      "api.na-backend.odysee.com": [
+        "X-Lbry-Auth-Token"
+      ]
+    }
+  },
+  "settings": [
+    {
+      "variable": "contentHeader",
+      "name": "Content",
+      "description": "What content is shown and how it is classified.",
+      "type": "Header"
+    },
+    {
+      "variable": "allowMatureContent",
+      "name": "Allow Mature Content",
+      "description": "Allow watching of mature content.",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "shortContentThresholdIndex",
+      "name": "Shorts Duration Threshold",
+      "description": "Videos with duration less than or equal to this value (in seconds) will be classified as shorts and displayed in the dedicated tab.",
+      "type": "Dropdown",
+      "default": "2",
+      "options": [
+        "15",
+        "30",
+        "60",
+        "90",
+        "120",
+        "180",
+        "240",
+        "300"
+      ]
+    },
+    {
+      "variable": "homeFeedHeader",
+      "name": "Home Feed",
+      "description": "What appears in the home feed.",
+      "type": "Header"
+    },
+    {
+      "variable": "showLiveStreamsInHome",
+      "name": "Show Live Streams in Home Feed",
+      "description": "Show active live streams at the top of the home feed.",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "liveStreamsInHomeIndex",
+      "name": "Live Streams in Home",
+      "description": "Maximum number of live streams shown at the top of the home feed.",
+      "type": "Dropdown",
+      "default": "3",
+      "options": [
+        "3",
+        "5",
+        "10",
+        "15",
+        "20",
+        "25"
+      ]
+    },
+    {
+      "variable": "showShortsInHome",
+      "name": "Show Shorts in Home Feed",
+      "description": "Include short-form videos in the home feed. When disabled, only full-length videos are shown.",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "videoSourcesHeader",
+      "name": "Video Sources",
+      "description": "Which stream variants are probed and offered for playback. Fewer sources = faster video details loading.",
+      "type": "Header"
+    },
+    {
+      "variable": "preferredSourcePriorityIndex",
+      "name": "Preferred Source",
+      "description": "Which source the player picks first. Adaptive uses HLS for quality switching on variable networks; Fixed uses MP4 v6 for consistent single-quality playback.",
+      "type": "Dropdown",
+      "default": "0",
+      "options": [
+        "Adaptive (HLS when available)",
+        "Fixed quality (MP4 v6)"
+      ]
+    },
+    {
+      "variable": "enableMp4V6Source",
+      "name": "MP4 v6 (fast, reliable)",
+      "description": "Include the player.odycdn.com v6 MP4 source.",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "enableMp4V3Source",
+      "name": "MP4 v3 (fallback)",
+      "description": "Include the api/v3 MP4 source as a fallback. Reliable but slightly slower than v6.",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "enableHlsV6Source",
+      "name": "HLS v6 (adaptive streaming)",
+      "description": "Include the v6 HLS master playlist for adaptive bitrate playback. Availability varies by video.",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "enableHlsV4Source",
+      "name": "HLS v4 (legacy)",
+      "description": "Include the legacy api/v4 HLS playlist. Same coverage as HLS v6 but slower. Disabled by default.",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "enableMp4V4Source",
+      "name": "MP4 v4 (legacy)",
+      "description": "Include the legacy api/v4 MP4 source. Redirects to HLS when available (emitted as an HLS source automatically). Redundant and slow; disabled by default.",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "privacyHeader",
+      "name": "Privacy",
+      "description": "What information is sent back to Odysee.",
+      "type": "Header"
+    },
+    {
+      "variable": "odyseeActivity",
+      "name": "Provide Odysee Activity",
+      "description": "Tell Odysee what you played.",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "performanceHeader",
+      "name": "Performance",
+      "description": "Performance-related behaviour.",
+      "type": "Header"
+    },
+    {
+      "variable": "extraRequestToLoadViewCount",
+      "name": "Extra requests to load view count",
+      "description": "Send additional requests (batched) to load view counts for each video. Will slow down loading.",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "diagnosticsHeader",
+      "name": "Diagnostics",
+      "description": "Logging and troubleshooting.",
+      "type": "Header"
+    },
+    {
+      "variable": "showSessionWarnings",
+      "name": "Session Warnings",
+      "description": "Show toast notifications when the Odysee session is expired or degraded.",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "verboseNotifications",
+      "name": "Verbose Notifications",
+      "description": "Show toast notifications for plugin trace messages and failed requests.",
+      "type": "Boolean",
+      "default": "false"
+    }
+  ],
+  "changelog": {
+    "62": [
+      "Fix: comments pagination issue;"
+    ],
+    "61": [
+      "Fix: Handle expired or invalid Odysee sessions gracefully instead of crashing;",
+      "Fix: Handle unresolvable videos, playlists, and sources;",
+      "Fix: Loading comment across share links and paginated replies;",
+      "Fix: Playback progress tracking (opt-in in plugin settings);",
+      "Feature: Add live stream support (opt-out in plugin settings);",
+      "Feature: Add plugin settings to toggle live streams and shorts in Home feed;",
+      "Feature: Add plugin settings to toggle individual video source variants (HLS v6/v4, MP4 v6/v4/v3);",
+      "Feature: Preferred-source setting for Adaptive (HLS when available) or Fixed quality (MP4 v6);",
+      "Performance: Source URLs resolved past CDN redirects to skip 308 round-trips on every playback request;",
+      "Improvement: Shorts feed respects configured duration;",
+      "Improvement: update author url from futo.org to futo.tech;",
+      "Performance: Faster loading via parallel batching;"
+    ],
+    "60": [
+      "Fix: loading channel playlists;"
+    ],
+    "59": [
+      "Feature: Add support for tags as playlists;",
+      "Improvement: Add support for download URL v3 in video details;",
+      "Fix: Check for planned videos;",
+      "Fix: Issue playing and casting some videos;"
+    ],
+    "57": [
+      "Improvement: Improve casting compatibility;"
+    ],
+    "51": [
+      "Feature: Add support for audio streams;",
+      "Feature: Add content recommendation support;",
+      "Feature: Play members-only videos from channels membership;",
+      "Feature: Initial support for text Posts (no deep-linking yet);",
+      "Feature: Add shorts tab for channel content with duration lower than 60 seconds;",
+      "Feature: Add setting for channel shorts content duration threshold (default=60 seconds);",
+      "Fix: Playback tracking when 'Provide Odysee Activity' is enabled;",
+      "Fix: Use the channel name as a fallback when channel title is not available;",
+      "Fix: Use content timestamp when release_time is not available;",
+      "Fix: Fix playing anonymous videos;"
+    ],
+    "52": [
+      "Improvement: Add view count in video details;",
+      "Improvement: Add setting to send additional requests (batched) to load view counts for each video in a page;"
+    ],
+    "53": [
+      "Improvement: Add missing information on channels about tab;"
+    ],
+    "54": [
+      "Improvement: Display language information in channel details when available;",
+      "Improvement: support open.lbry.com urls;"
+    ],
+    "55": [
+      "Improvement: support lbry.tv embed urls;",
+      "Improvement: support odysee.com embed urls;"
+    ],
+    "56": [
+      "Improvement: get content for Shorts tab;"
+    ]
+  }
+}
