@@ -340,6 +340,7 @@ internal fun List<VideoUiModel>.withLibraryState(
 }
 
 internal fun VideoUiModel.forLocalStorage(preservePlayback: Boolean = false) = copy(
+    playbackFromDownload = false,
     playbackUrl = playbackUrl.takeIf { preservePlayback }.orEmpty(),
     playbackMimeType = playbackMimeType.takeIf { preservePlayback }.orEmpty(),
     playbackManifest = playbackManifest.takeIf { preservePlayback }.orEmpty(),

@@ -675,6 +675,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun openVideo(videoId: String) {
         val video = findVideo(videoId) ?: return
+        val profileAtStart = activeProfileId
         activePlaylistId = null
         recordHistory(video)
         pendingPlaybackVideoId = video.id
@@ -693,8 +694,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
         detailsJob = viewModelScope.launch {
             try {
-                val resolved = engine.resolve(video).withPersistedLibraryState()
-                if (pendingPlaybackVideoId != video.id) return@launch
+                val resolved = resolveForPlayback(video, profileAtStart)
+                if (profileAtStart != activeProfileId || pendingPlaybackVideoId != video.id) {
+                    return@launch
+                }
                 remoteVideos[resolved.id] = resolved
                 registerRemoteChannel(resolved)
                 recordHistory(resolved)
@@ -716,7 +719,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 engine.open(
                     videos = listOf(resolved),
                     currentVideoId = resolved.id,
-                    playWhenReady = resolved.contentUrl.isNotBlank(),
+                    playWhenReady = resolved.playbackFromDownload ||
+                        resolved.contentUrl.isNotBlank(),
                 )
                 _uiState.update { state ->
                     if (state.nowPlaying.video?.id != resolved.id) state else state.copy(
@@ -771,6 +775,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             activePlaylistId = null
             return
         }
+        val profileAtStart = activeProfileId
         pendingPlaybackVideoId = queue.first().id
         val playlistIdForQueue = activePlaylistId
         detailsJob?.cancel()
@@ -789,11 +794,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         detailsJob = viewModelScope.launch {
             val resolved = queue.map { video ->
                 try {
-                    engine.resolve(video).withPersistedLibraryState()
+                    resolveForPlayback(video, profileAtStart)
                 } catch (_: Throwable) {
                     video.withPersistedLibraryState()
                 }
             }
+            if (profileAtStart != activeProfileId) return@launch
             resolved.forEach { remoteVideos[it.id] = it }
             resolved.forEach(::registerRemoteChannel)
             val first = resolved.first()
@@ -817,7 +823,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     .filterNot(openedIds::contains)
                     .mapNotNull(::findVideo)
                     .map { video ->
-                        runCatching { engine.resolve(video).withPersistedLibraryState() }
+                        runCatching { resolveForPlayback(video, profileAtStart) }
                             .getOrElse { video.withPersistedLibraryState() }
                     }
                 if (activePlaylistId == playlistIdForQueue) {
@@ -1341,12 +1347,19 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             engine.player.mediaItemCount > 0 &&
             addedVideos.isNotEmpty()
         ) {
+            val profileAtStart = activeProfileId
             viewModelScope.launch {
                 val resolvedAdditions = addedVideos.map { video ->
-                    runCatching { engine.resolve(video).withPersistedLibraryState() }
+                    runCatching { resolveForPlayback(video, profileAtStart) }
                         .getOrElse { video.withPersistedLibraryState() }
                 }
-                if (playlistId != activePlaylistId || engine.player.mediaItemCount == 0) return@launch
+                if (
+                    profileAtStart != activeProfileId ||
+                    playlistId != activePlaylistId ||
+                    engine.player.mediaItemCount == 0
+                ) {
+                    return@launch
+                }
                 resolvedAdditions.forEach { resolved ->
                     remoteVideos[resolved.id] = resolved
                     registerRemoteChannel(resolved)
@@ -2027,6 +2040,36 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             lastWatchedAt = saved.lastWatchedAt,
             playlistNames = saved.playlistNames,
         )
+    }
+
+    private suspend fun resolveForPlayback(
+        video: VideoUiModel,
+        profileId: String,
+    ): VideoUiModel {
+        val persisted = video.withPersistedLibraryState()
+        downloadStore.playbackDescriptorFor(profileId, persisted)?.let { return it }
+
+        // A persisted download descriptor can contain an expired signed URL after its
+        // DownloadManager entry has been removed or become incomplete. Force the plugin
+        // to resolve a fresh stream in that case; the engine will still read any matching
+        // cached bytes first, but it can safely fall back to the network.
+        val resolveInput = if (persisted.isDownloaded) {
+            video.copy(
+                playbackFromDownload = false,
+                playbackUrl = "",
+                playbackMimeType = "",
+                playbackManifest = "",
+                audioUrl = "",
+                playbackRequestHeaders = emptyMap(),
+                playbackDataSourceFactory = null,
+                subtitleTracks = emptyList(),
+                qualityVariants = emptyList(),
+            )
+        } else {
+            video
+        }
+        val resolved = engine.resolve(resolveInput).withPersistedLibraryState()
+        return downloadStore.playbackDescriptorFor(profileId, resolved) ?: resolved
     }
 
     private fun VideoUiModel.downloadDescriptor(): VideoUiModel {
