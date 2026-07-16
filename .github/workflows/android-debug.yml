@@ -1,0 +1,82 @@
+name: Build debug APK
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: grayjoy-debug-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-debug-apk:
+    name: Build Grayjoy debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Make the Gradle wrapper executable
+        working-directory: grayjay-android
+        run: chmod +x gradlew
+
+      - name: Build debug APK
+        working-directory: grayjay-android
+        run: ./gradlew --no-daemon :app-compose:assembleDebug
+
+      - name: Prepare APK and checksum
+        id: package
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="manual-${GITHUB_RUN_NUMBER}"
+          fi
+
+          mkdir -p release
+          apk_path="release/Grayjoy-${version}-debug.apk"
+          checksum_path="${apk_path}.sha256"
+          cp grayjay-android/app-compose/build/outputs/apk/debug/app-compose-debug.apk "${apk_path}"
+          sha256sum "${apk_path}" > "${checksum_path}"
+
+          echo "apk_path=${apk_path}" >> "${GITHUB_OUTPUT}"
+          echo "checksum_path=${checksum_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Grayjoy-debug-${{ github.run_number }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish tagged GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_PATH: ${{ steps.package.outputs.apk_path }}
+          CHECKSUM_PATH: ${{ steps.package.outputs.checksum_path }}
+        shell: bash
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${APK_PATH}" "${CHECKSUM_PATH}" --clobber --repo "${GITHUB_REPOSITORY}"
+          else
+            gh release create "${GITHUB_REF_NAME}" "${APK_PATH}#Grayjoy ${GITHUB_REF_NAME} debug APK" "${CHECKSUM_PATH}#SHA-256 checksum" --verify-tag --prerelease --title "Grayjoy ${GITHUB_REF_NAME}" --notes "Automated debug APK built from the ${GITHUB_REF_NAME} tag." --repo "${GITHUB_REPOSITORY}"
+          fi
