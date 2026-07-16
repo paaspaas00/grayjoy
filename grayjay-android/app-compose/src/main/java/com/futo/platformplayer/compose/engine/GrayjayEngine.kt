@@ -782,12 +782,17 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             httpFactory.setDefaultRequestProperties(playbackRequestHeaders)
         }
         val upstream = DefaultDataSource.Factory(appContext, httpFactory)
-        // Streaming a non-downloaded video must never consume another video's permanent
-        // offline cache. Only an explicitly downloaded item is allowed to read that cache.
-        return if (isDownloaded) {
-            downloadStore.cachePlayback(upstream = upstream, offlineOnly = true)
-        } else {
-            upstream
+        return when {
+            // A descriptor reconstructed from DownloadManager points at the exact cached
+            // requests and must remain fully offline.
+            playbackFromDownload ->
+                downloadStore.cachePlayback(upstream = upstream, offlineOnly = true)
+            // A legacy/stale downloaded marker may not have a reconstructable cache entry.
+            // Prefer any matching cache resource, but fall back to the real stream instead
+            // of exposing Media3's internal PlaceholderDataSource error.
+            isDownloaded ->
+                downloadStore.cachePlayback(upstream = upstream, offlineOnly = false)
+            else -> upstream
         }
     }
 

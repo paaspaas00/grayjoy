@@ -13,6 +13,7 @@ data class VideoUiModel(
     val isLive: Boolean = false,
     val watchProgress: Float = 0f,
     val isDownloaded: Boolean = false,
+    val playbackFromDownload: Boolean = false,
     val isWatchLater: Boolean = false,
     val isLiked: Boolean = false,
     val lastWatchedAt: Long = 0L,

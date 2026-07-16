@@ -30,6 +30,7 @@ import androidx.media3.exoplayer.scheduler.Requirements
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
+import com.futo.platformplayer.compose.ui.SubtitleUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.views.video.datasources.JSHttpDataSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,6 +56,78 @@ private val SCOPED_CACHE_KEY_FACTORY = CacheKeyFactory { dataSpec ->
             append(key)
         }
     }
+}
+
+internal data class OfflinePlaybackPart(
+    val mediaType: DownloadMediaType,
+    val name: String,
+    val expectedPartCount: Int,
+    val uri: String,
+    val mimeType: String = "",
+    val headers: Map<String, String> = emptyMap(),
+    val rawManifest: String = "",
+    val completed: Boolean = true,
+)
+
+internal fun VideoUiModel.withOfflinePlayback(
+    parts: List<OfflinePlaybackPart>,
+): VideoUiModel? {
+    fun completedParts(mediaType: DownloadMediaType): List<OfflinePlaybackPart> {
+        val candidates = parts.filter { it.mediaType == mediaType }.distinctBy { it.name }
+        val expected = candidates.maxOfOrNull(OfflinePlaybackPart::expectedPartCount)
+            ?.coerceAtLeast(1)
+            ?: return emptyList()
+        return candidates.takeIf { it.size >= expected && it.all(OfflinePlaybackPart::completed) }
+            .orEmpty()
+    }
+
+    val videoParts = completedParts(DownloadMediaType.Video)
+    if (videoParts.isNotEmpty()) {
+        val main = videoParts.firstOrNull { it.name == "video" } ?: return null
+        val audio = videoParts.firstOrNull { it.name == "audio" }
+        val downloadedSubtitles = videoParts
+            .filter { it.name.startsWith("subtitle-") }
+            .sortedBy { it.name.substringAfterLast('-').toIntOrNull() ?: Int.MAX_VALUE }
+            .map { part ->
+                val index = part.name.substringAfterLast('-').toIntOrNull()
+                val original = index?.let(subtitleTracks::getOrNull)
+                SubtitleUiModel(
+                    name = original?.name ?: part.name,
+                    language = original?.language,
+                    uri = part.uri,
+                    mimeType = part.mimeType.ifBlank { original?.mimeType.orEmpty() },
+                )
+            }
+        return copy(
+            isDownloaded = true,
+            playbackFromDownload = true,
+            playbackUrl = main.uri,
+            playbackMimeType = main.mimeType,
+            playbackManifest = main.rawManifest,
+            audioUrl = audio?.uri.orEmpty(),
+            playbackRequestHeaders = main.headers,
+            playbackDataSourceFactory = null,
+            subtitleTracks = downloadedSubtitles,
+            qualityVariants = emptyList(),
+        )
+    }
+
+    val audioParts = completedParts(DownloadMediaType.Audio)
+    val audio = audioParts.firstOrNull { it.name == "audio" }
+        ?: audioParts.firstOrNull()
+        ?: return null
+    return copy(
+        isDownloaded = true,
+        playbackFromDownload = true,
+        playbackUrl = audio.uri,
+        playbackMimeType = audio.mimeType,
+        playbackManifest = "",
+        audioUrl = "",
+        playbackRequestHeaders = audio.headers,
+        playbackDataSourceFactory = null,
+        subtitleTracks = emptyList(),
+        qualityVariants = emptyList(),
+    )
 }
 
 @OptIn(UnstableApi::class)
@@ -195,6 +268,26 @@ class GrayjoyDownloadStore private constructor(context: Context) {
     fun snapshotsFor(profileId: String): Map<String, DownloadUiModel> = downloads.value
         .filter { it.profileId == profileId }
         .associateBy(DownloadUiModel::videoId)
+
+    @Synchronized
+    fun playbackDescriptorFor(profileId: String, video: VideoUiModel): VideoUiModel? {
+        val parts = downloadsById.values.mapNotNull { download ->
+            val metadata = DownloadRequestMetadata.from(download.request.data)
+                ?.takeIf { it.profileId == profileId && it.videoId == video.id }
+                ?: return@mapNotNull null
+            OfflinePlaybackPart(
+                mediaType = metadata.mediaType,
+                name = metadata.part,
+                expectedPartCount = metadata.partCount,
+                uri = download.request.uri.toString(),
+                mimeType = download.request.mimeType.orEmpty(),
+                headers = metadata.headers,
+                rawManifest = metadata.rawManifest,
+                completed = download.state == Download.STATE_COMPLETED,
+            )
+        }
+        return video.withOfflinePlayback(parts)
+    }
 
     fun isInitialized(): Boolean = downloadManager.isInitialized
 
