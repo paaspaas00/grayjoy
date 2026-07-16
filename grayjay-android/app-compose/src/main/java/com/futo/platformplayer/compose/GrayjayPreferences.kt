@@ -1,0 +1,208 @@
+package com.futo.platformplayer.compose
+
+import android.content.Context
+import com.futo.platformplayer.compose.ui.ChannelUiModel
+import com.futo.platformplayer.compose.ui.ThemeMode
+import org.json.JSONArray
+import org.json.JSONObject
+
+internal class GrayjayPreferences(context: Context, profileId: String = "main") {
+    private val appContext = context.applicationContext
+    private val defaultThemeMode = if (profileId == PRIVATE_PROFILE_ID) {
+        ThemeMode.Dark
+    } else {
+        ThemeMode.System
+    }
+    private val preferences = context.getSharedPreferences(
+        if (profileId == "main") FILE_NAME else "${FILE_NAME}_$profileId",
+        Context.MODE_PRIVATE,
+    )
+
+    var dynamicColorsEnabled: Boolean
+        get() = preferences.getBoolean(KEY_DYNAMIC_COLORS, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_DYNAMIC_COLORS, value).apply()
+        }
+
+    var themeMode: ThemeMode
+        get() = runCatching {
+            ThemeMode.valueOf(preferences.getString(KEY_THEME_MODE, defaultThemeMode.name).orEmpty())
+        }.getOrDefault(defaultThemeMode)
+        set(value) {
+            preferences.edit().putString(KEY_THEME_MODE, value.name).apply()
+        }
+
+    var privateSessionEnabled: Boolean
+        get() = preferences.getBoolean(KEY_PRIVATE_SESSION, false)
+        set(value) {
+            preferences.edit().putBoolean(KEY_PRIVATE_SESSION, value).apply()
+        }
+
+    var defaultPlaybackSpeed: Float
+        get() = preferences.getFloat(KEY_DEFAULT_PLAYBACK_SPEED, 1f)
+        set(value) {
+            preferences.edit().putFloat(KEY_DEFAULT_PLAYBACK_SPEED, value.coerceIn(0.25f, 3f)).apply()
+        }
+
+    var preferredVideoQuality: Int
+        get() = preferences.getInt(KEY_PREFERRED_VIDEO_QUALITY, 0)
+        set(value) {
+            preferences.edit().putInt(KEY_PREFERRED_VIDEO_QUALITY, value.coerceAtLeast(0)).apply()
+        }
+
+    var stickyCaptionsEnabled: Boolean
+        get() = preferences.getBoolean(KEY_STICKY_CAPTIONS, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_STICKY_CAPTIONS, value).apply()
+        }
+
+    var captionsEnabled: Boolean
+        get() = preferences.getBoolean(KEY_CAPTIONS_ENABLED, false)
+        set(value) {
+            preferences.edit().putBoolean(KEY_CAPTIONS_ENABLED, value).apply()
+        }
+
+    var subtitleLanguage: String?
+        get() = preferences.getString(KEY_SUBTITLE_LANGUAGE, null)
+        set(value) {
+            preferences.edit().putString(KEY_SUBTITLE_LANGUAGE, value).apply()
+        }
+
+    var showRecommendations: Boolean
+        get() = preferences.getBoolean(KEY_SHOW_RECOMMENDATIONS, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_SHOW_RECOMMENDATIONS, value).apply()
+        }
+
+    var searchHistoryEnabled: Boolean
+        get() = preferences.getBoolean(KEY_SEARCH_HISTORY_ENABLED, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_SEARCH_HISTORY_ENABLED, value).apply()
+        }
+
+    var keepScreenAwake: Boolean
+        get() = preferences.getBoolean(KEY_KEEP_SCREEN_AWAKE, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_KEEP_SCREEN_AWAKE, value).apply()
+        }
+
+    fun addSearchHistory(query: String) {
+        if (!searchHistoryEnabled || query.isBlank()) return
+        val updated = (listOf(query.trim()) + searchHistory())
+            .distinctBy(String::lowercase)
+            .take(30)
+        preferences.edit().putString(KEY_SEARCH_HISTORY, JSONArray(updated).toString()).apply()
+    }
+
+    fun searchHistory(): List<String> = runCatching {
+        val array = JSONArray(preferences.getString(KEY_SEARCH_HISTORY, "[]"))
+        buildList {
+            for (index in 0 until array.length()) array.optString(index).takeIf(String::isNotBlank)?.let(::add)
+        }
+    }.getOrDefault(emptyList())
+
+    fun isCreatorFollowed(creatorId: String): Boolean =
+        creatorId.isNotBlank() && creatorId in followedCreatorIds()
+
+    fun setCreatorFollowed(creatorId: String, followed: Boolean) {
+        if (creatorId.isBlank()) return
+        val updated = followedCreatorIds().toMutableSet()
+        if (followed) updated += creatorId else updated -= creatorId
+        preferences.edit().putStringSet(KEY_FOLLOWED_CREATORS, updated).apply()
+    }
+
+    fun followedCreatorIds(): Set<String> =
+        preferences.getStringSet(KEY_FOLLOWED_CREATORS, emptySet()).orEmpty().toSet()
+
+    fun initializeFollowedCreators(defaultCreatorIds: Set<String>): Set<String> {
+        if (preferences.getBoolean(KEY_FOLLOWING_INITIALIZED, false)) return followedCreatorIds()
+        val initialized = followedCreatorIds() + defaultCreatorIds.filter(String::isNotBlank)
+        preferences.edit()
+            .putStringSet(KEY_FOLLOWED_CREATORS, initialized)
+            .putBoolean(KEY_FOLLOWING_INITIALIZED, true)
+            .apply()
+        return initialized
+    }
+
+    fun mergeImportedSubscriptions(channels: List<ChannelUiModel>) {
+        if (channels.isEmpty()) return
+        val currentChannels = loadImportedChannels().associateByTo(linkedMapOf(), ChannelUiModel::id)
+        channels.forEach { imported ->
+            val current = currentChannels[imported.id]
+            currentChannels[imported.id] = if (current == null) imported else current.copy(
+                name = imported.name.ifBlank { current.name },
+                sourceId = imported.sourceId.ifBlank { current.sourceId },
+                source = imported.source.ifBlank { current.source },
+                followerCount = imported.followerCount.takeUnless { it == "Creator" }
+                    ?: current.followerCount,
+                description = imported.description.ifBlank { current.description },
+                thumbnailUrl = imported.thumbnailUrl.ifBlank { current.thumbnailUrl },
+            )
+        }
+        val followed = followedCreatorIds() + channels.map(ChannelUiModel::id).filter(String::isNotBlank)
+        val json = JSONArray().apply {
+            currentChannels.values.forEach { channel ->
+                put(
+                    JSONObject().apply {
+                        put("id", channel.id)
+                        put("name", channel.name)
+                        put("sourceId", channel.sourceId)
+                        put("source", channel.source)
+                        put("unreadCount", channel.unreadCount)
+                        put("followerCount", channel.followerCount)
+                        put("description", channel.description)
+                        put("thumbnailUrl", channel.thumbnailUrl)
+                    },
+                )
+            }
+        }
+        preferences.edit()
+            .putStringSet(KEY_FOLLOWED_CREATORS, followed)
+            .putBoolean(KEY_FOLLOWING_INITIALIZED, true)
+            .putString(KEY_IMPORTED_CHANNELS, json.toString())
+            .apply()
+    }
+
+    fun loadImportedChannels(): List<ChannelUiModel> = runCatching {
+        val array = JSONArray(preferences.getString(KEY_IMPORTED_CHANNELS, "[]"))
+        buildList {
+            for (index in 0 until array.length()) {
+                val json = array.optJSONObject(index) ?: continue
+                val id = json.optString("id")
+                if (id.isBlank()) continue
+                add(
+                    ChannelUiModel(
+                        id = id,
+                        name = json.optString("name", appContext.getString(R.string.imported_creator)),
+                        sourceId = json.optString("sourceId", "youtube"),
+                        source = json.optString("source"),
+                        unreadCount = json.optInt("unreadCount"),
+                        followerCount = json.optString("followerCount", appContext.getString(R.string.creator)),
+                        description = json.optString("description"),
+                        thumbnailUrl = json.optString("thumbnailUrl"),
+                    ),
+                )
+            }
+        }
+    }.getOrDefault(emptyList())
+
+    companion object {
+        internal const val FILE_NAME = "grayjay_compose_preferences"
+        private const val KEY_DYNAMIC_COLORS = "dynamic_colors_enabled"
+        private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_PRIVATE_SESSION = "private_session_enabled"
+        private const val KEY_FOLLOWED_CREATORS = "followed_creator_ids"
+        private const val KEY_FOLLOWING_INITIALIZED = "following_initialized"
+        private const val KEY_IMPORTED_CHANNELS = "imported_channels"
+        private const val KEY_DEFAULT_PLAYBACK_SPEED = "default_playback_speed"
+        private const val KEY_PREFERRED_VIDEO_QUALITY = "preferred_video_quality"
+        private const val KEY_STICKY_CAPTIONS = "sticky_captions"
+        private const val KEY_CAPTIONS_ENABLED = "captions_enabled"
+        private const val KEY_SUBTITLE_LANGUAGE = "subtitle_language"
+        private const val KEY_SHOW_RECOMMENDATIONS = "show_recommendations"
+        private const val KEY_SEARCH_HISTORY_ENABLED = "search_history_enabled"
+        private const val KEY_SEARCH_HISTORY = "search_history"
+        private const val KEY_KEEP_SCREEN_AWAKE = "keep_screen_awake"
+        private const val PRIVATE_PROFILE_ID = "private"
+    }
+}

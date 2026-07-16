@@ -1,0 +1,234 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.serialization' version '2.2.21'
+    id 'org.ajoberstar.grgit' version '5.3.3'
+    id 'com.google.protobuf'
+    id 'kotlin-parcelize'
+    id 'com.google.devtools.ksp'
+}
+
+ext {
+    gitVersionName = grgit.describe()
+    gitVersionCode = gitVersionName != null && gitVersionName.isInteger() ? gitVersionName.toInteger() : 1
+}
+
+println("Version Name: $gitVersionName")
+println("Version Code: $gitVersionCode")
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('/opt/key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+protobuf {
+    protoc {
+        artifact = 'com.google.protobuf:protoc:3.25.1'
+    }
+    generateProtoTasks {
+        all().each { task ->
+            task.builtins {
+                java {
+                    option "lite"
+                }
+            }
+        }
+    }
+}
+
+android {
+    namespace 'com.futo.platformplayer'
+    compileSdk 36
+    flavorDimensions "buildType"
+    productFlavors {
+        stable {
+            dimension "buildType"
+            applicationId "com.futo.platformplayer"
+            buildConfigField "boolean", "IS_UNSTABLE_BUILD", "false"
+            buildConfigField "boolean", "IS_PLAYSTORE_BUILD", "false"
+            resValue "string", "app_name", "Grayjay"
+            resValue "string", "authority", "com.futo.platformplayer"
+        }
+        unstable {
+            dimension "buildType"
+            applicationId "com.futo.platformplayer.d"
+            buildConfigField "boolean", "IS_UNSTABLE_BUILD", "true"
+            buildConfigField "boolean", "IS_PLAYSTORE_BUILD", "false"
+            resValue "string", "app_name", "Grayjay Unstable"
+            resValue "string", "authority", "com.futo.platformplayer.d"
+            getIsDefault().set(true)
+        }
+        playstore {
+            dimension "buildType"
+            applicationId "com.futo.platformplayer.playstore"
+            buildConfigField "boolean", "IS_UNSTABLE_BUILD", "false"
+            buildConfigField "boolean", "IS_PLAYSTORE_BUILD", "true"
+            resValue "string", "app_name", "Grayjay"
+            resValue "string", "authority", "com.futo.platformplayer.playstore"
+        }
+    }
+
+    android.applicationVariants.all { variant ->
+        if (variant.flavorName == "unstable") {
+            variant.preBuildProvider.configure {
+                doFirst {
+                    println("UNSTABLE BUILD")
+                }
+            }
+        }
+
+        if (variant.flavorName == "stable") {
+            variant.preBuildProvider.configure {
+                doFirst {
+                    println("STABLE BUILD")
+                }
+            }
+        }
+
+        if (variant.flavorName == "playstore") {
+            variant.preBuildProvider.configure {
+                doFirst {
+                    println("PLAYSTORE BUILD")
+                }
+            }
+        }
+    }
+
+    defaultConfig {
+        minSdk 28
+        targetSdk 36
+        versionCode gitVersionCode
+        versionName gitVersionName
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        ksp {
+            arg("room.schemaLocation", "$projectDir/schemas")
+        }
+    }
+
+    signingConfigs {
+        release {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+            storePassword keystoreProperties['storePassword']
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    splits {
+        abi {
+            enable true
+            reset()
+
+            include "x86", "x86_64", "arm64-v8a", "armeabi-v7a"
+            universalApk true
+        }
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+            assets {
+                srcDirs 'src/main/assets', 'src/tests/assets', 'src/test/assets'
+            }
+        }
+    }
+}
+
+dependencies {
+    //implementation 'com.google.dagger:dagger:2.48'
+    implementation 'androidx.test:monitor:1.8.0'
+    implementation 'com.google.android.material:material:1.13.0'
+    //annotationProcessor 'com.google.dagger:dagger-compiler:2.48'
+
+    //Core
+    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'androidx.documentfile:documentfile:1.1.0'
+
+    //Images
+    annotationProcessor 'com.github.bumptech.glide:compiler:5.0.5'
+    implementation 'com.github.bumptech.glide:glide:5.0.5'
+
+    //Async
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
+
+    //HTTP
+    implementation "com.squareup.okhttp3:okhttp:5.3.0"
+
+    //JSON
+    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0" //Used for structured json
+    implementation 'com.google.code.gson:gson:2.13.2' //Used for complex/anonymous cases like during development conversions (eg. V8RemoteObject)
+
+    //JS
+    implementation 'com.caoccao.javet:javet-v8-android:4.1.5'
+
+    //Exoplayer
+    implementation 'androidx.media3:media3-exoplayer:1.9.0'
+    implementation 'androidx.media3:media3-exoplayer-dash:1.9.0'
+    implementation 'androidx.media3:media3-ui:1.9.0'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.9.0'
+    implementation 'androidx.media3:media3-exoplayer-rtsp:1.9.0'
+    implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.9.0'
+    implementation 'androidx.media3:media3-transformer:1.9.0'
+    implementation 'androidx.navigation:navigation-fragment-ktx:2.9.6'
+    implementation 'androidx.navigation:navigation-ui-ktx:2.9.6'
+    implementation 'androidx.media:media:1.7.1'
+
+    //Other
+    implementation 'org.jsoup:jsoup:1.21.2'
+    implementation 'com.google.android.flexbox:flexbox:3.0.0'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    implementation fileTree(dir: 'aar', include: ['*.aar'])
+    implementation 'com.arthenica:smart-exception-java:0.2.1'
+    implementation 'org.jetbrains.kotlin:kotlin-reflect:2.2.0'
+    implementation 'com.github.dhaval2404:imagepicker:2.1'
+    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    implementation 'com.caverock:androidsvg-aar:1.4'
+    implementation 'androidx.webkit:webkit:1.15.0'
+
+    //Protobuf
+    implementation 'com.google.protobuf:protobuf-javalite:4.33.0'
+
+    implementation 'com.polycentric.core:app:1.0'
+    implementation 'com.futo.futopay:app:1.0'
+    implementation 'androidx.work:work-runtime-ktx:2.11.0'
+    implementation 'androidx.concurrent:concurrent-futures-ktx:1.3.0'
+
+    //Database
+    implementation("androidx.room:room-runtime:2.8.3")
+    ksp("androidx.room:room-compiler:2.8.3")
+    implementation("androidx.room:room-ktx:2.8.3")
+
+    //Payment
+    implementation 'com.stripe:stripe-android:22.0.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
+    testImplementation "org.jetbrains.kotlin:kotlin-test:2.0.21"
+    testImplementation "org.xmlunit:xmlunit-core:2.11.0"
+    testImplementation "org.mockito:mockito-core:5.20.0"
+    androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
+}

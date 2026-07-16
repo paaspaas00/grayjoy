@@ -1,0 +1,466 @@
+<resources>
+    <string name="app_name">Grayjoy</string>
+
+    <!-- Navigation and common actions -->
+    <string name="nav_home">Home</string>
+    <string name="nav_following">Following</string>
+    <string name="nav_subscriptions">Subscriptions</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_library">Library</string>
+    <string name="nav_settings">Settings</string>
+    <string name="nav_sources">Sources</string>
+    <string name="now_playing">Now playing</string>
+    <string name="back">Back</string>
+    <string name="cancel">Cancel</string>
+    <string name="close">Close</string>
+    <string name="ok">OK</string>
+    <string name="reorder_playlist">Reorder playlist</string>
+    <string name="reorder">Reorder</string>
+    <string name="reorder_video">Drag to reorder</string>
+    <string name="remove_from_playlist">Remove from playlist</string>
+    <string name="remove_from_playlist_title">Remove from playlist?</string>
+    <string name="remove_from_playlist_body">The selected videos will be removed from this playlist.</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="add">Add</string>
+    <string name="remove">Remove</string>
+    <string name="install">Install</string>
+    <string name="create">Create</string>
+    <string name="import_action">Import</string>
+    <string name="unlock">Unlock</string>
+    <string name="retry">Retry</string>
+    <string name="try_again">Try again</string>
+    <string name="select_all">Select all</string>
+    <string name="done">Done</string>
+    <string name="manage">Manage</string>
+    <string name="share">Share</string>
+    <string name="share_video">Share video</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="follow">Follow</string>
+    <string name="following">Following</string>
+    <string name="videos">Videos</string>
+    <string name="creators">Creators</string>
+    <string name="playlists">Playlists</string>
+    <string name="history">History</string>
+    <string name="watch_later">Watch later</string>
+    <string name="downloads">Downloads</string>
+    <string name="download">Download</string>
+    <string name="remove_download">Remove download</string>
+    <string name="cancel_download">Cancel download</string>
+    <string name="retry_download">Retry download</string>
+    <string name="download_preparing">Preparing download</string>
+    <string name="download_queued">Queued</string>
+    <string name="download_downloading">Downloading</string>
+    <string name="download_paused">Paused</string>
+    <string name="download_complete">Available offline</string>
+    <string name="download_failed">Download failed</string>
+    <string name="download_removing">Removing</string>
+    <string name="download_description">Save video, audio, and subtitles for offline playback.</string>
+    <string name="download_notification_channel">Offline downloads</string>
+    <string name="downloading_for_offline_use">Downloading media for offline use</string>
+    <string name="live_download_unsupported">Live streams cannot be downloaded.</string>
+    <string name="download_no_media">This source returned no downloadable media.</string>
+    <string name="download_no_audio">This source returned no downloadable audio.</string>
+    <string name="download_all_audio">Download audio</string>
+    <string name="download_all_video">Download video</string>
+    <string name="available_offline">Available offline</string>
+    <string name="automatic">Automatic</string>
+    <string name="unknown_publisher">Unknown publisher</string>
+    <string name="creator">Creator</string>
+    <string name="link">Link</string>
+    <string name="selected">Selected</string>
+    <string name="use_light_theme">Use light theme</string>
+    <string name="use_dark_theme">Use dark theme</string>
+    <string name="private_session_enabled">Private session enabled</string>
+    <string name="cast_to_device">Cast to a device</string>
+    <string name="open_profile">Open profile</string>
+    <string name="open_item">Open %1$s</string>
+    <string name="nothing_here_yet">Nothing here yet.</string>
+
+    <!-- Home -->
+    <string name="feed_subscriptions">Subscriptions</string>
+    <string name="feed_for_you">For you</string>
+    <string name="feed_trending">Trending</string>
+    <string name="feed_live">Live</string>
+    <string name="latest_from_subscriptions">Latest from subscriptions</string>
+    <string name="trending_now">Trending now</string>
+    <string name="live_now">Live now</string>
+    <string name="home_empty_subscriptions">Follow creators to see their latest uploads here.</string>
+    <string name="home_empty_live">None of your enabled sources returned a live stream right now.</string>
+    <string name="home_empty_feed">The enabled sources did not return videos for this feed. Pull down to refresh.</string>
+
+    <!-- Search -->
+    <string name="search_hint">Search videos, creators, and playlists</string>
+    <plurals name="searching_active_sources">
+        <item quantity="one">Searching %d active source</item>
+        <item quantity="other">Searching %d active sources</item>
+    </plurals>
+    <string name="clear_search">Clear search</string>
+    <string name="sources_with_count">Sources (%1$d)</string>
+    <string name="search_question">What do you want to watch?</string>
+    <string name="search_start_typing">Start typing to see suggestions from your active sources.</string>
+    <string name="search_for_query">Search for “%1$s”</string>
+    <string name="searching">Searching…</string>
+    <plurals name="result_count">
+        <item quantity="one">%d result</item>
+        <item quantity="other">%d results</item>
+    </plurals>
+    <string name="search_unavailable">Search unavailable</string>
+    <string name="no_matches">No matches</string>
+    <string name="search_no_matches_body">Try another phrase or enable more engine sources.</string>
+    <string name="search_sources">Search sources</string>
+    <string name="search_sources_description">Choose which enabled plugins participate in this search.</string>
+    <string name="append_suggestion">Append %1$s to search</string>
+
+    <!-- Library and playlists -->
+    <string name="library_tagline">Your media, on your terms</string>
+    <string name="library_description">History, downloads, and playlists stay organized on your device.</string>
+    <plurals name="selected_count">
+        <item quantity="one">%d selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
+    <string name="playlist">Playlist</string>
+    <string name="remove_from_history_title">Remove from history?</string>
+    <string name="remove_from_history_body">The selected videos will no longer appear in watch history.</string>
+    <plurals name="videos_queued">
+        <item quantity="one">%d video queued</item>
+        <item quantity="other">%d videos queued</item>
+    </plurals>
+    <plurals name="local_collections">
+        <item quantity="one">%d local collection</item>
+        <item quantity="other">%d local collections</item>
+    </plurals>
+    <plurals name="videos_offline">
+        <item quantity="one">%d video available offline</item>
+        <item quantity="other">%d videos available offline</item>
+    </plurals>
+    <plurals name="watched_videos_on_device">
+        <item quantity="one">%d watched video • private and on-device</item>
+        <item quantity="other">%d watched videos • private and on-device</item>
+    </plurals>
+    <string name="local_playlist">LOCAL PLAYLIST</string>
+    <string name="play_all">Play all</string>
+    <plurals name="video_count">
+        <item quantity="one">%d video</item>
+        <item quantity="other">%d videos</item>
+    </plurals>
+    <string name="new_playlist">New playlist</string>
+    <string name="add_to_playlist">Add to playlist</string>
+    <string name="playlist_name">Playlist name</string>
+    <string name="rename_playlist">Rename playlist</string>
+    <string name="save">Save</string>
+
+    <!-- Subscriptions and channels -->
+    <string name="manage_subscriptions">Manage subscriptions</string>
+    <string name="your_creators">Your creators</string>
+    <string name="long_press_subscription">Long-press a subscription to select it.</string>
+    <string name="no_followed_creators">You are not following any creators from the enabled sources.</string>
+    <string name="latest_uploads">Latest uploads</string>
+    <string name="enable_source_subscription_updates">Enable a source to load subscription updates.</string>
+    <string name="clear_video_search">Clear video search</string>
+    <string name="search_channel_videos">Search this channel’s videos</string>
+    <string name="videos_with_count">Videos (%1$d)</string>
+    <string name="results_with_count">Results (%1$d)</string>
+    <string name="source_returned_no_videos">No videos were returned by this source.</string>
+    <string name="no_channel_videos_match">No channel videos match “%1$s”.</string>
+    <string name="view_channel">View channel</string>
+
+    <!-- Video actions and player -->
+    <string name="like">Like</string>
+    <string name="unlike">Unlike</string>
+    <string name="stored_locally_library">Stored locally in your library</string>
+    <string name="send_original_video_link">Send the original video link</string>
+    <string name="add_to_playlist_description">Choose an existing playlist or create a new one</string>
+    <string name="play_video">Play video</string>
+    <string name="pause_mini_player">Pause mini player</string>
+    <string name="play_mini_player">Play mini player</string>
+    <string name="next_in_queue">Next in queue</string>
+    <string name="close_mini_player">Close mini player</string>
+    <string name="choose_playback_device">Choose playback device</string>
+    <string name="disable_captions">Disable captions</string>
+    <string name="enable_captions">Enable captions</string>
+    <string name="player_settings">Player settings</string>
+    <string name="exit_fullscreen">Exit fullscreen</string>
+    <string name="enter_fullscreen">Enter fullscreen</string>
+    <string name="previous_video">Previous video</string>
+    <string name="next_video">Next video</string>
+    <string name="unlock_player_controls">Unlock player controls</string>
+    <string name="back_to_player_settings">Back to player settings</string>
+    <string name="quality">Quality</string>
+    <string name="playback_speed">Playback speed</string>
+    <string name="subtitles">Subtitles</string>
+    <string name="lock_controls">Lock controls</string>
+    <string name="auto">Auto</string>
+    <string name="auto_quality">Auto (%1$dp)</string>
+    <string name="not_available">Not available</string>
+    <string name="off">Off</string>
+    <string name="on">On</string>
+    <string name="currently_quality">Currently %1$dp</string>
+    <string name="normal">Normal</string>
+    <string name="captions_number">Captions %1$d</string>
+    <string name="live">LIVE</string>
+    <string name="up_next">Up next</string>
+    <string name="comments">Comments</string>
+    <string name="comments_with_count">Comments (%1$d)</string>
+    <string name="queue">Queue</string>
+    <string name="recommended">Recommended</string>
+    <string name="nothing_queued">Nothing queued</string>
+    <string name="nothing_queued_body">This source did not return recommendations for this video.</string>
+    <string name="no_comments_yet">No comments yet</string>
+    <string name="comments_unavailable">Comments unavailable</string>
+    <string name="no_comments_body">This video does not have any comments to show.</string>
+    <string name="comments_unsupported_body">The active source does not provide comments for this video.</string>
+    <string name="saved">Saved</string>
+    <string name="remove_watch_later">Remove from Watch later</string>
+    <string name="add_watch_later">Add to Watch later</string>
+    <plurals name="followers_count">
+        <item quantity="one">%s follower</item>
+        <item quantity="other">%s followers</item>
+    </plurals>
+    <string name="about_video">About this video</string>
+    <string name="show_less">Show less</string>
+    <string name="show_more">Show more</string>
+    <plurals name="likes_count">
+        <item quantity="one">%s like</item>
+        <item quantity="other">%s likes</item>
+    </plurals>
+    <plurals name="replies_count">
+        <item quantity="one">%d reply</item>
+        <item quantity="other">%d replies</item>
+    </plurals>
+
+    <!-- Profiles -->
+    <string name="profiles">Profiles</string>
+    <string name="profile_main">Main</string>
+    <string name="profile_private">Private</string>
+    <string name="profile_generic">Profile</string>
+    <string name="standard_profile">Standard profile</string>
+    <string name="fingerprint_or_device_lock">Fingerprint or device lock</string>
+    <string name="profile_pin">Profile PIN</string>
+    <string name="add_protected_profile">Add protected profile</string>
+    <string name="device_auth_unavailable_window">Device authentication is unavailable in this window.</string>
+    <string name="device_auth_enroll_first">Set up a fingerprint, face, PIN, pattern, or password on this device first.</string>
+    <string name="device_auth_no_hardware">This device has no supported biometric or screen-lock authentication.</string>
+    <string name="device_auth_unavailable">Device authentication is currently unavailable.</string>
+    <string name="device_auth_not_recognized">Fingerprint or face not recognized. Try again.</string>
+    <string name="profile_unlock_failed">Could not unlock this profile.</string>
+    <string name="device_auth_start_failed">Device authentication could not be started.</string>
+    <string name="unlock_profile">Unlock %1$s</string>
+    <string name="unlock_profile_fallback">profile</string>
+    <string name="device_auth_subtitle">Use fingerprint, face, or your device screen lock</string>
+    <string name="pin">PIN</string>
+    <string name="incorrect_pin">Incorrect PIN.</string>
+    <string name="unknown_profile">Unknown profile.</string>
+    <string name="enter_profile_name">Enter a profile name.</string>
+    <string name="pin_minimum_digits">PIN must contain at least 4 digits.</string>
+    <string name="profile_isolation_description">History, subscriptions, sources, playlists, and settings are isolated per profile.</string>
+    <string name="profile_name">Profile name</string>
+    <string name="confirm_pin">Confirm PIN</string>
+
+    <!-- Settings -->
+    <string name="settings_tagline">Make Grayjay yours</string>
+    <string name="settings_description">Privacy-respecting defaults with controls that stay understandable.</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="use_wallpaper_colors">Use wallpaper colors</string>
+    <string name="material_you_dynamic_color">Material You dynamic color</string>
+    <string name="settings_playback">Playback</string>
+    <string name="default_playback_speed">Default playback speed</string>
+    <string name="preferred_quality">Preferred quality</string>
+    <string name="quality_maximum">%1$dp maximum</string>
+    <string name="remember_subtitles">Remember subtitles</string>
+    <string name="remember_subtitles_description">Restore captions and language for the next video</string>
+    <string name="keep_screen_awake">Keep screen awake</string>
+    <string name="keep_screen_awake_description">Prevent the display from sleeping while the app is open</string>
+    <string name="settings_content">Content</string>
+    <string name="show_recommendations">Show recommendations</string>
+    <string name="show_recommendations_description">Load related videos below Now Playing</string>
+    <string name="search_history">Search history</string>
+    <string name="search_history_description">Use recent searches as local suggestions</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="private_session">Private session</string>
+    <string name="private_session_description">Do not record watch or search history</string>
+    <string name="privacy_controls">Privacy controls</string>
+    <string name="privacy_controls_description">Storage, history, and telemetry</string>
+    <string name="settings_sources">Sources</string>
+    <string name="manage_sources">Manage sources</string>
+    <plurals name="active_on_device">
+        <item quantity="one">%d active on this device</item>
+        <item quantity="other">%d active on this device</item>
+    </plurals>
+    <string name="settings_data">Data</string>
+    <string name="import_grayjay_database">Import Grayjay database</string>
+    <string name="import_grayjay_database_description">Restore a Grayjay export (.zip) or automatic backup (.ezip)</string>
+    <string name="preferred_video_quality">Preferred video quality</string>
+
+    <!-- Sources -->
+    <plurals name="active_sources">
+        <item quantity="one">%d active source</item>
+        <item quantity="other">%d active sources</item>
+    </plurals>
+    <plurals name="installed_sources">
+        <item quantity="one">%d installed</item>
+        <item quantity="other">%d installed</item>
+    </plurals>
+    <string name="installing_source">Installing source…</string>
+    <string name="find_source">Find a source</string>
+    <string name="clear_source_search">Clear source search</string>
+    <string name="engine_sources">Engine sources</string>
+    <string name="engine_sources_description">Tap a source for plugin options. Enabled sources participate in federated search.</string>
+    <string name="no_sources_match">No installed sources match “%1$s”.</string>
+    <string name="source_enabled">Enabled</string>
+    <string name="source_disabled">Disabled</string>
+    <string name="source_enabled_local">Enabled • Local index</string>
+    <string name="source_disabled_local">Disabled • Local index</string>
+    <string name="plugin_payload_unavailable">Plugin payload unavailable</string>
+    <string name="source_options">Options for %1$s</string>
+    <string name="add_grayjay_source">Add Grayjay source</string>
+    <string name="add_source_description">Paste a plugin configuration URL or Grayjay plugin link. The JS plugin and its permissions are handled by the existing Grayjay engine.</string>
+    <string name="scan_source_qr">Scan plugin QR code</string>
+    <string name="scan_source_qr_description">Point the camera at a Grayjay plugin link.</string>
+    <string name="invalid_source_qr">This QR code does not contain a valid Grayjay plugin URL.</string>
+    <string name="source_config_url">Source config URL</string>
+    <string name="source_config_url_hint">https://…/Config.json</string>
+    <string name="sign_out">Sign out</string>
+    <string name="log_in_to_source">Log in to source</string>
+    <string name="sign_out_source_description">Remove the account used for restricted and member content.</string>
+    <string name="log_in_source_description">Use the source’s own login flow for restricted or account-only content.</string>
+    <string name="update_or_reinstall">Update or reinstall</string>
+    <string name="update_source_description">Fetch the current config and JS payload from this source.</string>
+    <string name="clear_plugin_cache">Clear plugin cache</string>
+    <string name="clear_plugin_cache_description">The source will download a clean payload when it is next used.</string>
+    <string name="copy_config_url">Copy config URL</string>
+    <string name="grayjay_source_clipboard_label">Grayjay source</string>
+    <string name="remove_source">Remove source</string>
+    <string name="remove_source_description">Uninstall this custom plugin from the Compose app.</string>
+    <string name="source_description_default">Content provided through the Grayjay source engine</string>
+    <string name="source_description_plugin_default">Content provided through a Grayjay source plugin</string>
+    <string name="source_description_youtube">Videos, channels, playlists, and live streams</string>
+    <string name="source_description_odysee">Decentralized video and creator channels</string>
+    <string name="source_description_peertube">Federated video across independent instances</string>
+    <string name="source_description_rumble">Videos, channels, and live broadcasts</string>
+    <string name="source_description_twitch">Live streams, clips, and creator channels</string>
+    <string name="source_description_kick">Live streams and creator channels</string>
+    <string name="source_description_soundcloud">Music, podcasts, and audio creators</string>
+    <string name="source_description_nebula">Independent creator originals</string>
+    <string name="source_description_patreon">Membership-supported creator posts and media</string>
+    <string name="source_description_bilibili">Video, animation, and community content</string>
+    <string name="source_description_dailymotion">News, entertainment, and creator video</string>
+    <string name="source_description_bitchute">Independent video channels</string>
+    <string name="source_description_apple_podcasts">Podcasts and episodic audio</string>
+    <string name="source_description_tedtalks">Talks and educational video</string>
+    <string name="source_description_curiositystream">Documentaries and factual series</string>
+    <string name="source_description_crunchyroll">Anime and streaming series</string>
+    <string name="source_description_mixcloud">DJ mixes, radio, and podcasts</string>
+    <string name="source_description_radiobrowser">Community-indexed internet radio</string>
+    <string name="source_description_redbull_tv">Sports, music, and live events</string>
+    <string name="source_description_fosdem">Free and open-source software conference media</string>
+    <string name="source_description_nasa_plus">NASA documentaries, missions, and live coverage</string>
+    <string name="signature_mismatch">Signature does not match</string>
+    <string name="signature_mismatch_description">The signature for %1$s does not match the downloaded JavaScript. The source may have been modified or compromised.</string>
+    <string name="publisher_label">Publisher: %1$s</string>
+    <string name="signing_key_label">Signing key: %1$s</string>
+    <string name="trust_publisher_question">Only continue if you obtained this source from a publisher you trust. Do you trust this publisher?</string>
+
+    <!-- Database import -->
+    <string name="reading_grayjay_backup">Reading Grayjay backup</string>
+    <string name="importing_database">Importing database</string>
+    <string name="please_wait">Please wait…</string>
+    <string name="import_failed">Import failed</string>
+    <string name="import_complete">Import complete</string>
+    <string name="encrypted_grayjay_backup">Encrypted Grayjay backup</string>
+    <string name="backup_password_prompt">Enter the automatic-backup password for %1$s.</string>
+    <string name="backup_password">Backup password</string>
+    <string name="import_grayjay_database_question">Import Grayjay database?</string>
+    <string name="source_settings">Source settings</string>
+    <string name="subscriptions">Subscriptions</string>
+    <string name="legacy_settings_notice">Legacy UI settings were found. Compatible source settings are imported; old View-only preferences are skipped.</string>
+    <string name="import_merge_notice">Imported data is merged with this app. Existing history and playlists are not deleted.</string>
+    <plurals name="plugin_configurations">
+        <item quantity="one">%d plugin configuration</item>
+        <item quantity="other">%d plugin configurations</item>
+    </plurals>
+    <plurals name="plugin_settings_records">
+        <item quantity="one">%d plugin settings record</item>
+        <item quantity="other">%d plugin settings records</item>
+    </plurals>
+    <plurals name="followed_creators">
+        <item quantity="one">%d followed creator</item>
+        <item quantity="other">%d followed creators</item>
+    </plurals>
+    <plurals name="watched_videos">
+        <item quantity="one">%d watched video</item>
+        <item quantity="other">%d watched videos</item>
+    </plurals>
+    <plurals name="playlist_count">
+        <item quantity="one">%d playlist</item>
+        <item quantity="other">%d playlists</item>
+    </plurals>
+
+    <!-- User-facing operation and error messages -->
+    <string name="home_feed_refresh_failed">The home feed could not be refreshed.</string>
+    <string name="signed_in_to_source">Signed in to %1$s.</string>
+    <string name="signed_out">Signed out.</string>
+    <string name="video_details_load_failed">Video details could not be loaded.</string>
+    <string name="source_login_required_for_video">%1$s requires login for this video. Open Settings → Manage sources → %1$s → Log in to source.</string>
+    <string name="creator_load_failed">This creator could not be loaded from the source.</string>
+    <string name="search_failed">Search failed.</string>
+    <string name="source_install_failed">The source could not be installed.</string>
+    <string name="installing_trusted_source">Installing trusted source…</string>
+    <string name="trusted_source_install_failed">The trusted source could not be installed.</string>
+    <string name="source_not_installed">%1$s was not installed.</string>
+    <string name="source_cache_cleared">%1$s cache cleared.</string>
+    <string name="source_removed">%1$s removed.</string>
+    <string name="source_installed_enabled">%1$s installed and enabled.</string>
+    <string name="backup_open_failed">The selected backup could not be opened.</string>
+    <string name="grayjay_backup">Grayjay backup</string>
+    <string name="backup_read_failed">The Grayjay backup could not be read.</string>
+    <string name="database_import_failed">The Grayjay database could not be imported.</string>
+    <string name="more_from_source_load_failed">More from this source could not be loaded.</string>
+    <string name="imported_creator">Imported creator</string>
+    <string name="imported_from_grayjay">Imported from Grayjay</string>
+    <string name="import_summary">Grayjay database imported: %1$d videos, %2$d playlists, %3$d subscriptions</string>
+    <plurals name="source_warnings">
+        <item quantity="one">%d source warning</item>
+        <item quantity="other">%d source warnings</item>
+    </plurals>
+    <string name="source_warning">Source %1$s: %2$s</string>
+    <string name="playback_failed">Playback failed: %1$s: %2$s</string>
+    <string name="source_could_not_play">This source could not be played.</string>
+    <string name="source_plugin_unavailable">The %1$s plugin is not available.</string>
+    <string name="no_playable_media">No playable media was returned by this source.</string>
+    <string name="views_count_compact">%1$s views</string>
+    <string name="source_playlist">Source playlist</string>
+    <string name="unknown_creator">Unknown creator</string>
+    <string name="incorrect_backup_password">The backup password is incorrect.</string>
+    <string name="backup_empty">The selected backup is empty.</string>
+    <string name="backup_over_128_mb">The selected backup is larger than 128 MB.</string>
+    <string name="unsupported_automatic_backup_version">Unsupported Grayjay automatic backup version: %1$d.</string>
+    <string name="newer_encrypted_backup_unsupported">This newer encrypted Grayjay backup format is not supported by the legacy app either.</string>
+    <string name="backup_header_incomplete">The automatic backup header is incomplete.</string>
+    <string name="unsupported_encryption_version">Unsupported legacy encryption version: %1$d.</string>
+    <string name="backup_too_many_files">The backup contains too many files.</string>
+    <string name="backup_too_large">The backup expands beyond the safe import limit.</string>
+    <string name="not_grayjay_export">This is not a Grayjay export database.</string>
+    <string name="decrypted_data_invalid">The decrypted data is not a valid Grayjay export.</string>
+    <string name="imported_playlist">Imported playlist</string>
+    <string name="local_playlist_description">Local playlist</string>
+
+    <!-- Source login -->
+    <string name="source_no_login_configuration">This source does not provide a login configuration.</string>
+    <string name="source_login_page_failed">Could not load the source login page.</string>
+    <string name="source_does_not_support_login">%1$s does not support login.</string>
+    <string name="loading_source_login">Loading source login…</string>
+    <string name="sign_in_to_source_name">Sign in to %1$s</string>
+    <string name="finishing_source_sign_in">Finishing %1$s sign-in…</string>
+    <string name="select_youtube_channel">Select a YouTube channel</string>
+    <string name="select_youtube_channel_to_finish">Select a YouTube channel to finish sign-in</string>
+    <string name="youtube_channel_choice_description">Choose the channel/profile to use. Sign-in completes after your selection.</string>
+    <string name="continue_action">Continue</string>
+
+    <!-- Playback notification -->
+    <string name="playback_notification_channel">Playback</string>
+    <string name="playback_notification_channel_description">Video playback controls</string>
+    <string name="preparing_playback">Preparing playback</string>
+    <string name="close_playback">Close playback</string>
+</resources>

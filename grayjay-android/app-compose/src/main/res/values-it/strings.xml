@@ -1,0 +1,466 @@
+<resources>
+    <string name="app_name">Grayjoy</string>
+
+    <!-- Navigazione e azioni comuni -->
+    <string name="nav_home">Home</string>
+    <string name="nav_following">Seguiti</string>
+    <string name="nav_subscriptions">Iscrizioni</string>
+    <string name="nav_search">Cerca</string>
+    <string name="nav_library">Raccolta</string>
+    <string name="nav_settings">Prefs</string>
+    <string name="nav_sources">Sorgenti</string>
+    <string name="now_playing">In riproduzione</string>
+    <string name="back">Indietro</string>
+    <string name="cancel">Annulla</string>
+    <string name="close">Chiudi</string>
+    <string name="ok">OK</string>
+    <string name="reorder_playlist">Riordina playlist</string>
+    <string name="reorder">Riordina</string>
+    <string name="reorder_video">Trascina per riordinare</string>
+    <string name="remove_from_playlist">Rimuovi dalla playlist</string>
+    <string name="remove_from_playlist_title">Rimuovere dalla playlist?</string>
+    <string name="remove_from_playlist_body">I video selezionati verranno rimossi da questa playlist.</string>
+    <string name="yes">Sì</string>
+    <string name="no">No</string>
+    <string name="add">Aggiungi</string>
+    <string name="remove">Rimuovi</string>
+    <string name="install">Installa</string>
+    <string name="create">Crea</string>
+    <string name="import_action">Importa</string>
+    <string name="unlock">Sblocca</string>
+    <string name="retry">Riprova</string>
+    <string name="try_again">Riprova</string>
+    <string name="select_all">Seleziona tutto</string>
+    <string name="done">Fine</string>
+    <string name="manage">Gestisci</string>
+    <string name="share">Condividi</string>
+    <string name="share_video">Condividi video</string>
+    <string name="play">Riproduci</string>
+    <string name="pause">Pausa</string>
+    <string name="follow">Segui</string>
+    <string name="following">Segui già</string>
+    <string name="videos">Video</string>
+    <string name="creators">Creator</string>
+    <string name="playlists">Playlist</string>
+    <string name="history">Cronologia</string>
+    <string name="watch_later">Guarda più tardi</string>
+    <string name="downloads">Download</string>
+    <string name="download">Scarica</string>
+    <string name="remove_download">Rimuovi download</string>
+    <string name="cancel_download">Annulla download</string>
+    <string name="retry_download">Riprova download</string>
+    <string name="download_preparing">Preparazione download</string>
+    <string name="download_queued">In coda</string>
+    <string name="download_downloading">Download in corso</string>
+    <string name="download_paused">In pausa</string>
+    <string name="download_complete">Disponibile offline</string>
+    <string name="download_failed">Download non riuscito</string>
+    <string name="download_removing">Rimozione</string>
+    <string name="download_description">Salva video, audio e sottotitoli per la riproduzione offline.</string>
+    <string name="download_notification_channel">Download offline</string>
+    <string name="downloading_for_offline_use">Download dei contenuti per l’uso offline</string>
+    <string name="live_download_unsupported">Non è possibile scaricare le dirette.</string>
+    <string name="download_no_media">La sorgente non ha restituito contenuti scaricabili.</string>
+    <string name="download_no_audio">La sorgente non ha restituito audio scaricabile.</string>
+    <string name="download_all_audio">Scarica audio</string>
+    <string name="download_all_video">Scarica video</string>
+    <string name="available_offline">Disponibile offline</string>
+    <string name="automatic">Automatica</string>
+    <string name="unknown_publisher">Editore sconosciuto</string>
+    <string name="creator">Creator</string>
+    <string name="link">Link</string>
+    <string name="selected">Selezionato</string>
+    <string name="use_light_theme">Usa il tema chiaro</string>
+    <string name="use_dark_theme">Usa il tema scuro</string>
+    <string name="private_session_enabled">Sessione privata attiva</string>
+    <string name="cast_to_device">Trasmetti a un dispositivo</string>
+    <string name="open_profile">Apri profilo</string>
+    <string name="open_item">Apri %1$s</string>
+    <string name="nothing_here_yet">Ancora nulla qui.</string>
+
+    <!-- Home -->
+    <string name="feed_subscriptions">Iscrizioni</string>
+    <string name="feed_for_you">Per te</string>
+    <string name="feed_trending">Tendenze</string>
+    <string name="feed_live">In diretta</string>
+    <string name="latest_from_subscriptions">Ultimi video dalle iscrizioni</string>
+    <string name="trending_now">Di tendenza ora</string>
+    <string name="live_now">In diretta ora</string>
+    <string name="home_empty_subscriptions">Segui dei creator per vedere qui i loro ultimi caricamenti.</string>
+    <string name="home_empty_live">Nessuna sorgente attiva ha restituito una diretta in questo momento.</string>
+    <string name="home_empty_feed">Le sorgenti attive non hanno restituito video per questo feed. Trascina verso il basso per aggiornare.</string>
+
+    <!-- Ricerca -->
+    <string name="search_hint">Cerca video, creator e playlist</string>
+    <plurals name="searching_active_sources">
+        <item quantity="one">Ricerca in %d sorgente attiva</item>
+        <item quantity="other">Ricerca in %d sorgenti attive</item>
+    </plurals>
+    <string name="clear_search">Cancella ricerca</string>
+    <string name="sources_with_count">Sorgenti (%1$d)</string>
+    <string name="search_question">Cosa vuoi guardare?</string>
+    <string name="search_start_typing">Inizia a digitare per vedere i suggerimenti delle sorgenti attive.</string>
+    <string name="search_for_query">Cerca “%1$s”</string>
+    <string name="searching">Ricerca in corso…</string>
+    <plurals name="result_count">
+        <item quantity="one">%d risultato</item>
+        <item quantity="other">%d risultati</item>
+    </plurals>
+    <string name="search_unavailable">Ricerca non disponibile</string>
+    <string name="no_matches">Nessun risultato</string>
+    <string name="search_no_matches_body">Prova un’altra frase o attiva altre sorgenti del motore.</string>
+    <string name="search_sources">Sorgenti di ricerca</string>
+    <string name="search_sources_description">Scegli quali plugin attivi includere in questa ricerca.</string>
+    <string name="append_suggestion">Aggiungi %1$s alla ricerca</string>
+
+    <!-- Raccolta e playlist -->
+    <string name="library_tagline">I tuoi contenuti, alle tue condizioni</string>
+    <string name="library_description">Cronologia, download e playlist restano organizzati sul dispositivo.</string>
+    <plurals name="selected_count">
+        <item quantity="one">%d selezionato</item>
+        <item quantity="other">%d selezionati</item>
+    </plurals>
+    <string name="playlist">Playlist</string>
+    <string name="remove_from_history_title">Rimuovere dalla cronologia?</string>
+    <string name="remove_from_history_body">I video selezionati non compariranno più nella cronologia di visione.</string>
+    <plurals name="videos_queued">
+        <item quantity="one">%d video in coda</item>
+        <item quantity="other">%d video in coda</item>
+    </plurals>
+    <plurals name="local_collections">
+        <item quantity="one">%d raccolta locale</item>
+        <item quantity="other">%d raccolte locali</item>
+    </plurals>
+    <plurals name="videos_offline">
+        <item quantity="one">%d video disponibile offline</item>
+        <item quantity="other">%d video disponibili offline</item>
+    </plurals>
+    <plurals name="watched_videos_on_device">
+        <item quantity="one">%d video guardato • privato e sul dispositivo</item>
+        <item quantity="other">%d video guardati • privati e sul dispositivo</item>
+    </plurals>
+    <string name="local_playlist">PLAYLIST LOCALE</string>
+    <string name="play_all">Riproduci tutto</string>
+    <plurals name="video_count">
+        <item quantity="one">%d video</item>
+        <item quantity="other">%d video</item>
+    </plurals>
+    <string name="new_playlist">Nuova playlist</string>
+    <string name="add_to_playlist">Aggiungi alla playlist</string>
+    <string name="playlist_name">Nome playlist</string>
+    <string name="rename_playlist">Rinomina playlist</string>
+    <string name="save">Salva</string>
+
+    <!-- Iscrizioni e canali -->
+    <string name="manage_subscriptions">Gestisci iscrizioni</string>
+    <string name="your_creators">I tuoi creator</string>
+    <string name="long_press_subscription">Tieni premuta un’iscrizione per selezionarla.</string>
+    <string name="no_followed_creators">Non segui ancora alcun creator dalle sorgenti attive.</string>
+    <string name="latest_uploads">Ultimi caricamenti</string>
+    <string name="enable_source_subscription_updates">Attiva una sorgente per caricare gli aggiornamenti delle iscrizioni.</string>
+    <string name="clear_video_search">Cancella ricerca video</string>
+    <string name="search_channel_videos">Cerca tra i video di questo canale</string>
+    <string name="videos_with_count">Video (%1$d)</string>
+    <string name="results_with_count">Risultati (%1$d)</string>
+    <string name="source_returned_no_videos">Questa sorgente non ha restituito video.</string>
+    <string name="no_channel_videos_match">Nessun video del canale corrisponde a “%1$s”.</string>
+    <string name="view_channel">Visualizza canale</string>
+
+    <!-- Azioni video e player -->
+    <string name="like">Mi piace</string>
+    <string name="unlike">Rimuovi Mi piace</string>
+    <string name="stored_locally_library">Salvato localmente nella raccolta</string>
+    <string name="send_original_video_link">Invia il link originale del video</string>
+    <string name="add_to_playlist_description">Scegli una playlist esistente o creane una nuova</string>
+    <string name="play_video">Riproduci video</string>
+    <string name="pause_mini_player">Metti in pausa il mini player</string>
+    <string name="play_mini_player">Riproduci nel mini player</string>
+    <string name="next_in_queue">Prossimo in coda</string>
+    <string name="close_mini_player">Chiudi mini player</string>
+    <string name="choose_playback_device">Scegli dispositivo di riproduzione</string>
+    <string name="disable_captions">Disattiva sottotitoli</string>
+    <string name="enable_captions">Attiva sottotitoli</string>
+    <string name="player_settings">Impostazioni player</string>
+    <string name="exit_fullscreen">Esci da schermo intero</string>
+    <string name="enter_fullscreen">Apri a schermo intero</string>
+    <string name="previous_video">Video precedente</string>
+    <string name="next_video">Video successivo</string>
+    <string name="unlock_player_controls">Sblocca i controlli del player</string>
+    <string name="back_to_player_settings">Torna alle impostazioni del player</string>
+    <string name="quality">Qualità</string>
+    <string name="playback_speed">Velocità di riproduzione</string>
+    <string name="subtitles">Sottotitoli</string>
+    <string name="lock_controls">Blocca controlli</string>
+    <string name="auto">Auto</string>
+    <string name="auto_quality">Auto (%1$dp)</string>
+    <string name="not_available">Non disponibile</string>
+    <string name="off">Disattivati</string>
+    <string name="on">Attivati</string>
+    <string name="currently_quality">Attualmente %1$dp</string>
+    <string name="normal">Normale</string>
+    <string name="captions_number">Sottotitoli %1$d</string>
+    <string name="live">IN DIRETTA</string>
+    <string name="up_next">A seguire</string>
+    <string name="comments">Commenti</string>
+    <string name="comments_with_count">Commenti (%1$d)</string>
+    <string name="queue">Coda</string>
+    <string name="recommended">Consigliati</string>
+    <string name="nothing_queued">Nessun video in coda</string>
+    <string name="nothing_queued_body">Questa sorgente non ha restituito consigli per il video.</string>
+    <string name="no_comments_yet">Ancora nessun commento</string>
+    <string name="comments_unavailable">Commenti non disponibili</string>
+    <string name="no_comments_body">Questo video non ha commenti da mostrare.</string>
+    <string name="comments_unsupported_body">La sorgente attiva non fornisce i commenti per questo video.</string>
+    <string name="saved">Salvato</string>
+    <string name="remove_watch_later">Rimuovi da Guarda più tardi</string>
+    <string name="add_watch_later">Aggiungi a Guarda più tardi</string>
+    <plurals name="followers_count">
+        <item quantity="one">%s follower</item>
+        <item quantity="other">%s follower</item>
+    </plurals>
+    <string name="about_video">Informazioni sul video</string>
+    <string name="show_less">Mostra meno</string>
+    <string name="show_more">Mostra altro</string>
+    <plurals name="likes_count">
+        <item quantity="one">%s Mi piace</item>
+        <item quantity="other">%s Mi piace</item>
+    </plurals>
+    <plurals name="replies_count">
+        <item quantity="one">%d risposta</item>
+        <item quantity="other">%d risposte</item>
+    </plurals>
+
+    <!-- Profili -->
+    <string name="profiles">Profili</string>
+    <string name="profile_main">Principale</string>
+    <string name="profile_private">Privato</string>
+    <string name="profile_generic">Profilo</string>
+    <string name="standard_profile">Profilo standard</string>
+    <string name="fingerprint_or_device_lock">Impronta digitale o blocco dispositivo</string>
+    <string name="profile_pin">PIN del profilo</string>
+    <string name="add_protected_profile">Aggiungi profilo protetto</string>
+    <string name="device_auth_unavailable_window">L’autenticazione del dispositivo non è disponibile in questa finestra.</string>
+    <string name="device_auth_enroll_first">Configura prima un’impronta, il volto, un PIN, una sequenza o una password sul dispositivo.</string>
+    <string name="device_auth_no_hardware">Questo dispositivo non supporta l’autenticazione biometrica o tramite blocco schermo.</string>
+    <string name="device_auth_unavailable">L’autenticazione del dispositivo non è al momento disponibile.</string>
+    <string name="device_auth_not_recognized">Impronta o volto non riconosciuti. Riprova.</string>
+    <string name="profile_unlock_failed">Impossibile sbloccare questo profilo.</string>
+    <string name="device_auth_start_failed">Impossibile avviare l’autenticazione del dispositivo.</string>
+    <string name="unlock_profile">Sblocca %1$s</string>
+    <string name="unlock_profile_fallback">profilo</string>
+    <string name="device_auth_subtitle">Usa l’impronta, il volto o il blocco schermo del dispositivo</string>
+    <string name="pin">PIN</string>
+    <string name="incorrect_pin">PIN errato.</string>
+    <string name="unknown_profile">Profilo sconosciuto.</string>
+    <string name="enter_profile_name">Inserisci un nome per il profilo.</string>
+    <string name="pin_minimum_digits">Il PIN deve contenere almeno 4 cifre.</string>
+    <string name="profile_isolation_description">Cronologia, iscrizioni, sorgenti, playlist e impostazioni sono separate per ogni profilo.</string>
+    <string name="profile_name">Nome profilo</string>
+    <string name="confirm_pin">Conferma PIN</string>
+
+    <!-- Impostazioni -->
+    <string name="settings_tagline">Personalizza Grayjay</string>
+    <string name="settings_description">Impostazioni predefinite rispettose della privacy e controlli facili da capire.</string>
+    <string name="settings_appearance">Aspetto</string>
+    <string name="use_wallpaper_colors">Usa i colori dello sfondo</string>
+    <string name="material_you_dynamic_color">Colori dinamici Material You</string>
+    <string name="settings_playback">Riproduzione</string>
+    <string name="default_playback_speed">Velocità di riproduzione predefinita</string>
+    <string name="preferred_quality">Qualità preferita</string>
+    <string name="quality_maximum">massimo %1$dp</string>
+    <string name="remember_subtitles">Ricorda i sottotitoli</string>
+    <string name="remember_subtitles_description">Ripristina sottotitoli e lingua nel video successivo</string>
+    <string name="keep_screen_awake">Mantieni lo schermo attivo</string>
+    <string name="keep_screen_awake_description">Impedisci allo schermo di spegnersi mentre l’app è aperta</string>
+    <string name="settings_content">Contenuti</string>
+    <string name="show_recommendations">Mostra consigli</string>
+    <string name="show_recommendations_description">Carica video correlati sotto In riproduzione</string>
+    <string name="search_history">Cronologia ricerche</string>
+    <string name="search_history_description">Usa le ricerche recenti come suggerimenti locali</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="private_session">Sessione privata</string>
+    <string name="private_session_description">Non registrare la cronologia di visione o di ricerca</string>
+    <string name="privacy_controls">Controlli privacy</string>
+    <string name="privacy_controls_description">Archiviazione, cronologia e telemetria</string>
+    <string name="settings_sources">Sorgenti</string>
+    <string name="manage_sources">Gestisci sorgenti</string>
+    <plurals name="active_on_device">
+        <item quantity="one">%d attiva su questo dispositivo</item>
+        <item quantity="other">%d attive su questo dispositivo</item>
+    </plurals>
+    <string name="settings_data">Dati</string>
+    <string name="import_grayjay_database">Importa database Grayjay</string>
+    <string name="import_grayjay_database_description">Ripristina un’esportazione Grayjay (.zip) o un backup automatico (.ezip)</string>
+    <string name="preferred_video_quality">Qualità video preferita</string>
+
+    <!-- Sorgenti -->
+    <plurals name="active_sources">
+        <item quantity="one">%d sorgente attiva</item>
+        <item quantity="other">%d sorgenti attive</item>
+    </plurals>
+    <plurals name="installed_sources">
+        <item quantity="one">%d installata</item>
+        <item quantity="other">%d installate</item>
+    </plurals>
+    <string name="installing_source">Installazione sorgente…</string>
+    <string name="find_source">Trova una sorgente</string>
+    <string name="clear_source_search">Cancella ricerca sorgente</string>
+    <string name="engine_sources">Sorgenti del motore</string>
+    <string name="engine_sources_description">Tocca una sorgente per le opzioni del plugin. Le sorgenti attive partecipano alla ricerca federata.</string>
+    <string name="no_sources_match">Nessuna sorgente installata corrisponde a “%1$s”.</string>
+    <string name="source_enabled">Attiva</string>
+    <string name="source_disabled">Disattivata</string>
+    <string name="source_enabled_local">Attiva • Indice locale</string>
+    <string name="source_disabled_local">Disattivata • Indice locale</string>
+    <string name="plugin_payload_unavailable">Contenuto del plugin non disponibile</string>
+    <string name="source_options">Opzioni per %1$s</string>
+    <string name="add_grayjay_source">Aggiungi sorgente Grayjay</string>
+    <string name="add_source_description">Incolla l’URL di configurazione di un plugin o un link plugin Grayjay. Il plugin JS e le relative autorizzazioni sono gestiti dal motore Grayjay esistente.</string>
+    <string name="scan_source_qr">Scansiona QR del plugin</string>
+    <string name="scan_source_qr_description">Inquadra con la fotocamera un link plugin Grayjay.</string>
+    <string name="invalid_source_qr">Questo codice QR non contiene un URL plugin Grayjay valido.</string>
+    <string name="source_config_url">URL di configurazione sorgente</string>
+    <string name="source_config_url_hint">https://…/Config.json</string>
+    <string name="sign_out">Esci</string>
+    <string name="log_in_to_source">Accedi alla sorgente</string>
+    <string name="sign_out_source_description">Rimuovi l’account usato per i contenuti con restrizioni o riservati agli iscritti.</string>
+    <string name="log_in_source_description">Usa la procedura di accesso della sorgente per contenuti con restrizioni o disponibili solo con un account.</string>
+    <string name="update_or_reinstall">Aggiorna o reinstalla</string>
+    <string name="update_source_description">Scarica la configurazione e il contenuto JS correnti da questa sorgente.</string>
+    <string name="clear_plugin_cache">Svuota cache del plugin</string>
+    <string name="clear_plugin_cache_description">La sorgente scaricherà una copia pulita al prossimo utilizzo.</string>
+    <string name="copy_config_url">Copia URL di configurazione</string>
+    <string name="grayjay_source_clipboard_label">Sorgente Grayjay</string>
+    <string name="remove_source">Rimuovi sorgente</string>
+    <string name="remove_source_description">Disinstalla questo plugin personalizzato dall’app Compose.</string>
+    <string name="source_description_default">Contenuti forniti dal motore delle sorgenti Grayjay</string>
+    <string name="source_description_plugin_default">Contenuti forniti da un plugin sorgente Grayjay</string>
+    <string name="source_description_youtube">Video, canali, playlist e dirette</string>
+    <string name="source_description_odysee">Video decentralizzati e canali dei creator</string>
+    <string name="source_description_peertube">Video federati tra istanze indipendenti</string>
+    <string name="source_description_rumble">Video, canali e trasmissioni in diretta</string>
+    <string name="source_description_twitch">Dirette, clip e canali dei creator</string>
+    <string name="source_description_kick">Dirette e canali dei creator</string>
+    <string name="source_description_soundcloud">Musica, podcast e creator audio</string>
+    <string name="source_description_nebula">Contenuti originali di creator indipendenti</string>
+    <string name="source_description_patreon">Post e contenuti dei creator sostenuti dagli iscritti</string>
+    <string name="source_description_bilibili">Video, animazione e contenuti della community</string>
+    <string name="source_description_dailymotion">Notizie, intrattenimento e video dei creator</string>
+    <string name="source_description_bitchute">Canali video indipendenti</string>
+    <string name="source_description_apple_podcasts">Podcast e audio a episodi</string>
+    <string name="source_description_tedtalks">Conferenze e video educativi</string>
+    <string name="source_description_curiositystream">Documentari e serie informative</string>
+    <string name="source_description_crunchyroll">Anime e serie in streaming</string>
+    <string name="source_description_mixcloud">DJ set, radio e podcast</string>
+    <string name="source_description_radiobrowser">Radio internet indicizzate dalla community</string>
+    <string name="source_description_redbull_tv">Sport, musica ed eventi in diretta</string>
+    <string name="source_description_fosdem">Contenuti della conferenza sul software libero e open source</string>
+    <string name="source_description_nasa_plus">Documentari, missioni e dirette NASA</string>
+    <string name="signature_mismatch">La firma non corrisponde</string>
+    <string name="signature_mismatch_description">La firma di %1$s non corrisponde al JavaScript scaricato. La sorgente potrebbe essere stata modificata o compromessa.</string>
+    <string name="publisher_label">Editore: %1$s</string>
+    <string name="signing_key_label">Chiave di firma: %1$s</string>
+    <string name="trust_publisher_question">Continua solo se hai ottenuto questa sorgente da un editore attendibile. Consideri attendibile questo editore?</string>
+
+    <!-- Importazione database -->
+    <string name="reading_grayjay_backup">Lettura backup Grayjay</string>
+    <string name="importing_database">Importazione database</string>
+    <string name="please_wait">Attendi…</string>
+    <string name="import_failed">Importazione non riuscita</string>
+    <string name="import_complete">Importazione completata</string>
+    <string name="encrypted_grayjay_backup">Backup Grayjay crittografato</string>
+    <string name="backup_password_prompt">Inserisci la password del backup automatico per %1$s.</string>
+    <string name="backup_password">Password del backup</string>
+    <string name="import_grayjay_database_question">Importare il database Grayjay?</string>
+    <string name="source_settings">Impostazioni sorgenti</string>
+    <string name="subscriptions">Iscrizioni</string>
+    <string name="legacy_settings_notice">Sono state trovate impostazioni dell’interfaccia precedente. Le impostazioni compatibili delle sorgenti saranno importate; le vecchie preferenze legate alle View saranno ignorate.</string>
+    <string name="import_merge_notice">I dati importati vengono uniti a quelli dell’app. La cronologia e le playlist esistenti non saranno eliminate.</string>
+    <plurals name="plugin_configurations">
+        <item quantity="one">%d configurazione plugin</item>
+        <item quantity="other">%d configurazioni plugin</item>
+    </plurals>
+    <plurals name="plugin_settings_records">
+        <item quantity="one">%d record di impostazioni plugin</item>
+        <item quantity="other">%d record di impostazioni plugin</item>
+    </plurals>
+    <plurals name="followed_creators">
+        <item quantity="one">%d creator seguito</item>
+        <item quantity="other">%d creator seguiti</item>
+    </plurals>
+    <plurals name="watched_videos">
+        <item quantity="one">%d video guardato</item>
+        <item quantity="other">%d video guardati</item>
+    </plurals>
+    <plurals name="playlist_count">
+        <item quantity="one">%d playlist</item>
+        <item quantity="other">%d playlist</item>
+    </plurals>
+
+    <!-- Messaggi operativi ed errori -->
+    <string name="home_feed_refresh_failed">Impossibile aggiornare il feed Home.</string>
+    <string name="signed_in_to_source">Accesso a %1$s effettuato.</string>
+    <string name="signed_out">Disconnessione effettuata.</string>
+    <string name="video_details_load_failed">Impossibile caricare i dettagli del video.</string>
+    <string name="source_login_required_for_video">Per questo video è necessario accedere a %1$s. Apri Impostazioni → Gestisci sorgenti → %1$s → Accedi alla sorgente.</string>
+    <string name="creator_load_failed">Impossibile caricare questo creator dalla sorgente.</string>
+    <string name="search_failed">Ricerca non riuscita.</string>
+    <string name="source_install_failed">Impossibile installare la sorgente.</string>
+    <string name="installing_trusted_source">Installazione sorgente attendibile…</string>
+    <string name="trusted_source_install_failed">Impossibile installare la sorgente attendibile.</string>
+    <string name="source_not_installed">%1$s non è stata installata.</string>
+    <string name="source_cache_cleared">Cache di %1$s svuotata.</string>
+    <string name="source_removed">%1$s rimossa.</string>
+    <string name="source_installed_enabled">%1$s installata e attivata.</string>
+    <string name="backup_open_failed">Impossibile aprire il backup selezionato.</string>
+    <string name="grayjay_backup">Backup Grayjay</string>
+    <string name="backup_read_failed">Impossibile leggere il backup Grayjay.</string>
+    <string name="database_import_failed">Impossibile importare il database Grayjay.</string>
+    <string name="more_from_source_load_failed">Impossibile caricare altri contenuti da questa sorgente.</string>
+    <string name="imported_creator">Creator importato</string>
+    <string name="imported_from_grayjay">Importato da Grayjay</string>
+    <string name="import_summary">Database Grayjay importato: %1$d video, %2$d playlist, %3$d iscrizioni</string>
+    <plurals name="source_warnings">
+        <item quantity="one">%d avviso sorgente</item>
+        <item quantity="other">%d avvisi sorgente</item>
+    </plurals>
+    <string name="source_warning">Sorgente %1$s: %2$s</string>
+    <string name="playback_failed">Riproduzione non riuscita: %1$s: %2$s</string>
+    <string name="source_could_not_play">Impossibile riprodurre questa sorgente.</string>
+    <string name="source_plugin_unavailable">Il plugin %1$s non è disponibile.</string>
+    <string name="no_playable_media">La sorgente non ha restituito contenuti multimediali riproducibili.</string>
+    <string name="views_count_compact">%1$s visualizzazioni</string>
+    <string name="source_playlist">Playlist della sorgente</string>
+    <string name="unknown_creator">Creator sconosciuto</string>
+    <string name="incorrect_backup_password">La password del backup non è corretta.</string>
+    <string name="backup_empty">Il backup selezionato è vuoto.</string>
+    <string name="backup_over_128_mb">Il backup selezionato supera 128 MB.</string>
+    <string name="unsupported_automatic_backup_version">Versione del backup automatico Grayjay non supportata: %1$d.</string>
+    <string name="newer_encrypted_backup_unsupported">Questo formato di backup Grayjay crittografato più recente non è supportato neppure dall’app precedente.</string>
+    <string name="backup_header_incomplete">L’intestazione del backup automatico è incompleta.</string>
+    <string name="unsupported_encryption_version">Versione di crittografia precedente non supportata: %1$d.</string>
+    <string name="backup_too_many_files">Il backup contiene troppi file.</string>
+    <string name="backup_too_large">Il backup supera il limite di importazione sicuro dopo l’estrazione.</string>
+    <string name="not_grayjay_export">Questo non è un database di esportazione Grayjay.</string>
+    <string name="decrypted_data_invalid">I dati decrittografati non costituiscono un’esportazione Grayjay valida.</string>
+    <string name="imported_playlist">Playlist importata</string>
+    <string name="local_playlist_description">Playlist locale</string>
+
+    <!-- Accesso sorgente -->
+    <string name="source_no_login_configuration">Questa sorgente non fornisce una configurazione di accesso.</string>
+    <string name="source_login_page_failed">Impossibile caricare la pagina di accesso della sorgente.</string>
+    <string name="source_does_not_support_login">%1$s non supporta l’accesso.</string>
+    <string name="loading_source_login">Caricamento accesso sorgente…</string>
+    <string name="sign_in_to_source_name">Accedi a %1$s</string>
+    <string name="finishing_source_sign_in">Completamento accesso a %1$s…</string>
+    <string name="select_youtube_channel">Seleziona un canale YouTube</string>
+    <string name="select_youtube_channel_to_finish">Seleziona un canale YouTube per completare l’accesso</string>
+    <string name="youtube_channel_choice_description">Scegli il canale o profilo da usare. L’accesso verrà completato dopo la selezione.</string>
+    <string name="continue_action">Continua</string>
+
+    <!-- Notifica di riproduzione -->
+    <string name="playback_notification_channel">Riproduzione</string>
+    <string name="playback_notification_channel_description">Controlli di riproduzione video</string>
+    <string name="preparing_playback">Preparazione riproduzione</string>
+    <string name="close_playback">Chiudi riproduzione</string>
+</resources>

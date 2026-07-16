@@ -1,0 +1,323 @@
+package com.futo.platformplayer.compose.ui.screens
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material.icons.outlined.ClosedCaption
+import androidx.compose.material.icons.outlined.HighQuality
+import androidx.compose.material.icons.outlined.Recommend
+import androidx.compose.material.icons.outlined.ScreenLockPortrait
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.futo.platformplayer.compose.R
+
+@Composable
+fun SettingsScreen(
+    dynamicColorsEnabled: Boolean,
+    onDynamicColorsChange: (Boolean) -> Unit,
+    privateSessionEnabled: Boolean,
+    onPrivateSessionChange: (Boolean) -> Unit,
+    onManageSources: () -> Unit,
+    onImportDatabase: () -> Unit,
+    activeSourceCount: Int,
+    defaultPlaybackSpeed: Float,
+    onDefaultPlaybackSpeedChange: (Float) -> Unit,
+    preferredVideoQuality: Int,
+    onPreferredVideoQualityChange: (Int) -> Unit,
+    stickyCaptionsEnabled: Boolean,
+    onStickyCaptionsChange: (Boolean) -> Unit,
+    showRecommendations: Boolean,
+    onShowRecommendationsChange: (Boolean) -> Unit,
+    searchHistoryEnabled: Boolean,
+    onSearchHistoryChange: (Boolean) -> Unit,
+    keepScreenAwake: Boolean,
+    onKeepScreenAwakeChange: (Boolean) -> Unit,
+) {
+    var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
+    var showQualityDialog by rememberSaveable { mutableStateOf(false) }
+    LazyColumn(
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.settings_tagline), style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    stringResource(R.string.settings_description),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        item {
+            SettingsSection(stringResource(R.string.settings_appearance)) {
+                ToggleSetting(
+                    title = stringResource(R.string.use_wallpaper_colors),
+                    description = stringResource(R.string.material_you_dynamic_color),
+                    icon = Icons.Outlined.DarkMode,
+                    checked = dynamicColorsEnabled,
+                    onCheckedChange = onDynamicColorsChange,
+                    testTag = "toggle-dynamic-colors",
+                )
+            }
+        }
+        item {
+            SettingsSection(stringResource(R.string.settings_playback)) {
+                LinkSetting(
+                    title = stringResource(R.string.default_playback_speed),
+                    description = "${defaultPlaybackSpeed}x",
+                    icon = Icons.Outlined.Speed,
+                    onClick = { showSpeedDialog = true },
+                    testTag = "default-playback-speed",
+                )
+                HorizontalDivider()
+                LinkSetting(
+                    title = stringResource(R.string.preferred_quality),
+                    description = if (preferredVideoQuality == 0) {
+                        stringResource(R.string.automatic)
+                    } else {
+                        stringResource(R.string.quality_maximum, preferredVideoQuality)
+                    },
+                    icon = Icons.Outlined.HighQuality,
+                    onClick = { showQualityDialog = true },
+                    testTag = "preferred-video-quality",
+                )
+                HorizontalDivider()
+                ToggleSetting(
+                    title = stringResource(R.string.remember_subtitles),
+                    description = stringResource(R.string.remember_subtitles_description),
+                    icon = Icons.Outlined.ClosedCaption,
+                    checked = stickyCaptionsEnabled,
+                    onCheckedChange = onStickyCaptionsChange,
+                    testTag = "sticky-captions",
+                )
+                HorizontalDivider()
+                ToggleSetting(
+                    title = stringResource(R.string.keep_screen_awake),
+                    description = stringResource(R.string.keep_screen_awake_description),
+                    icon = Icons.Outlined.ScreenLockPortrait,
+                    checked = keepScreenAwake,
+                    onCheckedChange = onKeepScreenAwakeChange,
+                    testTag = "keep-screen-awake",
+                )
+            }
+        }
+        item {
+            SettingsSection(stringResource(R.string.settings_content)) {
+                ToggleSetting(
+                    title = stringResource(R.string.show_recommendations),
+                    description = stringResource(R.string.show_recommendations_description),
+                    icon = Icons.Outlined.Recommend,
+                    checked = showRecommendations,
+                    onCheckedChange = onShowRecommendationsChange,
+                    testTag = "show-recommendations",
+                )
+                HorizontalDivider()
+                ToggleSetting(
+                    title = stringResource(R.string.search_history),
+                    description = stringResource(R.string.search_history_description),
+                    icon = Icons.Outlined.Search,
+                    checked = searchHistoryEnabled,
+                    onCheckedChange = onSearchHistoryChange,
+                    testTag = "search-history",
+                )
+            }
+        }
+        item {
+            SettingsSection(stringResource(R.string.settings_privacy)) {
+                ToggleSetting(
+                    title = stringResource(R.string.private_session),
+                    description = stringResource(R.string.private_session_description),
+                    icon = Icons.Outlined.CloudOff,
+                    checked = privateSessionEnabled,
+                    onCheckedChange = onPrivateSessionChange,
+                    testTag = "toggle-private-session",
+                )
+                HorizontalDivider()
+                LinkSetting(
+                    title = stringResource(R.string.privacy_controls),
+                    description = stringResource(R.string.privacy_controls_description),
+                    icon = Icons.Outlined.PrivacyTip,
+                    onClick = {},
+                    testTag = "privacy-controls",
+                )
+            }
+        }
+        item {
+            SettingsSection(stringResource(R.string.settings_sources)) {
+                LinkSetting(
+                    title = stringResource(R.string.manage_sources),
+                    description = pluralStringResource(
+                        R.plurals.active_on_device,
+                        activeSourceCount,
+                        activeSourceCount,
+                    ),
+                    icon = Icons.Outlined.Extension,
+                    onClick = onManageSources,
+                    testTag = "manage-sources",
+                )
+            }
+        }
+        item {
+            SettingsSection(stringResource(R.string.settings_data)) {
+                LinkSetting(
+                    title = stringResource(R.string.import_grayjay_database),
+                    description = stringResource(R.string.import_grayjay_database_description),
+                    icon = Icons.Outlined.FileUpload,
+                    onClick = onImportDatabase,
+                    testTag = "import-grayjay-database",
+                )
+            }
+        }
+    }
+
+    if (showSpeedDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.default_playback_speed),
+            choices = listOf(0.5f to "0.5x", 0.75f to "0.75x", 1f to "1x", 1.25f to "1.25x", 1.5f to "1.5x", 2f to "2x"),
+            selected = defaultPlaybackSpeed,
+            onDismiss = { showSpeedDialog = false },
+            onChoose = {
+                onDefaultPlaybackSpeedChange(it)
+                showSpeedDialog = false
+            },
+        )
+    }
+    if (showQualityDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.preferred_video_quality),
+            choices = listOf(0 to stringResource(R.string.automatic), 2160 to "2160p", 1440 to "1440p", 1080 to "1080p", 720 to "720p", 480 to "480p", 360 to "360p"),
+            selected = preferredVideoQuality,
+            onDismiss = { showQualityDialog = false },
+            onChoose = {
+                onPreferredVideoQualityChange(it)
+                showQualityDialog = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun <T> ChoiceDialog(
+    title: String,
+    choices: List<Pair<T, String>>,
+    selected: T,
+    onDismiss: () -> Unit,
+    onChoose: (T) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                choices.forEach { (value, label) ->
+                    ListItem(
+                        modifier = Modifier.clickable { onChoose(value) },
+                        headlineContent = { Text(label) },
+                        leadingContent = {
+                            RadioButton(selected = value == selected, onClick = null)
+                        },
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+@Composable
+private fun SettingsSection(
+    title: String,
+    content: @Composable () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            title,
+            modifier = Modifier.padding(horizontal = 4.dp),
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Card(Modifier.fillMaxWidth()) {
+            Column(content = { content() })
+        }
+    }
+}
+
+@Composable
+private fun ToggleSetting(
+    title: String,
+    description: String,
+    icon: ImageVector,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    testTag: String,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(description) },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        trailingContent = {
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.testTag(testTag),
+            )
+        },
+    )
+}
+
+@Composable
+private fun LinkSetting(
+    title: String,
+    description: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    testTag: String,
+) {
+    ListItem(
+        modifier = Modifier
+            .testTag(testTag)
+            .clickable(onClick = onClick),
+        headlineContent = { Text(title) },
+        supportingContent = { Text(description) },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        trailingContent = {
+            Icon(
+                Icons.Outlined.ChevronRight,
+                contentDescription = stringResource(R.string.open_item, title),
+            )
+        },
+    )
+}

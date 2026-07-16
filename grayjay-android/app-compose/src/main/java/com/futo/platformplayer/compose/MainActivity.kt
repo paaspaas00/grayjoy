@@ -1,0 +1,304 @@
+package com.futo.platformplayer.compose
+
+import android.Manifest
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.view.OrientationEventListener
+import android.view.WindowManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.fragment.app.FragmentActivity
+import com.futo.platformplayer.compose.ui.GrayjayApp
+import com.futo.platformplayer.compose.ui.ThemeMode
+import com.futo.platformplayer.compose.ui.theme.GrayjayTheme
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+
+class MainActivity : FragmentActivity() {
+    private val grayjayViewModel by viewModels<GrayjayViewModel>()
+    private var pendingSourceUrl by mutableStateOf<String?>(null)
+    private var pendingDatabaseImportUri by mutableStateOf<Uri?>(null)
+    private var deviceIsLandscape by mutableStateOf(false)
+    private val deviceOrientationListener by lazy {
+        object : OrientationEventListener(this) {
+            override fun onOrientationChanged(orientation: Int) {
+                automaticFullscreenPosture(
+                    autoRotateEnabled = isSystemAutoRotateEnabled(),
+                    orientation = orientation,
+                )?.let { deviceIsLandscape = it }
+            }
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        pendingSourceUrl = intent.pluginSourceUrlOrNull()
+        pendingDatabaseImportUri = intent.databaseImportUriOrNull()
+        enableEdgeToEdge()
+        setContent {
+            val viewModel = grayjayViewModel
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val databaseImportPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument(),
+            ) { uri ->
+                uri?.let(viewModel::prepareDatabaseImport)
+            }
+            val sourceLoginLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult(),
+            ) { result ->
+                if (result.resultCode == RESULT_OK) {
+                    result.data?.getStringExtra(SourceLoginActivity.EXTRA_SOURCE_ID)
+                        ?.let(viewModel::reloadSourceAuthentication)
+                }
+            }
+            val sourceQrLauncher = rememberLauncherForActivityResult(
+                ScanContract(),
+            ) { result ->
+                result.contents?.let(viewModel::installSourceFromQr)
+            }
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) {
+                notificationPermissionPreferences.edit()
+                    .putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, true)
+                    .apply()
+            }
+
+            LaunchedEffect(uiState.keepScreenAwake) {
+                if (uiState.keepScreenAwake) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+
+            LaunchedEffect(pendingSourceUrl) {
+                pendingSourceUrl?.let(viewModel::installSource)
+                pendingSourceUrl = null
+            }
+            LaunchedEffect(pendingDatabaseImportUri) {
+                pendingDatabaseImportUri?.let(viewModel::prepareDatabaseImport)
+                pendingDatabaseImportUri = null
+            }
+            val hasActiveDownloads = uiState.downloads.values.any { it.isActive }
+            LaunchedEffect(uiState.nowPlaying.video?.id, hasActiveDownloads) {
+                if (
+                    (uiState.nowPlaying.video != null || hasActiveDownloads) &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(
+                        this@MainActivity,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                    ) != PackageManager.PERMISSION_GRANTED &&
+                    !notificationPermissionPreferences.getBoolean(
+                        KEY_NOTIFICATION_PERMISSION_REQUESTED,
+                        false,
+                    )
+                ) {
+                    notificationPermissionPreferences.edit()
+                        .putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, true)
+                        .apply()
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+
+            val systemInDarkTheme = isSystemInDarkTheme()
+            val darkTheme = when (uiState.themeMode) {
+                ThemeMode.System -> systemInDarkTheme
+                ThemeMode.Light -> false
+                ThemeMode.Dark -> true
+            }
+            SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+            }
+            GrayjayTheme(
+                darkTheme = darkTheme,
+                dynamicColor = uiState.dynamicColorsEnabled,
+            ) {
+                GrayjayApp(
+                    uiState = uiState,
+                    player = viewModel.player,
+                    isDarkTheme = darkTheme,
+                    onDarkThemeChange = viewModel::setDarkThemeEnabled,
+                    deviceIsLandscape = deviceIsLandscape,
+                    onFullscreenChanged = ::setPlayerFullscreen,
+                    onDynamicColorsChange = viewModel::setDynamicColorsEnabled,
+                    onPrivateSessionChange = viewModel::setPrivateSessionEnabled,
+                    onOpenVideo = viewModel::openVideo,
+                    onLoadChannel = viewModel::loadChannel,
+                    onHomeFeedSelected = viewModel::selectHomeFeed,
+                    onRefreshHome = viewModel::refreshHome,
+                    onLoadMoreHome = viewModel::loadMoreHome,
+                    onPlayQueue = viewModel::playQueue,
+                    onPlayPlaylist = viewModel::playPlaylist,
+                    onTogglePlayback = viewModel::togglePlayback,
+                    onSkipToNext = viewModel::skipToNext,
+                    onSkipToPrevious = viewModel::skipToPrevious,
+                    onSeekPlaybackBy = viewModel::seekPlaybackBy,
+                    onPlaybackSpeedChange = viewModel::setPlaybackSpeed,
+                    onVideoQualityChange = viewModel::setVideoQuality,
+                    onCaptionsEnabledChange = viewModel::setCaptionsEnabled,
+                    onSubtitleLanguageChange = viewModel::setSubtitleLanguage,
+                    onRetryPlayback = viewModel::retryPlayback,
+                    onClosePlayback = viewModel::closePlayback,
+                    onToggleWatchLater = viewModel::toggleWatchLater,
+                    onToggleDownloaded = viewModel::toggleDownloaded,
+                    onDownloadVideos = viewModel::downloadVideos,
+                    onToggleLiked = viewModel::toggleLiked,
+                    onCreatePlaylist = viewModel::createPlaylist,
+                    onRenamePlaylist = viewModel::renamePlaylist,
+                    onAddVideosToPlaylist = viewModel::addVideosToPlaylist,
+                    onRemoveVideosFromPlaylist = viewModel::removeVideosFromPlaylist,
+                    onReorderPlaylist = viewModel::reorderPlaylist,
+                    onRemoveVideosFromHistory = viewModel::removeVideosFromHistory,
+                    onSeekPlayback = viewModel::seekPlayback,
+                    onSourceEnabledChange = viewModel::setSourceEnabled,
+                    onInstallSource = viewModel::installSource,
+                    onScanSourceQr = {
+                        ScanOptions().apply {
+                            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                            setPrompt(getString(R.string.scan_source_qr_description))
+                            setOrientationLocked(true)
+                            setCameraId(0)
+                            setBeepEnabled(false)
+                            setBarcodeImageEnabled(false)
+                            setCaptureActivity(QRCaptureActivity::class.java)
+                        }.let(sourceQrLauncher::launch)
+                    },
+                    onRefreshSource = viewModel::refreshSource,
+                    onClearSourceCache = viewModel::clearSourceCache,
+                    onRemoveSource = viewModel::removeSource,
+                    onLoginSource = { source ->
+                        sourceLoginLauncher.launch(
+                            SourceLoginActivity.intent(
+                                context = this,
+                                sourceId = source.id,
+                                pluginId = source.engineId,
+                                configUrl = source.pluginConfigUrl,
+                                profileId = uiState.activeProfileId,
+                            ),
+                        )
+                    },
+                    onLogoutSource = viewModel::clearSourceAuthentication,
+                    onSearchQueryChange = viewModel::setSearchQuery,
+                    onSearchSubmit = viewModel::submitSearch,
+                    onLoadMoreSearch = viewModel::loadMoreSearch,
+                    onLoadMoreChannel = viewModel::loadMoreChannel,
+                    onLoadMoreRecommendations = viewModel::loadMoreRecommendations,
+                    onLoadMoreComments = viewModel::loadMoreComments,
+                    onToggleFollowing = viewModel::toggleFollowing,
+                    onCreatorFollowedChange = viewModel::setCreatorFollowed,
+                    onChooseDatabaseImport = { databaseImportPicker.launch(arrayOf("*/*")) },
+                    onRetryDatabaseImport = viewModel::retryDatabaseImport,
+                    onConfirmDatabaseImport = viewModel::confirmDatabaseImport,
+                    onDismissDatabaseImport = viewModel::dismissDatabaseImport,
+                    onTrustUnverifiedSource = viewModel::trustUnverifiedSource,
+                    onRejectUnverifiedSource = viewModel::rejectUnverifiedSource,
+                    onSwitchProfile = viewModel::switchProfile,
+                    onCreateProfile = viewModel::createProfile,
+                    onVerifyProfilePin = viewModel::verifyProfilePin,
+                    onDefaultPlaybackSpeedChange = viewModel::setDefaultPlaybackSpeed,
+                    onPreferredVideoQualityChange = viewModel::setPreferredVideoQuality,
+                    onStickyCaptionsChange = viewModel::setStickyCaptionsEnabled,
+                    onShowRecommendationsChange = viewModel::setShowRecommendations,
+                    onSearchHistoryChange = viewModel::setSearchHistoryEnabled,
+                    onKeepScreenAwakeChange = viewModel::setKeepScreenAwake,
+                )
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        grayjayViewModel.setAppForeground(true)
+        if (!isSystemAutoRotateEnabled()) deviceIsLandscape = false
+        if (deviceOrientationListener.canDetectOrientation()) {
+            deviceOrientationListener.enable()
+        }
+    }
+
+    override fun onPause() {
+        grayjayViewModel.setAppForeground(false)
+        deviceOrientationListener.disable()
+        super.onPause()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        pendingSourceUrl = intent.pluginSourceUrlOrNull()
+        pendingDatabaseImportUri = intent.databaseImportUriOrNull()
+    }
+
+    private val notificationPermissionPreferences by lazy {
+        getSharedPreferences(NOTIFICATION_PERMISSION_PREFERENCES, MODE_PRIVATE)
+    }
+
+    private fun setPlayerFullscreen(fullscreen: Boolean) {
+        // Fullscreen is a Grayjoy player presentation state. Only rotate the activity here;
+        // never enter Android immersive mode or take ownership of the system bars.
+        requestedOrientation = if (fullscreen) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
+    private fun isSystemAutoRotateEnabled(): Boolean = runCatching {
+        Settings.System.getInt(
+            contentResolver,
+            Settings.System.ACCELEROMETER_ROTATION,
+            0,
+        ) == 1
+    }.getOrDefault(false)
+
+    private companion object {
+        const val NOTIFICATION_PERMISSION_PREFERENCES = "notification_permission"
+        const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "requested"
+    }
+}
+
+internal fun physicalLandscapeAt(orientation: Int): Boolean? = when {
+    orientation == OrientationEventListener.ORIENTATION_UNKNOWN -> null
+    orientation in 60..120 || orientation in 240..300 -> true
+    orientation in 0..30 || orientation in 150..210 || orientation in 330..359 -> false
+    else -> null
+}
+
+internal fun automaticFullscreenPosture(
+    autoRotateEnabled: Boolean,
+    orientation: Int,
+): Boolean? = if (autoRotateEnabled) physicalLandscapeAt(orientation) else false
+
+private fun Intent.pluginSourceUrlOrNull(): String? = dataString?.takeIf { value ->
+    value.startsWith("grayjay://plugin/", ignoreCase = true) ||
+        value.startsWith("vfuto://", ignoreCase = true)
+}
+
+@Suppress("DEPRECATION")
+private fun Intent.databaseImportUriOrNull(): Uri? = when (action) {
+    Intent.ACTION_VIEW -> data?.takeIf { uri ->
+        uri.scheme.equals("content", ignoreCase = true) || uri.scheme.equals("file", ignoreCase = true)
+    }
+    Intent.ACTION_SEND -> getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+    else -> null
+}

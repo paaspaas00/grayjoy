@@ -1,0 +1,90 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.serialization' version '2.2.21'
+}
+
+android {
+    namespace 'com.futo.platformplayer'
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 28
+        buildConfigField 'String', 'FLAVOR', '"compose"'
+        buildConfigField 'int', 'VERSION_CODE', '1'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs = ['src/main/java', layout.buildDirectory.dir('generated/legacyBackend')]
+            assets.srcDirs = ['../app/src/main/assets']
+        }
+    }
+}
+
+def syncLegacyBackend = tasks.register('syncLegacyBackend', Sync) {
+    from('../app/src/main/java') {
+        include 'com/futo/platformplayer/api/http/ManagedHttpClient.kt'
+        include 'com/futo/platformplayer/api/media/**'
+        include 'com/futo/platformplayer/builders/DashBuilder.kt'
+        include 'com/futo/platformplayer/builders/XMLBuilder.kt'
+        include 'com/futo/platformplayer/constructs/Event.kt'
+        include 'com/futo/platformplayer/engine/**'
+        include 'com/futo/platformplayer/logging/Logger.kt'
+        include 'com/futo/platformplayer/states/StateAssets.kt'
+        include 'com/futo/platformplayer/Extensions_Syntax.kt'
+        include 'com/futo/platformplayer/Extensions_V8.kt'
+        include 'com/futo/platformplayer/SignatureProvider.kt'
+        include 'com/futo/platformplayer/Extensions_Formatting.kt'
+        include 'com/futo/platformplayer/models/Playlist.kt'
+        include 'com/futo/platformplayer/others/LoginWebViewClient.kt'
+        include 'com/futo/platformplayer/others/Language.kt'
+        include 'com/futo/platformplayer/serializers/**'
+
+        exclude 'com/futo/platformplayer/api/media/LiveChatManager.kt'
+        exclude 'com/futo/platformplayer/api/media/models/comments/PolycentricPlatformComment.kt'
+        exclude 'com/futo/platformplayer/api/media/platforms/js/DevJSClient.kt'
+        exclude 'com/futo/platformplayer/api/media/platforms/js/SourcePluginDescriptor.kt'
+        exclude 'com/futo/platformplayer/api/media/platforms/js/SourceAuth.kt'
+        exclude 'com/futo/platformplayer/api/media/platforms/js/SourceCaptchaData.kt'
+        exclude 'com/futo/platformplayer/api/media/platforms/js/SourceEncrypted.kt'
+        exclude 'com/futo/platformplayer/api/media/platforms/local/**'
+        exclude 'com/futo/platformplayer/api/media/models/video/LocalPlatformVideoDetails.kt'
+        exclude 'com/futo/platformplayer/api/media/models/streams/DownloadedVideoMuxedSourceDescriptor.kt'
+        exclude 'com/futo/platformplayer/api/media/models/streams/LocalVideoUnMuxedSourceDescriptor.kt'
+        exclude 'com/futo/platformplayer/api/media/models/streams/sources/LocalAudioSource.kt'
+        exclude 'com/futo/platformplayer/engine/dev/**'
+    }
+    into(layout.buildDirectory.dir('generated/legacyBackend'))
+}
+
+tasks.named('preBuild').configure { dependsOn(syncLegacyBackend) }
+
+dependencies {
+    implementation 'androidx.collection:collection-ktx:1.5.0'
+    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.webkit:webkit:1.15.0'
+    implementation 'com.caoccao.javet:javet-v8-android:4.1.5'
+    implementation 'com.google.code.gson:gson:2.13.2'
+    implementation 'com.google.guava:guava:33.5.0-android'
+    implementation 'com.squareup.okhttp3:okhttp:5.3.0'
+    implementation 'androidx.media3:media3-datasource:1.9.0'
+    implementation 'org.jetbrains.kotlin:kotlin-reflect:2.2.21'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+    implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0'
+    implementation 'org.jsoup:jsoup:1.21.2'
+    testImplementation 'junit:junit:4.13.2'
+}

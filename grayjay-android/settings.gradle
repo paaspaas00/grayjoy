@@ -1,0 +1,41 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+
+// The upstream application depends on private composite builds. Keep them wired in
+// when available, while still allowing the public Compose rewrite to build from a
+// fresh clone.
+if (file('dep/polycentricandroid/settings.gradle').exists() ||
+        file('dep/polycentricandroid/settings.gradle.kts').exists()) {
+    includeBuild('dep/polycentricandroid') {
+        dependencySubstitution {
+            substitute module('com.polycentric.core:app') using project(':app')
+        }
+    }
+}
+
+if (file('dep/futopay/android/settings.gradle').exists() ||
+        file('dep/futopay/android/settings.gradle.kts').exists()) {
+    includeBuild('dep/futopay/android') {
+        dependencySubstitution {
+            substitute module('com.futo.futopay:app') using project(':app')
+        }
+    }
+}
+
+rootProject.name = "FutoVideo"
+include ':app'
+include ':app-compose'
+include ':grayjay-engine'

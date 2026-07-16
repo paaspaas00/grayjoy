@@ -1,0 +1,286 @@
+package com.futo.platformplayer.compose.ui.screens
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.ui.DownloadStatus
+import com.futo.platformplayer.compose.ui.DownloadUiModel
+import com.futo.platformplayer.compose.ui.PlaylistUiModel
+import com.futo.platformplayer.compose.ui.VideoUiModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun VideoActionsSheet(
+    video: VideoUiModel,
+    download: DownloadUiModel?,
+    onDismiss: () -> Unit,
+    onToggleLike: () -> Unit,
+    onToggleDownload: () -> Unit,
+    onShare: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    video.title,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    video.creator,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            HorizontalDivider()
+            VideoAction(
+                title = stringResource(if (video.isLiked) R.string.unlike else R.string.like),
+                subtitle = stringResource(R.string.stored_locally_library),
+                icon = { Icon(Icons.Outlined.ThumbUp, contentDescription = null) },
+                tag = "video-action-like",
+                onClick = {
+                    onToggleLike()
+                    onDismiss()
+                },
+            )
+            val downloadTitle = when {
+                download?.status == DownloadStatus.Completed -> R.string.remove_download
+                download?.status == DownloadStatus.Failed -> R.string.retry_download
+                download?.isActive == true -> R.string.cancel_download
+                else -> R.string.download
+            }
+            VideoAction(
+                title = stringResource(downloadTitle),
+                subtitle = download?.let { downloadStatusText(it) }
+                    ?: stringResource(R.string.download_description),
+                icon = {
+                    Icon(
+                        imageVector = when {
+                            download?.status == DownloadStatus.Completed -> Icons.Outlined.DeleteOutline
+                            download?.isActive == true -> Icons.Outlined.Close
+                            else -> Icons.Outlined.Download
+                        },
+                        contentDescription = null,
+                    )
+                },
+                tag = "video-action-download",
+                onClick = {
+                    onToggleDownload()
+                    onDismiss()
+                },
+            )
+            VideoAction(
+                title = stringResource(R.string.share),
+                subtitle = stringResource(R.string.send_original_video_link),
+                icon = { Icon(Icons.Outlined.Share, contentDescription = null) },
+                tag = "video-action-share",
+                onClick = {
+                    onShare()
+                    onDismiss()
+                },
+            )
+            VideoAction(
+                title = stringResource(R.string.add_to_playlist),
+                subtitle = stringResource(R.string.add_to_playlist_description),
+                icon = { Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, contentDescription = null) },
+                tag = "video-action-playlist",
+                onClick = {
+                    onAddToPlaylist()
+                    onDismiss()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun downloadStatusText(download: DownloadUiModel): String {
+    val label = stringResource(
+        when (download.status) {
+            DownloadStatus.Preparing -> R.string.download_preparing
+            DownloadStatus.Queued -> R.string.download_queued
+            DownloadStatus.Downloading -> R.string.download_downloading
+            DownloadStatus.Paused -> R.string.download_paused
+            DownloadStatus.Completed -> R.string.download_complete
+            DownloadStatus.Failed -> R.string.download_failed
+            DownloadStatus.Removing -> R.string.download_removing
+        },
+    )
+    val progress = download.progress?.let { " ${(it * 100f).toInt().coerceIn(0, 100)}%" }.orEmpty()
+    val detail = download.errorMessage?.takeUnless { message ->
+        message.contains("Exception", ignoreCase = true) ||
+            message.contains("Unable to resolve host", ignoreCase = true) ||
+            message.contains("grayjay.internal", ignoreCase = true)
+    }
+    return if (download.status == DownloadStatus.Failed && !detail.isNullOrBlank()) {
+        "$label: $detail"
+    } else {
+        "$label$progress"
+    }
+}
+
+@Composable
+private fun VideoAction(
+    title: String,
+    subtitle: String,
+    icon: @Composable () -> Unit,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle) },
+        leadingContent = icon,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .testTag(tag),
+    )
+}
+
+@Composable
+internal fun PlaylistPickerDialog(
+    playlists: List<PlaylistUiModel>,
+    videoIds: List<String>,
+    onDismiss: () -> Unit,
+    onAdd: (String, List<String>) -> Unit,
+    onCreate: (String, List<String>) -> Unit,
+) {
+    var creatingNew by rememberSaveable { mutableStateOf(playlists.isEmpty()) }
+    var title by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(if (creatingNew) R.string.new_playlist else R.string.add_to_playlist))
+        },
+        text = {
+            if (creatingNew) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it.take(80) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("new-playlist-name"),
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.playlist_name)) },
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    playlists.forEach { playlist ->
+                        ListItem(
+                            headlineContent = { Text(playlist.title) },
+                            supportingContent = {
+                                Text(
+                                    pluralStringResource(
+                                        R.plurals.video_count,
+                                        playlist.videoIds.size,
+                                        playlist.videoIds.size,
+                                    ),
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onAdd(playlist.id, videoIds)
+                                    onDismiss()
+                                }
+                                .testTag("playlist-choice-${playlist.id}"),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (creatingNew) {
+                Button(
+                    onClick = {
+                        onCreate(title.trim(), videoIds)
+                        onDismiss()
+                    },
+                    enabled = title.isNotBlank(),
+                    modifier = Modifier.testTag("create-playlist"),
+                ) { Text(stringResource(R.string.create)) }
+            } else {
+                TextButton(onClick = { creatingNew = true }) { Text(stringResource(R.string.new_playlist)) }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+@Composable
+internal fun RenamePlaylistDialog(
+    playlist: PlaylistUiModel,
+    onDismiss: () -> Unit,
+    onRename: (String) -> Unit,
+) {
+    var title by rememberSaveable(playlist.id) { mutableStateOf(playlist.title) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.rename_playlist)) },
+        text = {
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it.take(80) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("rename-playlist-name"),
+                singleLine = true,
+                label = { Text(stringResource(R.string.playlist_name)) },
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onRename(title.trim())
+                    onDismiss()
+                },
+                enabled = title.isNotBlank() && title.trim() != playlist.title,
+                modifier = Modifier.testTag("confirm-rename-playlist"),
+            ) { Text(stringResource(R.string.save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}

@@ -1,0 +1,31 @@
+{
+    "SOURCES_EMBEDDED": {
+        "35ae969a-a7db-11ed-afa1-0242ac120002": "sources/youtube/YoutubeConfig.json",
+        "1c05bfc3-08b9-42d0-93d3-6d52e0fd34d8": "sources/odysee/OdyseeConfig.json",
+        "2ce7b35e-d2b2-4adb-a728-a34a30d30359": "sources/rumble/RumbleConfig.json",
+        "1c291164-294c-4c2d-800d-7bc6d31d0019": "sources/peertube/PeerTubeConfig.json",
+        "5fb74e28-2fba-406a-9418-38af04f63c08": "sources/soundcloud/SoundcloudConfig.json",
+        "c0f315f9-0992-4508-a061-f2738724c331": "sources/twitch/TwitchConfig.json",
+        "4a78c2ff-c20f-43ac-8f75-34515df1d320": "sources/kick/KickConfig.json",
+        "aac9e9f0-24b5-11ee-be56-0242ac120002": "sources/patreon/PatreonConfig.json",
+        "9d703ff5-c556-4962-a990-4f000829cb87": "sources/nebula/NebulaConfig.json",
+        "cf8ea74d-ad9b-489e-a083-539b6aa8648c": "sources/bilibili/build/BiliBiliConfig.json",
+        "9c87e8db-e75d-48f4-afe5-2d203d4b95c5": "sources/dailymotion/build/DailymotionConfig.json",
+        "e8b1ad5f-0c6d-497d-a5fa-0a785a16d902": "sources/bitchute/BitchuteConfig.json",
+        "89ae4889-0420-4d16-ad6c-19c776b28f99": "sources/apple-podcasts/ApplePodcastsConfig.json",
+        "8d029a7f-5507-4e36-8bd8-c19a3b77d383": "sources/tedtalks/TedTalksConfig.json",
+        "273b6523-5438-44e2-9f5d-78e0325a8fd9": "sources/curiositystream/CuriosityStreamConfig.json",
+        "9bb33039-8580-48d4-9849-21319ae845a4": "sources/crunchyroll/CrunchyrollConfig.json",
+        "84331338-b045-419c-88e4-c86036f4cbf5": "sources/mixcloud/MixcloudConfig.json",
+        "009775f8-9173-48a2-8df3-d730d08d198d": "sources/radiobrowser/RadioBrowserConfig.json",
+        "5f6658bb-96cc-4965-ba04-c81f8686ab67": "sources/redbull-tv/RedBullTvConfig.json",
+        "d890ff43-7d9f-4f0e-a52d-239014fd512d": "sources/fosdem/FOSDEMConfig.json",
+        "a1b2c3d4-5e6f-7890-abcd-ef1234567890": "sources/nasa-plus/NASA-PlusConfig.json"
+    },
+    "SOURCES_EMBEDDED_DEFAULT": [
+        "35ae969a-a7db-11ed-afa1-0242ac120002"
+    ],
+    "SOURCES_UNDER_CONSTRUCTION": {
+
+    }
+}

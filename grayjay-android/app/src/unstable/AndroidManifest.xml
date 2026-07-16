@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application>
+        <receiver android:name=".receivers.InstallReceiver" />
+
+        <activity android:name=".activities.MainActivity" android:launchMode="singleInstance">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="youtu.be" />
+                <data android:host="www.youtu.be" />
+                <data android:host="youtube.com"  />
+                <data android:host="www.youtube.com"  />
+                <data android:host="m.youtube.com" />
+                <data android:host="rumble.com" />
+                <data android:host="kick.com" />
+                <data android:host="nebula.tv" />
+                <data android:host="odysee.com" />
+                <data android:host="www.odysee.com" />
+                <data android:host="patreon.com" />
+                <data android:host="soundcloud.com" />
+                <data android:host="twitch.tv" />
+                <data android:host="www.twitch.tv" />
+                <data android:host="m.twitch.tv" />
+                <data android:host="bilibili.com" />
+                <data android:host="bilibili.tv" />
+                <data android:host="dailymotion.com" />
+                <data android:host="www.dailymotion.com" />
+                <data android:host="bitchute.com" />
+                <data android:host="www.bitchute.com" />
+                <data android:host="old.bitchute.com" />
+                <data android:host="open.spotify.com" />
+                <data android:host="music.youtube.com" />
+                <data android:host="b23.tv" />
+                <data android:pathPrefix="/" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <action android:name="android.intent.action.SEND" />
+
+                <data android:mimeType="text/plain" />
+
+                <data android:host="youtu.be" />
+                <data android:host="www.youtu.be" />
+                <data android:host="youtube.com"  />
+                <data android:host="www.youtube.com"  />
+                <data android:host="m.youtube.com" />
+                <data android:host="rumble.com" />
+                <data android:host="kick.com" />
+                <data android:host="nebula.tv" />
+                <data android:host="odysee.com" />
+                <data android:host="www.odysee.com" />
+                <data android:host="patreon.com" />
+                <data android:host="soundcloud.com" />
+                <data android:host="twitch.tv" />
+                <data android:host="www.twitch.tv" />
+                <data android:host="m.twitch.tv" />
+                <data android:host="bilibili.com" />
+                <data android:host="bilibili.tv" />
+                <data android:host="dailymotion.com" />
+                <data android:host="www.dailymotion.com" />
+                <data android:host="bitchute.com" />
+                <data android:host="www.bitchute.com" />
+                <data android:host="old.bitchute.com" />
+                <data android:host="open.spotify.com" />
+                <data android:host="music.youtube.com" />
+                <data android:host="b23.tv" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
