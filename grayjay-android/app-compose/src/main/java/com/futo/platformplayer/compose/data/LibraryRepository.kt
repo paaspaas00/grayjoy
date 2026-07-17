@@ -116,13 +116,25 @@ internal class SharedPreferencesLibraryRepository(
         updateVideo(videoId) {
             it.copy(
                 playbackUrl = "",
+                playbackCacheNamespace = "",
+                audioCacheNamespace = "",
+                playbackStreamKeys = emptyList(),
+                audioStreamKeys = emptyList(),
                 playbackMimeType = "",
                 playbackManifest = "",
                 audioUrl = "",
+                audioRequestHeaders = emptyMap(),
+                audioDataSourceFactory = null,
+                audioDownloadUrl = "",
+                audioDownloadMimeType = "",
+                audioDownloadManifest = "",
+                audioDownloadRequestHeaders = emptyMap(),
+                audioDownloadDataSourceFactory = null,
                 playbackRequestHeaders = emptyMap(),
                 playbackDataSourceFactory = null,
                 subtitleTracks = emptyList(),
                 qualityVariants = emptyList(),
+                audioQualityVariants = emptyList(),
             )
         }
     }
@@ -341,14 +353,26 @@ internal fun List<VideoUiModel>.withLibraryState(
 
 internal fun VideoUiModel.forLocalStorage(preservePlayback: Boolean = false) = copy(
     playbackFromDownload = false,
+    playbackCacheNamespace = "",
+    audioCacheNamespace = "",
+    playbackStreamKeys = emptyList(),
+    audioStreamKeys = emptyList(),
     playbackUrl = playbackUrl.takeIf { preservePlayback }.orEmpty(),
     playbackMimeType = playbackMimeType.takeIf { preservePlayback }.orEmpty(),
     playbackManifest = playbackManifest.takeIf { preservePlayback }.orEmpty(),
     audioUrl = audioUrl.takeIf { preservePlayback }.orEmpty(),
+    audioRequestHeaders = audioRequestHeaders.takeIf { preservePlayback }.orEmpty(),
+    audioDataSourceFactory = null,
+    audioDownloadUrl = "",
+    audioDownloadMimeType = "",
+    audioDownloadManifest = "",
+    audioDownloadRequestHeaders = emptyMap(),
+    audioDownloadDataSourceFactory = null,
     playbackRequestHeaders = playbackRequestHeaders.takeIf { preservePlayback }.orEmpty(),
     playbackDataSourceFactory = null,
     subtitleTracks = subtitleTracks.takeIf { preservePlayback }.orEmpty(),
     qualityVariants = emptyList(),
+    audioQualityVariants = emptyList(),
 )
 
 private fun VideoUiModel.preservingStoredPlayback(existing: VideoUiModel?): VideoUiModel {
@@ -359,10 +383,13 @@ private fun VideoUiModel.preservingStoredPlayback(existing: VideoUiModel?): Vide
         playbackMimeType = stored.playbackMimeType,
         playbackManifest = stored.playbackManifest,
         audioUrl = stored.audioUrl,
+        audioRequestHeaders = stored.audioRequestHeaders,
+        audioDataSourceFactory = null,
         playbackRequestHeaders = stored.playbackRequestHeaders,
         playbackDataSourceFactory = null,
         subtitleTracks = stored.subtitleTracks,
         qualityVariants = emptyList(),
+        audioQualityVariants = emptyList(),
     ).forLocalStorage(preservePlayback = true)
 }
 
@@ -431,6 +458,7 @@ internal fun VideoUiModel.toJson() = JSONObject().apply {
     put("playbackMimeType", playbackMimeType)
     put("playbackManifest", playbackManifest)
     put("audioUrl", audioUrl)
+    put("audioRequestHeaders", JSONObject(audioRequestHeaders))
     put("playbackRequestHeaders", JSONObject(playbackRequestHeaders))
     put(
         "subtitleTracks",
@@ -485,6 +513,7 @@ internal fun JSONArray.toVideoList(): List<VideoUiModel> = buildList {
                 playbackMimeType = json.optString("playbackMimeType"),
                 playbackManifest = json.optString("playbackManifest"),
                 audioUrl = json.optString("audioUrl"),
+                audioRequestHeaders = json.optJSONObject("audioRequestHeaders").toStringMap(),
                 playbackRequestHeaders = json.optJSONObject("playbackRequestHeaders").toStringMap(),
                 subtitleTracks = json.optJSONArray("subtitleTracks").toSubtitleTracks(),
             ),

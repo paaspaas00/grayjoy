@@ -1,0 +1,51 @@
+package com.futo.platformplayer.compose.downloads
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class InlineManifestRoutingTest {
+    @Test
+    fun inlineManifestGetsDistinctIdentityFromMediaBaseUrl() {
+        val media = "https://media.example/videoplayback?token=abc"
+        val manifest = inlineManifestRequestUri(media, "request-id")
+
+        assertNotEquals(media, manifest)
+        assertEquals(media, manifest.substringBefore('#'))
+        assertTrue(manifest.endsWith("#grayjoy-inline-manifest-request-id"))
+    }
+
+    @Test
+    fun existingFragmentIsReplacedWithoutChangingMediaUrl() {
+        val manifest = inlineManifestRequestUri(
+            "https://media.example/path/video?token=abc#old-fragment",
+            "request-id",
+        )
+
+        assertEquals(
+            "https://media.example/path/video?token=abc#grayjoy-inline-manifest-request-id",
+            manifest,
+        )
+    }
+
+    @Test
+    fun generatedDashAudioIsDetectedWithoutMatchingVideoOnlyManifest() {
+        assertTrue(
+            rawDashManifestContainsAudio(
+                """<AdaptationSet mimeType="audio/mp4"><Representation /></AdaptationSet>""",
+            ),
+        )
+        assertTrue(
+            rawDashManifestContainsAudio(
+                """<Representation mimeType = 'AUDIO/webm' />""",
+            ),
+        )
+        assertFalse(
+            rawDashManifestContainsAudio(
+                """<AdaptationSet mimeType="video/mp4"><Representation /></AdaptationSet>""",
+            ),
+        )
+    }
+}

@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.DownloadStatus
+import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
@@ -48,6 +49,7 @@ internal fun VideoActionsSheet(
     onDismiss: () -> Unit,
     onToggleLike: () -> Unit,
     onToggleDownload: () -> Unit,
+    onDownloadAudio: () -> Unit,
     onShare: () -> Unit,
     onAddToPlaylist: () -> Unit,
 ) {
@@ -83,21 +85,58 @@ internal fun VideoActionsSheet(
                     onDismiss()
                 },
             )
+            if (!video.isLive) {
+                val audioDownloadComplete = download?.isComplete(DownloadMediaType.Audio) == true
+                val audioDownloadActive = download?.isActive(DownloadMediaType.Audio) == true
+                val audioDownloadFailed = DownloadMediaType.Audio in download?.failedMediaTypes.orEmpty()
+                VideoAction(
+                    title = stringResource(
+                        when {
+                            audioDownloadComplete -> R.string.remove_download
+                            audioDownloadFailed -> R.string.retry_download
+                            audioDownloadActive -> R.string.cancel_download
+                            else -> R.string.download_all_audio
+                        },
+                    ),
+                    subtitle = download?.takeIf { it.hasAttempt(DownloadMediaType.Audio) }
+                        ?.let { downloadStatusText(it, DownloadMediaType.Audio) }
+                        ?: stringResource(R.string.download_description),
+                    icon = {
+                        Icon(
+                            when {
+                                audioDownloadComplete -> Icons.Outlined.DeleteOutline
+                                audioDownloadActive -> Icons.Outlined.Close
+                                else -> Icons.Outlined.Download
+                            },
+                            contentDescription = null,
+                        )
+                    },
+                    tag = "video-action-download-audio",
+                    onClick = {
+                        onDownloadAudio()
+                        onDismiss()
+                    },
+                )
+            }
+            val videoDownloadComplete = download?.isComplete(DownloadMediaType.Video) == true
+            val videoDownloadActive = download?.isActive(DownloadMediaType.Video) == true
+            val videoDownloadFailed = DownloadMediaType.Video in download?.failedMediaTypes.orEmpty()
             val downloadTitle = when {
-                download?.status == DownloadStatus.Completed -> R.string.remove_download
-                download?.status == DownloadStatus.Failed -> R.string.retry_download
-                download?.isActive == true -> R.string.cancel_download
+                videoDownloadComplete -> R.string.remove_download
+                videoDownloadFailed -> R.string.retry_download
+                videoDownloadActive -> R.string.cancel_download
                 else -> R.string.download
             }
             VideoAction(
                 title = stringResource(downloadTitle),
-                subtitle = download?.let { downloadStatusText(it) }
+                subtitle = download?.takeIf { it.hasAttempt(DownloadMediaType.Video) }
+                    ?.let { downloadStatusText(it, DownloadMediaType.Video) }
                     ?: stringResource(R.string.download_description),
                 icon = {
                     Icon(
                         imageVector = when {
-                            download?.status == DownloadStatus.Completed -> Icons.Outlined.DeleteOutline
-                            download?.isActive == true -> Icons.Outlined.Close
+                            videoDownloadComplete -> Icons.Outlined.DeleteOutline
+                            videoDownloadActive -> Icons.Outlined.Close
                             else -> Icons.Outlined.Download
                         },
                         contentDescription = null,
@@ -134,9 +173,26 @@ internal fun VideoActionsSheet(
 }
 
 @Composable
-internal fun downloadStatusText(download: DownloadUiModel): String {
+internal fun downloadStatusText(
+    download: DownloadUiModel,
+    mediaType: DownloadMediaType? = null,
+): String {
+    val effectiveStatus = when {
+        mediaType == null -> download.status
+        download.isComplete(mediaType) -> DownloadStatus.Completed
+        mediaType in download.failedMediaTypes -> DownloadStatus.Failed
+        download.isActive(mediaType) && download.status in setOf(
+            DownloadStatus.Preparing,
+            DownloadStatus.Queued,
+            DownloadStatus.Downloading,
+            DownloadStatus.Paused,
+            DownloadStatus.Removing,
+        ) -> download.status
+        download.isActive(mediaType) -> DownloadStatus.Queued
+        else -> download.status
+    }
     val label = stringResource(
-        when (download.status) {
+        when (effectiveStatus) {
             DownloadStatus.Preparing -> R.string.download_preparing
             DownloadStatus.Queued -> R.string.download_queued
             DownloadStatus.Downloading -> R.string.download_downloading
@@ -152,7 +208,7 @@ internal fun downloadStatusText(download: DownloadUiModel): String {
             message.contains("Unable to resolve host", ignoreCase = true) ||
             message.contains("grayjay.internal", ignoreCase = true)
     }
-    return if (download.status == DownloadStatus.Failed && !detail.isNullOrBlank()) {
+    return if (effectiveStatus == DownloadStatus.Failed && !detail.isNullOrBlank()) {
         "$label: $detail"
     } else {
         "$label$progress"

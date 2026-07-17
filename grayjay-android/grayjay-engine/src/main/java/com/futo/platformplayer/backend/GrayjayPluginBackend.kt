@@ -13,10 +13,13 @@ import com.futo.platformplayer.api.media.models.ratings.RatingLikes
 import com.futo.platformplayer.api.media.models.ratings.RatingScaler
 import com.futo.platformplayer.api.media.models.streams.VideoUnMuxedSourceDescriptor
 import com.futo.platformplayer.api.media.models.streams.sources.IDashManifestSource
+import com.futo.platformplayer.api.media.models.streams.sources.IHLSManifestAudioSource
 import com.futo.platformplayer.api.media.models.streams.sources.IHLSManifestSource
+import com.futo.platformplayer.api.media.models.streams.sources.IAudioSource
 import com.futo.platformplayer.api.media.models.streams.sources.IAudioUrlSource
 import com.futo.platformplayer.api.media.models.streams.sources.IVideoSource
 import com.futo.platformplayer.api.media.models.streams.sources.IVideoUrlSource
+import com.futo.platformplayer.api.media.models.streams.sources.IWidevineSource
 import com.futo.platformplayer.api.media.models.video.IPlatformVideo
 import com.futo.platformplayer.api.media.models.video.IPlatformVideoDetails
 import com.futo.platformplayer.api.media.structures.IPager
@@ -130,6 +133,13 @@ data class GrayjayPlaybackSource(
     val videoUrl: String,
     val streamType: GrayjayStreamType,
     val audioUrl: String? = null,
+    val audioRequestHeaders: Map<String, String> = emptyMap(),
+    val audioDataSourceFactory: HttpDataSource.Factory? = null,
+    val audioDownloadUrl: String? = null,
+    val audioDownloadStreamType: GrayjayStreamType? = null,
+    val audioDownloadRawDashManifest: String? = null,
+    val audioDownloadRequestHeaders: Map<String, String> = emptyMap(),
+    val audioDownloadDataSourceFactory: HttpDataSource.Factory? = null,
     val title: String,
     val author: String,
     val authorUrl: String,
@@ -147,6 +157,8 @@ data class GrayjayPlaybackSource(
     val rawDashManifest: String? = null,
     val dataSourceFactory: HttpDataSource.Factory? = null,
     val videoVariants: List<GrayjayVideoVariant> = emptyList(),
+    val audioVariants: List<GrayjayAudioVariant> = emptyList(),
+    val isDrmProtected: Boolean = false,
 )
 
 enum class GrayjayStreamType { Hls, Dash, Progressive }
@@ -154,6 +166,16 @@ enum class GrayjayStreamType { Hls, Dash, Progressive }
 data class GrayjayVideoVariant(
     val height: Int,
     val videoUrl: String,
+    val streamType: GrayjayStreamType,
+    val requestHeaders: Map<String, String> = emptyMap(),
+    val rawDashManifest: String? = null,
+    val dataSourceFactory: HttpDataSource.Factory? = null,
+)
+
+data class GrayjayAudioVariant(
+    val bitrate: Int,
+    val name: String,
+    val audioUrl: String,
     val streamType: GrayjayStreamType,
     val requestHeaders: Map<String, String> = emptyMap(),
     val rawDashManifest: String? = null,
@@ -602,6 +624,7 @@ class GrayjayPluginBackend(context: Context) {
         val unMuxedDescriptor = details.video as? VideoUnMuxedSourceDescriptor
         val rawVideoSources = if (manifestUrl == null) {
             descriptorSources.filterIsInstance<JSDashManifestRawSource>()
+                .filterNot { it is IWidevineSource }
                 .filter { it.url?.isNotBlank() == true || it.manifest?.isNotBlank() == true || it.hasGenerate }
         } else {
             emptyList()
@@ -631,16 +654,44 @@ class GrayjayPluginBackend(context: Context) {
         } else {
             null
         }
-        val audioSource = if (manifestUrl == null && rawDashManifest == null) {
-            unMuxedDescriptor
-                ?.audioSources
-                ?.filterIsInstance<IAudioUrlSource>()
-                ?.maxByOrNull { it.bitrate }
-        } else {
-            null
+        val audioUrlSource = unMuxedDescriptor
+            ?.audioSources
+            ?.filterIsInstance<IAudioUrlSource>()
+            ?.filterNot { it is IWidevineSource }
+            ?.maxWithOrNull(compareBy<IAudioUrlSource> { it.priority }.thenBy { it.bitrate })
+        val hlsAudioSource = unMuxedDescriptor
+            ?.audioSources
+            ?.filterIsInstance<IHLSManifestAudioSource>()
+            ?.filterNot { it is IWidevineSource }
+            ?.filter { it.url.isNotBlank() }
+            ?.maxWithOrNull(compareBy<IHLSManifestAudioSource> { it.priority }.thenBy { it.bitrate })
+        val playbackAudioSource: IAudioSource? = audioUrlSource ?: hlsAudioSource
+        val audioDataSourceFactory = playbackAudioSource?.dataSourceFactoryOrNull()
+        val audioRequestUrl = when (playbackAudioSource) {
+            is IAudioUrlSource -> playbackAudioSource.getAudioUrl()
+            is IHLSManifestAudioSource -> playbackAudioSource.url
+            else -> null
         }
-        val audio = audioSource?.getAudioUrl()?.takeIf(String::isNotBlank)
-        val rangeDashManifest = video?.rangeDashManifestOrNull(audioSource)
+        val audioRequest = audioRequestUrl?.takeIf(String::isNotBlank)?.let { url ->
+            if (audioDataSourceFactory == null) requireNotNull(playbackAudioSource).resolveRequest(url)
+            else ResolvedRequest(url, emptyMap())
+        }
+        val audio = audioRequest?.url
+        val rawAudioDownloadManifest = rawAudioSource
+            ?.generate()
+            ?.takeIf(String::isNotBlank)
+        val rawAudioDownloadFactory = rawAudioSource?.dataSourceFactoryOrNull()
+        val rawAudioDownloadUrl = rawAudioSource?.url
+            ?.takeIf(String::isNotBlank)
+            ?: contentUrl.takeIf { rawAudioDownloadManifest != null }
+        val audioDownloadUrl = rawAudioDownloadUrl ?: audio
+        val audioDownloadStreamType = when {
+            rawAudioDownloadManifest != null -> GrayjayStreamType.Dash
+            playbackAudioSource is IHLSManifestAudioSource -> GrayjayStreamType.Hls
+            audioDownloadUrl != null -> inferStreamType(audioDownloadUrl)
+            else -> null
+        }
+        val rangeDashManifest = video?.rangeDashManifestOrNull(audioUrlSource)
         val subtitles = details.subtitles.mapNotNull { subtitle ->
             try {
                 subtitle.getSubtitlesURI()?.toString()?.takeIf(String::isNotBlank)?.let { uri ->
@@ -664,6 +715,7 @@ class GrayjayPluginBackend(context: Context) {
             .filterIsInstance<IVideoUrlSource>()
             .filterNot { it is IHLSManifestSource || it is IDashManifestSource }
             .filterNot { it is JSDashManifestRawSource }
+            .filterNot { it is IWidevineSource }
             .filter { it.height > 0 && it.getVideoUrl().isNotBlank() }
             .groupBy(IVideoSource::height)
             .values
@@ -675,7 +727,7 @@ class GrayjayPluginBackend(context: Context) {
             }
             .map { source ->
                 val dataSourceFactory = source.dataSourceFactoryOrNull()
-                val rangeManifest = source.rangeDashManifestOrNull(audioSource)
+                val rangeManifest = source.rangeDashManifestOrNull(audioUrlSource)
                 val variantRequest = if (dataSourceFactory == null) {
                     source.resolveRequest(source.getVideoUrl())
                 } else {
@@ -733,6 +785,81 @@ class GrayjayPluginBackend(context: Context) {
             .distinctBy(GrayjayVideoVariant::height)
             .sortedByDescending(GrayjayVideoVariant::height)
 
+        // Preserve the plugin's distinct audio renditions just like video renditions. Old
+        // Grayjay selects the source nearest the requested target bitrate; collapsing this list
+        // here made an audio-quality picker impossible in the Compose UI.
+        val audioVariants = unMuxedDescriptor
+            ?.audioSources
+            .orEmpty()
+            .filterNot { it is IWidevineSource }
+            .filter {
+                it is JSDashManifestRawAudioSource ||
+                    it is IAudioUrlSource ||
+                    it is IHLSManifestAudioSource
+            }
+            .groupBy { it.bitrate }
+            .values
+            .mapNotNull { sameBitrate ->
+                sameBitrate.maxWithOrNull(
+                    compareBy<IAudioSource> { if (it.priority) 1 else 0 }
+                        .thenBy { if (it.original) 1 else 0 },
+                )
+            }
+            .mapNotNull { source ->
+                when (source) {
+                    is JSDashManifestRawAudioSource -> {
+                        val manifest = runCatching { source.generate() }
+                            .getOrNull()
+                            ?.takeIf(String::isNotBlank)
+                            ?: return@mapNotNull null
+                        GrayjayAudioVariant(
+                            bitrate = source.bitrate,
+                            name = source.name,
+                            audioUrl = source.url?.takeIf(String::isNotBlank) ?: contentUrl,
+                            streamType = GrayjayStreamType.Dash,
+                            rawDashManifest = manifest,
+                            dataSourceFactory = source.dataSourceFactoryOrNull(),
+                        )
+                    }
+                    is IAudioUrlSource -> {
+                        val factory = source.dataSourceFactoryOrNull()
+                        val request = if (factory == null) {
+                            source.resolveRequest(source.getAudioUrl())
+                        } else {
+                            ResolvedRequest(source.getAudioUrl(), emptyMap())
+                        }
+                        GrayjayAudioVariant(
+                            bitrate = source.bitrate,
+                            name = source.name,
+                            audioUrl = request.url,
+                            streamType = inferStreamType(request.url),
+                            requestHeaders = request.headers,
+                            dataSourceFactory = factory,
+                        )
+                    }
+                    is IHLSManifestAudioSource -> {
+                        val factory = source.dataSourceFactoryOrNull()
+                        val request = if (factory == null) {
+                            source.resolveRequest(source.url)
+                        } else {
+                            ResolvedRequest(source.url, emptyMap())
+                        }
+                        GrayjayAudioVariant(
+                            bitrate = source.bitrate,
+                            name = source.name,
+                            audioUrl = request.url,
+                            streamType = GrayjayStreamType.Hls,
+                            requestHeaders = request.headers,
+                            dataSourceFactory = factory,
+                        )
+                    }
+                    else -> null
+                }
+            }
+            .filter { it.audioUrl.isNotBlank() }
+            .distinctBy(GrayjayAudioVariant::bitrate)
+            .sortedByDescending(GrayjayAudioVariant::bitrate)
+
         val selectedSource = hlsSource ?: dashSource ?: liveSource ?: rawDashSource ?: requireNotNull(video)
         val playbackDashManifest = rawDashManifest ?: rangeDashManifest
         val requestUrl = manifestUrl
@@ -760,7 +887,18 @@ class GrayjayPluginBackend(context: Context) {
             shareUrl = details.shareUrl.ifBlank { details.url.ifBlank { contentUrl } },
             videoUrl = resolvedVideoUrl,
             streamType = streamType,
-            audioUrl = audio.takeIf { rangeDashManifest == null },
+            audioUrl = audio.takeIf {
+                rangeDashManifest == null && rawDashManifest == null
+            },
+            audioRequestHeaders = audioRequest?.headers.orEmpty(),
+            audioDataSourceFactory = audioDataSourceFactory,
+            audioDownloadUrl = audioDownloadUrl,
+            audioDownloadStreamType = audioDownloadStreamType,
+            audioDownloadRawDashManifest = rawAudioDownloadManifest,
+            audioDownloadRequestHeaders = if (rawAudioDownloadManifest != null) {
+                emptyMap()
+            } else audioRequest?.headers.orEmpty(),
+            audioDownloadDataSourceFactory = rawAudioDownloadFactory ?: audioDataSourceFactory,
             title = details.name,
             author = details.author.name,
             authorUrl = details.author.url,
@@ -778,6 +916,8 @@ class GrayjayPluginBackend(context: Context) {
             rawDashManifest = playbackDashManifest,
             dataSourceFactory = selectedDataSourceFactory,
             videoVariants = videoVariants,
+            audioVariants = audioVariants,
+            isDrmProtected = selectedSource is IWidevineSource && videoVariants.isEmpty(),
         )
     }
 
@@ -1260,6 +1400,16 @@ class GrayjayPluginBackend(context: Context) {
         )
     }
 
+    private fun IAudioSource.resolveRequest(url: String): ResolvedRequest {
+        val modified = (this as? JSSource)
+            ?.getRequestModifier()
+            ?.let { modifier -> runCatching { modifier.modifyRequest(url, emptyMap()) }.getOrNull() }
+        return ResolvedRequest(
+            url = modified?.url?.takeIf(String::isNotBlank) ?: url,
+            headers = modified?.headers.orEmpty(),
+        )
+    }
+
     /**
      * Old Grayjay does not play YouTube's VideoUrlRangeSource as one progressive response.
      * It uses the supplied initialization/index byte ranges to create an on-demand DASH
@@ -1303,6 +1453,18 @@ class GrayjayPluginBackend(context: Context) {
             JSHttpDataSource.Factory()
                 .setRequestExecutor(requestExecutor)
                 .setRequestExecutor2(secondaryExecutor)
+                .setRequestModifier(requestModifier)
+        }
+    }
+
+    private fun IAudioSource.dataSourceFactoryOrNull(): HttpDataSource.Factory? {
+        val jsSource = this as? JSSource ?: return null
+        if (!jsSource.requiresCustomDatasource) return null
+        val requestExecutor = jsSource.getRequestExecutor()
+        val requestModifier = jsSource.getRequestModifier()
+        return if (requestExecutor == null && requestModifier == null) null else {
+            JSHttpDataSource.Factory()
+                .setRequestExecutor(requestExecutor)
                 .setRequestModifier(requestModifier)
         }
     }

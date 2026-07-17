@@ -14,6 +14,7 @@ data class GrayjayUiState(
     val privateSessionEnabled: Boolean = false,
     val defaultPlaybackSpeed: Float = 1f,
     val preferredVideoQuality: Int = 0,
+    val preferredAudioBitrate: Int = Int.MAX_VALUE,
     val stickyCaptionsEnabled: Boolean = true,
     val showRecommendations: Boolean = true,
     val searchHistoryEnabled: Boolean = true,
@@ -58,8 +59,15 @@ data class DownloadUiModel(
     val totalParts: Int = 1,
     val errorMessage: String? = null,
     val requiresPluginTransport: Boolean = false,
+    val preparedAtMs: Long? = null,
+    val targetVideoHeight: Int? = null,
+    val targetAudioBitrate: Int? = null,
+    val completedMediaTypes: Set<DownloadMediaType> = emptySet(),
+    val activeMediaTypes: Set<DownloadMediaType> = emptySet(),
+    val failedMediaTypes: Set<DownloadMediaType> = emptySet(),
 ) {
-    val isComplete: Boolean get() = status == DownloadStatus.Completed
+    val isComplete: Boolean get() =
+        status == DownloadStatus.Completed || completedMediaTypes.isNotEmpty()
     val isActive: Boolean get() = status in setOf(
         DownloadStatus.Preparing,
         DownloadStatus.Queued,
@@ -67,6 +75,17 @@ data class DownloadUiModel(
         DownloadStatus.Paused,
         DownloadStatus.Removing,
     )
+
+    fun isComplete(mediaType: DownloadMediaType): Boolean =
+        mediaType in completedMediaTypes ||
+            (completedMediaTypes.isEmpty() && status == DownloadStatus.Completed && this.mediaType == mediaType)
+
+    fun isActive(mediaType: DownloadMediaType): Boolean =
+        mediaType in activeMediaTypes ||
+            (activeMediaTypes.isEmpty() && isActive && this.mediaType == mediaType)
+
+    fun hasAttempt(mediaType: DownloadMediaType): Boolean =
+        isComplete(mediaType) || isActive(mediaType) || mediaType in failedMediaTypes
 }
 
 enum class ThemeMode { System, Light, Dark }
@@ -164,6 +183,7 @@ data class PlaybackUiState(
     val currentVideoHeight: Int? = null,
     val selectedSubtitleLanguage: String? = null,
     val errorMessage: String? = null,
+    val audioSpectrum: List<Float> = emptyList(),
 )
 
 data class VideoCommentUiModel(

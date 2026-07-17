@@ -1,6 +1,7 @@
 package com.futo.platformplayer.compose.ui
 
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.common.StreamKey
 
 data class VideoUiModel(
     val id: String,
@@ -11,9 +12,14 @@ data class VideoUiModel(
     val channelId: String = "",
     val sourceId: String = "youtube",
     val isLive: Boolean = false,
+    val isDrmProtected: Boolean = false,
     val watchProgress: Float = 0f,
     val isDownloaded: Boolean = false,
     val playbackFromDownload: Boolean = false,
+    val playbackCacheNamespace: String = "",
+    val audioCacheNamespace: String = "",
+    val playbackStreamKeys: List<StreamKey> = emptyList(),
+    val audioStreamKeys: List<StreamKey> = emptyList(),
     val isWatchLater: Boolean = false,
     val isLiked: Boolean = false,
     val lastWatchedAt: Long = 0L,
@@ -22,6 +28,13 @@ data class VideoUiModel(
     val playbackMimeType: String = "",
     val playbackManifest: String = "",
     val audioUrl: String = "",
+    val audioRequestHeaders: Map<String, String> = emptyMap(),
+    val audioDataSourceFactory: HttpDataSource.Factory? = null,
+    val audioDownloadUrl: String = "",
+    val audioDownloadMimeType: String = "",
+    val audioDownloadManifest: String = "",
+    val audioDownloadRequestHeaders: Map<String, String> = emptyMap(),
+    val audioDownloadDataSourceFactory: HttpDataSource.Factory? = null,
     val playbackRequestHeaders: Map<String, String> = emptyMap(),
     val playbackDataSourceFactory: HttpDataSource.Factory? = null,
     val contentUrl: String = "",
@@ -37,10 +50,23 @@ data class VideoUiModel(
     val sourceIconUrl: String = "",
     val subtitleTracks: List<SubtitleUiModel> = emptyList(),
     val qualityVariants: List<VideoQualityUiModel> = emptyList(),
+    val audioQualityVariants: List<AudioQualityUiModel> = emptyList(),
+    /** True only when the active offline descriptor contains audio and no video track. */
+    val playbackAudioOnly: Boolean = false,
 )
 
 data class VideoQualityUiModel(
     val height: Int,
+    val playbackUrl: String,
+    val playbackMimeType: String = "",
+    val playbackRequestHeaders: Map<String, String> = emptyMap(),
+    val playbackManifest: String = "",
+    val playbackDataSourceFactory: HttpDataSource.Factory? = null,
+)
+
+data class AudioQualityUiModel(
+    val bitrate: Int,
+    val name: String,
     val playbackUrl: String,
     val playbackMimeType: String = "",
     val playbackRequestHeaders: Map<String, String> = emptyMap(),

@@ -18,6 +18,10 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.TeeAudioProcessor
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.dash.manifest.DashManifestParser
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -51,8 +55,10 @@ import com.futo.platformplayer.compose.ui.SearchContentType
 import com.futo.platformplayer.compose.ui.SubtitleUiModel
 import com.futo.platformplayer.compose.ui.VideoCommentUiModel
 import com.futo.platformplayer.compose.ui.VideoQualityUiModel
+import com.futo.platformplayer.compose.ui.AudioQualityUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.playback.PlaybackNotificationService
+import com.futo.platformplayer.compose.playback.AudioSpectrumAnalyzer
 import com.futo.platformplayer.views.video.datasources.JSHttpDataSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -97,6 +103,7 @@ data class EnginePlaybackState(
     val currentVideoHeight: Int? = null,
     val selectedSubtitleLanguage: String? = null,
     val errorMessage: String? = null,
+    val audioSpectrum: List<Float> = emptyList(),
 )
 
 data class EngineVideoExtras(
@@ -177,6 +184,7 @@ interface GrayjayEngine {
     fun open(videos: List<VideoUiModel>, currentVideoId: String, playWhenReady: Boolean)
     fun appendToQueue(videos: List<VideoUiModel>)
     fun togglePlayback()
+    fun pausePlayback()
     fun skipToNext()
     fun skipToPrevious()
     fun seekBy(deltaMs: Long)
@@ -194,7 +202,25 @@ interface GrayjayEngine {
 @SuppressLint("UnsafeOptInUsageError")
 class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private val appContext = context.applicationContext
-    private val exoPlayer = ExoPlayer.Builder(appContext).build().apply {
+    private val _playback = MutableStateFlow(EnginePlaybackState())
+    @Volatile
+    private var latestAudioSpectrum: List<Float> = emptyList()
+    private val audioSpectrumAnalyzer = AudioSpectrumAnalyzer { spectrum ->
+        latestAudioSpectrum = spectrum
+        _playback.value = _playback.value.copy(audioSpectrum = spectrum)
+    }
+    private val renderersFactory = object : DefaultRenderersFactory(appContext) {
+        override fun buildAudioSink(
+            context: Context,
+            enableFloatOutput: Boolean,
+            enableAudioOutputPlaybackParameters: Boolean,
+        ): AudioSink = DefaultAudioSink.Builder(context)
+            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParameters)
+            .setAudioProcessors(arrayOf(TeeAudioProcessor(audioSpectrumAnalyzer)))
+            .build()
+    }
+    private val exoPlayer = ExoPlayer.Builder(appContext, renderersFactory).build().apply {
         repeatMode = Player.REPEAT_MODE_OFF
     }
     private val closeNotificationCommand = SessionCommand(CLOSE_NOTIFICATION_ACTION, Bundle.EMPTY)
@@ -251,7 +277,6 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         putAll(officialPluginEndpoints)
     }
     private val downloadStore = GrayjoyDownloadStore.get(appContext)
-    private val _playback = MutableStateFlow(EnginePlaybackState())
     private var queueIds: List<String> = emptyList()
     private var lastError: String? = null
     private var captionsEnabled = false
@@ -538,7 +563,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 }
             }.ifBlank { video.metadata },
             duration = formatDuration(source.durationSeconds).ifBlank { video.duration },
+            isDrmProtected = source.isDrmProtected,
             playbackUrl = source.videoUrl,
+            playbackStreamKeys = emptyList(),
+            audioStreamKeys = emptyList(),
             playbackMimeType = when (source.streamType) {
                 GrayjayStreamType.Hls -> MimeTypes.APPLICATION_M3U8
                 GrayjayStreamType.Dash -> MimeTypes.APPLICATION_MPD
@@ -546,6 +574,17 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             },
             playbackManifest = source.rawDashManifest.orEmpty(),
             audioUrl = source.audioUrl.orEmpty(),
+            audioRequestHeaders = source.audioRequestHeaders,
+            audioDataSourceFactory = source.audioDataSourceFactory,
+            audioDownloadUrl = source.audioDownloadUrl.orEmpty(),
+            audioDownloadMimeType = when (source.audioDownloadStreamType) {
+                GrayjayStreamType.Hls -> MimeTypes.APPLICATION_M3U8
+                GrayjayStreamType.Dash -> MimeTypes.APPLICATION_MPD
+                GrayjayStreamType.Progressive, null -> ""
+            },
+            audioDownloadManifest = source.audioDownloadRawDashManifest.orEmpty(),
+            audioDownloadRequestHeaders = source.audioDownloadRequestHeaders,
+            audioDownloadDataSourceFactory = source.audioDownloadDataSourceFactory,
             playbackRequestHeaders = source.requestHeaders,
             playbackDataSourceFactory = source.dataSourceFactory,
             contentUrl = source.contentUrl,
@@ -569,6 +608,21 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 VideoQualityUiModel(
                     height = variant.height,
                     playbackUrl = variant.videoUrl,
+                    playbackMimeType = when (variant.streamType) {
+                        GrayjayStreamType.Hls -> MimeTypes.APPLICATION_M3U8
+                        GrayjayStreamType.Dash -> MimeTypes.APPLICATION_MPD
+                        GrayjayStreamType.Progressive -> ""
+                    },
+                    playbackRequestHeaders = variant.requestHeaders,
+                    playbackManifest = variant.rawDashManifest.orEmpty(),
+                    playbackDataSourceFactory = variant.dataSourceFactory,
+                )
+            },
+            audioQualityVariants = source.audioVariants.map { variant ->
+                AudioQualityUiModel(
+                    bitrate = variant.bitrate,
+                    name = variant.name,
+                    playbackUrl = variant.audioUrl,
                     playbackMimeType = when (variant.streamType) {
                         GrayjayStreamType.Hls -> MimeTypes.APPLICATION_M3U8
                         GrayjayStreamType.Dash -> MimeTypes.APPLICATION_MPD
@@ -703,6 +757,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     private fun List<VideoUiModel>.pluginDataSourceFactories(): Set<JSHttpDataSource.Factory> = (
         mapNotNull { it.playbackDataSourceFactory as? JSHttpDataSource.Factory } +
+            mapNotNull { it.audioDataSourceFactory as? JSHttpDataSource.Factory } +
+            mapNotNull { it.audioDownloadDataSourceFactory as? JSHttpDataSource.Factory } +
             flatMap { video ->
                 video.qualityVariants.mapNotNull {
                     it.playbackDataSourceFactory as? JSHttpDataSource.Factory
@@ -726,6 +782,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             .setMediaId(video.id)
             .setUri(video.playbackUrl)
             .setMimeType(video.playbackMimeType.takeIf(String::isNotBlank))
+            .setStreamKeys(video.playbackStreamKeys)
             .setSubtitleConfigurations(
                 video.subtitleTracks.map { subtitle ->
                     MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.uri))
@@ -766,9 +823,27 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         } else {
             factory.createMediaSource(mediaItem)
         }
-        return if (video.audioUrl.isBlank()) videoSource else MergingMediaSource(
+        if (video.audioUrl.isBlank()) return videoSource
+        val audioVideo = video.copy(
+            playbackUrl = video.audioUrl,
+            playbackMimeType = "",
+            playbackManifest = "",
+            audioUrl = "",
+            playbackCacheNamespace = video.audioCacheNamespace,
+            audioCacheNamespace = "",
+            playbackStreamKeys = video.audioStreamKeys,
+            audioStreamKeys = emptyList(),
+            playbackRequestHeaders = video.audioRequestHeaders,
+            playbackDataSourceFactory = video.audioDataSourceFactory,
+        )
+        return MergingMediaSource(
             videoSource,
-            factory.createMediaSource(MediaItem.fromUri(video.audioUrl)),
+            audioVideo.mediaSourceFactory().createMediaSource(
+                MediaItem.Builder()
+                    .setUri(video.audioUrl)
+                    .setStreamKeys(video.audioStreamKeys)
+                    .build(),
+            ),
         )
     }
 
@@ -782,24 +857,25 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             httpFactory.setDefaultRequestProperties(playbackRequestHeaders)
         }
         val upstream = DefaultDataSource.Factory(appContext, httpFactory)
-        return when {
-            // A descriptor reconstructed from DownloadManager points at the exact cached
-            // requests and must remain fully offline.
-            playbackFromDownload ->
-                downloadStore.cachePlayback(upstream = upstream, offlineOnly = true)
-            // A legacy/stale downloaded marker may not have a reconstructable cache entry.
-            // Prefer any matching cache resource, but fall back to the real stream instead
-            // of exposing Media3's internal PlaceholderDataSource error.
-            isDownloaded ->
-                downloadStore.cachePlayback(upstream = upstream, offlineOnly = false)
-            else -> upstream
-        }
+        // Match Grayjay's VideoLocal invariant: only a descriptor reconstructed from a
+        // completed download is an offline source. Failed and in-progress downloads must
+        // never put the player's ordinary network stream behind the permanent download
+        // cache, otherwise a partial DASH representation eventually reaches Media3's
+        // PlaceholderDataSource.
+        return if (playbackFromDownload) {
+            downloadStore.offlinePlayback(playbackCacheNamespace)
+        } else upstream
     }
 
     override fun togglePlayback() {
         if (exoPlayer.mediaItemCount == 0) return
         if (exoPlayer.playbackState == Player.STATE_ENDED) exoPlayer.seekToDefaultPosition()
         if (exoPlayer.playWhenReady) exoPlayer.pause() else exoPlayer.play()
+        syncPlayback()
+    }
+
+    override fun pausePlayback() {
+        exoPlayer.pause()
         syncPlayback()
     }
 
@@ -928,6 +1004,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         captionsEnabled = false
         selectedSubtitleLanguage = null
         selectedVideoQuality = null
+        latestAudioSpectrum = emptyList()
         _playback.value = EnginePlaybackState()
     }
 
@@ -983,6 +1060,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             currentVideoHeight = currentHeight,
             selectedSubtitleLanguage = selectedSubtitleLanguage,
             errorMessage = lastError,
+            audioSpectrum = latestAudioSpectrum,
         )
     }
 }

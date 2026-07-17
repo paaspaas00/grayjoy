@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.BookmarkBorder
@@ -43,14 +44,15 @@ import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
 import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Speed
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -83,7 +85,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -101,6 +106,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadUiModel
@@ -127,6 +133,12 @@ fun VideoDetailScreen(
     onSeekBy: (Long) -> Unit,
     onToggleWatchLater: () -> Unit,
     onToggleDownload: () -> Unit = {},
+    onDownloadVideo: (Int?) -> Unit = { onToggleDownload() },
+    onToggleAudioDownload: () -> Unit = {},
+    onDownloadAudio: (Int?) -> Unit = { onToggleAudioDownload() },
+    onAddToPlaylist: () -> Unit = {},
+    preferredVideoQuality: Int = 0,
+    preferredAudioBitrate: Int = Int.MAX_VALUE,
     onToggleFollowing: () -> Unit,
     onSeek: (Float) -> Unit,
     onSpeedChange: (Float) -> Unit,
@@ -273,6 +285,13 @@ fun VideoDetailScreen(
                         onToggleWatchLater = onToggleWatchLater,
                         download = download,
                         onToggleDownload = onToggleDownload,
+                        onDownloadVideo = onDownloadVideo,
+                        onToggleAudioDownload = onToggleAudioDownload,
+                        onDownloadAudio = onDownloadAudio,
+                        onAddToPlaylist = onAddToPlaylist,
+                        preferredVideoQuality = preferredVideoQuality,
+                        preferredAudioBitrate = preferredAudioBitrate,
+                        availableVideoQualities = playback.availableVideoQualities,
                         onToggleFollowing = onToggleFollowing,
                         onCreatorClick = {
                             onCreatorPreview(displayedCreatorChannel)
@@ -306,6 +325,13 @@ fun VideoDetailScreen(
                         onToggleWatchLater = onToggleWatchLater,
                         download = download,
                         onToggleDownload = onToggleDownload,
+                        onDownloadVideo = onDownloadVideo,
+                        onToggleAudioDownload = onToggleAudioDownload,
+                        onDownloadAudio = onDownloadAudio,
+                        onAddToPlaylist = onAddToPlaylist,
+                        preferredVideoQuality = preferredVideoQuality,
+                        preferredAudioBitrate = preferredAudioBitrate,
+                        availableVideoQualities = playback.availableVideoQualities,
                         onToggleFollowing = onToggleFollowing,
                         onCreatorClick = {
                             onCreatorPreview(displayedCreatorChannel)
@@ -501,6 +527,12 @@ internal fun PlayerSurface(
             update = { it.player = player },
             modifier = Modifier.fillMaxSize(),
         )
+        if (video.playbackFromDownload && video.playbackAudioOnly) {
+            AudioOnlySpectrogram(
+                playback = playback,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         if (controlsAlpha > 0.01f) Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -604,7 +636,9 @@ internal fun PlayerSurface(
             Row(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .offset(y = if (isFullscreen) 28.dp else 24.dp),
+                    // The transport row belongs to the area above the seek bar, not to the
+                    // geometric centre of the entire surface.
+                    .offset(y = if (isFullscreen) (-26).dp else (-24).dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -767,6 +801,108 @@ internal fun PlayerSurface(
             },
         )
     }
+}
+
+@Composable
+private fun AudioOnlySpectrogram(
+    playback: PlaybackUiState,
+    modifier: Modifier = Modifier,
+) {
+    val rowCount = 22
+    var spectrumHistory by remember { mutableStateOf<List<List<Float>>>(emptyList()) }
+    LaunchedEffect(playback.audioSpectrum) {
+        if (playback.audioSpectrum.isNotEmpty()) {
+            spectrumHistory = (spectrumHistory + listOf(playback.audioSpectrum)).takeLast(rowCount)
+        }
+    }
+    Box(
+        modifier = modifier
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF090713), Color(0xFF121A25), Color(0xFF06070A)),
+                ),
+            )
+            .testTag("audio-only-visualizer"),
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val spectrumSize = spectrumHistory.maxOfOrNull(List<Float>::size) ?: 0
+            if (spectrumSize == 0) return@Canvas
+            val leadingEmptyRows = rowCount - spectrumHistory.size
+            repeat(rowCount) { row ->
+                val depth = row.toFloat() / (rowCount - 1).toFloat()
+                val perspective = 0.22f * (1f - depth)
+                val left = size.width * perspective
+                val right = size.width * (1f - perspective)
+                val baseline = size.height * (0.18f + depth * 0.70f)
+                val amplitude = size.height * (0.025f + depth * 0.085f)
+                val spectrum = if (row < leadingEmptyRows) {
+                    emptyList()
+                } else {
+                    spectrumHistory[row - leadingEmptyRows]
+                }
+                val path = Path()
+                var peakEnergy = 0f
+                repeat(spectrumSize) { sample ->
+                    val xNorm = sample.toFloat() / (spectrumSize - 1).coerceAtLeast(1).toFloat()
+                    val energy = spectrum.getOrElse(sample) { 0f }.coerceIn(0f, 1f)
+                    peakEnergy = maxOf(peakEnergy, energy)
+                    val x = left + (right - left) * xNorm
+                    val y = baseline - energy * amplitude
+                    if (sample == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                drawPath(
+                    path = path,
+                    color = Color.Black.copy(alpha = 0.45f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 4.5f,
+                        cap = StrokeCap.Round,
+                    ),
+                )
+                drawPath(
+                    path = path,
+                    color = viridis((depth * 0.30f + peakEnergy * 0.70f).coerceIn(0f, 1f)),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 2.2f,
+                        cap = StrokeCap.Round,
+                    ),
+                )
+            }
+        }
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 14.dp, bottom = 56.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = Color.Black.copy(alpha = 0.54f),
+            contentColor = Color.White,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.MusicNote, contentDescription = null, modifier = Modifier.size(17.dp))
+                Text(
+                    stringResource(R.string.audio_only),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}
+
+private val ViridisColors = listOf(
+    Color(0xFF440154),
+    Color(0xFF3B528B),
+    Color(0xFF21918C),
+    Color(0xFF5EC962),
+    Color(0xFFFDE725),
+)
+
+private fun viridis(value: Float): Color {
+    val scaled = value.coerceIn(0f, 1f) * (ViridisColors.size - 1)
+    val index = scaled.toInt().coerceAtMost(ViridisColors.lastIndex - 1)
+    return lerp(ViridisColors[index], ViridisColors[index + 1], scaled - index)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1004,6 +1140,13 @@ private fun LazyListScope.videoDetails(
     onSectionChange: (DetailSection) -> Unit,
     onToggleWatchLater: () -> Unit,
     onToggleDownload: () -> Unit,
+    onDownloadVideo: (Int?) -> Unit,
+    onToggleAudioDownload: () -> Unit,
+    onDownloadAudio: (Int?) -> Unit,
+    onAddToPlaylist: () -> Unit,
+    preferredVideoQuality: Int,
+    preferredAudioBitrate: Int,
+    availableVideoQualities: List<Int>,
     onToggleFollowing: () -> Unit,
     onCreatorClick: () -> Unit,
     onVideoClick: (VideoUiModel) -> Unit,
@@ -1031,6 +1174,13 @@ private fun LazyListScope.videoDetails(
             horizontalPadding = horizontalPadding,
             onToggleWatchLater = onToggleWatchLater,
             onToggleDownload = onToggleDownload,
+            onDownloadVideo = onDownloadVideo,
+            onToggleAudioDownload = onToggleAudioDownload,
+            onDownloadAudio = onDownloadAudio,
+            onAddToPlaylist = onAddToPlaylist,
+            preferredVideoQuality = preferredVideoQuality,
+            preferredAudioBitrate = preferredAudioBitrate,
+            availableVideoQualities = availableVideoQualities,
         )
     }
     item {
@@ -1196,8 +1346,16 @@ private fun VideoActions(
     horizontalPadding: androidx.compose.ui.unit.Dp,
     onToggleWatchLater: () -> Unit,
     onToggleDownload: () -> Unit,
+    onDownloadVideo: (Int?) -> Unit,
+    onToggleAudioDownload: () -> Unit,
+    onDownloadAudio: (Int?) -> Unit,
+    onAddToPlaylist: () -> Unit,
+    preferredVideoQuality: Int,
+    preferredAudioBitrate: Int,
+    availableVideoQualities: List<Int>,
 ) {
     val context = LocalContext.current
+    var showDownloadOptions by rememberSaveable(video.id) { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .horizontalScroll(rememberScrollState())
@@ -1205,50 +1363,296 @@ private fun VideoActions(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         video.likeCount?.let { likes ->
-            Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainer,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Outlined.ThumbUp, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(formatCount(likes), style = MaterialTheme.typography.labelLarge)
-                }
-            }
+            NowPlayingActionButton(
+                icon = Icons.Outlined.ThumbUp,
+                label = formatCount(likes),
+            )
         }
-        FilterChip(
-            selected = video.isWatchLater,
+        NowPlayingActionButton(
+            icon = Icons.Outlined.BookmarkBorder,
+            label = stringResource(if (video.isWatchLater) R.string.saved else R.string.watch_later),
             onClick = onToggleWatchLater,
             modifier = Modifier.testTag("toggle-watch-later"),
-            label = {
-                Text(stringResource(if (video.isWatchLater) R.string.saved else R.string.watch_later))
+            iconContentDescription = if (video.isWatchLater) {
+                stringResource(R.string.remove_watch_later)
+            } else {
+                stringResource(R.string.add_watch_later)
             },
-            leadingIcon = {
-                Icon(
-                    Icons.Outlined.BookmarkBorder,
-                    contentDescription = if (video.isWatchLater) {
-                        stringResource(R.string.remove_watch_later)
-                    } else {
-                        stringResource(R.string.add_watch_later)
-                    },
-                )
-            },
+            progress = if (video.isWatchLater) 1f else 0f,
         )
         DownloadProgressChip(
             download = download,
-            onClick = onToggleDownload,
+            onClick = { showDownloadOptions = true },
         )
-        AssistChip(
+        NowPlayingActionButton(
+            icon = Icons.AutoMirrored.Outlined.PlaylistAdd,
+            label = stringResource(R.string.add_to_playlist),
+            onClick = onAddToPlaylist,
+            modifier = Modifier.testTag("now-playing-add-to-playlist"),
+            iconContentDescription = stringResource(R.string.add_to_playlist),
+        )
+        NowPlayingActionButton(
+            icon = Icons.Outlined.Share,
+            label = stringResource(R.string.share),
             onClick = { shareVideo(context, video) },
             modifier = Modifier.testTag("share-video"),
-            label = { Text(stringResource(R.string.share)) },
-            leadingIcon = {
-                Icon(Icons.Outlined.Share, contentDescription = stringResource(R.string.share_video))
-            },
+            iconContentDescription = stringResource(R.string.share_video),
         )
+    }
+    if (showDownloadOptions) {
+        DownloadOptionsSheet(
+            download = download,
+            preferredVideoQuality = preferredVideoQuality,
+            preferredAudioBitrate = preferredAudioBitrate,
+            availableVideoQualities = (
+                availableVideoQualities + video.qualityVariants.map { it.height }
+                ).filter { it > 0 }.distinct().sortedDescending(),
+            availableAudioBitrates = video.audioQualityVariants
+                .map { it.bitrate }
+                .filter { it > 0 }
+                .distinct()
+                .sortedDescending()
+                .ifEmpty { DefaultAudioBitrates },
+            onDismiss = { showDownloadOptions = false },
+            onToggleVideoDownload = onToggleDownload,
+            onDownloadVideo = onDownloadVideo,
+            onToggleAudioDownload = onToggleAudioDownload,
+            onDownloadAudio = onDownloadAudio,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DownloadOptionsSheet(
+    download: DownloadUiModel?,
+    preferredVideoQuality: Int,
+    preferredAudioBitrate: Int,
+    availableVideoQualities: List<Int>,
+    availableAudioBitrates: List<Int>,
+    onDismiss: () -> Unit,
+    onToggleVideoDownload: () -> Unit,
+    onDownloadVideo: (Int?) -> Unit,
+    onToggleAudioDownload: () -> Unit,
+    onDownloadAudio: (Int?) -> Unit,
+) {
+    var mediaTypeName by rememberSaveable { mutableStateOf(DownloadMediaType.Video.name) }
+    var useAdvancedQuality by rememberSaveable { mutableStateOf(false) }
+    var selectedHeight by rememberSaveable(availableVideoQualities) {
+        mutableStateOf(
+            preferredVideoQuality.takeIf { it in availableVideoQualities }
+                ?: availableVideoQualities.firstOrNull(),
+        )
+    }
+    var selectedAudioBitrate by rememberSaveable(availableAudioBitrates) {
+        mutableStateOf(
+            preferredAudioBitrate.takeIf { it in availableAudioBitrates }
+                ?: if (preferredAudioBitrate == 1) availableAudioBitrates.lastOrNull()
+                else availableAudioBitrates.firstOrNull(),
+        )
+    }
+    val mediaType = DownloadMediaType.valueOf(mediaTypeName)
+    val isComplete = download?.isComplete(mediaType) == true
+    val isActive = download?.isActive(mediaType) == true
+    val isFailed = mediaType in download?.failedMediaTypes.orEmpty()
+    val actionLabel = stringResource(
+        when {
+            isComplete -> R.string.remove_download
+            isActive -> R.string.cancel_download
+            isFailed -> R.string.retry_download
+            mediaType == DownloadMediaType.Audio -> R.string.download_all_audio
+            else -> R.string.download_all_video
+        },
+    )
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(stringResource(R.string.download_options), style = MaterialTheme.typography.headlineSmall)
+            Text(
+                stringResource(R.string.choose_download_format),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = mediaType == DownloadMediaType.Video,
+                    onClick = { mediaTypeName = DownloadMediaType.Video.name },
+                    label = { Text(stringResource(R.string.video)) },
+                    leadingIcon = { Icon(Icons.Outlined.VideoLibrary, contentDescription = null) },
+                    modifier = Modifier.testTag("download-format-video"),
+                )
+                FilterChip(
+                    selected = mediaType == DownloadMediaType.Audio,
+                    onClick = { mediaTypeName = DownloadMediaType.Audio.name },
+                    label = { Text(stringResource(R.string.audio_only)) },
+                    leadingIcon = { Icon(Icons.Outlined.MusicNote, contentDescription = null) },
+                    modifier = Modifier.testTag("download-format-audio"),
+                )
+            }
+
+            if (mediaType == DownloadMediaType.Video) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    DownloadQualityModeRow(
+                        title = stringResource(R.string.app_quality_setting),
+                        detail = stringResource(
+                            R.string.app_quality_setting_value,
+                            if (preferredVideoQuality > 0) "${preferredVideoQuality}p"
+                            else stringResource(R.string.automatic),
+                        ),
+                        selected = !useAdvancedQuality,
+                        onClick = { useAdvancedQuality = false },
+                    )
+                    DownloadQualityModeRow(
+                        title = stringResource(R.string.advanced_quality),
+                        detail = stringResource(R.string.choose_video_quality),
+                        selected = useAdvancedQuality,
+                        enabled = availableVideoQualities.isNotEmpty(),
+                        onClick = { useAdvancedQuality = true },
+                    )
+                }
+                if (useAdvancedQuality) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        availableVideoQualities.forEach { height ->
+                            FilterChip(
+                                selected = selectedHeight == height,
+                                onClick = { selectedHeight = height },
+                                label = { Text("${height}p") },
+                                modifier = Modifier.testTag("download-quality-$height"),
+                            )
+                        }
+                    }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    DownloadQualityModeRow(
+                        title = stringResource(R.string.app_quality_setting),
+                        detail = stringResource(
+                            R.string.app_audio_quality_setting_value,
+                            stringResource(
+                                if (preferredAudioBitrate == 1) R.string.low_data
+                                else R.string.high_quality,
+                            ),
+                        ),
+                        selected = !useAdvancedQuality,
+                        onClick = { useAdvancedQuality = false },
+                    )
+                    DownloadQualityModeRow(
+                        title = stringResource(R.string.advanced_quality),
+                        detail = stringResource(R.string.choose_audio_quality),
+                        selected = useAdvancedQuality,
+                        enabled = availableAudioBitrates.isNotEmpty(),
+                        onClick = { useAdvancedQuality = true },
+                    )
+                }
+                if (useAdvancedQuality) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        availableAudioBitrates.forEach { bitrate ->
+                            FilterChip(
+                                selected = selectedAudioBitrate == bitrate,
+                                onClick = { selectedAudioBitrate = bitrate },
+                                label = { Text(formatAudioBitrate(bitrate)) },
+                                modifier = Modifier.testTag("download-audio-quality-$bitrate"),
+                            )
+                        }
+                    }
+                }
+            }
+
+            download?.takeIf { it.hasAttempt(mediaType) }?.let {
+                Text(
+                    downloadStatusText(it, mediaType),
+                    color = if (isFailed) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Button(
+                onClick = {
+                    when {
+                        mediaType == DownloadMediaType.Audio && (isComplete || isActive) ->
+                            onToggleAudioDownload()
+                        mediaType == DownloadMediaType.Audio ->
+                            onDownloadAudio(selectedAudioBitrate.takeIf { useAdvancedQuality })
+                        isComplete || isActive -> onToggleVideoDownload()
+                        else -> onDownloadVideo(selectedHeight.takeIf { useAdvancedQuality })
+                    }
+                    onDismiss()
+                },
+                enabled = !useAdvancedQuality || when (mediaType) {
+                    DownloadMediaType.Video -> selectedHeight != null
+                    DownloadMediaType.Audio -> selectedAudioBitrate != null
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("confirm-download-option"),
+            ) {
+                Icon(
+                    if (isComplete || isActive) Icons.Outlined.Close else Icons.Outlined.Download,
+                    contentDescription = null,
+                )
+                Spacer(Modifier.size(8.dp))
+                Text(actionLabel)
+            }
+            Spacer(Modifier.size(8.dp))
+        }
+    }
+}
+
+private val DefaultAudioBitrates = listOf(320_000, 256_000, 192_000, 160_000, 128_000, 96_000, 64_000)
+
+private fun formatAudioBitrate(bitrate: Int): String = when {
+    bitrate >= 1_000_000 -> "${bitrate / 1_000_000f} Mbps"
+    bitrate >= 1_000 -> "${bitrate / 1_000} kbps"
+    else -> "$bitrate bps"
+}
+
+@Composable
+private fun DownloadQualityModeRow(
+    title: String,
+    detail: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        RadioButton(selected = selected, onClick = onClick, enabled = enabled)
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                detail,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = if (enabled) 1f else 0.38f,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 
@@ -1257,27 +1661,55 @@ private fun DownloadProgressChip(
     download: DownloadUiModel?,
     onClick: () -> Unit,
 ) {
-    val targetProgress = when {
-        download?.status == DownloadStatus.Completed -> 1f
-        download?.isActive == true -> download.progress ?: 0f
-        else -> 0f
-    }.coerceIn(0f, 1f)
+    val state = nowPlayingDownloadChipState(download)
+    val targetProgress = state.progress
     val progress by animateFloatAsState(targetValue = targetProgress, label = "download-progress")
+    NowPlayingActionButton(
+        icon = when {
+            state.isActive -> Icons.Outlined.Close
+            state.isComplete -> Icons.Outlined.DownloadDone
+            else -> Icons.Outlined.Download
+        },
+        label = stringResource(
+            when {
+                state.isActive -> R.string.cancel_download
+                state.videoComplete -> R.string.remove_download
+                state.audioComplete -> R.string.available_offline
+                state.isFailed -> R.string.retry_download
+                else -> R.string.download
+            },
+        ),
+        onClick = onClick,
+        progress = progress,
+        modifier = Modifier.testTag("toggle-download"),
+    )
+}
+
+@Composable
+private fun NowPlayingActionButton(
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    iconContentDescription: String? = null,
+    progress: Float = 0f,
+) {
     val shape = MaterialTheme.shapes.extraLarge
-    val progressColor = MaterialTheme.colorScheme.primaryContainer
     Box(
-        modifier = Modifier
+        modifier = modifier
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .border(1.dp, MaterialTheme.colorScheme.outline, shape)
-            .clickable(onClick = onClick)
-            .testTag("toggle-download"),
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
-        Canvas(Modifier.matchParentSize()) {
-            drawRect(
-                color = progressColor,
-                size = size.copy(width = size.width * progress),
-            )
+        if (progress > 0f) {
+            val progressColor = MaterialTheme.colorScheme.primaryContainer
+            Canvas(Modifier.matchParentSize()) {
+                drawRect(
+                    color = progressColor,
+                    size = size.copy(width = size.width * progress.coerceIn(0f, 1f)),
+                )
+            }
         }
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
@@ -1285,27 +1717,48 @@ private fun DownloadProgressChip(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = when {
-                    download?.status == DownloadStatus.Completed -> Icons.Outlined.DownloadDone
-                    download?.isActive == true -> Icons.Outlined.Close
-                    else -> Icons.Outlined.Download
-                },
-                contentDescription = null,
+                imageVector = icon,
+                contentDescription = iconContentDescription,
                 modifier = Modifier.size(18.dp),
             )
-            Text(
-                stringResource(
-                    when {
-                        download?.status == DownloadStatus.Completed -> R.string.remove_download
-                        download?.status == DownloadStatus.Failed -> R.string.retry_download
-                        download?.isActive == true -> R.string.cancel_download
-                        else -> R.string.download
-                    },
-                ),
-                style = MaterialTheme.typography.labelLarge,
-            )
+            Text(label, style = MaterialTheme.typography.labelLarge)
         }
     }
+}
+
+internal data class NowPlayingDownloadChipState(
+    val progress: Float,
+    val isActive: Boolean,
+    val isComplete: Boolean,
+    val isFailed: Boolean,
+    val videoComplete: Boolean,
+    val audioComplete: Boolean,
+)
+
+internal fun nowPlayingDownloadChipState(
+    download: DownloadUiModel?,
+): NowPlayingDownloadChipState {
+    val videoComplete = download?.isComplete(DownloadMediaType.Video) == true
+    val audioComplete = download?.isComplete(DownloadMediaType.Audio) == true
+    val isActive = download?.let {
+        it.isActive(DownloadMediaType.Video) || it.isActive(DownloadMediaType.Audio)
+    } == true
+    val isFailed = download?.failedMediaTypes?.isNotEmpty() == true
+    val progress = when {
+        // An audio transfer started after a completed video (or vice versa) must show the active
+        // transfer's progress instead of remaining fully filled by the older completed media.
+        isActive -> download?.progress ?: 0f
+        videoComplete || audioComplete -> 1f
+        else -> 0f
+    }.coerceIn(0f, 1f)
+    return NowPlayingDownloadChipState(
+        progress = progress,
+        isActive = isActive,
+        isComplete = videoComplete || audioComplete,
+        isFailed = isFailed,
+        videoComplete = videoComplete,
+        audioComplete = audioComplete,
+    )
 }
 
 @Composable

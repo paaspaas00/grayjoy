@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.DownloadDone
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
@@ -176,7 +177,11 @@ private data class PlaybackPresentation(
     val onPlayPlaylist: (String) -> Unit,
     val onToggleWatchLater: (String) -> Unit,
     val onToggleDownloaded: (String) -> Unit,
+    val onToggleAudioDownloaded: (String) -> Unit,
+    val onDownloadVideo: (String, Int?) -> Unit,
+    val onDownloadAudio: (String, Int?) -> Unit,
     val onDownloadVideos: (List<String>, DownloadMediaType) -> Unit,
+    val onDownloadPlaylist: (String, DownloadMediaType) -> Unit,
     val onVideoLongClick: (VideoUiModel) -> Unit,
     val onAddSelectionToPlaylist: (List<String>) -> Unit,
     val onRemoveSelectionFromHistory: (List<String>) -> Unit,
@@ -188,6 +193,7 @@ private data class PlaybackPresentation(
     val onOpenProfiles: () -> Unit,
     val defaultPlaybackSpeed: Float,
     val preferredVideoQuality: Int,
+    val preferredAudioBitrate: Int,
     val stickyCaptionsEnabled: Boolean,
     val showRecommendations: Boolean,
     val searchHistoryEnabled: Boolean,
@@ -197,6 +203,7 @@ private data class PlaybackPresentation(
     val onDarkThemeChange: (Boolean) -> Unit,
     val onDefaultPlaybackSpeedChange: (Float) -> Unit,
     val onPreferredVideoQualityChange: (Int) -> Unit,
+    val onPreferredAudioBitrateChange: (Int) -> Unit,
     val onStickyCaptionsChange: (Boolean) -> Unit,
     val onShowRecommendationsChange: (Boolean) -> Unit,
     val onSearchHistoryChange: (Boolean) -> Unit,
@@ -252,7 +259,11 @@ fun GrayjayApp(
     onClosePlayback: () -> Unit,
     onToggleWatchLater: (String) -> Unit,
     onToggleDownloaded: (String) -> Unit,
+    onToggleAudioDownloaded: (String) -> Unit,
+    onDownloadVideo: (String, Int?) -> Unit,
+    onDownloadAudio: (String, Int?) -> Unit,
     onDownloadVideos: (List<String>, DownloadMediaType) -> Unit,
+    onDownloadPlaylist: (String, DownloadMediaType) -> Unit,
     onToggleLiked: (String) -> Unit,
     onCreatePlaylist: (String, List<String>) -> Unit,
     onRenamePlaylist: (String, String) -> Unit,
@@ -288,6 +299,7 @@ fun GrayjayApp(
     onVerifyProfilePin: (String, String) -> Boolean,
     onDefaultPlaybackSpeedChange: (Float) -> Unit,
     onPreferredVideoQualityChange: (Int) -> Unit,
+    onPreferredAudioBitrateChange: (Int) -> Unit,
     onStickyCaptionsChange: (Boolean) -> Unit,
     onShowRecommendationsChange: (Boolean) -> Unit,
     onSearchHistoryChange: (Boolean) -> Unit,
@@ -467,7 +479,11 @@ fun GrayjayApp(
         },
         onToggleWatchLater = onToggleWatchLater,
         onToggleDownloaded = onToggleDownloaded,
+        onToggleAudioDownloaded = onToggleAudioDownloaded,
+        onDownloadVideo = onDownloadVideo,
+        onDownloadAudio = onDownloadAudio,
         onDownloadVideos = onDownloadVideos,
+        onDownloadPlaylist = onDownloadPlaylist,
         onVideoLongClick = onVideoLongClick,
         onAddSelectionToPlaylist = { playlistPickerVideoIds = it },
         onRemoveSelectionFromHistory = onRemoveVideosFromHistory,
@@ -479,6 +495,7 @@ fun GrayjayApp(
         onOpenProfiles = { profileDialogVisible = true },
         defaultPlaybackSpeed = uiState.defaultPlaybackSpeed,
         preferredVideoQuality = uiState.preferredVideoQuality,
+        preferredAudioBitrate = uiState.preferredAudioBitrate,
         stickyCaptionsEnabled = uiState.stickyCaptionsEnabled,
         showRecommendations = uiState.showRecommendations,
         searchHistoryEnabled = uiState.searchHistoryEnabled,
@@ -488,6 +505,7 @@ fun GrayjayApp(
         onDarkThemeChange = onDarkThemeChange,
         onDefaultPlaybackSpeedChange = onDefaultPlaybackSpeedChange,
         onPreferredVideoQualityChange = onPreferredVideoQualityChange,
+        onPreferredAudioBitrateChange = onPreferredAudioBitrateChange,
         onStickyCaptionsChange = onStickyCaptionsChange,
         onShowRecommendationsChange = onShowRecommendationsChange,
         onSearchHistoryChange = onSearchHistoryChange,
@@ -701,6 +719,7 @@ fun GrayjayApp(
             onDismiss = { actionVideoId = null },
             onToggleLike = { onToggleLiked(video.id) },
             onToggleDownload = { onToggleDownloaded(video.id) },
+            onDownloadAudio = { onToggleAudioDownloaded(video.id) },
             onShare = {
                 val shareUrl = video.shareUrl.ifBlank { video.contentUrl.ifBlank { video.id } }
                 context.startActivity(
@@ -1196,10 +1215,10 @@ private fun GrayjayScaffold(
                     onVideoLongClick = playback.onVideoLongClick,
                     onPlayAll = { playback.onPlayPlaylist(selectedPlaylist.id) },
                     onDownloadAllAsAudio = { ids ->
-                        playback.onDownloadVideos(ids, DownloadMediaType.Audio)
+                        playback.onDownloadPlaylist(selectedPlaylist.id, DownloadMediaType.Audio)
                     },
                     onDownloadAllAsVideo = { ids ->
-                        playback.onDownloadVideos(ids, DownloadMediaType.Video)
+                        playback.onDownloadPlaylist(selectedPlaylist.id, DownloadMediaType.Video)
                     },
                     onRename = { title ->
                         playback.onRenamePlaylist(selectedPlaylist.id, title)
@@ -1271,6 +1290,8 @@ private fun GrayjayScaffold(
                         onDefaultPlaybackSpeedChange = playback.onDefaultPlaybackSpeedChange,
                         preferredVideoQuality = playback.preferredVideoQuality,
                         onPreferredVideoQualityChange = playback.onPreferredVideoQualityChange,
+                        preferredAudioBitrate = playback.preferredAudioBitrate,
+                        onPreferredAudioBitrateChange = playback.onPreferredAudioBitrateChange,
                         stickyCaptionsEnabled = playback.stickyCaptionsEnabled,
                         onStickyCaptionsChange = playback.onStickyCaptionsChange,
                         showRecommendations = playback.showRecommendations,
@@ -1336,7 +1357,24 @@ private fun GrayjayScaffold(
                         topBar = {
                             CenterAlignedTopAppBar(
                                 modifier = Modifier.graphicsLayer { alpha = contentAlpha },
-                                title = { Text(stringResource(R.string.now_playing)) },
+                                title = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(stringResource(R.string.now_playing))
+                                        if (transitionVideo.playbackFromDownload) {
+                                            Icon(
+                                                Icons.Outlined.DownloadDone,
+                                                contentDescription = stringResource(R.string.playing_downloaded),
+                                                modifier = Modifier
+                                                    .size(20.dp)
+                                                    .testTag("now-playing-downloaded"),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
+                                    }
+                                },
                                 navigationIcon = {
                                     IconButton(onClick = playback.onCollapse) {
                                         Icon(
@@ -1379,6 +1417,20 @@ private fun GrayjayScaffold(
                                 onToggleDownload = {
                                     playback.onToggleDownloaded(transitionVideo.id)
                                 },
+                                onDownloadVideo = { height ->
+                                    playback.onDownloadVideo(transitionVideo.id, height)
+                                },
+                                onToggleAudioDownload = {
+                                    playback.onToggleAudioDownloaded(transitionVideo.id)
+                                },
+                                onDownloadAudio = { bitrate ->
+                                    playback.onDownloadAudio(transitionVideo.id, bitrate)
+                                },
+                                onAddToPlaylist = {
+                                    playback.onAddSelectionToPlaylist(listOf(transitionVideo.id))
+                                },
+                                preferredVideoQuality = playback.preferredVideoQuality,
+                                preferredAudioBitrate = playback.preferredAudioBitrate,
                                 onToggleFollowing = playback.onToggleFollowing,
                                 onSeek = playback.onSeek,
                                 onSpeedChange = playback.onSpeedChange,

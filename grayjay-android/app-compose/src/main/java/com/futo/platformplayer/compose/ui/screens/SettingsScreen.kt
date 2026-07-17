@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.ClosedCaption
 import androidx.compose.material.icons.outlined.HighQuality
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Recommend
 import androidx.compose.material.icons.outlined.ScreenLockPortrait
 import androidx.compose.material.icons.outlined.Search
@@ -57,6 +58,8 @@ fun SettingsScreen(
     onDefaultPlaybackSpeedChange: (Float) -> Unit,
     preferredVideoQuality: Int,
     onPreferredVideoQualityChange: (Int) -> Unit,
+    preferredAudioBitrate: Int,
+    onPreferredAudioBitrateChange: (Int) -> Unit,
     stickyCaptionsEnabled: Boolean,
     onStickyCaptionsChange: (Boolean) -> Unit,
     showRecommendations: Boolean,
@@ -68,6 +71,7 @@ fun SettingsScreen(
 ) {
     var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
     var showQualityDialog by rememberSaveable { mutableStateOf(false) }
+    var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -113,6 +117,20 @@ fun SettingsScreen(
                     icon = Icons.Outlined.HighQuality,
                     onClick = { showQualityDialog = true },
                     testTag = "preferred-video-quality",
+                )
+                HorizontalDivider()
+                LinkSetting(
+                    title = stringResource(R.string.preferred_audio_quality),
+                    description = stringResource(
+                        if (preferredAudioBitrate == Int.MAX_VALUE) {
+                            R.string.high_quality
+                        } else {
+                            R.string.low_data
+                        },
+                    ),
+                    icon = Icons.Outlined.MusicNote,
+                    onClick = { showAudioQualityDialog = true },
+                    testTag = "preferred-audio-quality",
                 )
                 HorizontalDivider()
                 ToggleSetting(
@@ -224,6 +242,21 @@ fun SettingsScreen(
             onChoose = {
                 onPreferredVideoQualityChange(it)
                 showQualityDialog = false
+            },
+        )
+    }
+    if (showAudioQualityDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.preferred_audio_quality),
+            choices = listOf(
+                Int.MAX_VALUE to stringResource(R.string.high_quality),
+                1 to stringResource(R.string.low_data),
+            ),
+            selected = preferredAudioBitrate,
+            onDismiss = { showAudioQualityDialog = false },
+            onChoose = {
+                onPreferredAudioBitrateChange(it)
+                showAudioQualityDialog = false
             },
         )
     }

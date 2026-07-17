@@ -1,14 +1,33 @@
 package com.futo.platformplayer.compose.downloads
 
+import androidx.media3.common.StreamKey
 import com.futo.platformplayer.compose.ui.DownloadMediaType
+import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OfflinePlaybackDescriptorTest {
+    @Test
+    fun intentionalRemovalNeverLooksLikeFailedCompletedDownload() {
+        assertEquals(
+            DownloadStatus.Removing,
+            aggregateDownloadStatus(
+                removing = true,
+                hasFailedRequest = false,
+                hasRemovingRequest = false,
+                validatedComplete = false,
+                media3Complete = true,
+                hasDownloadingRequest = false,
+                hasStoppedRequest = false,
+            ),
+        )
+    }
+
     @Test
     fun completedAudioDownloadBecomesOfflinePrimaryMedia() {
         val descriptor = video().withOfflinePlayback(
@@ -24,10 +43,31 @@ class OfflinePlaybackDescriptorTest {
 
         assertNotNull(descriptor)
         assertTrue(descriptor!!.playbackFromDownload)
+        assertTrue(descriptor.playbackAudioOnly)
         assertTrue(descriptor.isDownloaded)
         assertEquals("https://media.example/audio", descriptor.playbackUrl)
         assertEquals("audio/mp4", descriptor.playbackMimeType)
         assertEquals("", descriptor.audioUrl)
+    }
+
+    @Test
+    fun completedRawDashAudioKeepsItsOfflineManifest() {
+        val manifest = "<MPD mediaPresentationDuration=\"PT1M\" />"
+        val descriptor = video().withOfflinePlayback(
+            listOf(
+                part(
+                    mediaType = DownloadMediaType.Audio,
+                    name = "audio",
+                    uri = "https://media.example/audio-manifest",
+                    mimeType = "application/dash+xml",
+                    rawManifest = manifest,
+                ),
+            ),
+        )
+
+        assertNotNull(descriptor)
+        assertEquals(manifest, descriptor!!.playbackManifest)
+        assertEquals("application/dash+xml", descriptor.playbackMimeType)
     }
 
     @Test
@@ -58,6 +98,35 @@ class OfflinePlaybackDescriptorTest {
         assertNotNull(descriptor)
         assertEquals("https://media.example/video", descriptor!!.playbackUrl)
         assertEquals("https://media.example/video-audio", descriptor.audioUrl)
+        assertFalse(descriptor.playbackAudioOnly)
+    }
+
+    @Test
+    fun adaptiveSelectionsAreRetainedForCacheOnlyPlayback() {
+        val videoKey = StreamKey(0, 2, 4)
+        val audioKey = StreamKey(0, 1, 3)
+        val descriptor = video().withOfflinePlayback(
+            listOf(
+                part(
+                    mediaType = DownloadMediaType.Video,
+                    name = "video",
+                    expectedPartCount = 2,
+                    uri = "https://media.example/master.m3u8",
+                    streamKeys = listOf(videoKey),
+                ),
+                part(
+                    mediaType = DownloadMediaType.Video,
+                    name = "audio",
+                    expectedPartCount = 2,
+                    uri = "https://media.example/audio.m3u8",
+                    streamKeys = listOf(audioKey),
+                ),
+            ),
+        )
+
+        assertNotNull(descriptor)
+        assertEquals(listOf(videoKey), descriptor!!.playbackStreamKeys)
+        assertEquals(listOf(audioKey), descriptor.audioStreamKeys)
     }
 
     @Test
@@ -80,6 +149,7 @@ class OfflinePlaybackDescriptorTest {
 
         assertNotNull(descriptor)
         assertEquals("https://media.example/audio", descriptor!!.playbackUrl)
+        assertTrue(descriptor.playbackAudioOnly)
     }
 
     @Test
@@ -98,6 +168,41 @@ class OfflinePlaybackDescriptorTest {
         assertNull(descriptor)
     }
 
+    @Test
+    fun completedTransferIsPromotedOnlyAfterEveryOutputValidates() {
+        assertTrue(
+            isValidatedCompletedDownload(
+                listOf(
+                    completionPart("video", expectedPartCount = 2),
+                    completionPart("audio", expectedPartCount = 2),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun partialTransferIsNeverPromotedToOfflineMedia() {
+        assertTrue(
+            !isValidatedCompletedDownload(
+                listOf(completionPart("video", expectedPartCount = 2)),
+            ),
+        )
+    }
+
+    @Test
+    fun missingOrEmptyCacheResourceFailsValidation() {
+        assertTrue(
+            !isValidatedCompletedDownload(
+                listOf(completionPart("video", bytesDownloaded = 0L)),
+            ),
+        )
+        assertTrue(
+            !isValidatedCompletedDownload(
+                listOf(completionPart("video", rootResourceCached = false)),
+            ),
+        )
+    }
+
     private fun video() = VideoUiModel(
         id = "video",
         title = "Video",
@@ -113,11 +218,29 @@ class OfflinePlaybackDescriptorTest {
         uri: String,
         expectedPartCount: Int = 1,
         mimeType: String = "",
+        rawManifest: String = "",
+        streamKeys: List<StreamKey> = emptyList(),
     ) = OfflinePlaybackPart(
         mediaType = mediaType,
         name = name,
         expectedPartCount = expectedPartCount,
         uri = uri,
         mimeType = mimeType,
+        rawManifest = rawManifest,
+        streamKeys = streamKeys,
+    )
+
+    private fun completionPart(
+        name: String,
+        expectedPartCount: Int = 1,
+        completed: Boolean = true,
+        bytesDownloaded: Long = 1L,
+        rootResourceCached: Boolean = true,
+    ) = DownloadCompletionPart(
+        name = name,
+        expectedPartCount = expectedPartCount,
+        completed = completed,
+        bytesDownloaded = bytesDownloaded,
+        rootResourceCached = rootResourceCached,
     )
 }

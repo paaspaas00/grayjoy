@@ -50,6 +50,16 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
             preferences.edit().putInt(KEY_PREFERRED_VIDEO_QUALITY, value.coerceAtLeast(0)).apply()
         }
 
+    /** Target audio bitrate in bits/s. Int.MAX_VALUE means highest available. */
+    var preferredAudioBitrate: Int
+        get() = preferences.getInt(KEY_PREFERRED_AUDIO_BITRATE, Int.MAX_VALUE)
+        set(value) {
+            preferences.edit().putInt(
+                KEY_PREFERRED_AUDIO_BITRATE,
+                value.takeIf { it > 0 } ?: Int.MAX_VALUE,
+            ).apply()
+        }
+
     var stickyCaptionsEnabled: Boolean
         get() = preferences.getBoolean(KEY_STICKY_CAPTIONS, true)
         set(value) {
@@ -196,6 +206,7 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         private const val KEY_IMPORTED_CHANNELS = "imported_channels"
         private const val KEY_DEFAULT_PLAYBACK_SPEED = "default_playback_speed"
         private const val KEY_PREFERRED_VIDEO_QUALITY = "preferred_video_quality"
+        private const val KEY_PREFERRED_AUDIO_BITRATE = "preferred_audio_bitrate"
         private const val KEY_STICKY_CAPTIONS = "sticky_captions"
         private const val KEY_CAPTIONS_ENABLED = "captions_enabled"
         private const val KEY_SUBTITLE_LANGUAGE = "subtitle_language"

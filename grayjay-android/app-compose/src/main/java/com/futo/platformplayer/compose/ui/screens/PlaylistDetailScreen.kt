@@ -76,10 +76,10 @@ fun PlaylistDetailScreen(
     val playlistVideos = playlist.videoIds.mapNotNull { id -> videos.firstOrNull { it.id == id } }
     val downloadableIds = playlistVideos.filterNot(VideoUiModel::isLive).map(VideoUiModel::id)
     val audioDownloadCount = downloadableIds.count {
-        downloads[it]?.mediaType == DownloadMediaType.Audio
+        downloads[it]?.isComplete(DownloadMediaType.Audio) == true
     }
     val videoDownloadCount = downloadableIds.count {
-        downloads[it]?.mediaType == DownloadMediaType.Video
+        downloads[it]?.isComplete(DownloadMediaType.Video) == true
     }
 
     fun leaveSelectionMode() {
@@ -139,7 +139,10 @@ fun PlaylistDetailScreen(
                         ) {
                             OutlinedButton(
                                 onClick = { onDownloadAllAsAudio(downloadableIds) },
-                                enabled = downloadableIds.isNotEmpty() && downloadableIds.any { it !in downloads },
+                                enabled = downloadableIds.isNotEmpty() && downloadableIds.any {
+                                    downloads[it]?.isComplete(DownloadMediaType.Audio) != true &&
+                                        downloads[it]?.isActive(DownloadMediaType.Audio) != true
+                                },
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("playlist-download-audio"),
@@ -156,7 +159,10 @@ fun PlaylistDetailScreen(
                             }
                             OutlinedButton(
                                 onClick = { onDownloadAllAsVideo(downloadableIds) },
-                                enabled = downloadableIds.isNotEmpty() && downloadableIds.any { it !in downloads },
+                                enabled = downloadableIds.isNotEmpty() && downloadableIds.any {
+                                    downloads[it]?.isComplete(DownloadMediaType.Video) != true &&
+                                        downloads[it]?.isActive(DownloadMediaType.Video) != true
+                                },
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("playlist-download-video"),

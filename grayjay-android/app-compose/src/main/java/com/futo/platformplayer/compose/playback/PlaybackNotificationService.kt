@@ -84,13 +84,18 @@ class PlaybackNotificationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // A foreground-service start must be acknowledged even if the user closes playback in
+        // the small window between startForegroundService() and this callback. Posting the
+        // bootstrap first makes that race legal on Android 12+; we can remove it immediately when
+        // there is no longer an attachment.
+        startForegroundCompat(NOTIFICATION_ID, bootstrapNotification())
         val playback = attachment
         if (playback == null) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf(startId)
             return START_NOT_STICKY
         }
 
-        startForegroundCompat(NOTIFICATION_ID, bootstrapNotification())
         playerNotificationManager.setMediaSessionToken(playback.mediaSession.platformToken)
         playerNotificationManager.setPlayer(playback.player)
         playerNotificationManager.invalidate()
