@@ -87,6 +87,24 @@ internal fun inlineManifestRequestUri(sourceUri: String, requestId: String): Str
 internal fun rawDashManifestContainsAudio(manifest: String): Boolean =
     Regex("""mimeType\s*=\s*[\"']audio/""", RegexOption.IGNORE_CASE).containsMatchIn(manifest)
 
+/**
+ * Media3 deliberately returns no stream keys or mapped selections for a single-rendition HLS
+ * media playlist. In that case an empty list means "download the whole playlist", not "no
+ * stream". Legacy Grayjay likewise hands the HLS media playlist directly to its segment
+ * downloader. Preserve that sentinel for HLS while still rejecting genuinely empty DASH
+ * manifests.
+ */
+internal fun validatedAdaptiveStreamKeys(
+    isHlsManifest: Boolean,
+    hasSelectedTracks: Boolean,
+    streamKeys: List<StreamKey>,
+): List<StreamKey> {
+    check(isHlsManifest || hasSelectedTracks) {
+        "The adaptive manifest returned no selectable download streams."
+    }
+    return streamKeys
+}
+
 private const val INLINE_MANIFEST_FRAGMENT_PREFIX = "grayjoy-inline-manifest-"
 
 internal data class OfflinePlaybackPart(
@@ -133,12 +151,14 @@ internal fun aggregateDownloadStatus(
     media3Complete: Boolean,
     hasDownloadingRequest: Boolean,
     hasStoppedRequest: Boolean,
+    waitingForRequirements: Boolean = false,
 ): DownloadStatus = when {
     removing -> DownloadStatus.Removing
     hasFailedRequest -> DownloadStatus.Failed
     hasRemovingRequest -> DownloadStatus.Removing
     validatedComplete -> DownloadStatus.Completed
     media3Complete -> DownloadStatus.Failed
+    waitingForRequirements -> DownloadStatus.Paused
     hasDownloadingRequest -> DownloadStatus.Downloading
     hasStoppedRequest -> DownloadStatus.Paused
     else -> DownloadStatus.Queued
@@ -256,6 +276,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
     private val requestDataSourceFactories = ConcurrentHashMap<String, DataSource.Factory>()
     private val failureMessages = mutableMapOf<String, String>()
     private val handler = Handler(Looper.getMainLooper())
+    private var unmetRequirements = 0
     private var tickerRunning = false
     private val _downloads = MutableStateFlow<List<DownloadUiModel>>(emptyList())
     val downloads: StateFlow<List<DownloadUiModel>> = _downloads.asStateFlow()
@@ -271,9 +292,9 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         ),
     ).apply {
         maxParallelDownloads = 2
-        // Match Grayjay's privacy/data-friendly default: queue on metered networks and resume
-        // automatically when an unmetered connection is available.
-        requirements = Requirements(Requirements.NETWORK_UNMETERED)
+        // Pause whenever no network is available. RequirementsWatcher resumes the same cached
+        // request (and therefore its current byte position) on Wi-Fi or mobile data.
+        requirements = Requirements(Requirements.NETWORK)
         addListener(
             object : DownloadManager.Listener {
                 override fun onInitialized(downloadManager: DownloadManager) {
@@ -294,6 +315,15 @@ class GrayjoyDownloadStore private constructor(context: Context) {
                     if (finalException == null) failureMessages.remove(download.request.id)
                     else failureMessages[download.request.id] =
                         finalException.localizedMessage ?: finalException.javaClass.simpleName
+                    publishDownloads()
+                }
+
+                override fun onRequirementsStateChanged(
+                    downloadManager: DownloadManager,
+                    requirements: Requirements,
+                    notMetRequirements: Int,
+                ) {
+                    unmetRequirements = notMetRequirements
                     publishDownloads()
                 }
 
@@ -500,10 +530,23 @@ class GrayjoyDownloadStore private constructor(context: Context) {
                                 downloadHelper.clearTrackSelections(periodIndex)
                                 downloadHelper.addTrackSelection(periodIndex, parameters)
                             }
-                            val streamKeys = downloadHelper.getDownloadRequest(byteArrayOf()).streamKeys
-                            check(streamKeys.isNotEmpty()) {
-                                "The adaptive manifest returned no selectable download streams."
+                            val hasSelectedTracks = (0 until downloadHelper.periodCount).any { periodIndex ->
+                                val rendererCount = downloadHelper
+                                    .getMappedTrackInfo(periodIndex)
+                                    .rendererCount
+                                (0 until rendererCount).any { rendererIndex ->
+                                    downloadHelper
+                                        .getTrackSelections(periodIndex, rendererIndex)
+                                        .isNotEmpty()
+                                }
                             }
+                            val streamKeys = validatedAdaptiveStreamKeys(
+                                isHlsManifest = part.isHlsManifest(),
+                                hasSelectedTracks = hasSelectedTracks,
+                                streamKeys = downloadHelper
+                                    .getDownloadRequest(byteArrayOf())
+                                    .streamKeys,
+                            )
                             if (continuation.isActive) continuation.resume(streamKeys)
                         } catch (error: Throwable) {
                             if (continuation.isActive) continuation.resumeWithException(error)
@@ -828,6 +871,11 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             media3Complete = media3Complete,
             hasDownloadingRequest = downloads.any { it.state == Download.STATE_DOWNLOADING },
             hasStoppedRequest = downloads.any { it.state == Download.STATE_STOPPED },
+            waitingForRequirements = unmetRequirements != 0 && downloads.any {
+                it.state == Download.STATE_QUEUED ||
+                    it.state == Download.STATE_DOWNLOADING ||
+                    it.state == Download.STATE_RESTARTING
+            },
         )
         return DownloadUiModel(
             profileId = metadata.profileId,
@@ -989,10 +1037,14 @@ class GrayjoyDownloadStore private constructor(context: Context) {
     ) {
         fun isAdaptiveManifest(): Boolean {
             val normalized = uri.substringBefore('?').substringBefore('#').lowercase()
-            return mimeType == MimeTypes.APPLICATION_M3U8 ||
+            return isHlsManifest() ||
                 mimeType == MimeTypes.APPLICATION_MPD ||
-                normalized.endsWith(".m3u8") ||
                 normalized.endsWith(".mpd")
+        }
+
+        fun isHlsManifest(): Boolean {
+            val normalized = uri.substringBefore('?').substringBefore('#').lowercase()
+            return mimeType == MimeTypes.APPLICATION_M3U8 || normalized.endsWith(".m3u8")
         }
     }
 

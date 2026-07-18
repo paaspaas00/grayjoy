@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.offline.DownloadNotificationHelper
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.media3.exoplayer.scheduler.Scheduler
+import androidx.media3.exoplayer.scheduler.PlatformScheduler
 import com.futo.platformplayer.compose.MainActivity
 import com.futo.platformplayer.compose.R
 
@@ -24,11 +25,14 @@ class GrayjoyDownloadService : DownloadService(
     0,
 ) {
     private val notificationHelper by lazy { DownloadNotificationHelper(this, CHANNEL_ID) }
+    private val scheduler by lazy { PlatformScheduler(this, DOWNLOAD_JOB_ID) }
 
     override fun getDownloadManager(): DownloadManager =
         GrayjoyDownloadStore.get(this).downloadManager
 
-    override fun getScheduler(): Scheduler? = null
+    // Lets Android restart the service when network requirements become satisfied, even if the
+    // app process was reclaimed while the transfer was waiting offline.
+    override fun getScheduler(): Scheduler = scheduler
 
     override fun getForegroundNotification(
         downloads: List<Download>,
@@ -49,6 +53,7 @@ class GrayjoyDownloadService : DownloadService(
 
     companion object {
         private const val NOTIFICATION_ID = 2042
+        private const val DOWNLOAD_JOB_ID = 2043
         private const val CHANNEL_ID = "grayjoy_downloads"
 
         fun add(context: Context, request: DownloadRequest) {

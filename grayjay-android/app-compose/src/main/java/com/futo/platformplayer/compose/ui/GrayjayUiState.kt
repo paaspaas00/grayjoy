@@ -180,6 +180,7 @@ data class PlaybackUiState(
     val captionsEnabled: Boolean = false,
     val availableVideoQualities: List<Int> = emptyList(),
     val selectedVideoQuality: Int? = null,
+    val currentVideoWidth: Int? = null,
     val currentVideoHeight: Int? = null,
     val selectedSubtitleLanguage: String? = null,
     val selectedSubtitleTrackIndex: Int? = null,

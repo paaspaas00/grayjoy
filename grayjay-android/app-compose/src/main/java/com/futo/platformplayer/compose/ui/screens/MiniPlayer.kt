@@ -93,7 +93,8 @@ internal fun MiniPlayerChrome(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(70.dp),
+                .height(70.dp)
+                .padding(end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(

@@ -162,6 +162,8 @@ data class GrayjayPlaybackSource(
     val audioVariants: List<GrayjayAudioVariant> = emptyList(),
     val storyboard: GrayjayStoryboard? = null,
     val isDrmProtected: Boolean = false,
+    /** The selected video representation already contains its audio track. */
+    val videoHasMuxedAudio: Boolean = false,
 )
 
 enum class GrayjayStreamType { Hls, Dash, Progressive }
@@ -945,6 +947,7 @@ class GrayjayPluginBackend(context: Context) {
             audioVariants = audioVariants,
             storyboard = storyboardDeferred?.await(),
             isDrmProtected = selectedSource is IWidevineSource && videoVariants.isEmpty(),
+            videoHasMuxedAudio = !details.video.isUnMuxed,
         )
     }
 

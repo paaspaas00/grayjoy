@@ -30,6 +30,23 @@ class OfflinePlaybackDescriptorTest {
     }
 
     @Test
+    fun unmetNetworkRequirementLooksPausedRatherThanFailed() {
+        assertEquals(
+            DownloadStatus.Paused,
+            aggregateDownloadStatus(
+                removing = false,
+                hasFailedRequest = false,
+                hasRemovingRequest = false,
+                validatedComplete = false,
+                media3Complete = false,
+                hasDownloadingRequest = true,
+                hasStoppedRequest = false,
+                waitingForRequirements = true,
+            ),
+        )
+    }
+
+    @Test
     fun completedAudioDownloadBecomesOfflinePrimaryMedia() {
         val descriptor = video().withOfflinePlayback(
             listOf(

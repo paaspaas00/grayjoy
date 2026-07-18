@@ -313,7 +313,7 @@ fun GrayjayApp(
     onSearchHistoryChange: (Boolean) -> Unit,
     onKeepScreenAwakeChange: (Boolean) -> Unit,
     deviceIsLandscape: Boolean = false,
-    onFullscreenChanged: (Boolean) -> Unit = {},
+    deviceLandscapeRotationDegrees: Float = 90f,
 ) {
     val context = LocalContext.current
     val shareVideoLabel = stringResource(R.string.share_video)
@@ -567,14 +567,12 @@ fun GrayjayApp(
         }
     }
 
-    LaunchedEffect(isFullscreen) {
-        onFullscreenChanged(isFullscreen)
-    }
-
+    val fullscreenVideo = selectedVideo ?: playbackVideo
+    val portraitFullscreen = usePortraitPlayerFullscreen(fullscreenVideo, uiState.playback)
     LaunchedEffect(deviceIsLandscape, selectedVideo?.id, playerTransitionProgress) {
         val expandedNowPlaying = selectedVideo != null && playerTransitionProgress < 0.01f
         when {
-            deviceIsLandscape && expandedNowPlaying && !isFullscreen -> {
+            deviceIsLandscape && expandedNowPlaying && !isFullscreen && !portraitFullscreen -> {
                 fullscreenEnteredByRotation = true
                 isFullscreen = true
             }
@@ -626,7 +624,6 @@ fun GrayjayApp(
         }
     }
 
-    val fullscreenVideo = selectedVideo ?: playbackVideo
     if (isFullscreen && fullscreenVideo != null) {
         FullscreenPlayerScreen(
             video = fullscreenVideo,
@@ -644,6 +641,8 @@ fun GrayjayApp(
             onSubtitleLanguageChange = playback.onSubtitleLanguageChange,
             onRetryPlayback = playback.onRetry,
             onExitFullscreen = playback.onExitFullscreen,
+            portraitFullscreen = portraitFullscreen,
+            landscapeRotationDegrees = deviceLandscapeRotationDegrees,
             modifier = Modifier.graphicsLayer {
                 val progress = navigationBackProgress.coerceIn(0f, 1f)
                 scaleX = 1f - 0.04f * progress
@@ -783,6 +782,20 @@ fun GrayjayApp(
         onCreate = onCreateProfile,
         onVerifyPin = onVerifyProfilePin,
     )
+}
+
+internal fun usePortraitPlayerFullscreen(
+    video: VideoUiModel?,
+    playback: PlaybackUiState,
+): Boolean {
+    if (video == null) return false
+    val isShortsUrl = sequenceOf(video.id, video.contentUrl, video.shareUrl)
+        .filter(String::isNotBlank)
+        .any { url -> url.contains("/shorts/", ignoreCase = true) }
+    val dimensionsMatchVideo = playback.currentVideoId == video.id
+    val width = playback.currentVideoWidth?.takeIf { dimensionsMatchVideo } ?: 0
+    val height = playback.currentVideoHeight?.takeIf { dimensionsMatchVideo } ?: 0
+    return isShortsUrl || (width > 0 && height > width)
 }
 
 @Composable

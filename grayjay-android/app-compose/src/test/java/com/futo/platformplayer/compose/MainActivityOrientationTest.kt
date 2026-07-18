@@ -33,4 +33,11 @@ class MainActivityOrientationTest {
         assertEquals(false, automaticFullscreenPosture(autoRotateEnabled = false, orientation = 90))
         assertEquals(true, automaticFullscreenPosture(autoRotateEnabled = true, orientation = 90))
     }
+
+    @Test
+    fun `player-local landscape rotation follows either way the phone is held`() {
+        assertEquals(-90f, landscapePlayerRotationAt(90))
+        assertEquals(90f, landscapePlayerRotationAt(270))
+        assertNull(landscapePlayerRotationAt(0))
+    }
 }

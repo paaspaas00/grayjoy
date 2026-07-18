@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,9 +37,13 @@ class MainActivity : FragmentActivity() {
     private var pendingSourceUrl by mutableStateOf<String?>(null)
     private var pendingDatabaseImportUri by mutableStateOf<Uri?>(null)
     private var deviceIsLandscape by mutableStateOf(false)
+    private var deviceLandscapeRotationDegrees by mutableFloatStateOf(90f)
     private val deviceOrientationListener by lazy {
         object : OrientationEventListener(this) {
             override fun onOrientationChanged(orientation: Int) {
+                landscapePlayerRotationAt(orientation)?.let {
+                    deviceLandscapeRotationDegrees = it
+                }
                 automaticFullscreenPosture(
                     autoRotateEnabled = isSystemAutoRotateEnabled(),
                     orientation = orientation,
@@ -141,7 +146,7 @@ class MainActivity : FragmentActivity() {
                     isDarkTheme = darkTheme,
                     onDarkThemeChange = viewModel::setDarkThemeEnabled,
                     deviceIsLandscape = deviceIsLandscape,
-                    onFullscreenChanged = ::setPlayerFullscreen,
+                    deviceLandscapeRotationDegrees = deviceLandscapeRotationDegrees,
                     onDynamicColorsChange = viewModel::setDynamicColorsEnabled,
                     onPrivateSessionChange = viewModel::setPrivateSessionEnabled,
                     onOpenVideo = viewModel::openVideo,
@@ -259,16 +264,6 @@ class MainActivity : FragmentActivity() {
         getSharedPreferences(NOTIFICATION_PERMISSION_PREFERENCES, MODE_PRIVATE)
     }
 
-    private fun setPlayerFullscreen(fullscreen: Boolean) {
-        // Fullscreen is a Grayjoy player presentation state. Only rotate the activity here;
-        // never enter Android immersive mode or take ownership of the system bars.
-        requestedOrientation = if (fullscreen) {
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        } else {
-            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
-    }
-
     private fun isSystemAutoRotateEnabled(): Boolean = runCatching {
         Settings.System.getInt(
             contentResolver,
@@ -287,6 +282,12 @@ internal fun physicalLandscapeAt(orientation: Int): Boolean? = when {
     orientation == OrientationEventListener.ORIENTATION_UNKNOWN -> null
     orientation in 60..120 || orientation in 240..300 -> true
     orientation in 0..30 || orientation in 150..210 || orientation in 330..359 -> false
+    else -> null
+}
+
+internal fun landscapePlayerRotationAt(orientation: Int): Float? = when {
+    orientation in 60..120 -> -90f
+    orientation in 240..300 -> 90f
     else -> null
 }
 

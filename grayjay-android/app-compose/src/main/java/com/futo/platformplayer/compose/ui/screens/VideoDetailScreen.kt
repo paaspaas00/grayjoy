@@ -22,7 +22,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -101,6 +103,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -412,6 +415,8 @@ fun FullscreenPlayerScreen(
     onSubtitleLanguageChange: (String?) -> Unit,
     onRetryPlayback: () -> Unit,
     onExitFullscreen: () -> Unit,
+    portraitFullscreen: Boolean,
+    landscapeRotationDegrees: Float,
     modifier: Modifier = Modifier,
 ) {
     val queueIndex = playback.queueVideoIds.indexOf(playback.currentVideoId)
@@ -419,27 +424,43 @@ fun FullscreenPlayerScreen(
     val canGoNext = queueIndex >= 0 && queueIndex < playback.queueVideoIds.lastIndex
 
     Surface(modifier = modifier.fillMaxSize(), color = Color.Black) {
-        PlayerSurface(
-            video = video,
-            player = player,
-            playback = playback,
-            isLoading = isLoadingPlayback || playback.isBuffering,
-            isFullscreen = true,
-            canGoPrevious = canGoPrevious,
-            canGoNext = canGoNext,
-            onTogglePlayback = onTogglePlayback,
-            onSkipPrevious = onSkipPrevious,
-            onSkipNext = onSkipNext,
-            onSeekBy = onSeekBy,
-            onSeek = onSeek,
-            onSpeedChange = onSpeedChange,
-            onQualityChange = onQualityChange,
-            onCaptionsEnabledChange = onCaptionsEnabledChange,
-            onSubtitleLanguageChange = onSubtitleLanguageChange,
-            onRetryPlayback = onRetryPlayback,
-            onFullscreen = onExitFullscreen,
-            modifier = Modifier.fillMaxSize(),
-        )
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val playerModifier = if (portraitFullscreen) {
+                Modifier.fillMaxSize()
+            } else {
+                // Keep the Activity portrait-only. Widescreen fullscreen is a player-local
+                // rotation, so entering or leaving it cannot mutate Android orientation state.
+                Modifier
+                    .align(Alignment.Center)
+                    .requiredSize(width = maxHeight, height = maxWidth)
+                    .graphicsLayer {
+                        rotationZ = landscapeRotationDegrees
+                        transformOrigin = TransformOrigin.Center
+                    }
+            }
+            PlayerSurface(
+                video = video,
+                player = player,
+                playback = playback,
+                isLoading = isLoadingPlayback || playback.isBuffering,
+                isFullscreen = true,
+                isPortraitFullscreen = portraitFullscreen,
+                canGoPrevious = canGoPrevious,
+                canGoNext = canGoNext,
+                onTogglePlayback = onTogglePlayback,
+                onSkipPrevious = onSkipPrevious,
+                onSkipNext = onSkipNext,
+                onSeekBy = onSeekBy,
+                onSeek = onSeek,
+                onSpeedChange = onSpeedChange,
+                onQualityChange = onQualityChange,
+                onCaptionsEnabledChange = onCaptionsEnabledChange,
+                onSubtitleLanguageChange = onSubtitleLanguageChange,
+                onRetryPlayback = onRetryPlayback,
+                onFullscreen = onExitFullscreen,
+                modifier = playerModifier,
+            )
+        }
     }
 }
 
@@ -450,6 +471,7 @@ internal fun PlayerSurface(
     playback: PlaybackUiState,
     isLoading: Boolean,
     isFullscreen: Boolean,
+    isPortraitFullscreen: Boolean = false,
     canGoPrevious: Boolean,
     canGoNext: Boolean,
     onTogglePlayback: () -> Unit,
@@ -632,6 +654,10 @@ internal fun PlayerSurface(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
+                    .then(
+                        if (isFullscreen && isPortraitFullscreen) Modifier.statusBarsPadding()
+                        else Modifier,
+                    )
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -655,17 +681,24 @@ internal fun PlayerSurface(
                         showSettings = true
                         controlsVisible = true
                     },
-                    modifier = Modifier.testTag("player-settings"),
+                    modifier = Modifier
+                        .offset(y = if (isFullscreen) 8.dp else 0.dp)
+                        .size(if (isFullscreen) 56.dp else 48.dp)
+                        .testTag("player-settings"),
                 ) {
                     Icon(
                         Icons.Outlined.Settings,
                         contentDescription = stringResource(R.string.player_settings),
                         tint = Color.White,
+                        modifier = Modifier.size(if (isFullscreen) 30.dp else 24.dp),
                     )
                 }
                 IconButton(
                     onClick = onFullscreen,
-                    modifier = Modifier.testTag("player-fullscreen"),
+                    modifier = Modifier
+                        .offset(y = if (isFullscreen) 8.dp else 0.dp)
+                        .size(if (isFullscreen) 56.dp else 48.dp)
+                        .testTag("player-fullscreen"),
                 ) {
                     Icon(
                         if (isFullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
@@ -673,6 +706,7 @@ internal fun PlayerSurface(
                             if (isFullscreen) R.string.exit_fullscreen else R.string.enter_fullscreen,
                         ),
                         tint = Color.White,
+                        modifier = Modifier.size(if (isFullscreen) 30.dp else 24.dp),
                     )
                 }
             }
@@ -745,6 +779,13 @@ internal fun PlayerSurface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .offset(
+                        y = when {
+                            isFullscreen && isPortraitFullscreen -> (-18).dp
+                            isFullscreen -> (-10).dp
+                            else -> 0.dp
+                        },
+                    )
                     .padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

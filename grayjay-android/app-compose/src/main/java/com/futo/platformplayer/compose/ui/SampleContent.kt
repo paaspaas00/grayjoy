@@ -13,6 +13,7 @@ data class VideoUiModel(
     val sourceId: String = "youtube",
     val isLive: Boolean = false,
     val isDrmProtected: Boolean = false,
+    val playbackHasMuxedAudio: Boolean = false,
     val watchProgress: Float = 0f,
     val isDownloaded: Boolean = false,
     val playbackFromDownload: Boolean = false,

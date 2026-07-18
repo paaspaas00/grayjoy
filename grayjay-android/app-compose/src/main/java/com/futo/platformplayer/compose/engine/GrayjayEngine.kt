@@ -14,6 +14,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -108,6 +109,7 @@ data class EnginePlaybackState(
     val captionsEnabled: Boolean = false,
     val availableVideoQualities: List<Int> = emptyList(),
     val selectedVideoQuality: Int? = null,
+    val currentVideoWidth: Int? = null,
     val currentVideoHeight: Int? = null,
     val selectedSubtitleLanguage: String? = null,
     val selectedSubtitleTrackIndex: Int? = null,
@@ -336,6 +338,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     syncPlayback()
 
                 override fun onTracksChanged(tracks: Tracks) = syncPlayback()
+
+                override fun onVideoSizeChanged(videoSize: VideoSize) = syncPlayback()
 
                 override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) =
                     syncPlayback()
@@ -598,6 +602,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             }.ifBlank { video.metadata },
             duration = formatDuration(source.durationSeconds).ifBlank { video.duration },
             isDrmProtected = source.isDrmProtected,
+            playbackHasMuxedAudio = source.videoHasMuxedAudio,
             playbackUrl = source.videoUrl,
             playbackStreamKeys = emptyList(),
             audioStreamKeys = emptyList(),
@@ -1169,6 +1174,12 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             ?: qualityTracks
             .filter(Pair<Int, Boolean>::second)
             .maxOfOrNull(Pair<Int, Boolean>::first)
+        val videoSize = exoPlayer.videoSize
+        val quarterTurn = videoSize.unappliedRotationDegrees.mod(180) != 0
+        val currentVideoWidth = (if (quarterTurn) videoSize.height else videoSize.width)
+            .takeIf { it > 0 }
+        val currentVideoHeight = (if (quarterTurn) videoSize.width else videoSize.height)
+            .takeIf { it > 0 }
         _playback.value = EnginePlaybackState(
             currentVideoId = currentVideoId,
             queueVideoIds = queueIds,
@@ -1181,7 +1192,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             captionsEnabled = captionsEnabled,
             availableVideoQualities = availableQualities,
             selectedVideoQuality = selectedVideoQuality,
-            currentVideoHeight = currentHeight,
+            currentVideoWidth = currentVideoWidth,
+            currentVideoHeight = currentVideoHeight ?: currentHeight,
             selectedSubtitleLanguage = selectedSubtitleLanguage,
             selectedSubtitleTrackIndex = selectedSubtitleTrackIndex,
             errorMessage = lastError,

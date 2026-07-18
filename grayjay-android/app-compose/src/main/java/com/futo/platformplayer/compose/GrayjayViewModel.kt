@@ -33,6 +33,8 @@ import com.futo.platformplayer.compose.downloads.GrayjoyDownloadStore
 import com.futo.platformplayer.compose.downloads.GrayjoyDownloadQueue
 import com.futo.platformplayer.compose.downloads.GrayjoyOfflinePlaylistStore
 import com.futo.platformplayer.compose.downloads.QueuedDownload
+import com.futo.platformplayer.compose.downloads.NetworkMonitor
+import com.futo.platformplayer.compose.downloads.isRecoverableConnectivityFailure
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
@@ -147,6 +149,78 @@ internal fun selectAudioQualityVariant(
     }
 }
 
+/**
+ * Chooses the same hierarchy as legacy Grayjay: a requested audio rendition first, then the
+ * plugin's dedicated download/playback audio, and finally a muxed representation when the source
+ * descriptor guarantees that it contains audio. The final fallback is important for older
+ * uploads whose plugin result only exposes one progressive audio+video file; it must never be
+ * applied to an unmuxed video-only representation.
+ */
+internal fun VideoUiModel.asAudioDownloadDescriptor(
+    preferredBitrate: Int?,
+): VideoUiModel {
+    val variant = selectAudioQualityVariant(audioQualityVariants, preferredBitrate)
+    val audioPlaybackUrl = variant?.playbackUrl.orEmpty().ifBlank {
+        audioDownloadUrl
+    }.ifBlank { audioUrl }.ifBlank {
+        playbackUrl.takeIf {
+            playbackMimeType.startsWith("audio/") || playbackHasMuxedAudio
+        }.orEmpty()
+    }
+    require(audioPlaybackUrl.isNotBlank()) { "This source returned no downloadable audio." }
+    val hasVariant = variant != null
+    val hasDedicatedDownloadSource = !hasVariant && audioDownloadUrl.isNotBlank()
+    val usesMuxedFallback = !hasVariant &&
+        !hasDedicatedDownloadSource &&
+        audioUrl.isBlank() &&
+        playbackHasMuxedAudio &&
+        audioPlaybackUrl == playbackUrl
+    return copy(
+        playbackFromDownload = false,
+        playbackAudioOnly = false,
+        playbackCacheNamespace = "",
+        audioCacheNamespace = "",
+        playbackStreamKeys = emptyList(),
+        audioStreamKeys = emptyList(),
+        playbackUrl = audioPlaybackUrl,
+        playbackMimeType = when {
+            hasVariant -> variant?.playbackMimeType.orEmpty()
+            hasDedicatedDownloadSource -> audioDownloadMimeType
+            usesMuxedFallback -> playbackMimeType
+            else -> playbackMimeType.takeIf { it.startsWith("audio/") }.orEmpty()
+        },
+        playbackManifest = when {
+            hasVariant -> variant?.playbackManifest.orEmpty()
+            hasDedicatedDownloadSource -> audioDownloadManifest
+            usesMuxedFallback -> playbackManifest
+            else -> ""
+        },
+        audioUrl = "",
+        playbackRequestHeaders = when {
+            hasVariant -> variant?.playbackRequestHeaders.orEmpty()
+            hasDedicatedDownloadSource -> audioDownloadRequestHeaders
+            else -> audioRequestHeaders.ifEmpty { playbackRequestHeaders }
+        },
+        // Request executors/modifiers are part of the selected source and are required for
+        // authenticated/plugin-proxied audio downloads.
+        playbackDataSourceFactory = when {
+            hasVariant -> variant?.playbackDataSourceFactory
+            hasDedicatedDownloadSource -> audioDownloadDataSourceFactory
+            else -> audioDataSourceFactory ?: playbackDataSourceFactory
+        },
+        audioRequestHeaders = emptyMap(),
+        audioDataSourceFactory = null,
+        audioDownloadUrl = "",
+        audioDownloadMimeType = "",
+        audioDownloadManifest = "",
+        audioDownloadRequestHeaders = emptyMap(),
+        audioDownloadDataSourceFactory = null,
+        subtitleTracks = emptyList(),
+        qualityVariants = emptyList(),
+        audioQualityVariants = emptyList(),
+    )
+}
+
 class GrayjayViewModel(application: Application) : AndroidViewModel(application) {
     private fun text(@StringRes id: Int, vararg args: Any): String =
         getApplication<Application>().getString(id, *args)
@@ -167,6 +241,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val engine: GrayjayEngine = AndroidGrayjayEngine(application)
     private val downloadStore = GrayjoyDownloadStore.get(application)
     private val downloadQueue = GrayjoyDownloadQueue(application)
+    private val networkMonitor = NetworkMonitor(application)
     private val offlinePlaylistStore = GrayjoyOfflinePlaylistStore(application)
     private val baseEngineSources = engine.sources(content.sources)
     private var engineSources = (
@@ -1801,72 +1876,120 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         )
         syncDownloadState()
         downloadJobs[jobKey] = viewModelScope.launch {
-            try {
-                downloadPreparationSemaphore.withPermit {
-                    if (replaceExisting) {
-                        downloadStore.remove(profileAtStart, videoId, mediaType)
-                        while (downloadStore.hasDownloadRecord(profileAtStart, videoId, mediaType)) {
-                            delay(100L)
-                        }
-                    }
-                    while (downloadStore.hasActiveTransfer(profileAtStart)) {
-                        delay(250L)
-                    }
-                    if (profileAtStart != activeProfileId) return@launch
-                    downloadPreparationStates[jobKey] = downloadPreparationStates[jobKey]
-                        ?.copy(status = DownloadStatus.Preparing)
-                        ?: return@launch
-                    downloadQueue.put(
-                        QueuedDownload(
-                            profileId = profileAtStart,
-                            videoId = videoId,
-                            mediaType = mediaType,
-                            status = DownloadStatus.Preparing,
-                            createdAtMs = createdAtMs,
-                            targetVideoHeight = selectedVideoHeight,
-                            targetAudioBitrate = selectedAudioBitrate,
-                        ),
-                    )
-                    syncDownloadState()
-                    val freshVideo = video.copy(
-                        playbackFromDownload = false,
-                        playbackAudioOnly = false,
-                        playbackCacheNamespace = "",
-                        audioCacheNamespace = "",
-                        playbackStreamKeys = emptyList(),
-                        audioStreamKeys = emptyList(),
-                        playbackUrl = "",
-                        playbackMimeType = "",
-                        playbackManifest = "",
-                        audioUrl = "",
-                        audioRequestHeaders = emptyMap(),
-                        audioDataSourceFactory = null,
-                        playbackRequestHeaders = emptyMap(),
-                        playbackDataSourceFactory = null,
-                        subtitleTracks = emptyList(),
-                        qualityVariants = emptyList(),
-                        audioQualityVariants = emptyList(),
-                    )
-                    val resolved = engine.resolve(freshVideo)
-                    if (profileAtStart != activeProfileId) return@launch
-                    val storedDescriptor = if (mediaType == DownloadMediaType.Audio) {
-                        resolved.asAudioDownloadDescriptor(selectedAudioBitrate)
-                    } else {
-                        resolved.downloadDescriptor(selectedVideoHeight)
-                    }
-                    libraryRepository.saveDownloadDescriptor(storedDescriptor)
-                    reloadLibrary()
-                    downloadStore.enqueue(
+            fun markWaitingForNetwork() {
+                downloadPreparationStates[jobKey] = DownloadUiModel(
+                    profileId = profileAtStart,
+                    videoId = videoId,
+                    mediaType = mediaType,
+                    status = DownloadStatus.Paused,
+                    activeMediaTypes = setOf(mediaType),
+                    targetVideoHeight = selectedVideoHeight,
+                    targetAudioBitrate = selectedAudioBitrate,
+                )
+                downloadQueue.put(
+                    QueuedDownload(
                         profileId = profileAtStart,
-                        video = storedDescriptor,
+                        videoId = videoId,
                         mediaType = mediaType,
-                        preferredVideoHeight = selectedVideoHeight,
-                        preferredAudioBitrate = selectedAudioBitrate,
-                    )
-                    while (!downloadStore.hasDownloadRecord(profileAtStart, videoId, mediaType)) {
-                        delay(50L)
+                        status = DownloadStatus.Paused,
+                        createdAtMs = createdAtMs,
+                        targetVideoHeight = selectedVideoHeight,
+                        targetAudioBitrate = selectedAudioBitrate,
+                    ),
+                )
+                syncDownloadState()
+            }
+
+            try {
+                var connectivityRetry = 0
+                while (true) {
+                    if (!networkMonitor.isAvailable()) {
+                        markWaitingForNetwork()
+                        networkMonitor.awaitAvailable()
+                        if (profileAtStart != activeProfileId) return@launch
                     }
-                    downloadQueue.remove(profileAtStart, videoId, mediaType)
+                    try {
+                        downloadPreparationSemaphore.withPermit {
+                            if (replaceExisting) {
+                                downloadStore.remove(profileAtStart, videoId, mediaType)
+                                while (downloadStore.hasDownloadRecord(profileAtStart, videoId, mediaType)) {
+                                    delay(100L)
+                                }
+                            }
+                            while (downloadStore.hasActiveTransfer(profileAtStart)) {
+                                delay(250L)
+                            }
+                            if (profileAtStart != activeProfileId) return@launch
+                            downloadPreparationStates[jobKey] = downloadPreparationStates[jobKey]
+                                ?.copy(status = DownloadStatus.Preparing)
+                                ?: return@launch
+                            downloadQueue.put(
+                                QueuedDownload(
+                                    profileId = profileAtStart,
+                                    videoId = videoId,
+                                    mediaType = mediaType,
+                                    status = DownloadStatus.Preparing,
+                                    createdAtMs = createdAtMs,
+                                    targetVideoHeight = selectedVideoHeight,
+                                    targetAudioBitrate = selectedAudioBitrate,
+                                ),
+                            )
+                            syncDownloadState()
+                            val freshVideo = video.copy(
+                                playbackFromDownload = false,
+                                playbackAudioOnly = false,
+                                playbackCacheNamespace = "",
+                                audioCacheNamespace = "",
+                                playbackStreamKeys = emptyList(),
+                                audioStreamKeys = emptyList(),
+                                playbackUrl = "",
+                                playbackMimeType = "",
+                                playbackManifest = "",
+                                audioUrl = "",
+                                audioRequestHeaders = emptyMap(),
+                                audioDataSourceFactory = null,
+                                playbackRequestHeaders = emptyMap(),
+                                playbackDataSourceFactory = null,
+                                subtitleTracks = emptyList(),
+                                qualityVariants = emptyList(),
+                                audioQualityVariants = emptyList(),
+                            )
+                            val resolved = engine.resolve(freshVideo)
+                            if (profileAtStart != activeProfileId) return@launch
+                            val storedDescriptor = if (mediaType == DownloadMediaType.Audio) {
+                                resolved.asAudioDownloadDescriptor(selectedAudioBitrate)
+                            } else {
+                                resolved.downloadDescriptor(selectedVideoHeight)
+                            }
+                            libraryRepository.saveDownloadDescriptor(storedDescriptor)
+                            reloadLibrary()
+                            downloadStore.enqueue(
+                                profileId = profileAtStart,
+                                video = storedDescriptor,
+                                mediaType = mediaType,
+                                preferredVideoHeight = selectedVideoHeight,
+                                preferredAudioBitrate = selectedAudioBitrate,
+                            )
+                            while (!downloadStore.hasDownloadRecord(profileAtStart, videoId, mediaType)) {
+                                delay(50L)
+                            }
+                            downloadQueue.remove(profileAtStart, videoId, mediaType)
+                        }
+                        break
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Throwable) {
+                        if (networkMonitor.isAvailable() && !error.isRecoverableConnectivityFailure()) {
+                            throw error
+                        }
+                        if (downloadStore.snapshotsFor(profileAtStart)[videoId] == null) {
+                            libraryRepository.clearDownloadDescriptor(videoId)
+                            reloadLibrary()
+                        }
+                        markWaitingForNetwork()
+                        networkMonitor.awaitRecovery(connectivityRetry++)
+                        if (profileAtStart != activeProfileId) return@launch
+                    }
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -2355,6 +2478,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         homeJob?.cancel()
         homePagingJob?.cancel()
         persistCurrentPlaybackProgress()
+        networkMonitor.close()
         engine.release()
         super.onCleared()
     }
@@ -2495,6 +2619,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         captionsEnabled = captionsEnabled,
         availableVideoQualities = availableVideoQualities,
         selectedVideoQuality = selectedVideoQuality,
+        currentVideoWidth = currentVideoWidth,
         currentVideoHeight = currentVideoHeight,
         selectedSubtitleLanguage = selectedSubtitleLanguage,
         selectedSubtitleTrackIndex = selectedSubtitleTrackIndex,
@@ -2724,62 +2849,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 audioQualityVariants = emptyList(),
             )
         }
-    }
-
-    private fun VideoUiModel.asAudioDownloadDescriptor(
-        preferredBitrate: Int?,
-    ): VideoUiModel {
-        val variant = selectAudioQualityVariant(audioQualityVariants, preferredBitrate)
-        val audioPlaybackUrl = variant?.playbackUrl.orEmpty().ifBlank {
-            audioDownloadUrl
-        }.ifBlank { audioUrl }.ifBlank {
-            playbackUrl.takeIf { playbackMimeType.startsWith("audio/") }.orEmpty()
-        }
-        require(audioPlaybackUrl.isNotBlank()) { "This source returned no downloadable audio." }
-        val hasVariant = variant != null
-        val hasDedicatedDownloadSource = !hasVariant && audioDownloadUrl.isNotBlank()
-        return copy(
-            playbackFromDownload = false,
-            playbackAudioOnly = false,
-            playbackCacheNamespace = "",
-            audioCacheNamespace = "",
-            playbackStreamKeys = emptyList(),
-            audioStreamKeys = emptyList(),
-            playbackUrl = audioPlaybackUrl,
-            playbackMimeType = when {
-                hasVariant -> variant?.playbackMimeType.orEmpty()
-                hasDedicatedDownloadSource -> audioDownloadMimeType
-                else -> playbackMimeType.takeIf { it.startsWith("audio/") }.orEmpty()
-            },
-            playbackManifest = when {
-                hasVariant -> variant?.playbackManifest.orEmpty()
-                hasDedicatedDownloadSource -> audioDownloadManifest
-                else -> ""
-            },
-            audioUrl = "",
-            playbackRequestHeaders = when {
-                hasVariant -> variant?.playbackRequestHeaders.orEmpty()
-                hasDedicatedDownloadSource -> audioDownloadRequestHeaders
-                else -> audioRequestHeaders.ifEmpty { playbackRequestHeaders }
-            },
-            // Request executors/modifiers are part of the selected source and are required for
-            // authenticated/plugin-proxied audio downloads.
-            playbackDataSourceFactory = when {
-                hasVariant -> variant?.playbackDataSourceFactory
-                hasDedicatedDownloadSource -> audioDownloadDataSourceFactory
-                else -> audioDataSourceFactory ?: playbackDataSourceFactory
-            },
-            audioRequestHeaders = emptyMap(),
-            audioDataSourceFactory = null,
-            audioDownloadUrl = "",
-            audioDownloadMimeType = "",
-            audioDownloadManifest = "",
-            audioDownloadRequestHeaders = emptyMap(),
-            audioDownloadDataSourceFactory = null,
-            subtitleTracks = emptyList(),
-            qualityVariants = emptyList(),
-            audioQualityVariants = emptyList(),
-        )
     }
 
     private fun syncDownloadState() {
