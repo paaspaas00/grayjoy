@@ -156,6 +156,7 @@
     </plurals>
     <string name="local_playlist">LOCAL PLAYLIST</string>
     <string name="play_all">Play all</string>
+    <string name="play_from_here">From here</string>
     <plurals name="video_count">
         <item quantity="one">%d video</item>
         <item quantity="other">%d videos</item>

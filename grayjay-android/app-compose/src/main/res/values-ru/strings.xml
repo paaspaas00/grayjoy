@@ -149,6 +149,7 @@
     </plurals>
     <string name="local_playlist">ЛОКАЛЬНЫЙ ПЛЕЙЛИСТ</string>
     <string name="play_all">Воспроизвести все</string>
+    <string name="play_from_here">Воспроизвести отсюда</string>
     <plurals name="video_count">
         <item quantity="one">%d видео</item>
         <item quantity="other">%d видео</item>

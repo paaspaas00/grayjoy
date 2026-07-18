@@ -1,6 +1,7 @@
 package com.futo.platformplayer.compose.ui.screens
 
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.filled.PlayArrow
@@ -40,18 +47,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
-import kotlin.math.abs
 
 @Composable
 fun PlaylistDetailScreen(
@@ -61,6 +69,7 @@ fun PlaylistDetailScreen(
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
     onPlayAll: () -> Unit,
+    onPlayFromHere: (String) -> Unit = {},
     onDownloadAllAsAudio: (List<String>) -> Unit = {},
     onDownloadAllAsVideo: (List<String>) -> Unit = {},
     onRename: (String) -> Unit = {},
@@ -289,6 +298,18 @@ fun PlaylistDetailScreen(
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleMedium,
                     )
+                    selectedVideoIds.singleOrNull()?.let { selectedVideoId ->
+                        Button(
+                            onClick = {
+                                leaveSelectionMode()
+                                onPlayFromHere(selectedVideoId)
+                            },
+                            modifier = Modifier.testTag("playlist-selection-play-from-here"),
+                        ) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                            Text(stringResource(R.string.play_from_here))
+                        }
+                    }
                     IconButton(
                         onClick = { onAddSelectionToPlaylist(selectedVideoIds.toList()) },
                         modifier = Modifier.testTag("playlist-selection-add"),
@@ -364,6 +385,7 @@ private fun ReorderPlaylistDialog(
     val videosById = remember(videos) { videos.associateBy(VideoUiModel::id) }
     val rowStepPx = with(LocalDensity.current) { 52.dp.toPx() }
     var dragOffset by remember { mutableFloatStateOf(0f) }
+    var draggedId by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -376,10 +398,51 @@ private fun ReorderPlaylistDialog(
                     .testTag("playlist-reorder-list"),
             ) {
                 itemsIndexed(orderedIds, key = { _, id -> id }) { index, id ->
+                    val isDragged = draggedId == id
+                    val rowScale by animateFloatAsState(
+                        targetValue = if (isDragged) 1.025f else 1f,
+                        animationSpec = tween(120),
+                        label = "playlist-reorder-scale",
+                    )
+                    val animatedDragOffset by animateFloatAsState(
+                        targetValue = if (isDragged) dragOffset else 0f,
+                        animationSpec = if (isDragged) snap() else spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                        label = "playlist-reorder-drag-offset",
+                    )
+                    val rowColor by animateColorAsState(
+                        targetValue = if (isDragged) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        },
+                        animationSpec = tween(140),
+                        label = "playlist-reorder-color",
+                    )
+                    val rowShape = MaterialTheme.shapes.medium
                     Row(
                         modifier = Modifier
+                            .animateItem(
+                                placementSpec = if (isDragged) null else spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMediumLow,
+                                ),
+                            )
+                            .zIndex(if (isDragged) 1f else 0f)
+                            .graphicsLayer {
+                                translationY = animatedDragOffset
+                                scaleX = rowScale
+                                scaleY = rowScale
+                                shadowElevation = if (isDragged) 10.dp.toPx() else 0f
+                                shape = rowShape
+                                clip = true
+                            }
+                            .background(rowColor)
                             .fillMaxWidth()
                             .heightIn(min = 52.dp)
+                            .padding(start = 12.dp)
                             .testTag("playlist-reorder-$index"),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -396,21 +459,37 @@ private fun ReorderPlaylistDialog(
                                 .padding(12.dp)
                                 .pointerInput(id, orderedIds.size) {
                                     detectDragGestures(
-                                        onDragStart = { dragOffset = 0f },
-                                        onDragCancel = { dragOffset = 0f },
-                                        onDragEnd = { dragOffset = 0f },
+                                        onDragStart = {
+                                            draggedId = id
+                                            dragOffset = 0f
+                                        },
+                                        onDragCancel = {
+                                            draggedId = null
+                                            dragOffset = 0f
+                                        },
+                                        onDragEnd = {
+                                            draggedId = null
+                                            dragOffset = 0f
+                                        },
                                     ) { change, dragAmount ->
                                         change.consume()
                                         dragOffset += dragAmount.y
-                                        if (abs(dragOffset) >= rowStepPx) {
-                                            val from = orderedIds.indexOf(id)
-                                            val direction = if (dragOffset > 0f) 1 else -1
-                                            val to = (from + direction).coerceIn(0, orderedIds.lastIndex)
-                                            if (from != to) {
-                                                orderedIds.removeAt(from)
-                                                orderedIds.add(to, id)
-                                            }
-                                            dragOffset = 0f
+                                        var currentIndex = orderedIds.indexOf(id)
+                                        val swapThreshold = rowStepPx * 0.5f
+                                        while (
+                                            dragOffset > swapThreshold &&
+                                            currentIndex < orderedIds.lastIndex
+                                        ) {
+                                            orderedIds.removeAt(currentIndex)
+                                            orderedIds.add(currentIndex + 1, id)
+                                            currentIndex += 1
+                                            dragOffset -= rowStepPx
+                                        }
+                                        while (dragOffset < -swapThreshold && currentIndex > 0) {
+                                            orderedIds.removeAt(currentIndex)
+                                            orderedIds.add(currentIndex - 1, id)
+                                            currentIndex -= 1
+                                            dragOffset += rowStepPx
                                         }
                                     }
                                 },

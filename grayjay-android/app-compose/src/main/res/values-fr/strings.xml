@@ -149,6 +149,7 @@
     </plurals>
     <string name="local_playlist">LISTE DE LECTURE LOCALE</string>
     <string name="play_all">Tout lire</string>
+    <string name="play_from_here">À partir d’ici</string>
     <plurals name="video_count">
         <item quantity="one">Vidéo %d</item>
         <item quantity="other">Vidéos %d</item>

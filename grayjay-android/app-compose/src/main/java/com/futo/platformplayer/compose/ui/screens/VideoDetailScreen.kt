@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
@@ -42,9 +43,11 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.DownloadDone
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
+import androidx.compose.material.icons.outlined.Forward10
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Replay10
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.SkipNext
@@ -70,9 +73,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,6 +86,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Rect
@@ -102,6 +109,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
@@ -454,6 +462,8 @@ internal fun PlayerSurface(
     var controlsVisible by remember(video.id, isFullscreen) { mutableStateOf(true) }
     var isPointerDown by remember(video.id, isFullscreen) { mutableStateOf(false) }
     var interactionSequence by remember(video.id, isFullscreen) { mutableStateOf(0) }
+    var seekFeedbackSequence by remember(video.id, isFullscreen) { mutableStateOf(0) }
+    var seekFeedbackForward by remember(video.id, isFullscreen) { mutableStateOf(true) }
     var showSettings by rememberSaveable(video.id, isFullscreen) { mutableStateOf(false) }
     var settingsPageName by rememberSaveable(video.id, isFullscreen) {
         mutableStateOf(PlayerSettingsPage.Main.name)
@@ -466,6 +476,12 @@ internal fun PlayerSurface(
         0f
     }
     val displayedProgress = if (isSeeking) seekProgress else positionProgress
+    val displayedPositionMs = if (isSeeking) {
+        seekPreviewPositionMs(playback.durationMs, seekProgress)
+    } else {
+        playback.positionMs
+    }
+    var seekTooltipWidthPx by remember(video.id, isFullscreen) { mutableStateOf(0) }
     val showControls = !controlsLocked &&
         (controlsVisible || !playback.isPlaying || playback.errorMessage != null)
     val controlsVisibilityAlpha by animateFloatAsState(
@@ -557,13 +573,28 @@ internal fun PlayerSurface(
                         onTap = { controlsVisible = !controlsVisible },
                         onDoubleTap = { tap ->
                             if (!controlsLocked) {
-                                onSeekBy(if (tap.x < size.width / 2f) -10_000L else 10_000L)
+                                seekFeedbackForward = tap.x >= size.width / 2f
+                                seekFeedbackSequence += 1
+                                onSeekBy(if (seekFeedbackForward) 10_000L else -10_000L)
                                 controlsVisible = true
                             }
                         },
                     )
                 },
         )
+
+        if (seekFeedbackSequence > 0) {
+            key(seekFeedbackSequence) {
+                DoubleTapSeekFeedback(
+                    forward = seekFeedbackForward,
+                    isFullscreen = isFullscreen,
+                    modifier = Modifier
+                        .align(if (seekFeedbackForward) Alignment.CenterEnd else Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .fillMaxWidth(0.43f),
+                )
+            }
+        }
 
         if (controlsVisibilityAlpha > 0.01f) {
             Box(
@@ -639,35 +670,34 @@ internal fun PlayerSurface(
                     // The transport row belongs to the area above the seek bar, not to the
                     // geometric centre of the entire surface.
                     .offset(y = if (isFullscreen) (-26).dp else (-24).dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(
+                    if (isPlaylistPlayback) {
+                        if (isFullscreen) 48.dp else 34.dp
+                    } else {
+                        0.dp
+                    },
+                ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = if (video.isLive) stringResource(R.string.live) else formatPlaybackTime(playback.positionMs),
-                    color = Color.White,
-                    textAlign = TextAlign.End,
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier
-                        .widthIn(min = 54.dp)
-                        .testTag("playback-elapsed"),
-                )
                 if (isPlaylistPlayback) {
                     IconButton(
                         onClick = onSkipPrevious,
                         enabled = canGoPrevious,
+                        modifier = Modifier.size(if (isFullscreen) 68.dp else 60.dp),
                     ) {
                         Icon(
                             Icons.Outlined.SkipPrevious,
                             contentDescription = stringResource(R.string.previous_video),
                             tint = Color.White.copy(alpha = if (canGoPrevious) 1f else 0.38f),
+                            modifier = Modifier.size(if (isFullscreen) 42.dp else 36.dp),
                         )
                     }
                 }
                 if (isLoading) {
-                    Spacer(Modifier.size(if (isFullscreen) 72.dp else 62.dp))
+                    Spacer(Modifier.size(if (isFullscreen) 88.dp else 78.dp))
                 } else {
                     Surface(
-                        modifier = Modifier.size(if (isFullscreen) 72.dp else 62.dp),
+                        modifier = Modifier.size(if (isFullscreen) 88.dp else 78.dp),
                         onClick = onTogglePlayback,
                         shape = CircleShape,
                         color = Color.Black.copy(alpha = 0.62f),
@@ -678,7 +708,7 @@ internal fun PlayerSurface(
                             contentDescription = stringResource(
                                 if (playback.isPlaying) R.string.pause else R.string.play,
                             ),
-                            modifier = Modifier.padding(if (isFullscreen) 19.dp else 16.dp),
+                            modifier = Modifier.padding(if (isFullscreen) 22.dp else 19.dp),
                         )
                     }
                 }
@@ -686,40 +716,95 @@ internal fun PlayerSurface(
                     IconButton(
                         onClick = onSkipNext,
                         enabled = canGoNext,
+                        modifier = Modifier.size(if (isFullscreen) 68.dp else 60.dp),
                     ) {
                         Icon(
                             Icons.Outlined.SkipNext,
                             contentDescription = stringResource(R.string.next_video),
                             tint = Color.White.copy(alpha = if (canGoNext) 1f else 0.38f),
+                            modifier = Modifier.size(if (isFullscreen) 42.dp else 36.dp),
                         )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (video.isLive) stringResource(R.string.live)
+                    else formatPlaybackTime(displayedPositionMs),
+                    color = Color.White,
+                    textAlign = TextAlign.Start,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier
+                        .widthIn(min = if (isFullscreen) 58.dp else 46.dp)
+                        .testTag("playback-elapsed"),
+                )
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 6.dp),
+                ) {
+                    Slider(
+                        value = displayedProgress,
+                        enabled = !video.isLive && playback.durationMs > 0,
+                        onValueChange = {
+                            isSeeking = true
+                            seekProgress = it
+                        },
+                        onValueChangeFinished = {
+                            onSeek(seekProgress)
+                            isSeeking = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (isSeeking) {
+                        Surface(
+                            modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .zIndex(2f)
+                            .offset {
+                                val horizontalInset = 10.dp.roundToPx()
+                                val trackWidth = (constraints.maxWidth - horizontalInset * 2)
+                                    .coerceAtLeast(0)
+                                val thumbCenter = horizontalInset +
+                                    (trackWidth * displayedProgress.coerceIn(0f, 1f)).toInt()
+                                val left = (thumbCenter - seekTooltipWidthPx / 2)
+                                    .coerceIn(
+                                        0,
+                                        (constraints.maxWidth - seekTooltipWidthPx).coerceAtLeast(0),
+                                    )
+                                IntOffset(left, (-22).dp.roundToPx())
+                            }
+                                .onGloballyPositioned { seekTooltipWidthPx = it.size.width }
+                                .testTag("player-seek-time-tooltip"),
+                            shape = MaterialTheme.shapes.small,
+                            color = Color.Black.copy(alpha = 0.86f),
+                            contentColor = Color.White,
+                            shadowElevation = 4.dp,
+                        ) {
+                            Text(
+                                text = formatPlaybackTime(
+                                    seekPreviewPositionMs(playback.durationMs, seekProgress),
+                                ),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                 }
                 Text(
                     text = if (video.isLive) "" else formatPlaybackTime(playback.durationMs),
                     color = Color.White,
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.widthIn(min = 54.dp),
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-            ) {
-                Slider(
-                    value = displayedProgress,
-                    enabled = !video.isLive && playback.durationMs > 0,
-                    onValueChange = {
-                        isSeeking = true
-                        seekProgress = it
-                    },
-                    onValueChangeFinished = {
-                        onSeek(seekProgress)
-                        isSeeking = false
-                    },
-                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.widthIn(min = if (isFullscreen) 58.dp else 46.dp),
                 )
             }
             }
@@ -800,6 +885,62 @@ internal fun PlayerSurface(
                 showSettings = false
             },
         )
+    }
+}
+
+@Composable
+private fun DoubleTapSeekFeedback(
+    forward: Boolean,
+    isFullscreen: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val pulse = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        pulse.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 620, easing = LinearOutSlowInEasing),
+        )
+    }
+    val progress = pulse.value
+    val contentScale = 0.84f + progress * 0.22f
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                alpha = (1f - progress).coerceIn(0f, 1f)
+                scaleX = contentScale
+                scaleY = contentScale
+            }
+            .testTag(if (forward) "player-seek-forward-feedback" else "player-seek-back-feedback"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val maximumRadius = size.minDimension * 0.72f
+            drawCircle(
+                color = Color.White.copy(alpha = 0.20f),
+                radius = maximumRadius * (0.36f + progress * 0.64f),
+            )
+            drawCircle(
+                color = Color.White.copy(alpha = 0.13f),
+                radius = maximumRadius * (0.20f + progress * 0.48f),
+            )
+        }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Icon(
+                imageVector = if (forward) Icons.Outlined.Forward10 else Icons.Outlined.Replay10,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(if (isFullscreen) 52.dp else 44.dp),
+            )
+            Text(
+                text = if (forward) "+10" else "−10",
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
@@ -1218,9 +1359,13 @@ private fun LazyListScope.videoDetails(
                 onClick = { onSectionChange(DetailSection.Comments) },
                 modifier = Modifier.testTag("now-playing-section-comments"),
                 label = {
+                    val exactCount = exactCommentCount(
+                        loadedCount = nowPlaying.comments.size,
+                        hasMore = nowPlaying.hasMoreComments,
+                    )
                     Text(
-                        if (nowPlaying.comments.isEmpty()) stringResource(R.string.comments)
-                        else stringResource(R.string.comments_with_count, nowPlaying.comments.size),
+                        if (exactCount == null) stringResource(R.string.comments)
+                        else stringResource(R.string.comments_with_count, exactCount),
                     )
                 },
             )
@@ -1338,6 +1483,9 @@ private fun LazyListScope.videoDetails(
         }
     }
 }
+
+internal fun exactCommentCount(loadedCount: Int, hasMore: Boolean): Int? =
+    loadedCount.takeIf { it > 0 && !hasMore }
 
 @Composable
 private fun VideoActions(
@@ -1982,6 +2130,10 @@ private fun formatPlaybackTime(milliseconds: Long): String {
     return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
     else "%d:%02d".format(minutes, seconds)
 }
+
+internal fun seekPreviewPositionMs(durationMs: Long, progress: Float): Long =
+    if (durationMs <= 0L) 0L
+    else (durationMs * progress.coerceIn(0f, 1f).toDouble()).toLong()
 
 private fun formatSpeed(speed: Float): String =
     if (speed == speed.toInt().toFloat()) "${speed.toInt()}×" else "${speed}×"

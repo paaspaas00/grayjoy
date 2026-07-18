@@ -149,6 +149,7 @@
     </plurals>
     <string name="local_playlist">로컬 재생목록</string>
     <string name="play_all">모두 재생</string>
+    <string name="play_from_here">여기서부터 재생</string>
     <plurals name="video_count">
         <item quantity="one">%d 비디오</item>
         <item quantity="other">%d 동영상</item>

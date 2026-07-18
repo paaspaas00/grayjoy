@@ -149,6 +149,7 @@
     </plurals>
     <string name="local_playlist">本地播放列表</string>
     <string name="play_all">播放全部</string>
+    <string name="play_from_here">从这里播放</string>
     <plurals name="video_count">
         <item quantity="one">%d 视频</item>
         <item quantity="other">%d 视频</item>

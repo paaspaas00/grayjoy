@@ -149,6 +149,7 @@
     </plurals>
     <string name="local_playlist">قائمة التشغيل المحلية</string>
     <string name="play_all">تشغيل الكل</string>
+    <string name="play_from_here">من هنا</string>
     <plurals name="video_count">
         <item quantity="one">%d فيديو</item>
         <item quantity="other">%d مقاطع فيديو</item>

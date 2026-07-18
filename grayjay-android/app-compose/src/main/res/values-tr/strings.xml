@@ -149,6 +149,7 @@
     </plurals>
     <string name="local_playlist">YEREL OYNATMA LİSTESİ</string>
     <string name="play_all">Hepsini oynat</string>
+    <string name="play_from_here">Buradan oynat</string>
     <plurals name="video_count">
         <item quantity="one">%d videosu</item>
         <item quantity="other">%d videolar</item>

@@ -175,6 +175,7 @@ private data class PlaybackPresentation(
     val onClose: () -> Unit,
     val onPlayQueue: (List<String>) -> Unit,
     val onPlayPlaylist: (String) -> Unit,
+    val onPlayPlaylistFrom: (String, String) -> Unit,
     val onToggleWatchLater: (String) -> Unit,
     val onToggleDownloaded: (String) -> Unit,
     val onToggleAudioDownloaded: (String) -> Unit,
@@ -247,6 +248,7 @@ fun GrayjayApp(
     onLoadMoreHome: () -> Unit = {},
     onPlayQueue: (List<String>) -> Unit,
     onPlayPlaylist: (String) -> Unit,
+    onPlayPlaylistFrom: (String, String) -> Unit,
     onTogglePlayback: () -> Unit,
     onSkipToNext: () -> Unit,
     onSkipToPrevious: () -> Unit,
@@ -475,6 +477,13 @@ fun GrayjayApp(
             if (playlist != null && playlist.videoIds.isNotEmpty()) {
                 onPlayPlaylist(playlistId)
                 settlePlayer(0f, playlist.videoIds.first())
+            }
+        },
+        onPlayPlaylistFrom = { playlistId, videoId ->
+            val playlist = uiState.playlists.firstOrNull { it.id == playlistId }
+            if (playlist != null && videoId in playlist.videoIds) {
+                onPlayPlaylistFrom(playlistId, videoId)
+                settlePlayer(0f, videoId)
             }
         },
         onToggleWatchLater = onToggleWatchLater,
@@ -1214,6 +1223,9 @@ private fun GrayjayScaffold(
                     onVideoClick = onVideoClick,
                     onVideoLongClick = playback.onVideoLongClick,
                     onPlayAll = { playback.onPlayPlaylist(selectedPlaylist.id) },
+                    onPlayFromHere = { videoId ->
+                        playback.onPlayPlaylistFrom(selectedPlaylist.id, videoId)
+                    },
                     onDownloadAllAsAudio = { ids ->
                         playback.onDownloadPlaylist(selectedPlaylist.id, DownloadMediaType.Audio)
                     },

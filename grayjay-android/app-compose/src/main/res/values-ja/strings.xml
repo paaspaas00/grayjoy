@@ -149,6 +149,7 @@
     </plurals>
     <string name="local_playlist">ローカルプレイリスト</string>
     <string name="play_all">すべて再生</string>
+    <string name="play_from_here">ここから再生</string>
     <plurals name="video_count">
         <item quantity="one">%d ビデオ</item>
         <item quantity="other">%d ビデオ</item>

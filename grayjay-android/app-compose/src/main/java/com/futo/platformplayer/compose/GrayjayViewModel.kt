@@ -97,6 +97,11 @@ private object HomeSessionCache {
     }
 }
 
+internal fun playlistQueueFrom(videoIds: List<String>, selectedVideoId: String): List<String> {
+    val selectedIndex = videoIds.indexOf(selectedVideoId)
+    return if (selectedIndex >= 0) videoIds.drop(selectedIndex) else emptyList()
+}
+
 internal fun selectAudioQualityVariant(
     variants: List<AudioQualityUiModel>,
     preferredBitrate: Int?,
@@ -809,10 +814,21 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun playPlaylist(playlistId: String) {
         val playlist = libraryRepository.loadPlaylists().firstOrNull { it.id == playlistId } ?: return
         activePlaylistId = playlistId
-        startQueue(playlist.videoIds)
+        startQueue(playlist.videoIds, playlist.videoIds.toSet())
     }
 
-    private fun startQueue(videoIds: List<String>) {
+    fun playPlaylistFrom(playlistId: String, videoId: String) {
+        val playlist = libraryRepository.loadPlaylists().firstOrNull { it.id == playlistId } ?: return
+        val queueIds = playlistQueueFrom(playlist.videoIds, videoId)
+        if (queueIds.isEmpty()) return
+        activePlaylistId = playlistId
+        startQueue(queueIds, playlist.videoIds.toSet())
+    }
+
+    private fun startQueue(
+        videoIds: List<String>,
+        playlistVideoIdsAtStart: Set<String> = videoIds.toSet(),
+    ) {
         val queue = videoIds.distinct().mapNotNull(::findVideo)
         if (queue.isEmpty()) {
             activePlaylistId = null
@@ -858,12 +874,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }
             engine.open(resolved, first.id, playWhenReady = true)
             if (playlistIdForQueue != null && activePlaylistId == playlistIdForQueue) {
-                val openedIds = resolved.mapTo(mutableSetOf(), VideoUiModel::id)
                 val lateAdditions = libraryRepository.loadPlaylists()
                     .firstOrNull { it.id == playlistIdForQueue }
                     ?.videoIds
                     .orEmpty()
-                    .filterNot(openedIds::contains)
+                    .filterNot(playlistVideoIdsAtStart::contains)
                     .mapNotNull(::findVideo)
                     .map { video ->
                         runCatching { resolveForPlayback(video, profileAtStart) }

@@ -151,6 +151,7 @@ class MainActivity : FragmentActivity() {
                     onLoadMoreHome = viewModel::loadMoreHome,
                     onPlayQueue = viewModel::playQueue,
                     onPlayPlaylist = viewModel::playPlaylist,
+                    onPlayPlaylistFrom = viewModel::playPlaylistFrom,
                     onTogglePlayback = viewModel::togglePlayback,
                     onSkipToNext = viewModel::skipToNext,
                     onSkipToPrevious = viewModel::skipToPrevious,
