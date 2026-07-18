@@ -25,4 +25,33 @@ class PlaylistPlaybackTest {
             ).isEmpty(),
         )
     }
+
+    @Test
+    fun preparedItemsAheadCountsOnlyEntriesAfterCurrentVideo() {
+        assertEquals(
+            2,
+            preparedQueueItemsAhead(
+                queueVideoIds = listOf("first", "second", "third", "fourth"),
+                currentVideoId = "second",
+            ),
+        )
+    }
+
+    @Test
+    fun preparedItemsAheadIsZeroBeforeMedia3HasCurrentVideo() {
+        assertEquals(
+            0,
+            preparedQueueItemsAhead(
+                queueVideoIds = listOf("first", "second"),
+                currentVideoId = null,
+            ),
+        )
+        assertEquals(
+            0,
+            preparedQueueItemsAhead(
+                queueVideoIds = listOf("first", "second"),
+                currentVideoId = "missing",
+            ),
+        )
+    }
 }

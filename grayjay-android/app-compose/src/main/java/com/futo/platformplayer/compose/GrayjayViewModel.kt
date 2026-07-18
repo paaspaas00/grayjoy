@@ -97,10 +97,28 @@ private object HomeSessionCache {
     }
 }
 
+private const val QUEUE_LOOKAHEAD = 2
+
 internal fun playlistQueueFrom(videoIds: List<String>, selectedVideoId: String): List<String> {
     val selectedIndex = videoIds.indexOf(selectedVideoId)
     return if (selectedIndex >= 0) videoIds.drop(selectedIndex) else emptyList()
 }
+
+internal fun preparedQueueItemsAhead(
+    queueVideoIds: List<String>,
+    currentVideoId: String?,
+): Int {
+    val currentIndex = queueVideoIds.indexOf(currentVideoId)
+    return if (currentIndex < 0) 0 else queueVideoIds.lastIndex - currentIndex
+}
+
+private data class PlaybackQueueSession(
+    val generation: Long,
+    val profileId: String,
+    val playlistId: String?,
+    val pendingVideos: MutableList<VideoUiModel>,
+    val knownVideoIds: MutableSet<String>,
+)
 
 internal fun selectAudioQualityVariant(
     variants: List<AudioQualityUiModel>,
@@ -166,7 +184,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var extrasPagingJob: Job? = null
     private var downloadQueueRestoreJob: Job? = null
     private var offlinePlaylistSyncJob: Job? = null
+    private var queuePreparationJob: Job? = null
     private var homeLoadGeneration = 0L
+    private var playbackGeneration = 0L
+    private var playbackQueueSession: PlaybackQueueSession? = null
     private var pendingPlaybackVideoId: String? = null
     private var activePlaylistId: String? = null
     private var appIsForeground = false
@@ -253,6 +274,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     extrasPagingJob?.cancel()
                     _uiState.update { it.copy(nowPlaying = NowPlayingUiState()) }
                 }
+                prepareQueueLookAhead(playback)
             }
         }
         viewModelScope.launch {
@@ -589,6 +611,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun switchProfile(profileId: String) {
         if (profileId == activeProfileId) return
         persistCurrentPlaybackProgress()
+        invalidatePlaybackQueue()
         detailsJob?.cancel()
         extrasPagingJob?.cancel()
         channelJob?.cancel()
@@ -720,6 +743,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun openVideo(videoId: String) {
         val video = findVideo(videoId) ?: return
         val profileAtStart = activeProfileId
+        val generation = invalidatePlaybackQueue()
         activePlaylistId = null
         recordHistory(video)
         pendingPlaybackVideoId = video.id
@@ -743,14 +767,22 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         detailsJob = viewModelScope.launch {
             try {
                 val resolved = resolveForPlayback(video, profileAtStart)
-                if (profileAtStart != activeProfileId || pendingPlaybackVideoId != video.id) {
+                if (
+                    generation != playbackGeneration ||
+                    profileAtStart != activeProfileId ||
+                    pendingPlaybackVideoId != video.id
+                ) {
                     return@launch
                 }
                 remoteVideos[resolved.id] = resolved
                 registerRemoteChannel(resolved)
                 recordHistory(resolved)
                 _uiState.update { current ->
-                    if (pendingPlaybackVideoId != video.id || current.nowPlaying.video?.id != video.id) {
+                    if (
+                        generation != playbackGeneration ||
+                        pendingPlaybackVideoId != video.id ||
+                        current.nowPlaying.video?.id != video.id
+                    ) {
                         current
                     } else current.copy(
                         channels = visibleKnownChannels(),
@@ -781,7 +813,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                if (pendingPlaybackVideoId != video.id) return@launch
+                if (generation != playbackGeneration || pendingPlaybackVideoId != video.id) {
+                    return@launch
+                }
                 Log.e("GrayjayViewModel", "Could not resolve video from ${video.sourceId}.", error)
                 recordHistory(video)
                 engine.open(listOf(video), video.id, playWhenReady = false)
@@ -814,7 +848,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun playPlaylist(playlistId: String) {
         val playlist = libraryRepository.loadPlaylists().firstOrNull { it.id == playlistId } ?: return
         activePlaylistId = playlistId
-        startQueue(playlist.videoIds, playlist.videoIds.toSet())
+        startQueue(playlist.videoIds)
     }
 
     fun playPlaylistFrom(playlistId: String, videoId: String) {
@@ -822,21 +856,27 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val queueIds = playlistQueueFrom(playlist.videoIds, videoId)
         if (queueIds.isEmpty()) return
         activePlaylistId = playlistId
-        startQueue(queueIds, playlist.videoIds.toSet())
+        startQueue(queueIds)
     }
 
-    private fun startQueue(
-        videoIds: List<String>,
-        playlistVideoIdsAtStart: Set<String> = videoIds.toSet(),
-    ) {
+    private fun startQueue(videoIds: List<String>) {
         val queue = videoIds.distinct().mapNotNull(::findVideo)
         if (queue.isEmpty()) {
+            invalidatePlaybackQueue()
             activePlaylistId = null
             return
         }
+        val generation = invalidatePlaybackQueue()
         val profileAtStart = activeProfileId
         pendingPlaybackVideoId = queue.first().id
         val playlistIdForQueue = activePlaylistId
+        playbackQueueSession = PlaybackQueueSession(
+            generation = generation,
+            profileId = profileAtStart,
+            playlistId = playlistIdForQueue,
+            pendingVideos = queue.drop(1).toMutableList(),
+            knownVideoIds = queue.mapTo(linkedSetOf(), VideoUiModel::id),
+        )
         detailsJob?.cancel()
         extrasPagingJob?.cancel()
         engine.pausePlayback()
@@ -851,18 +891,46 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         detailsJob = viewModelScope.launch {
-            val resolved = queue.map { video ->
-                try {
-                    resolveForPlayback(video, profileAtStart)
-                } catch (_: Throwable) {
-                    video.withPersistedLibraryState()
+            val first = try {
+                resolveForPlayback(queue.first(), profileAtStart)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (generation != playbackGeneration) return@launch
+                Log.e(
+                    "GrayjayViewModel",
+                    "Could not resolve the first playlist video from ${queue.first().sourceId}.",
+                    error,
+                )
+                playbackQueueSession = null
+                recordHistory(queue.first())
+                engine.open(listOf(queue.first()), queue.first().id, playWhenReady = false)
+                if (pendingPlaybackVideoId == queue.first().id) pendingPlaybackVideoId = null
+                _uiState.update { state ->
+                    if (state.nowPlaying.video?.id != queue.first().id) state else state.copy(
+                        nowPlaying = state.nowPlaying.copy(
+                            isLoadingPlayback = false,
+                            isLoadingExtras = false,
+                            errorMessage = if (error is ScriptLoginRequiredException) {
+                                text(
+                                    R.string.source_login_required_for_video,
+                                    queue.first().sourceName.ifBlank { queue.first().sourceId },
+                                )
+                            } else {
+                                error.localizedMessage ?: text(R.string.video_details_load_failed)
+                            },
+                        ),
+                    )
                 }
+                return@launch
             }
-            if (profileAtStart != activeProfileId) return@launch
-            resolved.forEach { remoteVideos[it.id] = it }
-            resolved.forEach(::registerRemoteChannel)
-            val first = resolved.first()
-            if (pendingPlaybackVideoId != first.id) return@launch
+            if (
+                generation != playbackGeneration ||
+                profileAtStart != activeProfileId ||
+                pendingPlaybackVideoId != first.id
+            ) return@launch
+            remoteVideos[first.id] = first
+            registerRemoteChannel(first)
             recordHistory(first)
             _uiState.update { state ->
                 state.copy(
@@ -872,26 +940,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     ),
                 )
             }
-            engine.open(resolved, first.id, playWhenReady = true)
-            if (playlistIdForQueue != null && activePlaylistId == playlistIdForQueue) {
-                val lateAdditions = libraryRepository.loadPlaylists()
-                    .firstOrNull { it.id == playlistIdForQueue }
-                    ?.videoIds
-                    .orEmpty()
-                    .filterNot(playlistVideoIdsAtStart::contains)
-                    .mapNotNull(::findVideo)
-                    .map { video ->
-                        runCatching { resolveForPlayback(video, profileAtStart) }
-                            .getOrElse { video.withPersistedLibraryState() }
-                    }
-                if (activePlaylistId == playlistIdForQueue) {
-                    lateAdditions.forEach { lateVideo ->
-                        remoteVideos[lateVideo.id] = lateVideo
-                        registerRemoteChannel(lateVideo)
-                    }
-                    engine.appendToQueue(lateAdditions)
-                }
-            }
+            // Hand the selected item to Media3 before touching later entries. A slow, deleted,
+            // restricted, or signed-out item farther down the playlist must never block startup.
+            engine.open(listOf(first), first.id, playWhenReady = true)
             _uiState.update { state ->
                 if (state.nowPlaying.video?.id != first.id) state else state.copy(
                     nowPlaying = state.nowPlaying.copy(isLoadingPlayback = false),
@@ -899,8 +950,86 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }
             if (pendingPlaybackVideoId == first.id) pendingPlaybackVideoId = null
             applyPlaybackPreferences()
+            prepareQueueLookAhead()
             loadExtras(first)
         }
+    }
+
+    /**
+     * Keeps a small rolling window in Media3, matching Grayjay's prepare-near-playback behavior.
+     * Resolving every playlist entry up front both blocks the first item and lets signed URLs for
+     * later entries expire. Completed downloads resolve locally and are appended through the same
+     * path, so mixed online/offline playlists retain one deterministic order.
+     */
+    private fun prepareQueueLookAhead(playback: EnginePlaybackState = engine.playback.value) {
+        val session = playbackQueueSession ?: return
+        if (session.generation != playbackGeneration || session.profileId != activeProfileId) return
+        if (playback.currentVideoId == null || engine.player.mediaItemCount == 0) return
+        if (preparedQueueItemsAhead(playback.queueVideoIds, playback.currentVideoId) >= QUEUE_LOOKAHEAD) return
+        if (session.pendingVideos.isEmpty() || queuePreparationJob?.isActive == true) return
+
+        val job = viewModelScope.launch {
+            while (true) {
+                val currentSession = playbackQueueSession
+                if (
+                    currentSession !== session ||
+                    session.generation != playbackGeneration ||
+                    session.profileId != activeProfileId ||
+                    engine.player.mediaItemCount == 0
+                ) return@launch
+                val currentPlayback = engine.playback.value
+                if (
+                    preparedQueueItemsAhead(
+                        currentPlayback.queueVideoIds,
+                        currentPlayback.currentVideoId,
+                    ) >= QUEUE_LOOKAHEAD
+                ) return@launch
+                val video = session.pendingVideos.firstOrNull() ?: return@launch
+                val resolved = try {
+                    resolveForPlayback(video, session.profileId)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    Log.w(
+                        "GrayjayViewModel",
+                        "Skipping unresolvable queued video ${video.id} from ${video.sourceId}.",
+                        error,
+                    )
+                    if (playbackQueueSession === session) session.pendingVideos.remove(video)
+                    continue
+                }
+                if (
+                    playbackQueueSession !== session ||
+                    session.generation != playbackGeneration ||
+                    session.profileId != activeProfileId ||
+                    engine.player.mediaItemCount == 0
+                ) return@launch
+                session.pendingVideos.remove(video)
+                remoteVideos[resolved.id] = resolved
+                registerRemoteChannel(resolved)
+                try {
+                    engine.appendToQueue(listOf(resolved))
+                } catch (error: Throwable) {
+                    Log.w(
+                        "GrayjayViewModel",
+                        "Could not append queued video ${resolved.id}; continuing with the queue.",
+                        error,
+                    )
+                }
+            }
+        }
+        queuePreparationJob = job
+        job.invokeOnCompletion {
+            if (queuePreparationJob === job) queuePreparationJob = null
+        }
+    }
+
+    private fun invalidatePlaybackQueue(): Long {
+        playbackGeneration += 1
+        queuePreparationJob?.cancel()
+        queuePreparationJob = null
+        playbackQueueSession = null
+        return playbackGeneration
     }
 
     fun togglePlayback() = engine.togglePlayback()
@@ -1072,6 +1201,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun closePlayback() {
+        invalidatePlaybackQueue()
         pendingPlaybackVideoId = null
         activePlaylistId = null
         persistCurrentPlaybackProgress()
@@ -1794,30 +1924,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         libraryRepository.addVideosToPlaylist(playlistId, videos) ?: return
         reloadLibrary()
         scheduleOfflinePlaylistSync()
+        val session = playbackQueueSession
         if (
             playlistId == activePlaylistId &&
-            engine.player.mediaItemCount > 0 &&
+            session?.playlistId == playlistId &&
+            session.generation == playbackGeneration &&
             addedVideos.isNotEmpty()
         ) {
-            val profileAtStart = activeProfileId
-            viewModelScope.launch {
-                val resolvedAdditions = addedVideos.map { video ->
-                    runCatching { resolveForPlayback(video, profileAtStart) }
-                        .getOrElse { video.withPersistedLibraryState() }
-                }
-                if (
-                    profileAtStart != activeProfileId ||
-                    playlistId != activePlaylistId ||
-                    engine.player.mediaItemCount == 0
-                ) {
-                    return@launch
-                }
-                resolvedAdditions.forEach { resolved ->
-                    remoteVideos[resolved.id] = resolved
-                    registerRemoteChannel(resolved)
-                }
-                engine.appendToQueue(resolvedAdditions)
+            addedVideos.forEach { video ->
+                if (session.knownVideoIds.add(video.id)) session.pendingVideos += video
             }
+            prepareQueueLookAhead()
         }
     }
 
@@ -2207,6 +2324,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         searchPagingJob?.cancel()
         suggestionJob?.cancel()
         detailsJob?.cancel()
+        queuePreparationJob?.cancel()
         extrasPagingJob?.cancel()
         channelJob?.cancel()
         channelPagingJob?.cancel()
@@ -2502,6 +2620,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         profileId: String,
     ): VideoUiModel {
         val persisted = video.withPersistedLibraryState()
+        if (persisted.isDownloaded && !downloadStore.isInitialized()) {
+            downloadStore.awaitInitialized()
+        }
         downloadStore.playbackDescriptorFor(profileId, persisted)?.let { return it }
 
         // Grayjay only promotes a download to VideoLocal after every selected source has

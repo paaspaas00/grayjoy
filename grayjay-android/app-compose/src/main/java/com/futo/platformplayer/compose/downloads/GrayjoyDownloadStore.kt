@@ -39,10 +39,12 @@ import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.SubtitleUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.views.video.datasources.JSHttpDataSource
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -239,6 +241,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         Context.MODE_PRIVATE,
     )
     private val completedRecords = loadCompletedRecords()
+    private val initialized = CompletableDeferred<Unit>()
     private val databaseProvider = StandaloneDatabaseProvider(appContext)
     private val downloaderExecutor: ExecutorService = Executors.newFixedThreadPool(3)
     private val cache = SimpleCache(
@@ -273,6 +276,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             object : DownloadManager.Listener {
                 override fun onInitialized(downloadManager: DownloadManager) {
                     reloadDownloadIndex()
+                    initialized.complete(Unit)
                     resumeDownloads()
                 }
 
@@ -614,7 +618,17 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             .mapTo(mutableSetOf(), DownloadGroupKey::mediaType)
     }
 
-    fun isInitialized(): Boolean = downloadManager.isInitialized
+    fun isInitialized(): Boolean = initialized.isCompleted
+
+    /**
+     * The Media3 index is loaded asynchronously. Without this short gate, tapping a downloaded
+     * item immediately after process start can miss its completed record and unnecessarily resolve
+     * an online plugin stream instead of the local VideoLocal-style descriptor.
+     */
+    suspend fun awaitInitialized(timeoutMs: Long = 3_000L) {
+        if (initialized.isCompleted) return
+        withTimeoutOrNull(timeoutMs) { initialized.await() }
+    }
 
     private fun reloadDownloadIndex() {
         runCatching {
