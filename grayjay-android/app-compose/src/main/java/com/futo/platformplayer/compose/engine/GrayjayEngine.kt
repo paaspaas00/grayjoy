@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
+import android.os.Looper
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -18,6 +19,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
@@ -28,6 +30,9 @@ import androidx.media3.exoplayer.dash.manifest.DashManifestParser
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
+import androidx.media3.exoplayer.text.TextOutput
+import androidx.media3.exoplayer.text.TextRenderer
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
@@ -215,6 +220,29 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         _playback.value = _playback.value.copy(audioSpectrum = spectrum)
     }
     private val renderersFactory = object : DefaultRenderersFactory(appContext) {
+        override fun buildTextRenderers(
+            context: Context,
+            output: TextOutput,
+            outputLooper: Looper,
+            extensionRendererMode: Int,
+            out: ArrayList<Renderer>,
+        ) {
+            super.buildTextRenderers(
+                context,
+                output,
+                outputLooper,
+                extensionRendererMode,
+                out,
+            )
+            // Grayjay plugins expose external WebVTT/SRT files. SingleSampleMediaSource keeps
+            // their timestamps aligned with separately merged DASH video/audio, but Media3 1.9
+            // disables that legacy text decoding path by default. Enable it only on the text
+            // renderer so the plugin captions are decoded instead of aborting playback.
+            out.filterIsInstance<TextRenderer>().forEach { renderer ->
+                renderer.experimentalSetLegacyDecodingEnabled(true)
+            }
+        }
+
         override fun buildAudioSink(
             context: Context,
             enableFloatOutput: Boolean,
@@ -805,16 +833,6 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             .setUri(video.playbackUrl)
             .setMimeType(video.playbackMimeType.takeIf(String::isNotBlank))
             .setStreamKeys(video.playbackStreamKeys)
-            .setSubtitleConfigurations(
-                video.subtitleTracks.map { subtitle ->
-                    MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.uri))
-                        .setMimeType(subtitle.mimeType)
-                        .setLanguage(subtitle.language)
-                        .setLabel(subtitle.name)
-                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                        .build()
-                },
-            )
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(video.title)
@@ -846,28 +864,60 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         } else {
             factory.createMediaSource(mediaItem)
         }
-        if (video.audioUrl.isBlank()) return videoSource
-        val audioVideo = video.copy(
-            playbackUrl = video.audioUrl,
-            playbackMimeType = "",
-            playbackManifest = "",
-            audioUrl = "",
-            playbackCacheNamespace = video.audioCacheNamespace,
-            audioCacheNamespace = "",
-            playbackStreamKeys = video.audioStreamKeys,
-            audioStreamKeys = emptyList(),
-            playbackRequestHeaders = video.audioRequestHeaders,
-            playbackDataSourceFactory = video.audioDataSourceFactory,
-        )
-        return MergingMediaSource(
-            videoSource,
-            audioVideo.mediaSourceFactory().createMediaSource(
-                MediaItem.Builder()
-                    .setUri(video.audioUrl)
-                    .setStreamKeys(video.audioStreamKeys)
-                    .build(),
-            ),
-        )
+        val sources = buildList {
+            add(videoSource)
+            if (video.audioUrl.isNotBlank()) {
+                val audioVideo = video.copy(
+                    playbackUrl = video.audioUrl,
+                    playbackMimeType = "",
+                    playbackManifest = "",
+                    audioUrl = "",
+                    playbackCacheNamespace = video.audioCacheNamespace,
+                    audioCacheNamespace = "",
+                    playbackStreamKeys = video.audioStreamKeys,
+                    audioStreamKeys = emptyList(),
+                    playbackRequestHeaders = video.audioRequestHeaders,
+                    playbackDataSourceFactory = video.audioDataSourceFactory,
+                )
+                add(
+                    audioVideo.mediaSourceFactory().createMediaSource(
+                        MediaItem.Builder()
+                            .setUri(video.audioUrl)
+                            .setStreamKeys(video.audioStreamKeys)
+                            .build(),
+                    ),
+                )
+            }
+            video.subtitleTracks.forEach { subtitle ->
+                val configuration = MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.uri))
+                    .setMimeType(subtitle.mimeType.ifBlank { MimeTypes.TEXT_VTT })
+                    .setLanguage(subtitle.language)
+                    .setLabel(subtitle.name)
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()
+                add(
+                    SingleSampleMediaSource.Factory(video.subtitleDataSourceFactory(subtitle))
+                        .createMediaSource(configuration, C.TIME_UNSET),
+                )
+            }
+        }
+        return if (sources.size == 1) sources.first() else {
+            // Grayjay attaches external captions as independent single-sample sources. Doing the
+            // same is essential for generated/raw DASH, whose directly constructed DashMediaSource
+            // does not consume MediaItem.subtitleConfigurations.
+            MergingMediaSource(true, *sources.toTypedArray())
+        }
+    }
+
+    private fun VideoUiModel.subtitleDataSourceFactory(subtitle: SubtitleUiModel): DataSource.Factory {
+        if (playbackFromDownload && subtitle.cacheNamespace.isNotBlank()) {
+            return downloadStore.offlinePlayback(subtitle.cacheNamespace)
+        }
+        val httpFactory = DefaultHttpDataSource.Factory().setUserAgent(SUBTITLE_USER_AGENT)
+        if (subtitle.requestHeaders.isNotEmpty()) {
+            httpFactory.setDefaultRequestProperties(subtitle.requestHeaders)
+        }
+        return DefaultDataSource.Factory(appContext, httpFactory)
     }
 
     private fun VideoUiModel.mediaSourceFactory(): DefaultMediaSourceFactory {
@@ -906,6 +956,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         const val TAG = "AndroidGrayjayEngine"
         const val CLOSE_NOTIFICATION_ACTION =
             "com.futo.platformplayer.compose.action.CLOSE_PLAYBACK"
+        const val SUBTITLE_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0"
         val STREAM_URL_REGEX = Regex("https?://[^\\s<\\\"]+")
     }
 

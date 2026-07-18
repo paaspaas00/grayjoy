@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose.downloads
 import androidx.media3.common.StreamKey
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadStatus
+import com.futo.platformplayer.compose.ui.SubtitleUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -130,6 +131,48 @@ class OfflinePlaybackDescriptorTest {
     }
 
     @Test
+    fun completedSubtitleKeepsItsOwnOfflineCacheIdentity() {
+        val source = video().copy(
+            subtitleTracks = listOf(
+                SubtitleUiModel(
+                    name = "English",
+                    language = "en",
+                    uri = "https://media.example/captions.vtt",
+                    mimeType = "text/vtt",
+                ),
+            ),
+        )
+        val descriptor = source.withOfflinePlayback(
+            listOf(
+                part(
+                    mediaType = DownloadMediaType.Video,
+                    name = "video",
+                    expectedPartCount = 2,
+                    uri = "https://media.example/video",
+                ),
+                part(
+                    mediaType = DownloadMediaType.Video,
+                    name = "subtitle-0",
+                    expectedPartCount = 2,
+                    uri = "https://media.example/captions.vtt",
+                    mimeType = "text/vtt",
+                    headers = mapOf("Referer" to "https://media.example/"),
+                    cacheNamespace = "subtitle-request",
+                ),
+            ),
+        )
+
+        assertNotNull(descriptor)
+        val subtitle = descriptor!!.subtitleTracks.single()
+        assertEquals("English", subtitle.name)
+        assertEquals("subtitle-request", subtitle.cacheNamespace)
+        assertEquals(
+            mapOf("Referer" to "https://media.example/"),
+            subtitle.requestHeaders,
+        )
+    }
+
+    @Test
     fun incompleteVideoDownloadFallsBackToCompletedAudioDownload() {
         val descriptor = video().withOfflinePlayback(
             listOf(
@@ -220,6 +263,8 @@ class OfflinePlaybackDescriptorTest {
         mimeType: String = "",
         rawManifest: String = "",
         streamKeys: List<StreamKey> = emptyList(),
+        headers: Map<String, String> = emptyMap(),
+        cacheNamespace: String = "",
     ) = OfflinePlaybackPart(
         mediaType = mediaType,
         name = name,
@@ -228,6 +273,8 @@ class OfflinePlaybackDescriptorTest {
         mimeType = mimeType,
         rawManifest = rawManifest,
         streamKeys = streamKeys,
+        headers = headers,
+        cacheNamespace = cacheNamespace,
     )
 
     private fun completionPart(

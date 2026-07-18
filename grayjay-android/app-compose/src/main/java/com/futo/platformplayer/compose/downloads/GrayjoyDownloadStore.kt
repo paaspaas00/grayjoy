@@ -183,6 +183,8 @@ internal fun VideoUiModel.withOfflinePlayback(
                     language = original?.language,
                     uri = part.uri,
                     mimeType = part.mimeType.ifBlank { original?.mimeType.orEmpty() },
+                    requestHeaders = part.headers,
+                    cacheNamespace = part.cacheNamespace,
                 )
             }
         return copy(

@@ -94,6 +94,8 @@ data class SubtitleUiModel(
     val language: String?,
     val uri: String,
     val mimeType: String,
+    val requestHeaders: Map<String, String> = emptyMap(),
+    val cacheNamespace: String = "",
 )
 
 data class ChannelUiModel(

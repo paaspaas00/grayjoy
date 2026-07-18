@@ -470,6 +470,8 @@ internal fun VideoUiModel.toJson() = JSONObject().apply {
                         put("language", subtitle.language ?: JSONObject.NULL)
                         put("uri", subtitle.uri)
                         put("mimeType", subtitle.mimeType)
+                        put("requestHeaders", JSONObject(subtitle.requestHeaders))
+                        put("cacheNamespace", subtitle.cacheNamespace)
                     },
                 )
             }
@@ -577,6 +579,8 @@ private fun JSONArray?.toSubtitleTracks(): List<SubtitleUiModel> = if (this == n
                     language = json.optString("language").takeIf(String::isNotBlank),
                     uri = uri,
                     mimeType = json.optString("mimeType"),
+                    requestHeaders = json.optJSONObject("requestHeaders").toStringMap(),
+                    cacheNamespace = json.optString("cacheNamespace"),
                 ),
             )
         }
