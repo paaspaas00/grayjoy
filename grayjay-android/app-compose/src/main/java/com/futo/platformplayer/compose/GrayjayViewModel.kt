@@ -99,6 +99,17 @@ private object HomeSessionCache {
 
 private const val QUEUE_LOOKAHEAD = 2
 
+/**
+ * Detaches tracked jobs before cancelling them. A cancellation may run a job's `finally` block
+ * immediately, and those blocks remove themselves from the same registry. Iterating the live map
+ * while that happens throws [ConcurrentModificationException] during profile switches.
+ */
+internal fun <K> MutableMap<K, Job>.cancelAndClearJobs() {
+    val jobs = values.toList()
+    clear()
+    jobs.forEach(Job::cancel)
+}
+
 internal fun playlistQueueFrom(videoIds: List<String>, selectedVideoId: String): List<String> {
     val selectedIndex = videoIds.indexOf(selectedVideoId)
     return if (selectedIndex >= 0) videoIds.drop(selectedIndex) else emptyList()
@@ -175,6 +186,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     private var searchJob: Job? = null
     private var suggestionJob: Job? = null
+    private var profileSwitchJob: Job? = null
     private var detailsJob: Job? = null
     private var channelJob: Job? = null
     private var homeJob: Job? = null
@@ -609,6 +621,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun switchProfile(profileId: String) {
+        if (profileId == activeProfileId || profileSwitchJob?.isActive == true) return
+        profileSwitchJob = viewModelScope.launch {
+            switchProfileInternal(profileId)
+        }
+    }
+
+    private suspend fun switchProfileInternal(profileId: String) {
         if (profileId == activeProfileId) return
         persistCurrentPlaybackProgress()
         invalidatePlaybackQueue()
@@ -621,8 +640,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         searchJob?.cancel()
         searchPagingJob?.cancel()
         suggestionJob?.cancel()
-        downloadJobs.values.forEach(Job::cancel)
-        downloadJobs.clear()
+        downloadJobs.cancelAndClearJobs()
         downloadQueueRestoreJob?.cancel()
         offlinePlaylistSyncJob?.cancel()
         downloadPreparationStates.clear()
@@ -632,6 +650,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         activePlaylistId = null
         engine.closePlayback()
 
+        // A plugin may still be finishing an uncancellable V8 callback after its coroutine was
+        // cancelled. Stopping that client waits for the V8 busy lock (up to several seconds), so
+        // it must never happen in the biometric callback/main thread. Keep the old repositories
+        // active until the engine transition completes, then atomically expose the new profile.
+        withContext(Dispatchers.IO) {
+            engine.setProfile(profileId)
+        }
         activeProfileId = profileId
         profileRepository.setActiveProfile(profileId)
         val application = getApplication<Application>()
@@ -639,7 +664,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         libraryRepository = SharedPreferencesLibraryRepository(application, activeProfileId)
         homeCacheRepository = HomeCacheRepository(application, activeProfileId)
         sourceRepository = SharedPreferencesSourceRepository(application, activeProfileId)
-        engine.setProfile(activeProfileId)
         engineSources = (baseEngineSources + sourceRepository.loadCustomSources())
             .distinctBy { it.engineId }
             .also(engine::registerSources)
