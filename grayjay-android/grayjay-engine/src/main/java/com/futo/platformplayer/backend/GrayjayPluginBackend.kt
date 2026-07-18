@@ -26,6 +26,7 @@ import com.futo.platformplayer.api.media.structures.IPager
 import com.futo.platformplayer.api.media.platforms.js.JSClient
 import com.futo.platformplayer.api.media.platforms.js.SourcePluginConfig
 import com.futo.platformplayer.api.media.platforms.js.SourcePluginDescriptor
+import com.futo.platformplayer.api.media.platforms.js.internal.JSHttpClient
 import com.futo.platformplayer.api.media.platforms.js.models.sources.JSSource
 import com.futo.platformplayer.api.media.platforms.js.models.sources.JSDashManifestMergingRawSource
 import com.futo.platformplayer.api.media.platforms.js.models.sources.JSDashManifestRawAudioSource
@@ -50,6 +51,7 @@ import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
 import java.time.OffsetDateTime
+import java.time.Duration
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.UUID
@@ -158,6 +160,7 @@ data class GrayjayPlaybackSource(
     val dataSourceFactory: HttpDataSource.Factory? = null,
     val videoVariants: List<GrayjayVideoVariant> = emptyList(),
     val audioVariants: List<GrayjayAudioVariant> = emptyList(),
+    val storyboard: GrayjayStoryboard? = null,
     val isDrmProtected: Boolean = false,
 )
 
@@ -271,6 +274,11 @@ private data class PagerBatch(
     val hasMore: Boolean = false,
 )
 
+private data class CachedStoryboard(
+    val storyboard: GrayjayStoryboard,
+    val cachedAtMs: Long,
+)
+
 /**
  * Headless host for Grayjay's existing JSClient/V8 plugin machinery. Only the
  * legacy Fragment/View dependencies are replaced; plugin execution, packages,
@@ -283,6 +291,8 @@ class GrayjayPluginBackend(context: Context) {
     private val sourceAliases = ConcurrentHashMap<String, String>()
     private val pendingUntrustedPlugins = ConcurrentHashMap<String, PendingUntrustedPlugin>()
     private val pagerSessions = ConcurrentHashMap<String, PagerSession>()
+    private val storyboardCache = ConcurrentHashMap<String, CachedStoryboard>()
+    private val storyboardFailures = ConcurrentHashMap<String, Long>()
     private val loadMutex = Mutex()
     @Volatile
     private var profileId: String = "main"
@@ -435,6 +445,12 @@ class GrayjayPluginBackend(context: Context) {
     companion object {
         private const val TAG = "GrayjayPluginBackend"
         private const val YOUTUBE_PLUGIN_ID = "35ae969a-a7db-11ed-afa1-0242ac120002"
+        private const val STORYBOARD_CACHE_TTL_MS = 30L * 60L * 1_000L
+        private const val STORYBOARD_FAILURE_TTL_MS = 2L * 60L * 1_000L
+        private const val STORYBOARD_USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
+                "Chrome/130.0.0.0 Mobile Safari/537.36"
+        private val YOUTUBE_VIDEO_ID_REGEX = Regex("[A-Za-z0-9_-]{6,32}")
     }
 
     suspend fun suggestions(
@@ -604,6 +620,16 @@ class GrayjayPluginBackend(context: Context) {
         }
         val details = rawDetails as? IPlatformVideoDetails
             ?: error("The source returned content that is not playable video.")
+        // This is deliberately independent of the plugin result model: current YouTube
+        // plugins do not expose storyboard metadata. Run the watch-page lookup alongside
+        // stream normalization so it does not add a second serial network wait.
+        val storyboardDeferred = if (
+            endpoint.pluginId == YOUTUBE_PLUGIN_ID && details.duration > 0L
+        ) {
+            async { loadYouTubeStoryboard(contentUrl, details.duration) }
+        } else {
+            null
+        }
 
         val descriptorSources = details.video.videoSources
         val hlsSource = details.hls ?: descriptorSources
@@ -917,6 +943,7 @@ class GrayjayPluginBackend(context: Context) {
             dataSourceFactory = selectedDataSourceFactory,
             videoVariants = videoVariants,
             audioVariants = audioVariants,
+            storyboard = storyboardDeferred?.await(),
             isDrmProtected = selectedSource is IWidevineSource && videoVariants.isEmpty(),
         )
     }
@@ -1192,6 +1219,8 @@ class GrayjayPluginBackend(context: Context) {
         clients.values.forEach { runCatching { it.disable() } }
         clients.clear()
         sourceAliases.clear()
+        storyboardCache.clear()
+        storyboardFailures.clear()
         this.profileId = profileId
     }
 
@@ -1222,6 +1251,84 @@ class GrayjayPluginBackend(context: Context) {
         clients.clear()
         pendingUntrustedPlugins.clear()
         pagerSessions.clear()
+        storyboardCache.clear()
+        storyboardFailures.clear()
+    }
+
+    private fun loadYouTubeStoryboard(
+        contentUrl: String,
+        durationSeconds: Long,
+    ): GrayjayStoryboard? {
+        val videoId = youtubeVideoId(contentUrl) ?: return null
+        val cacheKey = "$profileId:$videoId"
+        val now = System.currentTimeMillis()
+        storyboardCache[cacheKey]?.takeIf {
+            now - it.cachedAtMs < STORYBOARD_CACHE_TTL_MS
+        }?.let { return it.storyboard }
+        storyboardFailures[cacheKey]?.takeIf {
+            now - it < STORYBOARD_FAILURE_TTL_MS
+        }?.let { return null }
+
+        val storyboard = runCatching {
+            // Use the same profile-scoped auth/cookie machinery as the JS source host.
+            // Storyboard sprite URLs themselves are signed and are then cached by Glide.
+            val descriptor = StatePlugins.instance.getPlugin(YOUTUBE_PLUGIN_ID)
+            val auth = descriptor?.getAuth()
+            val http = JSHttpClient(
+                jsClient = null,
+                auth = auth,
+                captcha = null,
+                config = descriptor?.config,
+            ).apply {
+                user_agent = auth?.userAgent?.takeIf(String::isNotBlank)
+                    ?: STORYBOARD_USER_AGENT
+                rebuildClient { builder ->
+                    builder
+                        .connectTimeout(Duration.ofSeconds(3))
+                        .readTimeout(Duration.ofSeconds(4))
+                        .callTimeout(Duration.ofSeconds(5))
+                }
+            }
+            val watchUrl = "https://www.youtube.com/watch?v=$videoId" +
+                "&hl=en&bpctr=9999999999&has_verified=1"
+            val response = http.get(
+                watchUrl,
+                hashMapOf(
+                    "Accept-Language" to "en-US,en;q=0.9",
+                    "Cookie" to "CONSENT=YES+cb",
+                ),
+            )
+            if (!response.isOk) return@runCatching null
+            response.body?.use { body ->
+                YouTubeStoryboardParser.parseWatchHtml(body.string(), durationSeconds)
+            }
+        }.onFailure { error ->
+            Log.d(TAG, "Storyboard lookup failed for YouTube video $videoId.", error)
+        }.getOrNull()
+
+        if (storyboard == null) {
+            storyboardFailures[cacheKey] = now
+        } else {
+            storyboardFailures.remove(cacheKey)
+            storyboardCache[cacheKey] = CachedStoryboard(storyboard, now)
+        }
+        return storyboard
+    }
+
+    private fun youtubeVideoId(url: String): String? {
+        val parsed = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return null
+        val host = parsed.host?.lowercase(Locale.ROOT).orEmpty()
+        val candidate = when {
+            host == "youtu.be" || host.endsWith(".youtu.be") -> parsed.pathSegments.firstOrNull()
+            host == "youtube.com" || host.endsWith(".youtube.com") -> {
+                parsed.getQueryParameter("v")
+                    ?: parsed.pathSegments.zipWithNext().firstOrNull { (prefix, _) ->
+                        prefix in setOf("shorts", "embed", "live")
+                    }?.second
+            }
+            else -> null
+        }
+        return candidate?.takeIf { it.matches(YOUTUBE_VIDEO_ID_REGEX) }
     }
 
     private suspend fun getOrLoad(alias: String, endpoint: PluginEndpoint): JSClient {
@@ -1506,12 +1613,17 @@ private fun IRating.counts(): Pair<Long?, Long?> = when (this) {
     else -> null to null
 }
 
-private fun subtitleMimeType(format: String?): String = when (format?.lowercase()) {
-    "vtt", "webvtt" -> "text/vtt"
-    "srt", "subrip" -> "application/x-subrip"
-    "ttml", "dfxp" -> "application/ttml+xml"
-    "ssa", "ass" -> "text/x-ssa"
-    else -> "text/vtt"
+private fun subtitleMimeType(format: String?): String {
+    val normalized = format?.trim()?.lowercase()?.substringBefore(';').orEmpty()
+    return when (normalized) {
+        "vtt", "webvtt" -> "text/vtt"
+        "srt", "subrip" -> "application/x-subrip"
+        "ttml", "dfxp", "xml", "text/xml" -> "application/ttml+xml"
+        "ssa", "ass" -> "text/x-ssa"
+        "text/vtt", "application/x-subrip", "application/ttml+xml", "text/x-ssa" ->
+            normalized
+        else -> "text/vtt"
+    }
 }
 
 private fun inferStreamType(url: String): GrayjayStreamType {

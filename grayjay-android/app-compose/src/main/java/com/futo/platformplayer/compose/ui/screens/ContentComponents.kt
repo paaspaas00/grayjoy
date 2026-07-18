@@ -2,6 +2,9 @@ package com.futo.platformplayer.compose.ui.screens
 
 import android.graphics.drawable.ColorDrawable
 import android.widget.ImageView
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -35,12 +38,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,6 +56,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import com.futo.platformplayer.compose.R
 import androidx.compose.ui.viewinterop.AndroidView
 import com.futo.platformplayer.compose.ui.DownloadStatus
@@ -58,6 +67,7 @@ import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun RequestNextPageEffect(
@@ -129,9 +139,11 @@ internal fun CompactVideoCard(
     selected: Boolean = false,
     showProgress: Boolean = false,
 ) {
+    val entranceModifier = staggeredVideoEntrance(index = index, videoId = video.id)
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .then(entranceModifier)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .testTag("video-card-${video.id}"),
         colors = CardDefaults.cardColors(
@@ -238,6 +250,38 @@ internal fun CompactVideoCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * Gives every newly composed page of videos a short, top-to-bottom entrance without
+ * changing layout or delaying interaction. Lazy-list item state keeps an item from
+ * replaying the animation merely because it scrolled off screen and came back.
+ */
+@Composable
+private fun staggeredVideoEntrance(index: Int, videoId: String): Modifier {
+    var entered by rememberSaveable(videoId) { mutableStateOf(false) }
+    val alpha by animateFloatAsState(
+        targetValue = if (entered) 1f else 0f,
+        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+        label = "video-card-alpha",
+    )
+    val translation by animateFloatAsState(
+        targetValue = if (entered) 0f else 1f,
+        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        label = "video-card-translation",
+    )
+    val entranceDistancePx = with(LocalDensity.current) { 18.dp.toPx() }
+
+    LaunchedEffect(videoId) {
+        if (!entered) {
+            delay((index % 10) * 38L)
+            entered = true
+        }
+    }
+    return Modifier.graphicsLayer {
+        this.alpha = alpha
+        translationY = entranceDistancePx * translation
     }
 }
 

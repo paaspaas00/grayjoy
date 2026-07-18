@@ -72,6 +72,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -88,6 +94,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
@@ -100,8 +107,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -482,8 +491,10 @@ internal fun PlayerSurface(
         playback.positionMs
     }
     var seekTooltipWidthPx by remember(video.id, isFullscreen) { mutableStateOf(0) }
+    var seekTooltipHeightPx by remember(video.id, isFullscreen) { mutableStateOf(0) }
+    var storyboardUnavailable by remember(video.id, video.storyboard) { mutableStateOf(false) }
     val showControls = !controlsLocked &&
-        (controlsVisible || !playback.isPlaying || playback.errorMessage != null)
+        (controlsVisible || playback.errorMessage != null)
     val controlsVisibilityAlpha by animateFloatAsState(
         targetValue = if (showControls) 1f else 0f,
         animationSpec = tween(durationMillis = 180),
@@ -500,7 +511,7 @@ internal fun PlayerSurface(
         interactionSequence,
     ) {
         if (
-            controlsVisible && playback.isPlaying && playback.errorMessage == null &&
+            controlsVisible && playback.errorMessage == null &&
             !showSettings && !isPointerDown && !isSeeking
         ) {
             delay(3_000)
@@ -514,6 +525,8 @@ internal fun PlayerSurface(
     Box(
         modifier = modifier
             .background(Color.Black)
+            // Seek previews and animated controls must never draw over the Now Playing header.
+            .clipToBounds()
             .pointerInput(video.id, isFullscreen) {
                 awaitPointerEventScope {
                     while (true) {
@@ -750,6 +763,21 @@ internal fun PlayerSurface(
                         .weight(1f)
                         .padding(horizontal = 6.dp),
                 ) {
+                    val density = LocalDensity.current
+                    val storyboardWidth = if (isFullscreen) 240.dp else 128.dp
+                    val storyboardFrame = remember(
+                        video.storyboard,
+                        displayedPositionMs,
+                        storyboardWidth,
+                        density,
+                        storyboardUnavailable,
+                    ) {
+                        if (storyboardUnavailable) null else video.storyboard?.frameAt(
+                            positionMs = displayedPositionMs,
+                            targetWidthPx = with(density) { storyboardWidth.roundToPx() },
+                        )
+                    }
+                    val showStoryboard = storyboardFrame != null
                     Slider(
                         value = displayedProgress,
                         enabled = !video.isLive && playback.durationMs > 0,
@@ -764,38 +792,88 @@ internal fun PlayerSurface(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (isSeeking) {
-                        Surface(
+                        Column(
                             modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .zIndex(2f)
-                            .offset {
-                                val horizontalInset = 10.dp.roundToPx()
-                                val trackWidth = (constraints.maxWidth - horizontalInset * 2)
-                                    .coerceAtLeast(0)
-                                val thumbCenter = horizontalInset +
-                                    (trackWidth * displayedProgress.coerceIn(0f, 1f)).toInt()
-                                val left = (thumbCenter - seekTooltipWidthPx / 2)
-                                    .coerceIn(
-                                        0,
-                                        (constraints.maxWidth - seekTooltipWidthPx).coerceAtLeast(0),
-                                    )
-                                IntOffset(left, (-22).dp.roundToPx())
-                            }
-                                .onGloballyPositioned { seekTooltipWidthPx = it.size.width }
-                                .testTag("player-seek-time-tooltip"),
-                            shape = MaterialTheme.shapes.small,
-                            color = Color.Black.copy(alpha = 0.86f),
-                            contentColor = Color.White,
-                            shadowElevation = 4.dp,
+                                .align(Alignment.TopStart)
+                                .zIndex(2f)
+                                .offset {
+                                    val horizontalInset = 10.dp.roundToPx()
+                                    val trackWidth = (constraints.maxWidth - horizontalInset * 2)
+                                        .coerceAtLeast(0)
+                                    val thumbCenter = horizontalInset +
+                                        (trackWidth * displayedProgress.coerceIn(0f, 1f)).toInt()
+                                    val left = (thumbCenter - seekTooltipWidthPx / 2)
+                                        .coerceIn(
+                                            0,
+                                            (constraints.maxWidth - seekTooltipWidthPx)
+                                                .coerceAtLeast(0),
+                                        )
+                                    // Measure the whole preview + timestamp stack so its lower
+                                    // edge stays immediately above the seek control. The compact
+                                    // portrait card fits in the shorter embedded player.
+                                    val top = -(seekTooltipHeightPx + 6.dp.roundToPx())
+                                    IntOffset(left, top)
+                                }
+                                // This popup is visually anchored to the slider but must not
+                                // contribute to Box/Row measurement. Otherwise its image height
+                                // makes the seek bar and both timestamps jump upward while dragging.
+                                .ignoreParentMeasurement()
+                                .onGloballyPositioned {
+                                    seekTooltipWidthPx = it.size.width
+                                    seekTooltipHeightPx = it.size.height
+                                }
+                                .testTag("player-seek-preview"),
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text(
-                                text = formatPlaybackTime(
-                                    seekPreviewPositionMs(playback.durationMs, seekProgress),
-                                ),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
+                            if (storyboardFrame != null) {
+                                Surface(
+                                    modifier = Modifier
+                                        .size(
+                                            width = storyboardWidth,
+                                            height = storyboardWidth * (9f / 16f),
+                                        )
+                                        .testTag("player-seek-storyboard"),
+                                    shape = MaterialTheme.shapes.medium,
+                                    color = Color.Black,
+                                    contentColor = Color.White,
+                                    shadowElevation = 7.dp,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        Color.White.copy(alpha = 0.42f),
+                                    ),
+                                ) {
+                                    AndroidView(
+                                        factory = { context -> StoryboardFrameView(context) },
+                                        update = { view ->
+                                            view.onLoadFailure = {
+                                                storyboardUnavailable = true
+                                            }
+                                            view.showFrame(storyboardFrame)
+                                        },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                                Spacer(Modifier.size(5.dp))
+                            }
+                            Surface(
+                                modifier = Modifier.testTag("player-seek-time-tooltip"),
+                                shape = MaterialTheme.shapes.small,
+                                color = Color.Black.copy(alpha = 0.86f),
+                                contentColor = Color.White,
+                                shadowElevation = 4.dp,
+                            ) {
+                                Text(
+                                    text = formatPlaybackTime(
+                                        seekPreviewPositionMs(
+                                            playback.durationMs,
+                                            seekProgress,
+                                        ),
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
                         }
                     }
                 }
@@ -885,6 +963,15 @@ internal fun PlayerSurface(
                 showSettings = false
             },
         )
+    }
+}
+
+private fun Modifier.ignoreParentMeasurement(): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(
+        constraints.copy(minWidth = 0, minHeight = 0),
+    )
+    layout(width = 0, height = 0) {
+        placeable.placeRelative(0, 0)
     }
 }
 
@@ -1066,6 +1153,14 @@ private fun PlayerSettingsSheet(
     val subtitleDescription = when {
         video.subtitleTracks.isEmpty() -> stringResource(R.string.not_available)
         !playback.captionsEnabled -> stringResource(R.string.off)
+        playback.selectedSubtitleTrackIndex != null -> video.subtitleTracks
+            .getOrNull(playback.selectedSubtitleTrackIndex)
+            ?.name
+            ?.ifBlank {
+                video.subtitleTracks.getOrNull(playback.selectedSubtitleTrackIndex)
+                    ?.language.orEmpty()
+            }
+            ?: stringResource(R.string.on)
         playback.selectedSubtitleLanguage != null -> video.subtitleTracks
             .firstOrNull { it.language == playback.selectedSubtitleLanguage }
             ?.name
@@ -1081,19 +1176,33 @@ private fun PlayerSettingsSheet(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 28.dp),
-        ) {
+        AnimatedContent(
+            targetState = page,
+            transitionSpec = {
+                val forward = targetState.ordinal > initialState.ordinal
+                (fadeIn(tween(180)) + slideInHorizontally { width ->
+                    if (forward) width / 7 else -width / 7
+                }).togetherWith(
+                    fadeOut(tween(120)) + slideOutHorizontally { width ->
+                        if (forward) -width / 9 else width / 9
+                    },
+                )
+            },
+            label = "player-settings-page",
+        ) { animatedPage ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 28.dp),
+            ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (page != PlayerSettingsPage.Main) {
+                if (animatedPage != PlayerSettingsPage.Main) {
                     IconButton(onClick = { onPageChange(PlayerSettingsPage.Main) }) {
                         Icon(
                             Icons.Outlined.ChevronLeft,
@@ -1104,7 +1213,7 @@ private fun PlayerSettingsSheet(
                     Spacer(Modifier.size(48.dp))
                 }
                 Text(
-                    text = when (page) {
+                    text = when (animatedPage) {
                         PlayerSettingsPage.Main -> stringResource(R.string.player_settings)
                         PlayerSettingsPage.Quality -> stringResource(R.string.quality)
                         PlayerSettingsPage.Speed -> stringResource(R.string.playback_speed)
@@ -1114,7 +1223,7 @@ private fun PlayerSettingsSheet(
                 )
             }
 
-            when (page) {
+            when (animatedPage) {
                 PlayerSettingsPage.Main -> {
                     PlayerSettingRow(
                         icon = Icons.Outlined.Tune,
@@ -1184,6 +1293,8 @@ private fun PlayerSettingsSheet(
                     )
                     video.subtitleTracks.forEachIndexed { index, subtitle ->
                         val selected = playback.captionsEnabled && when {
+                            playback.selectedSubtitleTrackIndex != null ->
+                                playback.selectedSubtitleTrackIndex == index
                             playback.selectedSubtitleLanguage != null ->
                                 playback.selectedSubtitleLanguage == subtitle.language
                             else -> index == 0
@@ -1196,12 +1307,12 @@ private fun PlayerSettingsSheet(
                             detail = subtitle.language?.uppercase(),
                             selected = selected,
                             onClick = {
-                                if (subtitle.language == null) onCaptionsEnabledChange(true)
-                                else onSubtitleLanguageChange(subtitle.language)
+                                onSubtitleLanguageChange(subtitle.uri)
                             },
                         )
                     }
                 }
+            }
             }
         }
     }

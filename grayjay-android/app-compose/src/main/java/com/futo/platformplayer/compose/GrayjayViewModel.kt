@@ -921,10 +921,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setSubtitleLanguage(language: String?) {
-        engine.setSubtitleLanguage(language)
+        val selectedTrack = _uiState.value.nowPlaying.video?.subtitleTracks
+            ?.withIndex()
+            ?.firstOrNull { it.value.uri == language }
+        if (selectedTrack != null) {
+            engine.setSubtitleTrack(selectedTrack.index)
+        } else {
+            engine.setSubtitleLanguage(language)
+        }
         if (preferences.stickyCaptionsEnabled) {
             preferences.captionsEnabled = language != null
-            preferences.subtitleLanguage = language
+            preferences.subtitleLanguage = selectedTrack?.value?.language ?: language
         }
     }
 
@@ -2348,6 +2355,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         selectedVideoQuality = selectedVideoQuality,
         currentVideoHeight = currentVideoHeight,
         selectedSubtitleLanguage = selectedSubtitleLanguage,
+        selectedSubtitleTrackIndex = selectedSubtitleTrackIndex,
         errorMessage = errorMessage,
         audioSpectrum = audioSpectrum,
     )
@@ -2870,12 +2878,19 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun findVideo(videoId: String): VideoUiModel? =
-        allVideos.firstOrNull { it.id == videoId }
-            ?: remoteVideos[videoId]
-            ?: _uiState.value.search.videos.firstOrNull { it.id == videoId }
-            ?: _uiState.value.nowPlaying.video?.takeIf { it.id == videoId }
-            ?: _uiState.value.nowPlaying.recommendations.firstOrNull { it.id == videoId }
+    private fun findVideo(videoId: String): VideoUiModel? {
+        val state = _uiState.value
+        return remoteVideos[videoId]
+            ?: state.channelDetail.videos.firstOrNull { it.id == videoId }
+            ?: state.search.videos.firstOrNull { it.id == videoId }
+            ?: state.home.videos.firstOrNull { it.id == videoId }
+            ?: state.subscriptionVideos.firstOrNull { it.id == videoId }
+            ?: state.videos.firstOrNull { it.id == videoId }
+            ?: state.libraryVideos.firstOrNull { it.id == videoId }
+            ?: allVideos.firstOrNull { it.id == videoId }
+            ?: state.nowPlaying.video?.takeIf { it.id == videoId }
+            ?: state.nowPlaying.recommendations.firstOrNull { it.id == videoId }
+    }
 }
 
 internal fun pluginUrlFromQrContent(content: String): String? {

@@ -51,8 +51,23 @@ data class VideoUiModel(
     val subtitleTracks: List<SubtitleUiModel> = emptyList(),
     val qualityVariants: List<VideoQualityUiModel> = emptyList(),
     val audioQualityVariants: List<AudioQualityUiModel> = emptyList(),
+    val storyboard: StoryboardUiModel? = null,
     /** True only when the active offline descriptor contains audio and no video track. */
     val playbackAudioOnly: Boolean = false,
+)
+
+data class StoryboardUiModel(
+    val levels: List<StoryboardLevelUiModel>,
+)
+
+data class StoryboardLevelUiModel(
+    val width: Int,
+    val height: Int,
+    val frameCount: Int,
+    val columns: Int,
+    val rows: Int,
+    val intervalMs: Long,
+    val sheetUrlTemplate: String,
 )
 
 data class VideoQualityUiModel(

@@ -13,6 +13,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
@@ -53,6 +54,8 @@ import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.SourceUiModel
 import com.futo.platformplayer.compose.ui.SearchContentType
 import com.futo.platformplayer.compose.ui.SubtitleUiModel
+import com.futo.platformplayer.compose.ui.StoryboardLevelUiModel
+import com.futo.platformplayer.compose.ui.StoryboardUiModel
 import com.futo.platformplayer.compose.ui.VideoCommentUiModel
 import com.futo.platformplayer.compose.ui.VideoQualityUiModel
 import com.futo.platformplayer.compose.ui.AudioQualityUiModel
@@ -102,6 +105,7 @@ data class EnginePlaybackState(
     val selectedVideoQuality: Int? = null,
     val currentVideoHeight: Int? = null,
     val selectedSubtitleLanguage: String? = null,
+    val selectedSubtitleTrackIndex: Int? = null,
     val errorMessage: String? = null,
     val audioSpectrum: List<Float> = emptyList(),
 )
@@ -193,6 +197,7 @@ interface GrayjayEngine {
     fun setVideoQuality(height: Int?)
     fun setCaptionsEnabled(enabled: Boolean)
     fun setSubtitleLanguage(language: String?)
+    fun setSubtitleTrack(index: Int?)
     fun retryPlayback()
     fun closePlayback()
     fun refreshProgress()
@@ -282,6 +287,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private var captionsEnabled = false
     private var selectedVideoQuality: Int? = null
     private var selectedSubtitleLanguage: String? = null
+    private var selectedSubtitleTrackIndex: Int? = null
     private var activePluginDataSources: Set<JSHttpDataSource.Factory> = emptySet()
     private var openedVideos: List<VideoUiModel> = emptyList()
     private var activeQualityVariantHeight: Int? = null
@@ -633,6 +639,21 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     playbackDataSourceFactory = variant.dataSourceFactory,
                 )
             },
+            storyboard = source.storyboard?.let { storyboard ->
+                StoryboardUiModel(
+                    levels = storyboard.levels.map { level ->
+                        StoryboardLevelUiModel(
+                            width = level.width,
+                            height = level.height,
+                            frameCount = level.frameCount,
+                            columns = level.columns,
+                            rows = level.rows,
+                            intervalMs = level.intervalMs,
+                            sheetUrlTemplate = level.sheetUrlTemplate,
+                        )
+                    },
+                )
+            },
         )
     }
 
@@ -720,6 +741,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val mediaSources = playableVideos.map { it.buildMediaSource() }
         captionsEnabled = false
         selectedSubtitleLanguage = null
+        selectedSubtitleTrackIndex = null
         selectedVideoQuality = null
         exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
             .buildUpon()
@@ -789,6 +811,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                         .setMimeType(subtitle.mimeType)
                         .setLanguage(subtitle.language)
                         .setLabel(subtitle.name)
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                         .build()
                 },
             )
@@ -963,22 +986,70 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun setCaptionsEnabled(enabled: Boolean) {
-        captionsEnabled = enabled
-        if (!enabled) selectedSubtitleLanguage = null
-        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
-            .buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
-            .build()
-        syncPlayback()
+        if (enabled) {
+            val preferredIndex = selectedSubtitleTrackIndex ?: 0
+            setSubtitleTrack(preferredIndex)
+        } else {
+            setSubtitleTrack(null)
+        }
     }
 
     override fun setSubtitleLanguage(language: String?) {
-        captionsEnabled = language != null
+        if (language == null) {
+            setSubtitleTrack(null)
+            return
+        }
+        val currentVideo = openedVideos.firstOrNull { it.id == exoPlayer.currentMediaItem?.mediaId }
+        val matchingIndex = currentVideo?.subtitleTracks
+            ?.indexOfFirst { it.language.equals(language, ignoreCase = true) }
+            ?.takeIf { it >= 0 }
+        if (matchingIndex != null) {
+            setSubtitleTrack(matchingIndex)
+            return
+        }
+        captionsEnabled = true
         selectedSubtitleLanguage = language
+        selectedSubtitleTrackIndex = null
         val parameters = exoPlayer.trackSelectionParameters
             .buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, language == null)
-        if (language != null) parameters.setPreferredTextLanguage(language)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+        parameters.setPreferredTextLanguage(language)
+        exoPlayer.trackSelectionParameters = parameters.build()
+        syncPlayback()
+    }
+
+    override fun setSubtitleTrack(index: Int?) {
+        val currentVideo = openedVideos.firstOrNull { it.id == exoPlayer.currentMediaItem?.mediaId }
+        val subtitle = index?.let { currentVideo?.subtitleTracks?.getOrNull(it) }
+        captionsEnabled = subtitle != null
+        selectedSubtitleLanguage = subtitle?.language
+        selectedSubtitleTrackIndex = index.takeIf { subtitle != null }
+
+        val parameters = exoPlayer.trackSelectionParameters
+            .buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitle == null)
+        if (subtitle != null) {
+            subtitle.language?.let(parameters::setPreferredTextLanguage)
+            val matchingTrack = exoPlayer.currentTracks.groups
+                .asSequence()
+                .filter { it.type == C.TRACK_TYPE_TEXT }
+                .flatMap { group ->
+                    (0 until group.length).asSequence().map { trackIndex -> group to trackIndex }
+                }
+                .firstOrNull { (group, trackIndex) ->
+                    val format = group.getTrackFormat(trackIndex)
+                    (format.label == subtitle.name || subtitle.name.isBlank()) &&
+                        (subtitle.language == null ||
+                            format.language.equals(subtitle.language, ignoreCase = true))
+                }
+            matchingTrack?.let { (group, trackIndex) ->
+                parameters.setOverrideForType(
+                    TrackSelectionOverride(group.mediaTrackGroup, trackIndex),
+                )
+            }
+        }
         exoPlayer.trackSelectionParameters = parameters.build()
         syncPlayback()
     }
@@ -1003,6 +1074,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         lastError = null
         captionsEnabled = false
         selectedSubtitleLanguage = null
+        selectedSubtitleTrackIndex = null
         selectedVideoQuality = null
         latestAudioSpectrum = emptyList()
         _playback.value = EnginePlaybackState()
@@ -1059,6 +1131,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             selectedVideoQuality = selectedVideoQuality,
             currentVideoHeight = currentHeight,
             selectedSubtitleLanguage = selectedSubtitleLanguage,
+            selectedSubtitleTrackIndex = selectedSubtitleTrackIndex,
             errorMessage = lastError,
             audioSpectrum = latestAudioSpectrum,
         )

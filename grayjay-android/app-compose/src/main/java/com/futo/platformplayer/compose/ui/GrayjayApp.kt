@@ -6,6 +6,12 @@ import android.media.MediaRouter2
 import android.os.Build
 import android.provider.Settings
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animate
@@ -323,7 +329,8 @@ fun GrayjayApp(
     var profileDialogVisible by rememberSaveable { mutableStateOf(false) }
     val selected = GrayjayDestination.valueOf(destinationName)
     val availableVideos = uiState.videos + uiState.subscriptionVideos +
-        uiState.libraryVideos + uiState.search.videos +
+        uiState.libraryVideos + uiState.search.videos + uiState.home.videos +
+        uiState.channelDetail.videos +
         listOfNotNull(uiState.nowPlaying.video) + uiState.nowPlaying.recommendations
     val selectedVideo = uiState.nowPlaying.video?.takeIf { it.id == selectedVideoId }
         ?: availableVideos.firstOrNull { it.id == selectedVideoId }
@@ -1189,62 +1196,91 @@ private fun GrayjayScaffold(
                         else Modifier,
                     ),
             ) {
-                if (selectedChannel != null) {
+                val contentPageKey = when {
+                    selectedChannel != null -> "channel:${selectedChannel.id}"
+                    selectedPlaylist != null -> "playlist:${selectedPlaylist.id}"
+                    else -> "destination:${selected.name}"
+                }
+                AnimatedContent(
+                    targetState = contentPageKey,
+                    transitionSpec = {
+                        (fadeIn(tween(210)) + scaleIn(tween(240), initialScale = 0.985f))
+                            .togetherWith(
+                                fadeOut(tween(140)) + scaleOut(tween(160), targetScale = 1.01f),
+                            )
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    label = "app-page-transition",
+                ) { animatedPageKey ->
+                val animatedChannel = animatedPageKey
+                    .takeIf { it.startsWith("channel:") }
+                    ?.substringAfter("channel:")
+                    ?.let { id -> channels.firstOrNull { it.id == id } }
+                val animatedPlaylist = animatedPageKey
+                    .takeIf { it.startsWith("playlist:") }
+                    ?.substringAfter("playlist:")
+                    ?.let { id -> playlists.firstOrNull { it.id == id } }
+                val animatedDestination = animatedPageKey
+                    .takeIf { it.startsWith("destination:") }
+                    ?.substringAfter("destination:")
+                    ?.let { name -> runCatching { GrayjayDestination.valueOf(name) }.getOrNull() }
+                    ?: selected
+                if (animatedChannel != null) {
                 ChannelDetailScreen(
-                    channel = selectedChannel,
-                    videos = if (playback.channelDetail.channelId == selectedChannel.id) {
+                    channel = animatedChannel,
+                    videos = if (playback.channelDetail.channelId == animatedChannel.id) {
                         playback.channelDetail.videos
                     } else {
                         videos
                     },
-                    videosAreChannelScoped = playback.channelDetail.channelId == selectedChannel.id,
-                    isLoading = playback.channelDetail.channelId == selectedChannel.id &&
+                    videosAreChannelScoped = playback.channelDetail.channelId == animatedChannel.id,
+                    isLoading = playback.channelDetail.channelId == animatedChannel.id &&
                         playback.channelDetail.isLoading,
-                    isLoadingMore = playback.channelDetail.channelId == selectedChannel.id &&
+                    isLoadingMore = playback.channelDetail.channelId == animatedChannel.id &&
                         playback.channelDetail.isLoadingMore,
-                    hasMore = playback.channelDetail.channelId == selectedChannel.id &&
+                    hasMore = playback.channelDetail.channelId == animatedChannel.id &&
                         playback.channelDetail.hasMore,
                     onLoadMore = playback.onLoadMoreChannel,
                     errorMessage = playback.channelDetail
-                        .takeIf { it.channelId == selectedChannel.id }
+                        .takeIf { it.channelId == animatedChannel.id }
                         ?.errorMessage,
-                    isFollowing = selectedChannel.id in playback.followedCreatorIds,
+                    isFollowing = animatedChannel.id in playback.followedCreatorIds,
                     onFollowingChange = {
-                        playback.onCreatorFollowedChange(selectedChannel.id, it)
+                        playback.onCreatorFollowedChange(animatedChannel.id, it)
                     },
                     onVideoClick = onVideoClick,
                     onVideoLongClick = playback.onVideoLongClick,
                 )
-                } else if (selectedPlaylist != null) {
+                } else if (animatedPlaylist != null) {
                 PlaylistDetailScreen(
-                    playlist = selectedPlaylist,
+                    playlist = animatedPlaylist,
                     videos = (videos + playback.libraryVideos).distinctBy(VideoUiModel::id),
                     downloads = playback.downloads,
                     onVideoClick = onVideoClick,
                     onVideoLongClick = playback.onVideoLongClick,
-                    onPlayAll = { playback.onPlayPlaylist(selectedPlaylist.id) },
+                    onPlayAll = { playback.onPlayPlaylist(animatedPlaylist.id) },
                     onPlayFromHere = { videoId ->
-                        playback.onPlayPlaylistFrom(selectedPlaylist.id, videoId)
+                        playback.onPlayPlaylistFrom(animatedPlaylist.id, videoId)
                     },
                     onDownloadAllAsAudio = { ids ->
-                        playback.onDownloadPlaylist(selectedPlaylist.id, DownloadMediaType.Audio)
+                        playback.onDownloadPlaylist(animatedPlaylist.id, DownloadMediaType.Audio)
                     },
                     onDownloadAllAsVideo = { ids ->
-                        playback.onDownloadPlaylist(selectedPlaylist.id, DownloadMediaType.Video)
+                        playback.onDownloadPlaylist(animatedPlaylist.id, DownloadMediaType.Video)
                     },
                     onRename = { title ->
-                        playback.onRenamePlaylist(selectedPlaylist.id, title)
+                        playback.onRenamePlaylist(animatedPlaylist.id, title)
                     },
                     onAddSelectionToPlaylist = playback.onAddSelectionToPlaylist,
                     onRemoveVideos = { ids ->
-                        playback.onRemoveVideosFromPlaylist(selectedPlaylist.id, ids)
+                        playback.onRemoveVideosFromPlaylist(animatedPlaylist.id, ids)
                     },
                     onReorder = { ids ->
-                        playback.onReorderPlaylist(selectedPlaylist.id, ids)
+                        playback.onReorderPlaylist(animatedPlaylist.id, ids)
                     },
                 )
                 } else {
-                    when (selected) {
+                    when (animatedDestination) {
                     GrayjayDestination.Home -> HomeScreen(
                         home = sourcePresentation.home,
                         onFeedSelected = sourcePresentation.onHomeFeedSelected,
@@ -1327,6 +1363,7 @@ private fun GrayjayScaffold(
                         onLogoutSource = sourcePresentation.onLogout,
                     )
                     }
+                }
                 }
             }
         }

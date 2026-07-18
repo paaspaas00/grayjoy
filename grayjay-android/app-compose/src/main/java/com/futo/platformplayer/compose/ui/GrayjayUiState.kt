@@ -182,6 +182,7 @@ data class PlaybackUiState(
     val selectedVideoQuality: Int? = null,
     val currentVideoHeight: Int? = null,
     val selectedSubtitleLanguage: String? = null,
+    val selectedSubtitleTrackIndex: Int? = null,
     val errorMessage: String? = null,
     val audioSpectrum: List<Float> = emptyList(),
 )
