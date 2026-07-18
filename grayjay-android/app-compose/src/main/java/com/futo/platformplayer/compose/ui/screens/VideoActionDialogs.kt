@@ -118,36 +118,38 @@ internal fun VideoActionsSheet(
                     },
                 )
             }
-            val videoDownloadComplete = download?.isComplete(DownloadMediaType.Video) == true
-            val videoDownloadActive = download?.isActive(DownloadMediaType.Video) == true
-            val videoDownloadFailed = DownloadMediaType.Video in download?.failedMediaTypes.orEmpty()
-            val downloadTitle = when {
-                videoDownloadComplete -> R.string.remove_download
-                videoDownloadFailed -> R.string.retry_download
-                videoDownloadActive -> R.string.cancel_download
-                else -> R.string.download
+            if (!video.isLive) {
+                val videoDownloadComplete = download?.isComplete(DownloadMediaType.Video) == true
+                val videoDownloadActive = download?.isActive(DownloadMediaType.Video) == true
+                val videoDownloadFailed = DownloadMediaType.Video in download?.failedMediaTypes.orEmpty()
+                val downloadTitle = when {
+                    videoDownloadComplete -> R.string.remove_download
+                    videoDownloadFailed -> R.string.retry_download
+                    videoDownloadActive -> R.string.cancel_download
+                    else -> R.string.download
+                }
+                VideoAction(
+                    title = stringResource(downloadTitle),
+                    subtitle = download?.takeIf { it.hasAttempt(DownloadMediaType.Video) }
+                        ?.let { downloadStatusText(it, DownloadMediaType.Video) }
+                        ?: stringResource(R.string.download_description),
+                    icon = {
+                        Icon(
+                            imageVector = when {
+                                videoDownloadComplete -> Icons.Outlined.DeleteOutline
+                                videoDownloadActive -> Icons.Outlined.Close
+                                else -> Icons.Outlined.Download
+                            },
+                            contentDescription = null,
+                        )
+                    },
+                    tag = "video-action-download",
+                    onClick = {
+                        onToggleDownload()
+                        onDismiss()
+                    },
+                )
             }
-            VideoAction(
-                title = stringResource(downloadTitle),
-                subtitle = download?.takeIf { it.hasAttempt(DownloadMediaType.Video) }
-                    ?.let { downloadStatusText(it, DownloadMediaType.Video) }
-                    ?: stringResource(R.string.download_description),
-                icon = {
-                    Icon(
-                        imageVector = when {
-                            videoDownloadComplete -> Icons.Outlined.DeleteOutline
-                            videoDownloadActive -> Icons.Outlined.Close
-                            else -> Icons.Outlined.Download
-                        },
-                        contentDescription = null,
-                    )
-                },
-                tag = "video-action-download",
-                onClick = {
-                    onToggleDownload()
-                    onDismiss()
-                },
-            )
             VideoAction(
                 title = stringResource(R.string.share),
                 subtitle = stringResource(R.string.send_original_video_link),

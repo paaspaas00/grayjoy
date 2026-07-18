@@ -79,6 +79,7 @@
     <string name="low_data">Düşük veri kullanımı</string>
     <string name="playing_downloaded">İndirilen medya oynatılıyor</string>
     <string name="available_offline">Çevrimdışı kullanılabilir</string>
+    <string name="all_downloads_completed">Tüm indirmeler tamamlandı.</string>
     <string name="automatic">Otomatik</string>
     <string name="unknown_publisher">Bilinmeyen yayıncı</string>
     <string name="creator">Yaratıcı</string>

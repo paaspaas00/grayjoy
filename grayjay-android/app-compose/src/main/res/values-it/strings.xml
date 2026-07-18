@@ -80,6 +80,7 @@
     <string name="low_data">Risparmio dati</string>
     <string name="playing_downloaded">Riproduzione del contenuto scaricato</string>
     <string name="available_offline">Disponibile offline</string>
+    <string name="all_downloads_completed">Tutti i download sono stati completati.</string>
     <string name="automatic">Automatica</string>
     <string name="unknown_publisher">Editore sconosciuto</string>
     <string name="creator">Creator</string>

@@ -79,6 +79,7 @@
     <string name="low_data">توفير البيانات</string>
     <string name="playing_downloaded">تشغيل وسائط تم تنزيلها</string>
     <string name="available_offline">متاح حاليا</string>
+    <string name="all_downloads_completed">اكتملت جميع التنزيلات.</string>
     <string name="automatic">تلقائي</string>
     <string name="unknown_publisher">ناشر غير معروف</string>
     <string name="creator">الخالق</string>

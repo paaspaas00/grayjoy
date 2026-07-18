@@ -394,6 +394,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(themeMode = preferences.themeMode) }
     }
 
+    fun setThemeMode(mode: ThemeMode) {
+        preferences.themeMode = mode
+        _uiState.update { it.copy(themeMode = preferences.themeMode) }
+    }
+
     fun setPrivateSessionEnabled(enabled: Boolean) {
         preferences.privateSessionEnabled = enabled
         _uiState.update { it.copy(privateSessionEnabled = enabled) }
@@ -1510,6 +1515,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     /** Starts or retries a video download using either the app default or an explicit height. */
     fun downloadVideo(videoId: String, targetVideoHeight: Int?) {
+        if (findVideo(videoId)?.isLive != false) return
         val current = _uiState.value.downloads[videoId]
         if (
             current?.isComplete(DownloadMediaType.Video) == true ||
@@ -1525,6 +1531,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     /** Starts or retries an audio download using either the app default or an explicit bitrate. */
     fun downloadAudio(videoId: String, targetAudioBitrate: Int?) {
+        if (findVideo(videoId)?.isLive != false) return
         val current = _uiState.value.downloads[videoId]
         if (
             current?.isComplete(DownloadMediaType.Audio) == true ||
@@ -1548,6 +1555,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             removeDownloadType(videoId, mediaType, currentDownload)
             return
         }
+        if (findVideo(videoId)?.isLive != false) return
 
         startDownload(
             videoId = videoId,
@@ -1664,7 +1672,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     )
 
     fun downloadVideos(videoIds: List<String>, mediaType: DownloadMediaType) {
-        videoIds.distinct().forEach { videoId ->
+        videoIds.distinct().filter { findVideo(it)?.isLive == false }.forEach { videoId ->
             val existing = _uiState.value.downloads[videoId]
             if (existing?.isComplete(mediaType) != true && existing?.isActive(mediaType) != true) {
                 startDownload(
@@ -1825,29 +1833,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             null
         }
         if (video.isLive) {
-            val failure = DownloadUiModel(
-                profileId = activeProfileId,
-                videoId = videoId,
-                mediaType = mediaType,
-                status = DownloadStatus.Failed,
-                errorMessage = text(R.string.live_download_unsupported),
-                failedMediaTypes = setOf(mediaType),
-                targetVideoHeight = selectedVideoHeight,
-                targetAudioBitrate = selectedAudioBitrate,
-            )
-            downloadPreparationStates[jobKey] = failure
-            downloadQueue.put(
-                QueuedDownload(
-                    profileId = activeProfileId,
-                    videoId = videoId,
-                    mediaType = mediaType,
-                    status = DownloadStatus.Failed,
-                    createdAtMs = createdAtMs,
-                    targetVideoHeight = selectedVideoHeight,
-                    targetAudioBitrate = selectedAudioBitrate,
-                    errorMessage = failure.errorMessage,
-                ),
-            )
+            downloadPreparationStates.remove(jobKey)
+            downloadQueue.remove(activeProfileId, videoId, mediaType)
             syncDownloadState()
             return
         }

@@ -1,8 +1,13 @@
 package com.futo.platformplayer.compose
 
 import android.view.OrientationEventListener
+import com.futo.platformplayer.compose.ui.DownloadMediaType
+import com.futo.platformplayer.compose.ui.DownloadStatus
+import com.futo.platformplayer.compose.ui.DownloadUiModel
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MainActivityOrientationTest {
@@ -39,5 +44,46 @@ class MainActivityOrientationTest {
         assertEquals(-90f, landscapePlayerRotationAt(90))
         assertEquals(90f, landscapePlayerRotationAt(270))
         assertNull(landscapePlayerRotationAt(0))
+    }
+
+    @Test
+    fun `completed active download batch requests one toast`() {
+        val downloading = DownloadUiModel(
+            profileId = "main",
+            videoId = "video",
+            status = DownloadStatus.Downloading,
+            activeMediaTypes = setOf(DownloadMediaType.Video),
+        )
+        val observed = updateDownloadCompletionBatch(emptySet(), listOf(downloading))
+        assertFalse(observed.showCompletionToast)
+
+        val completed = downloading.copy(
+            status = DownloadStatus.Completed,
+            activeMediaTypes = emptySet(),
+            completedMediaTypes = setOf(DownloadMediaType.Video),
+        )
+        val finished = updateDownloadCompletionBatch(observed.pending, listOf(completed))
+        assertTrue(finished.showCompletionToast)
+        assertTrue(finished.pending.isEmpty())
+
+        assertFalse(
+            updateDownloadCompletionBatch(finished.pending, listOf(completed)).showCompletionToast,
+        )
+    }
+
+    @Test
+    fun `failed download batch does not request completion toast`() {
+        val downloading = DownloadUiModel(
+            profileId = "main",
+            videoId = "video",
+            status = DownloadStatus.Downloading,
+        )
+        val observed = updateDownloadCompletionBatch(emptySet(), listOf(downloading))
+        val failed = downloading.copy(
+            status = DownloadStatus.Failed,
+            failedMediaTypes = setOf(DownloadMediaType.Video),
+        )
+
+        assertFalse(updateDownloadCompletionBatch(observed.pending, listOf(failed)).showCompletionToast)
     }
 }

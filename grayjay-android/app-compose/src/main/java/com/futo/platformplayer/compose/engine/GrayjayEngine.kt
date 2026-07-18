@@ -334,8 +334,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) =
                     syncPlayback()
 
-                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) =
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    updateAudioSpectrumAnalysis(mediaItem?.mediaId)
                     syncPlayback()
+                }
 
                 override fun onTracksChanged(tracks: Tracks) = syncPlayback()
 
@@ -755,6 +757,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         activePluginDataSources = nextPluginDataSources
         val currentIndex = playableVideos.indexOfFirst { it.id == currentVideoId }
         if (currentIndex == -1) {
+            audioSpectrumAnalyzer.setEnabled(false)
             queueIds = listOf(currentVideoId)
             openedVideos = emptyList()
             activeQualityVariantHeight = null
@@ -768,6 +771,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
         queueIds = playableVideos.map(VideoUiModel::id)
         openedVideos = playableVideos
+        updateAudioSpectrumAnalysis(currentVideoId)
         activeQualityVariantHeight = null
         activeQualityVariantVideoId = null
         lastError = null
@@ -1120,6 +1124,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun closePlayback() {
         PlaybackNotificationService.dismiss(appContext)
+        audioSpectrumAnalyzer.setEnabled(false)
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
         activePluginDataSources.forEach(JSHttpDataSource.Factory::closeExecutors)
@@ -1141,11 +1146,17 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun release() {
         PlaybackNotificationService.dismiss(appContext)
+        audioSpectrumAnalyzer.setEnabled(false)
         activePluginDataSources.forEach(JSHttpDataSource.Factory::closeExecutors)
         activePluginDataSources = emptySet()
         pluginBackend.release()
         mediaSession.release()
         exoPlayer.release()
+    }
+
+    private fun updateAudioSpectrumAnalysis(videoId: String?) {
+        val audioOnly = openedVideos.firstOrNull { it.id == videoId }?.playbackAudioOnly == true
+        audioSpectrumAnalyzer.setEnabled(audioOnly)
     }
 
     private fun syncPlayback(fallbackVideoId: String? = null) {

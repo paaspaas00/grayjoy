@@ -79,6 +79,7 @@
     <string name="low_data">Datensparend</string>
     <string name="playing_downloaded">Heruntergeladenes Medium wird wiedergegeben</string>
     <string name="available_offline">Offline verfügbar</string>
+    <string name="all_downloads_completed">Alle Downloads wurden abgeschlossen.</string>
     <string name="automatic">Automatisch</string>
     <string name="unknown_publisher">Unbekannter Herausgeber</string>
     <string name="creator">Schöpfer</string>

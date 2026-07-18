@@ -44,11 +44,14 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.ui.ThemeMode
 
 @Composable
 fun SettingsScreen(
     dynamicColorsEnabled: Boolean,
     onDynamicColorsChange: (Boolean) -> Unit,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
     privateSessionEnabled: Boolean,
     onPrivateSessionChange: (Boolean) -> Unit,
     onManageSources: () -> Unit,
@@ -72,6 +75,7 @@ fun SettingsScreen(
     var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
     var showQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
+    var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -87,6 +91,20 @@ fun SettingsScreen(
         }
         item {
             SettingsSection(stringResource(R.string.settings_appearance)) {
+                LinkSetting(
+                    title = stringResource(R.string.settings_appearance),
+                    description = stringResource(
+                        when (themeMode) {
+                            ThemeMode.System -> R.string.automatic
+                            ThemeMode.Light -> R.string.use_light_theme
+                            ThemeMode.Dark -> R.string.use_dark_theme
+                        },
+                    ),
+                    icon = Icons.Outlined.DarkMode,
+                    onClick = { showThemeDialog = true },
+                    testTag = "theme-mode",
+                )
+                HorizontalDivider()
                 ToggleSetting(
                     title = stringResource(R.string.use_wallpaper_colors),
                     description = stringResource(R.string.material_you_dynamic_color),
@@ -219,6 +237,23 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+
+    if (showThemeDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.settings_appearance),
+            choices = listOf(
+                ThemeMode.System to stringResource(R.string.automatic),
+                ThemeMode.Light to stringResource(R.string.use_light_theme),
+                ThemeMode.Dark to stringResource(R.string.use_dark_theme),
+            ),
+            selected = themeMode,
+            onDismiss = { showThemeDialog = false },
+            onChoose = {
+                onThemeModeChange(it)
+                showThemeDialog = false
+            },
+        )
     }
 
     if (showSpeedDialog) {

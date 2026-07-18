@@ -205,6 +205,7 @@ private data class PlaybackPresentation(
     val showRecommendations: Boolean,
     val searchHistoryEnabled: Boolean,
     val keepScreenAwake: Boolean,
+    val themeMode: ThemeMode,
     val showPrivateThemeToggle: Boolean,
     val isDarkTheme: Boolean,
     val onDarkThemeChange: (Boolean) -> Unit,
@@ -215,6 +216,7 @@ private data class PlaybackPresentation(
     val onShowRecommendationsChange: (Boolean) -> Unit,
     val onSearchHistoryChange: (Boolean) -> Unit,
     val onKeepScreenAwakeChange: (Boolean) -> Unit,
+    val onThemeModeChange: (ThemeMode) -> Unit,
 )
 
 private data class SourcePresentation(
@@ -245,6 +247,7 @@ fun GrayjayApp(
     player: Player,
     isDarkTheme: Boolean = false,
     onDarkThemeChange: (Boolean) -> Unit = {},
+    onThemeModeChange: (ThemeMode) -> Unit,
     onDynamicColorsChange: (Boolean) -> Unit,
     onPrivateSessionChange: (Boolean) -> Unit,
     onOpenVideo: (String) -> Unit,
@@ -314,6 +317,7 @@ fun GrayjayApp(
     onKeepScreenAwakeChange: (Boolean) -> Unit,
     deviceIsLandscape: Boolean = false,
     deviceLandscapeRotationDegrees: Float = 90f,
+    onFullscreenPresentationChanged: (Boolean, Boolean) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val shareVideoLabel = stringResource(R.string.share_video)
@@ -516,6 +520,7 @@ fun GrayjayApp(
         showRecommendations = uiState.showRecommendations,
         searchHistoryEnabled = uiState.searchHistoryEnabled,
         keepScreenAwake = uiState.keepScreenAwake,
+        themeMode = uiState.themeMode,
         showPrivateThemeToggle = uiState.activeProfileId == "private",
         isDarkTheme = isDarkTheme,
         onDarkThemeChange = onDarkThemeChange,
@@ -526,6 +531,7 @@ fun GrayjayApp(
         onShowRecommendationsChange = onShowRecommendationsChange,
         onSearchHistoryChange = onSearchHistoryChange,
         onKeepScreenAwakeChange = onKeepScreenAwakeChange,
+        onThemeModeChange = onThemeModeChange,
     )
 
     LaunchedEffect(uiState.playback.currentVideoId, uiState.nowPlaying.video?.id) {
@@ -569,6 +575,9 @@ fun GrayjayApp(
 
     val fullscreenVideo = selectedVideo ?: playbackVideo
     val portraitFullscreen = usePortraitPlayerFullscreen(fullscreenVideo, uiState.playback)
+    LaunchedEffect(isFullscreen, portraitFullscreen) {
+        onFullscreenPresentationChanged(isFullscreen, portraitFullscreen)
+    }
     LaunchedEffect(deviceIsLandscape, selectedVideo?.id, playerTransitionProgress) {
         val expandedNowPlaying = selectedVideo != null && playerTransitionProgress < 0.01f
         when {
@@ -1340,6 +1349,8 @@ private fun GrayjayScaffold(
                     GrayjayDestination.Settings -> SettingsScreen(
                         dynamicColorsEnabled = dynamicColorsEnabled,
                         onDynamicColorsChange = onDynamicColorsChange,
+                        themeMode = playback.themeMode,
+                        onThemeModeChange = playback.onThemeModeChange,
                         privateSessionEnabled = privateSessionEnabled,
                         onPrivateSessionChange = onPrivateSessionChange,
                         onManageSources = onManageSources,

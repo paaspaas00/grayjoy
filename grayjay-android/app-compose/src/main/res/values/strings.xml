@@ -80,6 +80,7 @@
     <string name="low_data">Low data</string>
     <string name="playing_downloaded">Playing downloaded media</string>
     <string name="available_offline">Available offline</string>
+    <string name="all_downloads_completed">All downloads have completed.</string>
     <string name="automatic">Automatic</string>
     <string name="unknown_publisher">Unknown publisher</string>
     <string name="creator">Creator</string>

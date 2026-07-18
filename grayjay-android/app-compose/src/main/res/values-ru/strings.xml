@@ -79,6 +79,7 @@
     <string name="low_data">Экономия трафика</string>
     <string name="playing_downloaded">Воспроизводится скачанный файл</string>
     <string name="available_offline">Доступно офлайн</string>
+    <string name="all_downloads_completed">Все загрузки завершены.</string>
     <string name="automatic">Автоматический</string>
     <string name="unknown_publisher">Неизвестный издатель</string>
     <string name="creator">Создатель</string>

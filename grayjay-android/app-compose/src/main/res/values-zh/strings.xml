@@ -79,6 +79,7 @@
     <string name="low_data">节省流量</string>
     <string name="playing_downloaded">正在播放已下载媒体</string>
     <string name="available_offline">离线可用</string>
+    <string name="all_downloads_completed">所有下载均已完成。</string>
     <string name="automatic">自动的</string>
     <string name="unknown_publisher">未知出版商</string>
     <string name="creator">创作者</string>

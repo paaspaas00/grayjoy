@@ -10,6 +10,7 @@ import android.net.Uri
 import android.provider.Settings
 import android.view.OrientationEventListener
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -21,12 +22,17 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentActivity
 import com.futo.platformplayer.compose.ui.GrayjayApp
+import com.futo.platformplayer.compose.ui.DownloadMediaType
+import com.futo.platformplayer.compose.ui.DownloadStatus
+import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.ThemeMode
 import com.futo.platformplayer.compose.ui.theme.GrayjayTheme
 import com.journeyapps.barcodescanner.ScanContract
@@ -38,6 +44,7 @@ class MainActivity : FragmentActivity() {
     private var pendingDatabaseImportUri by mutableStateOf<Uri?>(null)
     private var deviceIsLandscape by mutableStateOf(false)
     private var deviceLandscapeRotationDegrees by mutableFloatStateOf(90f)
+    private var playerLandscapeFullscreen = false
     private val deviceOrientationListener by lazy {
         object : OrientationEventListener(this) {
             override fun onOrientationChanged(orientation: Int) {
@@ -104,6 +111,23 @@ class MainActivity : FragmentActivity() {
                 pendingDatabaseImportUri = null
             }
             val hasActiveDownloads = uiState.downloads.values.any { it.isActive }
+            var pendingDownloadCompletionKeys by remember(uiState.activeProfileId) {
+                mutableStateOf(emptySet<DownloadCompletionKey>())
+            }
+            LaunchedEffect(uiState.activeProfileId, uiState.downloads) {
+                val transition = updateDownloadCompletionBatch(
+                    pending = pendingDownloadCompletionKeys,
+                    downloads = uiState.downloads.values,
+                )
+                pendingDownloadCompletionKeys = transition.pending
+                if (transition.showCompletionToast) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        R.string.all_downloads_completed,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
             LaunchedEffect(uiState.nowPlaying.video?.id, hasActiveDownloads) {
                 if (
                     (uiState.nowPlaying.video != null || hasActiveDownloads) &&
@@ -145,8 +169,10 @@ class MainActivity : FragmentActivity() {
                     player = viewModel.player,
                     isDarkTheme = darkTheme,
                     onDarkThemeChange = viewModel::setDarkThemeEnabled,
+                    onThemeModeChange = viewModel::setThemeMode,
                     deviceIsLandscape = deviceIsLandscape,
                     deviceLandscapeRotationDegrees = deviceLandscapeRotationDegrees,
+                    onFullscreenPresentationChanged = ::setFullscreenPresentation,
                     onDynamicColorsChange = viewModel::setDynamicColorsEnabled,
                     onPrivateSessionChange = viewModel::setPrivateSessionEnabled,
                     onOpenVideo = viewModel::openVideo,
@@ -241,6 +267,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        applyPlayerStatusBarVisibility()
         grayjayViewModel.setAppForeground(true)
         if (!isSystemAutoRotateEnabled()) deviceIsLandscape = false
         if (deviceOrientationListener.canDetectOrientation()) {
@@ -251,6 +278,8 @@ class MainActivity : FragmentActivity() {
     override fun onPause() {
         grayjayViewModel.setAppForeground(false)
         deviceOrientationListener.disable()
+        WindowCompat.getInsetsController(window, window.decorView)
+            .show(WindowInsetsCompat.Type.statusBars())
         super.onPause()
     }
 
@@ -271,6 +300,18 @@ class MainActivity : FragmentActivity() {
             0,
         ) == 1
     }.getOrDefault(false)
+
+    private fun setFullscreenPresentation(fullscreen: Boolean, portraitVideo: Boolean) {
+        playerLandscapeFullscreen = fullscreen && !portraitVideo
+        applyPlayerStatusBarVisibility()
+    }
+
+    private fun applyPlayerStatusBarVisibility() {
+        WindowCompat.getInsetsController(window, window.decorView).run {
+            if (playerLandscapeFullscreen) hide(WindowInsetsCompat.Type.statusBars())
+            else show(WindowInsetsCompat.Type.statusBars())
+        }
+    }
 
     private companion object {
         const val NOTIFICATION_PERMISSION_PREFERENCES = "notification_permission"
@@ -295,6 +336,52 @@ internal fun automaticFullscreenPosture(
     autoRotateEnabled: Boolean,
     orientation: Int,
 ): Boolean? = if (autoRotateEnabled) physicalLandscapeAt(orientation) else false
+
+internal data class DownloadCompletionKey(
+    val profileId: String,
+    val videoId: String,
+    val mediaType: DownloadMediaType,
+)
+
+internal data class DownloadCompletionTransition(
+    val pending: Set<DownloadCompletionKey>,
+    val showCompletionToast: Boolean,
+)
+
+internal fun updateDownloadCompletionBatch(
+    pending: Set<DownloadCompletionKey>,
+    downloads: Collection<DownloadUiModel>,
+): DownloadCompletionTransition {
+    val active = downloads.flatMapTo(mutableSetOf()) { download ->
+        val mediaTypes = when {
+            download.status == DownloadStatus.Removing -> emptySet()
+            download.activeMediaTypes.isNotEmpty() -> download.activeMediaTypes
+            download.isActive -> setOf(download.mediaType)
+            else -> emptySet()
+        }
+        mediaTypes.map { mediaType ->
+            DownloadCompletionKey(download.profileId, download.videoId, mediaType)
+        }
+    }
+    val completed = downloads.flatMapTo(mutableSetOf()) { download ->
+        val mediaTypes = when {
+            download.completedMediaTypes.isNotEmpty() -> download.completedMediaTypes
+            download.status == DownloadStatus.Completed -> setOf(download.mediaType)
+            else -> emptySet()
+        }
+        mediaTypes.map { mediaType ->
+            DownloadCompletionKey(download.profileId, download.videoId, mediaType)
+        }
+    }
+    val observed = pending + active
+    if (active.isNotEmpty()) {
+        return DownloadCompletionTransition(observed, showCompletionToast = false)
+    }
+    return DownloadCompletionTransition(
+        pending = emptySet(),
+        showCompletionToast = observed.isNotEmpty() && completed.containsAll(observed),
+    )
+}
 
 private fun Intent.pluginSourceUrlOrNull(): String? = dataString?.takeIf { value ->
     value.startsWith("grayjay://plugin/", ignoreCase = true) ||

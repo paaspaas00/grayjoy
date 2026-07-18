@@ -2,7 +2,6 @@ package com.futo.platformplayer.compose.ui.screens
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,12 +10,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
@@ -108,6 +107,7 @@ fun LibraryScreen(
         initialPage = filters.indexOf(selectedFilter).coerceAtLeast(0),
         pageCount = { filters.size },
     )
+    val filterListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val activeFilterName by rememberUpdatedState(selectedFilterName)
 
@@ -117,7 +117,7 @@ fun LibraryScreen(
     }
 
     LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }
+        snapshotFlow { pagerState.currentPage }
             .distinctUntilChanged()
             .collect { page ->
                 filters.getOrNull(page)?.let { filter ->
@@ -130,6 +130,7 @@ fun LibraryScreen(
     }
     LaunchedEffect(selectedFilterName) {
         val page = filters.indexOfFirst { it.name == selectedFilterName }
+        if (page >= 0) filterListState.animateScrollToItem(page)
         if (page >= 0 && page != pagerState.currentPage && !pagerState.isScrollInProgress) {
             pagerState.animateScrollToPage(page)
         }
@@ -147,14 +148,19 @@ fun LibraryScreen(
                 style = MaterialTheme.typography.bodyLarge,
             )
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+        LazyRow(
+            state = filterListState,
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                horizontal = 16.dp,
+                vertical = 10.dp,
+            ),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            filters.forEachIndexed { page, filter ->
+            itemsIndexed(
+                items = filters,
+                key = { _, filter -> filter.name },
+            ) { page, filter ->
                 FilterChip(
                     selected = selectedFilter == filter,
                     onClick = {

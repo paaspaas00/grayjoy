@@ -781,7 +781,7 @@ internal fun PlayerSurface(
                     .fillMaxWidth()
                     .offset(
                         y = when {
-                            isFullscreen && isPortraitFullscreen -> (-18).dp
+                            isFullscreen && isPortraitFullscreen -> (-34).dp
                             isFullscreen -> (-10).dp
                             else -> 0.dp
                         },
@@ -1680,10 +1680,12 @@ private fun VideoActions(
             },
             progress = if (video.isWatchLater) 1f else 0f,
         )
-        DownloadProgressChip(
-            download = download,
-            onClick = { showDownloadOptions = true },
-        )
+        if (!video.isLive) {
+            DownloadProgressChip(
+                download = download,
+                onClick = { showDownloadOptions = true },
+            )
+        }
         NowPlayingActionButton(
             icon = Icons.AutoMirrored.Outlined.PlaylistAdd,
             label = stringResource(R.string.add_to_playlist),
@@ -1699,7 +1701,7 @@ private fun VideoActions(
             iconContentDescription = stringResource(R.string.share_video),
         )
     }
-    if (showDownloadOptions) {
+    if (showDownloadOptions && !video.isLive) {
         DownloadOptionsSheet(
             download = download,
             preferredVideoQuality = preferredVideoQuality,

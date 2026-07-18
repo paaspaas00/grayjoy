@@ -79,6 +79,7 @@
     <string name="low_data">Economia de dados</string>
     <string name="playing_downloaded">Reproduzindo mídia baixada</string>
     <string name="available_offline">Disponível off-line</string>
+    <string name="all_downloads_completed">Todos os downloads foram concluídos.</string>
     <string name="automatic">Automático</string>
     <string name="unknown_publisher">Editor desconhecido</string>
     <string name="creator">Criador</string>

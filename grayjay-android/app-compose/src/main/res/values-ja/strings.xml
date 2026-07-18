@@ -79,6 +79,7 @@
     <string name="low_data">データ節約</string>
     <string name="playing_downloaded">ダウンロード済みメディアを再生中</string>
     <string name="available_offline">オフラインで利用可能</string>
+    <string name="all_downloads_completed">すべてのダウンロードが完了しました。</string>
     <string name="automatic">自動</string>
     <string name="unknown_publisher">不明な発行元</string>
     <string name="creator">クリエイター</string>
