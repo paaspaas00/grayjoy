@@ -17,6 +17,8 @@ import com.futo.platformplayer.compose.data.LibraryRepository
 import com.futo.platformplayer.compose.data.LegacyBackupPasswordRequiredException
 import com.futo.platformplayer.compose.data.LegacyGrayjayBackup
 import com.futo.platformplayer.compose.data.LegacyGrayjayBackupParser
+import com.futo.platformplayer.compose.data.NewPipeBackup
+import com.futo.platformplayer.compose.data.NewPipeBackupParser
 import com.futo.platformplayer.compose.data.LocalContentRepository
 import com.futo.platformplayer.compose.data.ProfileRepository
 import com.futo.platformplayer.compose.data.SharedPreferencesLibraryRepository
@@ -42,6 +44,7 @@ import com.futo.platformplayer.compose.ui.GrayjayUiState
 import com.futo.platformplayer.compose.ui.DatabaseImportPreviewUiModel
 import com.futo.platformplayer.compose.ui.DatabaseImportSelection
 import com.futo.platformplayer.compose.ui.DatabaseImportUiState
+import com.futo.platformplayer.compose.ui.DatabaseImportFormat
 import com.futo.platformplayer.compose.ui.ChannelDetailUiState
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.AudioQualityUiModel
@@ -290,6 +293,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val homeHasMoreCache = mutableMapOf<HomeFeedType, Boolean>()
     private var pendingDatabaseImportUri: Uri? = null
     private var pendingDatabaseImport: LegacyGrayjayBackup? = null
+    private var pendingNewPipeImport: NewPipeBackup? = null
     private val initialContent = visibleContentForSources(
         videos = content.videos,
         channels = content.channels,
@@ -2266,6 +2270,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun prepareDatabaseImport(uri: Uri, password: String? = null) {
         pendingDatabaseImportUri = uri
         pendingDatabaseImport = null
+        pendingNewPipeImport = null
         val fileName = importDisplayName(uri)
         _uiState.update {
             it.copy(
@@ -2280,7 +2285,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 val backup = withContext(Dispatchers.IO) {
                     val bytes = getApplication<Application>().contentResolver
                         .openInputStream(uri)
-                        ?.use { it.readImportBytes() }
+                        ?.use {
+                            it.readImportBytes(
+                                maxBytes = MAX_GRAYJAY_IMPORT_BYTES,
+                                tooLargeMessage = "The selected backup is larger than 128 MB.",
+                            )
+                        }
                         ?: error(text(R.string.backup_open_failed))
                     LegacyGrayjayBackupParser.parse(bytes, password)
                 }
@@ -2327,17 +2337,86 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun prepareNewPipeImport(uri: Uri) {
+        pendingDatabaseImportUri = null
+        pendingDatabaseImport = null
+        pendingNewPipeImport = null
+        val fileName = importDisplayName(uri)
+        _uiState.update {
+            it.copy(
+                databaseImport = DatabaseImportUiState(
+                    isBusy = true,
+                    fileName = fileName,
+                    format = DatabaseImportFormat.NewPipe,
+                ),
+            )
+        }
+        viewModelScope.launch {
+            try {
+                val backup = withContext(Dispatchers.IO) {
+                    val bytes = getApplication<Application>().contentResolver
+                        .openInputStream(uri)
+                        ?.use {
+                            it.readImportBytes(
+                                maxBytes = MAX_NEWPIPE_IMPORT_BYTES,
+                                tooLargeMessage = "The selected NewPipe export is larger than 256 MB.",
+                            )
+                        }
+                        ?: error(text(R.string.backup_open_failed))
+                    NewPipeBackupParser.parse(bytes, getApplication<Application>().cacheDir)
+                }
+                pendingNewPipeImport = backup
+                _uiState.update {
+                    it.copy(
+                        databaseImport = DatabaseImportUiState(
+                            preview = DatabaseImportPreviewUiModel(
+                                fileName = fileName,
+                                sourceCount = 0,
+                                pluginSettingsCount = 0,
+                                subscriptionCount = backup.subscriptions.size,
+                                watchLaterCount = 0,
+                                playlistCount = backup.playlists.size,
+                                historyCount = backup.history.size,
+                                hasLegacySettings = false,
+                                format = DatabaseImportFormat.NewPipe,
+                            ),
+                            fileName = fileName,
+                            format = DatabaseImportFormat.NewPipe,
+                        ),
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        databaseImport = DatabaseImportUiState(
+                            fileName = fileName,
+                            errorMessage = localizedNewPipeError(error),
+                            format = DatabaseImportFormat.NewPipe,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     fun retryDatabaseImport(password: String) {
         pendingDatabaseImportUri?.let { prepareDatabaseImport(it, password) }
     }
 
     fun dismissDatabaseImport() {
         pendingDatabaseImport = null
+        pendingNewPipeImport = null
         pendingDatabaseImportUri = null
         _uiState.update { it.copy(databaseImport = DatabaseImportUiState()) }
     }
 
     fun confirmDatabaseImport(selection: DatabaseImportSelection) {
+        pendingNewPipeImport?.let { backup ->
+            confirmNewPipeImport(backup, selection)
+            return
+        }
         val backup = pendingDatabaseImport ?: return
         _uiState.update {
             it.copy(databaseImport = it.databaseImport.copy(isBusy = true, errorMessage = null))
@@ -2446,6 +2525,74 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         databaseImport = it.databaseImport.copy(
                             isBusy = false,
                             errorMessage = error.localizedMessage ?: text(R.string.database_import_failed),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun confirmNewPipeImport(
+        backup: NewPipeBackup,
+        selection: DatabaseImportSelection,
+    ) {
+        _uiState.update {
+            it.copy(databaseImport = it.databaseImport.copy(isBusy = true, errorMessage = null))
+        }
+        viewModelScope.launch {
+            try {
+                val (importedVideos, parsedPlaylists) = backup.buildImportLibrary(
+                    includePlaylists = selection.importPlaylists,
+                    includeHistory = selection.importHistory,
+                    importedDescription = text(R.string.imported_from_newpipe),
+                )
+                val remappedVideos = importedVideos.map(::remapImportedVideo)
+                val importedPlaylists = parsedPlaylists.map { playlist ->
+                    playlist.copy(
+                        title = playlist.title.takeUnless { it == "Imported playlist" }
+                            ?: text(R.string.imported_playlist),
+                    )
+                }
+                libraryRepository.mergeImportedData(remappedVideos, importedPlaylists)
+
+                val importedChannels = if (selection.importSubscriptions) {
+                    backup.subscriptionChannels(text(R.string.imported_from_newpipe))
+                        .map(::remapImportedChannel)
+                        .distinctBy(ChannelUiModel::id)
+                } else {
+                    emptyList()
+                }
+                preferences.mergeImportedSubscriptions(importedChannels)
+                importedChannels.forEach { remoteChannels[it.id] = it }
+                followedCreatorIds = preferences.followedCreatorIds()
+                reloadLibrary()
+                allVideos.forEach(::registerRemoteChannel)
+                _uiState.update { state ->
+                    state.copy(
+                        channels = visibleKnownChannels(),
+                        followedCreatorIds = followedCreatorIds,
+                        databaseImport = DatabaseImportUiState(
+                            resultMessage = text(
+                                R.string.newpipe_import_summary,
+                                remappedVideos.size,
+                                importedPlaylists.size,
+                                importedChannels.size,
+                            ),
+                            format = DatabaseImportFormat.NewPipe,
+                        ),
+                    )
+                }
+                pendingNewPipeImport = null
+                homeFeedCache.clear()
+                refreshHome()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        databaseImport = it.databaseImport.copy(
+                            isBusy = false,
+                            errorMessage = localizedNewPipeError(error),
                         ),
                     )
                 }
@@ -2592,6 +2739,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             message.isNotBlank() -> message
             else -> text(R.string.backup_read_failed)
         }
+    }
+
+    private fun localizedNewPipeError(error: Throwable): String {
+        val detail = error.localizedMessage.orEmpty()
+        return if (detail.isBlank()) text(R.string.newpipe_import_failed)
+        else "${text(R.string.newpipe_import_failed)} $detail"
     }
 
     private fun EnginePlaybackState.toUiState() = PlaybackUiState(
@@ -3129,7 +3282,8 @@ private fun inferImportedSourceId(url: String): String = when {
 }
 
 private const val DOWNLOAD_PREPARATION_TTL_MS = 15L * 60L * 1_000L
-private const val MAX_IMPORT_BYTES = 128 * 1024 * 1024
+private const val MAX_GRAYJAY_IMPORT_BYTES = 128 * 1024 * 1024
+private const val MAX_NEWPIPE_IMPORT_BYTES = 256 * 1024 * 1024
 
 private fun downloadJobKey(
     profileId: String,
@@ -3176,14 +3330,17 @@ private val DOWNLOAD_ACTIVE_UI_STATES = setOf(
     DownloadStatus.Removing,
 )
 
-private fun InputStream.readImportBytes(): ByteArray {
+private fun InputStream.readImportBytes(
+    maxBytes: Int,
+    tooLargeMessage: String,
+): ByteArray {
     val output = ByteArrayOutputStream()
     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
     while (true) {
         val read = read(buffer)
         if (read < 0) break
-        if (output.size() + read > MAX_IMPORT_BYTES) {
-            throw IllegalArgumentException("The selected backup is larger than 128 MB.")
+        if (output.size() + read > maxBytes) {
+            throw IllegalArgumentException(tooLargeMessage)
         }
         output.write(buffer, 0, read)
     }

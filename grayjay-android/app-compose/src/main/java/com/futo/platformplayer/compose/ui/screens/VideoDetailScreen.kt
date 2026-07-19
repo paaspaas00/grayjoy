@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
@@ -103,7 +102,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -416,7 +414,6 @@ fun FullscreenPlayerScreen(
     onRetryPlayback: () -> Unit,
     onExitFullscreen: () -> Unit,
     portraitFullscreen: Boolean,
-    landscapeRotationDegrees: Float,
     modifier: Modifier = Modifier,
 ) {
     val queueIndex = playback.queueVideoIds.indexOf(playback.currentVideoId)
@@ -425,18 +422,16 @@ fun FullscreenPlayerScreen(
 
     Surface(modifier = modifier.fillMaxSize(), color = Color.Black) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val playerModifier = if (portraitFullscreen) {
-                Modifier.fillMaxSize()
-            } else {
-                // Keep the Activity portrait-only. Widescreen fullscreen is a player-local
-                // rotation, so entering or leaving it cannot mutate Android orientation state.
-                Modifier
-                    .align(Alignment.Center)
-                    .requiredSize(width = maxHeight, height = maxWidth)
-                    .graphicsLayer {
-                        rotationZ = landscapeRotationDegrees
-                        transformOrigin = TransformOrigin.Center
-                    }
+            val coverOrientationHandoff = shouldCoverFullscreenOrientationHandoff(
+                portraitFullscreen = portraitFullscreen,
+                viewportWidth = maxWidth.value,
+                viewportHeight = maxHeight.value,
+            )
+            if (coverOrientationHandoff) {
+                // Never rotate Compose controls into a portrait window: sheets and system
+                // overlays would then use a different coordinate space. Keep this player
+                // surface opaque until Android supplies the real landscape viewport.
+                return@BoxWithConstraints
             }
             PlayerSurface(
                 video = video,
@@ -458,11 +453,17 @@ fun FullscreenPlayerScreen(
                 onSubtitleLanguageChange = onSubtitleLanguageChange,
                 onRetryPlayback = onRetryPlayback,
                 onFullscreen = onExitFullscreen,
-                modifier = playerModifier,
+                modifier = Modifier.fillMaxSize(),
             )
         }
     }
 }
+
+internal fun shouldCoverFullscreenOrientationHandoff(
+    portraitFullscreen: Boolean,
+    viewportWidth: Float,
+    viewportHeight: Float,
+): Boolean = !portraitFullscreen && viewportHeight > viewportWidth
 
 @Composable
 internal fun PlayerSurface(

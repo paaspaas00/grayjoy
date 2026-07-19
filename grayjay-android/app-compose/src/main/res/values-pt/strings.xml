@@ -62,21 +62,22 @@
     <string name="live_download_unsupported">As transmissões ao vivo não podem ser baixadas.</string>
     <string name="download_no_media">Esta fonte não retornou nenhuma mídia para download.</string>
     <string name="download_no_audio">Esta fonte não retornou nenhum áudio para download.</string>
+    <string name="download_drm_unsupported">Streams protegidos por DRM não podem ser baixados.</string>
     <string name="download_all_audio">Baixar áudio</string>
     <string name="download_all_video">Baixar vídeo</string>
     <string name="download_options">Opções de download</string>
-    <string name="choose_download_format">Escolha o que manter offline.</string>
+    <string name="choose_download_format">Escolha o que manter off-line.</string>
     <string name="video">Vídeo</string>
-    <string name="audio_only">Somente áudio</string>
-    <string name="app_quality_setting">Usar configuração do app</string>
+    <string name="audio_only">Apenas áudio</string>
+    <string name="app_quality_setting">Usar configuração do aplicativo</string>
     <string name="app_quality_setting_value">Qualidade de vídeo padrão: %1$s</string>
     <string name="advanced_quality">Avançado</string>
-    <string name="choose_video_quality">Escolher qualidade do vídeo</string>
+    <string name="choose_video_quality">Escolha a qualidade do vídeo</string>
     <string name="preferred_audio_quality">Qualidade de áudio preferida</string>
     <string name="app_audio_quality_setting_value">Qualidade de áudio padrão: %1$s</string>
-    <string name="choose_audio_quality">Escolher qualidade do áudio</string>
+    <string name="choose_audio_quality">Escolha a qualidade do áudio</string>
     <string name="high_quality">Alta qualidade</string>
-    <string name="low_data">Economia de dados</string>
+    <string name="low_data">Dados baixos</string>
     <string name="playing_downloaded">Reproduzindo mídia baixada</string>
     <string name="available_offline">Disponível off-line</string>
     <string name="all_downloads_completed">Todos os downloads foram concluídos.</string>
@@ -150,7 +151,7 @@
     </plurals>
     <string name="local_playlist">LISTA DE REPRODUÇÃO LOCAL</string>
     <string name="play_all">Tocar tudo</string>
-    <string name="play_from_here">A partir daqui</string>
+    <string name="play_from_here">Daqui</string>
     <plurals name="video_count">
         <item quantity="one">%d vídeo</item>
         <item quantity="other">%d vídeos</item>
@@ -293,6 +294,8 @@
     <string name="settings_data">Dados</string>
     <string name="import_grayjay_database">Importar banco de dados Grayjay</string>
     <string name="import_grayjay_database_description">Restaurar uma exportação Grayjay (.zip) ou backup automático (.ezip)</string>
+    <string name="import_newpipe_database">Importar dados do NewPipe</string>
+    <string name="import_newpipe_database_description">Restaure assinaturas, histórico e listas de reprodução locais de uma exportação NewPipe (.zip ou .db) ou JSON de assinaturas</string>
     <string name="preferred_video_quality">Qualidade de vídeo preferida</string>
     <plurals name="active_sources">
         <item quantity="one">%d fonte ativa</item>
@@ -362,6 +365,7 @@
     <string name="signing_key_label">Chave de assinatura: %1$s</string>
     <string name="trust_publisher_question">Continue apenas se você obteve esta fonte de um editor de sua confiança. Você confia nesta editora?</string>
     <string name="reading_grayjay_backup">Lendo backup de Grayjay</string>
+    <string name="reading_newpipe_backup">Lendo a exportação do NewPipe</string>
     <string name="importing_database">Importando banco de dados</string>
     <string name="please_wait">Por favor, aguarde…</string>
     <string name="import_failed">Falha na importação</string>
@@ -370,10 +374,12 @@
     <string name="backup_password_prompt">Digite a senha de backup automático para %1$s.</string>
     <string name="backup_password">Senha do Backup</string>
     <string name="import_grayjay_database_question">Importar banco de dados Grayjay?</string>
+    <string name="import_newpipe_database_question">Importar dados do NewPipe?</string>
     <string name="source_settings">Configurações de origem</string>
     <string name="subscriptions">Inscrições</string>
     <string name="legacy_settings_notice">Configurações de IU legadas foram encontradas. As configurações de origem compatíveis são importadas; as antigas preferências somente visualização são ignoradas.</string>
     <string name="import_merge_notice">Os dados importados são mesclados com este aplicativo. O histórico e as listas de reprodução existentes não são excluídos.</string>
+    <string name="newpipe_import_merge_notice">Os dados importados do NewPipe são mesclados no perfil atual. Assinaturas, histórico e listas de reprodução existentes não são excluídos.</string>
     <plurals name="plugin_configurations">
         <item quantity="one">Configuração do plugin %d</item>
         <item quantity="other">Configurações do plug-in %d</item>
@@ -416,6 +422,9 @@
     <string name="imported_creator">Criador importado</string>
     <string name="imported_from_grayjay">Importado de Grayjay</string>
     <string name="import_summary">Grayjay banco de dados importado: %1$d vídeos, %2$d playlists, %3$d assinaturas</string>
+    <string name="imported_from_newpipe">Importado do NewPipe</string>
+    <string name="newpipe_import_summary">Dados NewPipe importados: %1$d vídeos, %2$d playlists, %3$d assinaturas</string>
+    <string name="newpipe_import_failed">A exportação do NewPipe não pôde ser importada.</string>
     <plurals name="source_warnings">
         <item quantity="one">%d aviso de origem</item>
         <item quantity="other">%d avisos de origem</item>

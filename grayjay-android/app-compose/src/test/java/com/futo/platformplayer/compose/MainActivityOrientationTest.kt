@@ -1,5 +1,6 @@
 package com.futo.platformplayer.compose
 
+import android.content.pm.ActivityInfo
 import android.view.OrientationEventListener
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadStatus
@@ -40,10 +41,19 @@ class MainActivityOrientationTest {
     }
 
     @Test
-    fun `player-local landscape rotation follows either way the phone is held`() {
-        assertEquals(-90f, landscapePlayerRotationAt(90))
-        assertEquals(90f, landscapePlayerRotationAt(270))
-        assertNull(landscapePlayerRotationAt(0))
+    fun `fullscreen orientation is app controlled regardless of Android rotation lock`() {
+        assertEquals(
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
+            fullscreenPlayerOrientation(fullscreen = true, portraitVideo = false),
+        )
+        assertEquals(
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
+            fullscreenPlayerOrientation(fullscreen = true, portraitVideo = true),
+        )
+        assertEquals(
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
+            fullscreenPlayerOrientation(fullscreen = false, portraitVideo = false),
+        )
     }
 
     @Test

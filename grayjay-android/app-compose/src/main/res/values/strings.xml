@@ -308,6 +308,8 @@
     <string name="settings_data">Data</string>
     <string name="import_grayjay_database">Import Grayjay database</string>
     <string name="import_grayjay_database_description">Restore a Grayjay export (.zip) or automatic backup (.ezip)</string>
+    <string name="import_newpipe_database">Import NewPipe data</string>
+    <string name="import_newpipe_database_description">Restore subscriptions, history, and local playlists from a NewPipe export (.zip or .db), or subscriptions JSON</string>
     <string name="preferred_video_quality">Preferred video quality</string>
 
     <!-- Sources -->
@@ -381,6 +383,7 @@
 
     <!-- Database import -->
     <string name="reading_grayjay_backup">Reading Grayjay backup</string>
+    <string name="reading_newpipe_backup">Reading NewPipe export</string>
     <string name="importing_database">Importing database</string>
     <string name="please_wait">Please wait…</string>
     <string name="import_failed">Import failed</string>
@@ -389,10 +392,12 @@
     <string name="backup_password_prompt">Enter the automatic-backup password for %1$s.</string>
     <string name="backup_password">Backup password</string>
     <string name="import_grayjay_database_question">Import Grayjay database?</string>
+    <string name="import_newpipe_database_question">Import NewPipe data?</string>
     <string name="source_settings">Source settings</string>
     <string name="subscriptions">Subscriptions</string>
     <string name="legacy_settings_notice">Legacy UI settings were found. Compatible source settings are imported; old View-only preferences are skipped.</string>
     <string name="import_merge_notice">Imported data is merged with this app. Existing history and playlists are not deleted.</string>
+    <string name="newpipe_import_merge_notice">Imported NewPipe data is merged into the current profile. Existing subscriptions, history, and playlists are not deleted.</string>
     <plurals name="plugin_configurations">
         <item quantity="one">%d plugin configuration</item>
         <item quantity="other">%d plugin configurations</item>
@@ -437,6 +442,9 @@
     <string name="imported_creator">Imported creator</string>
     <string name="imported_from_grayjay">Imported from Grayjay</string>
     <string name="import_summary">Grayjay database imported: %1$d videos, %2$d playlists, %3$d subscriptions</string>
+    <string name="imported_from_newpipe">Imported from NewPipe</string>
+    <string name="newpipe_import_summary">NewPipe data imported: %1$d videos, %2$d playlists, %3$d subscriptions</string>
+    <string name="newpipe_import_failed">The NewPipe export could not be imported.</string>
     <plurals name="source_warnings">
         <item quantity="one">%d source warning</item>
         <item quantity="other">%d source warnings</item>

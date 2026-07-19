@@ -27,6 +27,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.ui.DatabaseImportFormat
 import com.futo.platformplayer.compose.ui.DatabaseImportSelection
 import com.futo.platformplayer.compose.ui.DatabaseImportUiState
 
@@ -45,7 +46,9 @@ fun DatabaseImportDialogs(
             title = {
                 Text(
                     stringResource(
-                        if (state.preview == null) R.string.reading_grayjay_backup
+                        if (state.preview == null && state.format == DatabaseImportFormat.NewPipe) {
+                            R.string.reading_newpipe_backup
+                        } else if (state.preview == null) R.string.reading_grayjay_backup
                         else R.string.importing_database,
                     ),
                 )
@@ -133,7 +136,17 @@ private fun ImportPreviewDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("database-import-preview"),
-        title = { Text(stringResource(R.string.import_grayjay_database_question)) },
+        title = {
+            Text(
+                stringResource(
+                    if (preview.format == DatabaseImportFormat.NewPipe) {
+                        R.string.import_newpipe_database_question
+                    } else {
+                        R.string.import_grayjay_database_question
+                    },
+                ),
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(preview.fileName, style = MaterialTheme.typography.titleSmall)
@@ -206,7 +219,13 @@ private fun ImportPreviewDialog(
                     )
                 }
                 Text(
-                    stringResource(R.string.import_merge_notice),
+                    stringResource(
+                        if (preview.format == DatabaseImportFormat.NewPipe) {
+                            R.string.newpipe_import_merge_notice
+                        } else {
+                            R.string.import_merge_notice
+                        },
+                    ),
                     modifier = Modifier.padding(top = 8.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,

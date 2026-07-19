@@ -308,6 +308,8 @@
     <string name="settings_data">Dati</string>
     <string name="import_grayjay_database">Importa database Grayjay</string>
     <string name="import_grayjay_database_description">Ripristina un’esportazione Grayjay (.zip) o un backup automatico (.ezip)</string>
+    <string name="import_newpipe_database">Importa dati NewPipe</string>
+    <string name="import_newpipe_database_description">Ripristina iscrizioni, cronologia e playlist locali da un’esportazione NewPipe (.zip o .db), oppure dal JSON delle iscrizioni</string>
     <string name="preferred_video_quality">Qualità video preferita</string>
 
     <!-- Sorgenti -->
@@ -381,6 +383,7 @@
 
     <!-- Importazione database -->
     <string name="reading_grayjay_backup">Lettura backup Grayjay</string>
+    <string name="reading_newpipe_backup">Lettura esportazione NewPipe</string>
     <string name="importing_database">Importazione database</string>
     <string name="please_wait">Attendi…</string>
     <string name="import_failed">Importazione non riuscita</string>
@@ -389,10 +392,12 @@
     <string name="backup_password_prompt">Inserisci la password del backup automatico per %1$s.</string>
     <string name="backup_password">Password del backup</string>
     <string name="import_grayjay_database_question">Importare il database Grayjay?</string>
+    <string name="import_newpipe_database_question">Importare i dati NewPipe?</string>
     <string name="source_settings">Impostazioni sorgenti</string>
     <string name="subscriptions">Iscrizioni</string>
     <string name="legacy_settings_notice">Sono state trovate impostazioni dell’interfaccia precedente. Le impostazioni compatibili delle sorgenti saranno importate; le vecchie preferenze legate alle View saranno ignorate.</string>
     <string name="import_merge_notice">I dati importati vengono uniti a quelli dell’app. La cronologia e le playlist esistenti non saranno eliminate.</string>
+    <string name="newpipe_import_merge_notice">I dati NewPipe importati vengono uniti al profilo corrente. Iscrizioni, cronologia e playlist esistenti non saranno eliminate.</string>
     <plurals name="plugin_configurations">
         <item quantity="one">%d configurazione plugin</item>
         <item quantity="other">%d configurazioni plugin</item>
@@ -437,6 +442,9 @@
     <string name="imported_creator">Creator importato</string>
     <string name="imported_from_grayjay">Importato da Grayjay</string>
     <string name="import_summary">Database Grayjay importato: %1$d video, %2$d playlist, %3$d iscrizioni</string>
+    <string name="imported_from_newpipe">Importato da NewPipe</string>
+    <string name="newpipe_import_summary">Dati NewPipe importati: %1$d video, %2$d playlist, %3$d iscrizioni</string>
+    <string name="newpipe_import_failed">Impossibile importare l’esportazione NewPipe.</string>
     <plurals name="source_warnings">
         <item quantity="one">%d avviso sorgente</item>
         <item quantity="other">%d avvisi sorgente</item>

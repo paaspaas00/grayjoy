@@ -20,7 +20,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,14 +42,11 @@ class MainActivity : FragmentActivity() {
     private var pendingSourceUrl by mutableStateOf<String?>(null)
     private var pendingDatabaseImportUri by mutableStateOf<Uri?>(null)
     private var deviceIsLandscape by mutableStateOf(false)
-    private var deviceLandscapeRotationDegrees by mutableFloatStateOf(90f)
+    private var playerFullscreen = false
     private var playerLandscapeFullscreen = false
     private val deviceOrientationListener by lazy {
         object : OrientationEventListener(this) {
             override fun onOrientationChanged(orientation: Int) {
-                landscapePlayerRotationAt(orientation)?.let {
-                    deviceLandscapeRotationDegrees = it
-                }
                 automaticFullscreenPosture(
                     autoRotateEnabled = isSystemAutoRotateEnabled(),
                     orientation = orientation,
@@ -72,6 +68,11 @@ class MainActivity : FragmentActivity() {
                 ActivityResultContracts.OpenDocument(),
             ) { uri ->
                 uri?.let(viewModel::prepareDatabaseImport)
+            }
+            val newPipeImportPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument(),
+            ) { uri ->
+                uri?.let(viewModel::prepareNewPipeImport)
             }
             val sourceLoginLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult(),
@@ -171,7 +172,6 @@ class MainActivity : FragmentActivity() {
                     onDarkThemeChange = viewModel::setDarkThemeEnabled,
                     onThemeModeChange = viewModel::setThemeMode,
                     deviceIsLandscape = deviceIsLandscape,
-                    deviceLandscapeRotationDegrees = deviceLandscapeRotationDegrees,
                     onFullscreenPresentationChanged = ::setFullscreenPresentation,
                     onDynamicColorsChange = viewModel::setDynamicColorsEnabled,
                     onPrivateSessionChange = viewModel::setPrivateSessionEnabled,
@@ -245,6 +245,11 @@ class MainActivity : FragmentActivity() {
                     onToggleFollowing = viewModel::toggleFollowing,
                     onCreatorFollowedChange = viewModel::setCreatorFollowed,
                     onChooseDatabaseImport = { databaseImportPicker.launch(arrayOf("*/*")) },
+                    onChooseNewPipeImport = {
+                        newPipeImportPicker.launch(
+                            arrayOf("application/zip", "application/x-sqlite3", "application/json", "*/*"),
+                        )
+                    },
                     onRetryDatabaseImport = viewModel::retryDatabaseImport,
                     onConfirmDatabaseImport = viewModel::confirmDatabaseImport,
                     onDismissDatabaseImport = viewModel::dismissDatabaseImport,
@@ -302,7 +307,14 @@ class MainActivity : FragmentActivity() {
     }.getOrDefault(false)
 
     private fun setFullscreenPresentation(fullscreen: Boolean, portraitVideo: Boolean) {
+        playerFullscreen = fullscreen
         playerLandscapeFullscreen = fullscreen && !portraitVideo
+        val playerOrientation = fullscreenPlayerOrientation(fullscreen, portraitVideo)
+        if (requestedOrientation != playerOrientation) {
+            // This is scoped to Grayjoy's Activity. SENSOR_LANDSCAPE deliberately bypasses the
+            // user's global rotation lock without reading or changing that Android setting.
+            requestedOrientation = playerOrientation
+        }
         applyPlayerStatusBarVisibility()
     }
 
@@ -310,6 +322,8 @@ class MainActivity : FragmentActivity() {
         WindowCompat.getInsetsController(window, window.decorView).run {
             if (playerLandscapeFullscreen) hide(WindowInsetsCompat.Type.statusBars())
             else show(WindowInsetsCompat.Type.statusBars())
+            if (playerFullscreen) hide(WindowInsetsCompat.Type.navigationBars())
+            else show(WindowInsetsCompat.Type.navigationBars())
         }
     }
 
@@ -326,16 +340,19 @@ internal fun physicalLandscapeAt(orientation: Int): Boolean? = when {
     else -> null
 }
 
-internal fun landscapePlayerRotationAt(orientation: Int): Float? = when {
-    orientation in 60..120 -> -90f
-    orientation in 240..300 -> 90f
-    else -> null
-}
-
 internal fun automaticFullscreenPosture(
     autoRotateEnabled: Boolean,
     orientation: Int,
 ): Boolean? = if (autoRotateEnabled) physicalLandscapeAt(orientation) else false
+
+internal fun fullscreenPlayerOrientation(
+    fullscreen: Boolean,
+    portraitVideo: Boolean,
+): Int = if (fullscreen && !portraitVideo) {
+    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+} else {
+    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+}
 
 internal data class DownloadCompletionKey(
     val profileId: String,

@@ -56,6 +56,7 @@ fun SettingsScreen(
     onPrivateSessionChange: (Boolean) -> Unit,
     onManageSources: () -> Unit,
     onImportDatabase: () -> Unit,
+    onImportNewPipeDatabase: () -> Unit = {},
     activeSourceCount: Int,
     defaultPlaybackSpeed: Float,
     onDefaultPlaybackSpeedChange: (Float) -> Unit,
@@ -77,6 +78,7 @@ fun SettingsScreen(
     var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
+        modifier = Modifier.testTag("settings-list"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -234,6 +236,14 @@ fun SettingsScreen(
                     icon = Icons.Outlined.FileUpload,
                     onClick = onImportDatabase,
                     testTag = "import-grayjay-database",
+                )
+                HorizontalDivider()
+                LinkSetting(
+                    title = stringResource(R.string.import_newpipe_database),
+                    description = stringResource(R.string.import_newpipe_database_description),
+                    icon = Icons.Outlined.FileUpload,
+                    onClick = onImportNewPipeDatabase,
+                    testTag = "import-newpipe-database",
                 )
             }
         }

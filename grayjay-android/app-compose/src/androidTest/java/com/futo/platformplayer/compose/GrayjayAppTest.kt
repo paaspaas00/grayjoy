@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
@@ -25,6 +26,7 @@ import com.futo.platformplayer.compose.ui.GrayjayUiState
 import com.futo.platformplayer.compose.ui.DatabaseImportPreviewUiModel
 import com.futo.platformplayer.compose.ui.DatabaseImportSelection
 import com.futo.platformplayer.compose.ui.DatabaseImportUiState
+import com.futo.platformplayer.compose.ui.DatabaseImportFormat
 import com.futo.platformplayer.compose.ui.NowPlayingUiState
 import com.futo.platformplayer.compose.ui.PlaybackUiState
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
@@ -48,6 +50,7 @@ class GrayjayAppTest {
     private lateinit var state: MutableState<GrayjayUiState>
     private var installedSourceUrl: String? = null
     private var importPickerRequested = false
+    private var newPipeImportPickerRequested = false
     private var confirmedImport: DatabaseImportSelection? = null
     private var trustedUnverifiedSource = false
     private var rejectedUnverifiedSource = false
@@ -133,6 +136,7 @@ class GrayjayAppTest {
                     onToggleFollowing = {},
                     onCreatorFollowedChange = { _, _ -> },
                     onChooseDatabaseImport = { importPickerRequested = true },
+                    onChooseNewPipeImport = { newPipeImportPickerRequested = true },
                     onRetryDatabaseImport = {},
                     onConfirmDatabaseImport = { confirmedImport = it },
                     onDismissDatabaseImport = {},
@@ -247,6 +251,34 @@ class GrayjayAppTest {
             assertTrue(confirmedImport?.importSubscriptions == true)
             assertTrue(confirmedImport?.importHistory == true)
         }
+    }
+
+    @Test
+    fun settingsLaunchesNewPipePickerAndShowsNewPipePreview() {
+        composeRule.onNodeWithTag("nav-settings").performClick()
+        composeRule.onNodeWithTag("settings-list").performScrollToIndex(6)
+        composeRule.onNodeWithTag("import-newpipe-database").performClick()
+        composeRule.runOnIdle { assertTrue(newPipeImportPickerRequested) }
+
+        state.value = state.value.copy(
+            databaseImport = DatabaseImportUiState(
+                preview = DatabaseImportPreviewUiModel(
+                    fileName = "NewPipeData.zip",
+                    sourceCount = 0,
+                    pluginSettingsCount = 0,
+                    subscriptionCount = 5,
+                    watchLaterCount = 0,
+                    playlistCount = 2,
+                    historyCount = 9,
+                    hasLegacySettings = false,
+                    format = DatabaseImportFormat.NewPipe,
+                ),
+                format = DatabaseImportFormat.NewPipe,
+            ),
+        )
+        composeRule.onNodeWithTag("database-import-preview").assertIsDisplayed()
+        composeRule.onNodeWithTag("import-sources").assertDoesNotExist()
+        composeRule.onNodeWithTag("import-subscriptions").assertIsDisplayed()
     }
 
     @Test

@@ -62,12 +62,13 @@
     <string name="live_download_unsupported">لا يمكن تنزيل البث المباشر.</string>
     <string name="download_no_media">لم يُرجع هذا المصدر أي وسائط قابلة للتنزيل.</string>
     <string name="download_no_audio">لم يُرجع هذا المصدر أي صوت قابل للتنزيل.</string>
+    <string name="download_drm_unsupported">لا يمكن تنزيل التدفقات المحمية بموجب إدارة الحقوق الرقمية (DRM).</string>
     <string name="download_all_audio">تحميل الصوت</string>
     <string name="download_all_video">قم بتنزيل الفيديو</string>
     <string name="download_options">خيارات التنزيل</string>
-    <string name="choose_download_format">اختر ما تريد الاحتفاظ به بلا اتصال.</string>
+    <string name="choose_download_format">اختر ما تريد الاحتفاظ به دون اتصال بالإنترنت.</string>
     <string name="video">فيديو</string>
-    <string name="audio_only">صوت فقط</string>
+    <string name="audio_only">الصوت فقط</string>
     <string name="app_quality_setting">استخدام إعداد التطبيق</string>
     <string name="app_quality_setting_value">جودة الفيديو الافتراضية: %1$s</string>
     <string name="advanced_quality">متقدم</string>
@@ -76,8 +77,8 @@
     <string name="app_audio_quality_setting_value">جودة الصوت الافتراضية: %1$s</string>
     <string name="choose_audio_quality">اختر جودة الصوت</string>
     <string name="high_quality">جودة عالية</string>
-    <string name="low_data">توفير البيانات</string>
-    <string name="playing_downloaded">تشغيل وسائط تم تنزيلها</string>
+    <string name="low_data">بيانات منخفضة</string>
+    <string name="playing_downloaded">تشغيل الوسائط التي تم تنزيلها</string>
     <string name="available_offline">متاح حاليا</string>
     <string name="all_downloads_completed">اكتملت جميع التنزيلات.</string>
     <string name="automatic">تلقائي</string>
@@ -293,6 +294,8 @@
     <string name="settings_data">بيانات</string>
     <string name="import_grayjay_database">استيراد قاعدة بيانات Grayjay</string>
     <string name="import_grayjay_database_description">استعادة تصدير Grayjay (.zip) أو النسخ الاحتياطي التلقائي (.ezip)</string>
+    <string name="import_newpipe_database">استيراد بيانات NewPipe</string>
+    <string name="import_newpipe_database_description">استعادة الاشتراكات والمحفوظات وقوائم التشغيل المحلية من تصدير NewPipe (.zip أو .db) أو الاشتراكات JSON</string>
     <string name="preferred_video_quality">جودة الفيديو المفضلة</string>
     <plurals name="active_sources">
         <item quantity="one">%d المصدر النشط</item>
@@ -362,6 +365,7 @@
     <string name="signing_key_label">مفتاح التوقيع: %1$s</string>
     <string name="trust_publisher_question">تابع فقط إذا حصلت على هذا المصدر من ناشر تثق به. هل تثق بهذا الناشر؟</string>
     <string name="reading_grayjay_backup">قراءة Grayjay النسخ الاحتياطي</string>
+    <string name="reading_newpipe_backup">قراءة تصدير NewPipe</string>
     <string name="importing_database">استيراد قاعدة البيانات</string>
     <string name="please_wait">انتظر من فضلك…</string>
     <string name="import_failed">فشل الاستيراد</string>
@@ -370,10 +374,12 @@
     <string name="backup_password_prompt">أدخل كلمة مرور النسخ الاحتياطي التلقائي لـ %1$s.</string>
     <string name="backup_password">كلمة مرور النسخ الاحتياطي</string>
     <string name="import_grayjay_database_question">هل تريد استيراد قاعدة بيانات Grayjay؟</string>
+    <string name="import_newpipe_database_question">هل تريد استيراد بيانات NewPipe؟</string>
     <string name="source_settings">إعدادات المصدر</string>
     <string name="subscriptions">الاشتراكات</string>
     <string name="legacy_settings_notice">تم العثور على إعدادات واجهة المستخدم القديمة. يتم استيراد إعدادات المصدر المتوافقة؛ يتم تخطي تفضيلات العرض فقط القديمة.</string>
     <string name="import_merge_notice">تم دمج البيانات المستوردة مع هذا التطبيق. لا يتم حذف السجل وقوائم التشغيل الموجودة.</string>
+    <string name="newpipe_import_merge_notice">يتم دمج بيانات NewPipe المستوردة في ملف التعريف الحالي. لا يتم حذف الاشتراكات والمحفوظات وقوائم التشغيل الموجودة.</string>
     <plurals name="plugin_configurations">
         <item quantity="one">%d تكوين البرنامج المساعد</item>
         <item quantity="other">%d تكوينات البرنامج المساعد</item>
@@ -416,6 +422,9 @@
     <string name="imported_creator">المبدع المستورد</string>
     <string name="imported_from_grayjay">مستورد من Grayjay</string>
     <string name="import_summary">تم استيراد قاعدة بيانات Grayjay: %1$d مقاطع فيديو، %2$d قوائم تشغيل، %3$d اشتراكات</string>
+    <string name="imported_from_newpipe">مستورد من نيوبيب</string>
+    <string name="newpipe_import_summary">تم استيراد بيانات NewPipe: %1$d مقاطع فيديو، %2$d قوائم التشغيل، %3$d اشتراكات</string>
+    <string name="newpipe_import_failed">لا يمكن استيراد تصدير NewPipe.</string>
     <plurals name="source_warnings">
         <item quantity="one">%d تحذير المصدر</item>
         <item quantity="other">%d تحذيرات المصدر</item>

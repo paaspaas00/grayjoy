@@ -139,6 +139,8 @@ data class SourceTrustRequestUiModel(
     val publicKeyFingerprint: String,
 )
 
+enum class DatabaseImportFormat { Grayjay, NewPipe }
+
 data class DatabaseImportPreviewUiModel(
     val fileName: String,
     val sourceCount: Int,
@@ -148,6 +150,7 @@ data class DatabaseImportPreviewUiModel(
     val playlistCount: Int,
     val historyCount: Int,
     val hasLegacySettings: Boolean,
+    val format: DatabaseImportFormat = DatabaseImportFormat.Grayjay,
 )
 
 data class DatabaseImportUiState(
@@ -157,6 +160,7 @@ data class DatabaseImportUiState(
     val fileName: String = "",
     val errorMessage: String? = null,
     val resultMessage: String? = null,
+    val format: DatabaseImportFormat = DatabaseImportFormat.Grayjay,
 )
 
 data class DatabaseImportSelection(

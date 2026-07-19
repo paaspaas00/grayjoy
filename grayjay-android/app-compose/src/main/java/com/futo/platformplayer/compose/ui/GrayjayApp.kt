@@ -2,6 +2,7 @@ package com.futo.platformplayer.compose.ui
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.media.MediaRouter2
 import android.os.Build
 import android.provider.Settings
@@ -87,6 +88,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -121,6 +123,22 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+internal fun shouldCoverAppChromeDuringOrientationHandoff(windowOrientation: Int): Boolean =
+    windowOrientation == Configuration.ORIENTATION_LANDSCAPE
+
+internal fun hasNowPlayingDownload(download: DownloadUiModel?): Boolean {
+    if (download == null) return false
+    if (download.completedMediaTypes.isEmpty()) {
+        return download.status == DownloadStatus.Completed
+    }
+    val completedMediaTypes = if (download.status == DownloadStatus.Removing) {
+        download.completedMediaTypes - download.mediaType
+    } else {
+        download.completedMediaTypes
+    }
+    return completedMediaTypes.isNotEmpty()
+}
 
 internal enum class GrayjayDestination(
     @param:StringRes val navigationLabelRes: Int,
@@ -247,7 +265,7 @@ fun GrayjayApp(
     player: Player,
     isDarkTheme: Boolean = false,
     onDarkThemeChange: (Boolean) -> Unit = {},
-    onThemeModeChange: (ThemeMode) -> Unit,
+    onThemeModeChange: (ThemeMode) -> Unit = {},
     onDynamicColorsChange: (Boolean) -> Unit,
     onPrivateSessionChange: (Boolean) -> Unit,
     onOpenVideo: (String) -> Unit,
@@ -300,6 +318,7 @@ fun GrayjayApp(
     onToggleFollowing: () -> Unit,
     onCreatorFollowedChange: (String, Boolean) -> Unit,
     onChooseDatabaseImport: () -> Unit,
+    onChooseNewPipeImport: () -> Unit = {},
     onRetryDatabaseImport: (String) -> Unit,
     onConfirmDatabaseImport: (DatabaseImportSelection) -> Unit,
     onDismissDatabaseImport: () -> Unit,
@@ -316,7 +335,6 @@ fun GrayjayApp(
     onSearchHistoryChange: (Boolean) -> Unit,
     onKeepScreenAwakeChange: (Boolean) -> Unit,
     deviceIsLandscape: Boolean = false,
-    deviceLandscapeRotationDegrees: Float = 90f,
     onFullscreenPresentationChanged: (Boolean, Boolean) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
@@ -575,6 +593,7 @@ fun GrayjayApp(
 
     val fullscreenVideo = selectedVideo ?: playbackVideo
     val portraitFullscreen = usePortraitPlayerFullscreen(fullscreenVideo, uiState.playback)
+    val windowOrientation = LocalConfiguration.current.orientation
     LaunchedEffect(isFullscreen, portraitFullscreen) {
         onFullscreenPresentationChanged(isFullscreen, portraitFullscreen)
     }
@@ -651,7 +670,6 @@ fun GrayjayApp(
             onRetryPlayback = playback.onRetry,
             onExitFullscreen = playback.onExitFullscreen,
             portraitFullscreen = portraitFullscreen,
-            landscapeRotationDegrees = deviceLandscapeRotationDegrees,
             modifier = Modifier.graphicsLayer {
                 val progress = navigationBackProgress.coerceIn(0f, 1f)
                 scaleX = 1f - 0.04f * progress
@@ -659,6 +677,11 @@ fun GrayjayApp(
                 alpha = 1f - 0.22f * progress
             },
         )
+    } else if (shouldCoverAppChromeDuringOrientationHandoff(windowOrientation)) {
+        // Fullscreen state changes before Android finishes returning this window to portrait.
+        // Keep that hand-off opaque so ordinary app chrome is never drawn or visibly rotated
+        // inside the temporary landscape viewport.
+        Box(Modifier.fillMaxSize().background(Color.Black))
     } else BoxWithConstraints(Modifier.fillMaxSize()) {
         when (navigationLayoutFor(maxWidth.value.toInt())) {
             NavigationLayout.BottomBar -> BottomNavigationLayout(
@@ -683,6 +706,7 @@ fun GrayjayApp(
                 privateSessionEnabled = uiState.privateSessionEnabled,
                 onPrivateSessionChange = onPrivateSessionChange,
                 onImportDatabase = onChooseDatabaseImport,
+                onImportNewPipeDatabase = onChooseNewPipeImport,
                 videos = (uiState.videos + uiState.subscriptionVideos).distinctBy(VideoUiModel::id),
                 channels = uiState.channels,
                 playlists = uiState.playlists,
@@ -706,6 +730,7 @@ fun GrayjayApp(
                 privateSessionEnabled = uiState.privateSessionEnabled,
                 onPrivateSessionChange = onPrivateSessionChange,
                 onImportDatabase = onChooseDatabaseImport,
+                onImportNewPipeDatabase = onChooseNewPipeImport,
                 videos = (uiState.videos + uiState.subscriptionVideos).distinctBy(VideoUiModel::id),
                 channels = uiState.channels,
                 playlists = uiState.playlists,
@@ -729,6 +754,7 @@ fun GrayjayApp(
                 privateSessionEnabled = uiState.privateSessionEnabled,
                 onPrivateSessionChange = onPrivateSessionChange,
                 onImportDatabase = onChooseDatabaseImport,
+                onImportNewPipeDatabase = onChooseNewPipeImport,
                 videos = (uiState.videos + uiState.subscriptionVideos).distinctBy(VideoUiModel::id),
                 channels = uiState.channels,
                 playlists = uiState.playlists,
@@ -828,6 +854,7 @@ private fun BottomNavigationLayout(
     privateSessionEnabled: Boolean,
     onPrivateSessionChange: (Boolean) -> Unit,
     onImportDatabase: () -> Unit,
+    onImportNewPipeDatabase: () -> Unit,
     videos: List<VideoUiModel>,
     channels: List<ChannelUiModel>,
     playlists: List<PlaylistUiModel>,
@@ -850,6 +877,7 @@ private fun BottomNavigationLayout(
         privateSessionEnabled = privateSessionEnabled,
         onPrivateSessionChange = onPrivateSessionChange,
         onImportDatabase = onImportDatabase,
+        onImportNewPipeDatabase = onImportNewPipeDatabase,
         videos = videos,
         channels = channels,
         playlists = playlists,
@@ -894,6 +922,7 @@ private fun RailNavigationLayout(
     privateSessionEnabled: Boolean,
     onPrivateSessionChange: (Boolean) -> Unit,
     onImportDatabase: () -> Unit,
+    onImportNewPipeDatabase: () -> Unit,
     videos: List<VideoUiModel>,
     channels: List<ChannelUiModel>,
     playlists: List<PlaylistUiModel>,
@@ -935,6 +964,7 @@ private fun RailNavigationLayout(
             privateSessionEnabled = privateSessionEnabled,
             onPrivateSessionChange = onPrivateSessionChange,
             onImportDatabase = onImportDatabase,
+            onImportNewPipeDatabase = onImportNewPipeDatabase,
             videos = videos,
             channels = channels,
             playlists = playlists,
@@ -963,6 +993,7 @@ private fun DrawerNavigationLayout(
     privateSessionEnabled: Boolean,
     onPrivateSessionChange: (Boolean) -> Unit,
     onImportDatabase: () -> Unit,
+    onImportNewPipeDatabase: () -> Unit,
     videos: List<VideoUiModel>,
     channels: List<ChannelUiModel>,
     playlists: List<PlaylistUiModel>,
@@ -1010,6 +1041,7 @@ private fun DrawerNavigationLayout(
             privateSessionEnabled = privateSessionEnabled,
             onPrivateSessionChange = onPrivateSessionChange,
             onImportDatabase = onImportDatabase,
+            onImportNewPipeDatabase = onImportNewPipeDatabase,
             videos = videos,
             channels = channels,
             playlists = playlists,
@@ -1037,6 +1069,7 @@ private fun GrayjayScaffold(
     privateSessionEnabled: Boolean,
     onPrivateSessionChange: (Boolean) -> Unit,
     onImportDatabase: () -> Unit,
+    onImportNewPipeDatabase: () -> Unit,
     videos: List<VideoUiModel>,
     channels: List<ChannelUiModel>,
     playlists: List<PlaylistUiModel>,
@@ -1355,6 +1388,7 @@ private fun GrayjayScaffold(
                         onPrivateSessionChange = onPrivateSessionChange,
                         onManageSources = onManageSources,
                         onImportDatabase = onImportDatabase,
+                        onImportNewPipeDatabase = onImportNewPipeDatabase,
                         activeSourceCount = sourcePresentation.sources.count {
                             it.isEnabled && it.availability != SourceAvailability.MissingPlugin
                         },
@@ -1436,7 +1470,7 @@ private fun GrayjayScaffold(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
                                         Text(stringResource(R.string.now_playing))
-                                        if (transitionVideo.playbackFromDownload) {
+                                        if (hasNowPlayingDownload(playback.downloads[transitionVideo.id])) {
                                             Icon(
                                                 Icons.Outlined.DownloadDone,
                                                 contentDescription = stringResource(R.string.playing_downloaded),
