@@ -1,11 +1,14 @@
 package com.futo.platformplayer.compose.engine
 
 import android.annotation.SuppressLint
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
 import android.util.Log
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -40,6 +43,7 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.futo.platformplayer.compose.MainActivity
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.downloads.GrayjoyDownloadStore
 import com.futo.platformplayer.backend.GrayjayPluginBackend
@@ -255,9 +259,18 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             .setAudioProcessors(arrayOf(TeeAudioProcessor(audioSpectrumAnalyzer)))
             .build()
     }
-    private val exoPlayer = ExoPlayer.Builder(appContext, renderersFactory).build().apply {
-        repeatMode = Player.REPEAT_MODE_OFF
-    }
+    private val exoPlayer = ExoPlayer.Builder(appContext, renderersFactory)
+        // The default Media3 builder does not request audio focus. Audio can still reach a
+        // Bluetooth receiver in that state, but AVRCP/Android Auto may keep another (or empty)
+        // session selected, leaving the car without metadata or transport controls. Grayjay's
+        // legacy playback service explicitly requested AUDIOFOCUS_GAIN; let ExoPlayer provide
+        // the equivalent lifecycle-safe behavior for this shared player.
+        .setAudioAttributes(AudioAttributes.DEFAULT, true)
+        .setHandleAudioBecomingNoisy(true)
+        .build()
+        .apply {
+            repeatMode = Player.REPEAT_MODE_OFF
+        }
     private val closeNotificationCommand = SessionCommand(CLOSE_NOTIFICATION_ACTION, Bundle.EMPTY)
     @Suppress("DEPRECATION")
     private val closeNotificationButton = CommandButton.Builder()
@@ -266,6 +279,17 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         .setDisplayName(appContext.getString(R.string.close_playback))
         .setSlots(CommandButton.SLOT_FORWARD_SECONDARY)
         .build()
+    private val mediaButtonPreferences = listOf(
+        closeNotificationButton,
+    )
+    private val sessionActivity = PendingIntent.getActivity(
+        appContext,
+        0,
+        Intent(appContext, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        },
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
     private val mediaSession = MediaSession.Builder(appContext, exoPlayer)
         .setCallback(
             object : MediaSession.Callback {
@@ -281,10 +305,20 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                                 .build(),
                         )
                         .setAvailablePlayerCommands(
-                            MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS,
+                            MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+                                .buildUpon()
+                                // DEFAULT_PLAYER_COMMANDS intentionally excludes queue
+                                // navigation. Grant the standard commands explicitly so AVRCP,
+                                // Android Auto and headset media keys can move through a Grayjoy
+                                // playlist instead of being discarded by the session.
+                                .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                                .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                                .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                                .add(Player.COMMAND_SEEK_TO_NEXT)
+                                .build(),
                         )
                         .setCustomLayout(listOf(closeNotificationButton))
-                        .setMediaButtonPreferences(listOf(closeNotificationButton))
+                        .setMediaButtonPreferences(mediaButtonPreferences)
                         .build()
 
                 override fun onCustomCommand(
@@ -303,8 +337,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 }
             },
         )
+        .setSessionActivity(sessionActivity)
         .setCustomLayout(listOf(closeNotificationButton))
-        .setMediaButtonPreferences(listOf(closeNotificationButton))
+        .setMediaButtonPreferences(mediaButtonPreferences)
         .build()
     private val sourceCatalog = GrayjaySourceCatalog(appContext)
     private val pluginBackend = GrayjayPluginBackend(appContext)
@@ -845,7 +880,21 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(video.title)
+                    // Some older AVRCP head units read DISPLAY_TITLE instead of TITLE.
+                    .setDisplayTitle(video.title)
+                    .setSubtitle(video.creator)
+                    .setDescription(video.sourceName.ifBlank { video.sourceId })
                     .setArtist(video.creator)
+                    .setAlbumArtist(video.creator)
+                    .setAlbumTitle(video.sourceName.ifBlank { video.sourceId })
+                    .setIsPlayable(true)
+                    .setMediaType(
+                        if (video.playbackAudioOnly) {
+                            MediaMetadata.MEDIA_TYPE_MUSIC
+                        } else {
+                            MediaMetadata.MEDIA_TYPE_VIDEO
+                        },
+                    )
                     .setArtworkUri(
                         video.thumbnailUrl
                             .takeIf(String::isWebUrl)
