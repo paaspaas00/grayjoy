@@ -19,6 +19,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -194,7 +195,7 @@ fun ProfileSwitcherDialogs(
                 }
                 TextButton(onClick = { showCreate = true }) {
                     Icon(Icons.Outlined.Add, contentDescription = null)
-                    Text(stringResource(R.string.add_protected_profile))
+                    Text(stringResource(R.string.add_profile))
                 }
             }
         },
@@ -270,10 +271,13 @@ private fun CreateProfileDialog(
     var name by rememberSaveable { mutableStateOf("") }
     var pin by rememberSaveable { mutableStateOf("") }
     var confirmation by rememberSaveable { mutableStateOf("") }
-    val valid = name.isNotBlank() && pin.length >= 4 && pin == confirmation
+    var protectWithPin by rememberSaveable { mutableStateOf(false) }
+    val valid = name.isNotBlank() && (
+        !protectWithPin || (pin.length >= 4 && pin == confirmation)
+    )
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.add_protected_profile)) },
+        title = { Text(stringResource(R.string.add_profile)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.profile_isolation_description))
@@ -283,25 +287,41 @@ private fun CreateProfileDialog(
                     label = { Text(stringResource(R.string.profile_name)) },
                     singleLine = true,
                 )
-                OutlinedTextField(
-                    value = pin,
-                    onValueChange = { pin = it.filter(Char::isDigit).take(12) },
-                    label = { Text(stringResource(R.string.pin)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    singleLine = true,
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.protect_with_pin)) },
+                    supportingContent = { Text(stringResource(R.string.protect_with_pin_description)) },
+                    trailingContent = {
+                        Switch(
+                            checked = protectWithPin,
+                            onCheckedChange = { protectWithPin = it },
+                        )
+                    },
+                    modifier = Modifier.clickable { protectWithPin = !protectWithPin },
                 )
-                OutlinedTextField(
-                    value = confirmation,
-                    onValueChange = { confirmation = it.filter(Char::isDigit).take(12) },
-                    label = { Text(stringResource(R.string.confirm_pin)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    singleLine = true,
-                    isError = confirmation.isNotEmpty() && confirmation != pin,
-                )
+                if (protectWithPin) {
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { pin = it.filter(Char::isDigit).take(12) },
+                        label = { Text(stringResource(R.string.pin)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = confirmation,
+                        onValueChange = { confirmation = it.filter(Char::isDigit).take(12) },
+                        label = { Text(stringResource(R.string.confirm_pin)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        isError = confirmation.isNotEmpty() && confirmation != pin,
+                    )
+                }
             }
         },
         confirmButton = {
-            Button(onClick = { onCreate(name, pin) }, enabled = valid) { Text(stringResource(R.string.create)) }
+            Button(
+                onClick = { onCreate(name, pin.takeIf { protectWithPin }.orEmpty()) },
+                enabled = valid,
+            ) { Text(stringResource(R.string.create)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )

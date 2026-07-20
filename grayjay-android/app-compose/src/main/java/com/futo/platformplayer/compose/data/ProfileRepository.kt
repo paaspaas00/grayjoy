@@ -41,19 +41,26 @@ internal class ProfileRepository(context: Context) {
         preferences.edit().putString(KEY_ACTIVE_PROFILE, profileId).apply()
     }
 
-    fun createPinProfile(name: String, pin: String): ProfileUiModel {
+    fun createProfile(name: String, pin: String? = null): ProfileUiModel {
         val normalizedName = name.trim().take(40)
         require(normalizedName.isNotBlank()) { appContext.getString(R.string.enter_profile_name) }
-        require(pin.length >= 4 && pin.all(Char::isDigit)) {
-            appContext.getString(R.string.pin_minimum_digits)
+        val normalizedPin = pin.orEmpty()
+        if (normalizedPin.isNotEmpty()) {
+            require(normalizedPin.length >= 4 && normalizedPin.all(Char::isDigit)) {
+                appContext.getString(R.string.pin_minimum_digits)
+            }
         }
-        val salt = ByteArray(16).also(SecureRandom()::nextBytes).toHex()
+        val salt = if (normalizedPin.isEmpty()) {
+            ""
+        } else {
+            ByteArray(16).also(SecureRandom()::nextBytes).toHex()
+        }
         val profile = StoredProfile(
             id = UUID.randomUUID().toString(),
             name = normalizedName,
-            protection = ProfileProtection.Pin,
+            protection = if (normalizedPin.isEmpty()) ProfileProtection.None else ProfileProtection.Pin,
             salt = salt,
-            pinHash = hashPin(pin, salt),
+            pinHash = if (normalizedPin.isEmpty()) "" else hashPin(normalizedPin, salt),
         )
         writeProfiles(readProfiles() + profile)
         return toUiModel(profile)

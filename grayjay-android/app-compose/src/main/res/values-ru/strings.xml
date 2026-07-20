@@ -2,6 +2,14 @@
 <resources>
     <!-- Complete Grayjoy translation; legacy Grayjay text is reused where available. -->
     <string name="app_name">Grayjoy</string>
+    <string name="add_profile">Добавить профиль</string>
+    <string name="protect_with_pin">Защитить PIN-кодом</string>
+    <string name="protect_with_pin_description">Запрашивать PIN-код при каждом открытии этого профиля</string>
+    <string name="live_radio">Радио в прямом эфире</string>
+    <string name="lower_volume_for_other_audio">Уменьшать громкость для других звуков</string>
+    <string name="lower_volume_for_other_audio_description">Плавно уменьшать громкость Grayjoy, пока другое приложение воспроизводит звук</string>
+    <string name="reduced_playback_volume">Пониженная громкость воспроизведения</string>
+    <string name="reduced_playback_volume_value">%1$d%% от обычной громкости</string>
     <string name="nav_home">Главная</string>
     <string name="nav_following">Следующий</string>
     <string name="nav_subscriptions">Подписки</string>

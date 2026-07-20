@@ -265,6 +265,8 @@ class MainActivity : FragmentActivity() {
                     onShowRecommendationsChange = viewModel::setShowRecommendations,
                     onSearchHistoryChange = viewModel::setSearchHistoryEnabled,
                     onKeepScreenAwakeChange = viewModel::setKeepScreenAwake,
+                    onOtherAudioDuckingChange = viewModel::setOtherAudioDuckingEnabled,
+                    onOtherAudioDuckVolumeChange = viewModel::setOtherAudioDuckVolumePercent,
                 )
             }
         }

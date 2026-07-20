@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.VolumeDown
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DarkMode
@@ -72,11 +73,16 @@ fun SettingsScreen(
     onSearchHistoryChange: (Boolean) -> Unit,
     keepScreenAwake: Boolean,
     onKeepScreenAwakeChange: (Boolean) -> Unit,
+    otherAudioDuckingEnabled: Boolean,
+    onOtherAudioDuckingChange: (Boolean) -> Unit,
+    otherAudioDuckVolumePercent: Int,
+    onOtherAudioDuckVolumeChange: (Int) -> Unit,
 ) {
     var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
     var showQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
+    var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier.testTag("settings-list"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -169,6 +175,26 @@ fun SettingsScreen(
                     checked = keepScreenAwake,
                     onCheckedChange = onKeepScreenAwakeChange,
                     testTag = "keep-screen-awake",
+                )
+                HorizontalDivider()
+                ToggleSetting(
+                    title = stringResource(R.string.lower_volume_for_other_audio),
+                    description = stringResource(R.string.lower_volume_for_other_audio_description),
+                    icon = Icons.AutoMirrored.Outlined.VolumeDown,
+                    checked = otherAudioDuckingEnabled,
+                    onCheckedChange = onOtherAudioDuckingChange,
+                    testTag = "other-audio-ducking",
+                )
+                HorizontalDivider()
+                LinkSetting(
+                    title = stringResource(R.string.reduced_playback_volume),
+                    description = stringResource(
+                        R.string.reduced_playback_volume_value,
+                        otherAudioDuckVolumePercent,
+                    ),
+                    icon = Icons.AutoMirrored.Outlined.VolumeDown,
+                    onClick = { showDuckVolumeDialog = true },
+                    testTag = "other-audio-duck-volume",
                 )
             }
         }
@@ -302,6 +328,20 @@ fun SettingsScreen(
             onChoose = {
                 onPreferredAudioBitrateChange(it)
                 showAudioQualityDialog = false
+            },
+        )
+    }
+    if (showDuckVolumeDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.reduced_playback_volume),
+            choices = listOf(20, 25, 35, 45, 55, 65).map { percent ->
+                percent to stringResource(R.string.reduced_playback_volume_value, percent)
+            },
+            selected = otherAudioDuckVolumePercent,
+            onDismiss = { showDuckVolumeDialog = false },
+            onChoose = {
+                onOtherAudioDuckVolumeChange(it)
+                showDuckVolumeDialog = false
             },
         )
     }

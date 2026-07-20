@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose
 import android.content.Context
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.ThemeMode
+import com.futo.platformplayer.compose.engine.OtherAudioDuckingController
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -94,6 +95,21 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         get() = preferences.getBoolean(KEY_KEEP_SCREEN_AWAKE, true)
         set(value) {
             preferences.edit().putBoolean(KEY_KEEP_SCREEN_AWAKE, value).apply()
+        }
+
+    var otherAudioDuckingEnabled: Boolean
+        get() = preferences.getBoolean(KEY_OTHER_AUDIO_DUCKING, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_OTHER_AUDIO_DUCKING, value).apply()
+        }
+
+    var otherAudioDuckVolumePercent: Int
+        get() = preferences.getInt(
+            KEY_OTHER_AUDIO_DUCK_VOLUME,
+            OtherAudioDuckingController.DEFAULT_DUCK_VOLUME_PERCENT,
+        ).coerceIn(10, 80)
+        set(value) {
+            preferences.edit().putInt(KEY_OTHER_AUDIO_DUCK_VOLUME, value.coerceIn(10, 80)).apply()
         }
 
     fun addSearchHistory(query: String) {
@@ -214,6 +230,8 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         private const val KEY_SEARCH_HISTORY_ENABLED = "search_history_enabled"
         private const val KEY_SEARCH_HISTORY = "search_history"
         private const val KEY_KEEP_SCREEN_AWAKE = "keep_screen_awake"
+        private const val KEY_OTHER_AUDIO_DUCKING = "other_audio_ducking_enabled"
+        private const val KEY_OTHER_AUDIO_DUCK_VOLUME = "other_audio_duck_volume_percent"
         private const val PRIVATE_PROFILE_ID = "private"
     }
 }

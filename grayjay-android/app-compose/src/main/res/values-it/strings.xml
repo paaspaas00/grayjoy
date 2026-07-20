@@ -1,5 +1,9 @@
 <resources>
     <string name="app_name">Grayjoy</string>
+    <string name="lower_volume_for_other_audio">Abbassa il volume per gli altri audio</string>
+    <string name="lower_volume_for_other_audio_description">Riduci gradualmente il volume di Grayjoy mentre un’altra app riproduce audio</string>
+    <string name="reduced_playback_volume">Volume di riproduzione ridotto</string>
+    <string name="reduced_playback_volume_value">%1$d%% del volume normale</string>
 
     <!-- Navigazione e azioni comuni -->
     <string name="nav_home">Home</string>
@@ -256,6 +260,9 @@
     <string name="fingerprint_or_device_lock">Impronta digitale o blocco dispositivo</string>
     <string name="profile_pin">PIN del profilo</string>
     <string name="add_protected_profile">Aggiungi profilo protetto</string>
+    <string name="add_profile">Aggiungi profilo</string>
+    <string name="protect_with_pin">Proteggi con PIN</string>
+    <string name="protect_with_pin_description">Disattiva per aprire il profilo senza autenticazione</string>
     <string name="device_auth_unavailable_window">L’autenticazione del dispositivo non è disponibile in questa finestra.</string>
     <string name="device_auth_enroll_first">Configura prima un’impronta, il volto, un PIN, una sequenza o una password sul dispositivo.</string>
     <string name="device_auth_no_hardware">Questo dispositivo non supporta l’autenticazione biometrica o tramite blocco schermo.</string>
@@ -375,6 +382,7 @@
     <string name="source_description_redbull_tv">Sport, musica ed eventi in diretta</string>
     <string name="source_description_fosdem">Contenuti della conferenza sul software libero e open source</string>
     <string name="source_description_nasa_plus">Documentari, missioni e dirette NASA</string>
+    <string name="live_radio">Radio in diretta</string>
     <string name="signature_mismatch">La firma non corrisponde</string>
     <string name="signature_mismatch_description">La firma di %1$s non corrisponde al JavaScript scaricato. La sorgente potrebbe essere stata modificata o compromessa.</string>
     <string name="publisher_label">Editore: %1$s</string>

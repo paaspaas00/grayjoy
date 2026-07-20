@@ -2,6 +2,14 @@
 <resources>
     <!-- Complete Grayjoy translation; legacy Grayjay text is reused where available. -->
     <string name="app_name">Grayjoy</string>
+    <string name="add_profile">프로필 추가</string>
+    <string name="protect_with_pin">PIN으로 보호</string>
+    <string name="protect_with_pin_description">이 프로필을 열 때마다 PIN을 요청합니다</string>
+    <string name="live_radio">라이브 라디오</string>
+    <string name="lower_volume_for_other_audio">다른 오디오 재생 시 음량 낮추기</string>
+    <string name="lower_volume_for_other_audio_description">다른 앱에서 오디오를 재생하는 동안 Grayjoy 음량을 부드럽게 낮춥니다</string>
+    <string name="reduced_playback_volume">낮아진 재생 음량</string>
+    <string name="reduced_playback_volume_value">일반 음량의 %1$d%%</string>
     <string name="nav_home">홈</string>
     <string name="nav_following">수행원</string>
     <string name="nav_subscriptions">구독</string>

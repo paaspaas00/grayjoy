@@ -205,6 +205,7 @@ interface GrayjayEngine {
     fun seekBy(deltaMs: Long)
     fun seekToFraction(fraction: Float)
     fun setPlaybackSpeed(speed: Float)
+    fun setOtherAudioDucking(enabled: Boolean, volumePercent: Int)
     fun setVideoQuality(height: Int?)
     fun setCaptionsEnabled(enabled: Boolean)
     fun setSubtitleLanguage(language: String?)
@@ -271,6 +272,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         .apply {
             repeatMode = Player.REPEAT_MODE_OFF
         }
+    private val otherAudioDuckingController = OtherAudioDuckingController(appContext, exoPlayer)
     private val closeNotificationCommand = SessionCommand(CLOSE_NOTIFICATION_ACTION, Bundle.EMPTY)
     @Suppress("DEPRECATION")
     private val closeNotificationButton = CommandButton.Builder()
@@ -402,7 +404,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun registerSources(sources: List<SourceUiModel>) {
         sources.forEach { source ->
-            if (source.engineId.isNotBlank() && source.pluginConfigUrl.isNotBlank()) {
+            if (
+                source.engineId.isNotBlank() &&
+                (source.pluginConfigUrl.isNotBlank() || !source.pluginConfigPath.isNullOrBlank())
+            ) {
                 if (source.isCustom) {
                     pluginBackend.rememberPreviouslyApprovedPlugin(source.engineId)
                 }
@@ -410,6 +415,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     pluginId = source.engineId,
                     configUrl = source.pluginConfigUrl,
                     iconUrl = source.iconUrl,
+                    configAssetPath = source.pluginConfigPath,
                 )
             }
         }
@@ -637,8 +643,14 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     append(it)
                 }
             }.ifBlank { video.metadata },
-            duration = formatDuration(source.durationSeconds).ifBlank { video.duration },
+            duration = if (source.isLive) {
+                appContext.getString(R.string.live)
+            } else {
+                formatDuration(source.durationSeconds).ifBlank { video.duration }
+            },
+            isLive = source.isLive,
             isDrmProtected = source.isDrmProtected,
+            playbackAudioOnly = source.isAudioOnly,
             playbackHasMuxedAudio = source.videoHasMuxedAudio,
             playbackUrl = source.videoUrl,
             playbackStreamKeys = emptyList(),
@@ -872,36 +884,56 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 .ifEmpty { playbackRequestHeaders },
             playbackDataSourceFactory = variant.playbackDataSourceFactory,
         )
+        val liveLabel = appContext.getString(R.string.live)
+        val creatorMetadata = if (video.isLive) {
+            listOf(liveLabel, video.creator).filter(String::isNotBlank).joinToString(" • ")
+        } else {
+            video.creator
+        }
+        val mediaMetadata = MediaMetadata.Builder()
+            .setTitle(video.title)
+            // Some older AVRCP head units read DISPLAY_TITLE instead of TITLE.
+            .setDisplayTitle(video.title)
+            .setSubtitle(creatorMetadata)
+            .setDescription(
+                if (video.isLive) appContext.getString(R.string.live_radio)
+                else video.sourceName.ifBlank { video.sourceId },
+            )
+            .setArtist(creatorMetadata)
+            .setAlbumArtist(video.creator)
+            .setAlbumTitle(video.sourceName.ifBlank { video.sourceId })
+            .setStation(video.title.takeIf { video.isLive })
+            .setGenre(appContext.getString(R.string.live_radio).takeIf { video.isLive })
+            .setIsBrowsable(false)
+            .setIsPlayable(true)
+            .setMediaType(
+                when {
+                    video.isLive && video.playbackAudioOnly -> MediaMetadata.MEDIA_TYPE_RADIO_STATION
+                    video.playbackAudioOnly -> MediaMetadata.MEDIA_TYPE_MUSIC
+                    else -> MediaMetadata.MEDIA_TYPE_VIDEO
+                },
+            )
+            .setArtworkUri(
+                video.thumbnailUrl
+                    .takeIf {
+                        it.isWebUrl() ||
+                            it.startsWith("file:///android_asset/") ||
+                            it.startsWith("android.resource://")
+                    }
+                    ?.let(Uri::parse),
+            )
+            .build()
         val mediaItem = MediaItem.Builder()
             .setMediaId(video.id)
             .setUri(video.playbackUrl)
             .setMimeType(video.playbackMimeType.takeIf(String::isNotBlank))
             .setStreamKeys(video.playbackStreamKeys)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(video.title)
-                    // Some older AVRCP head units read DISPLAY_TITLE instead of TITLE.
-                    .setDisplayTitle(video.title)
-                    .setSubtitle(video.creator)
-                    .setDescription(video.sourceName.ifBlank { video.sourceId })
-                    .setArtist(video.creator)
-                    .setAlbumArtist(video.creator)
-                    .setAlbumTitle(video.sourceName.ifBlank { video.sourceId })
-                    .setIsPlayable(true)
-                    .setMediaType(
-                        if (video.playbackAudioOnly) {
-                            MediaMetadata.MEDIA_TYPE_MUSIC
-                        } else {
-                            MediaMetadata.MEDIA_TYPE_VIDEO
-                        },
-                    )
-                    .setArtworkUri(
-                        video.thumbnailUrl
-                            .takeIf(String::isWebUrl)
-                            ?.let(Uri::parse),
-                    )
-                    .build(),
-            )
+            .setMediaMetadata(mediaMetadata)
+            .apply {
+                if (video.isLive) {
+                    setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
+                }
+            }
             .build()
         val streamHosts = STREAM_URL_REGEX.findAll(
             sequenceOf(video.playbackUrl, video.audioUrl, video.playbackManifest).joinToString("\n"),
@@ -983,7 +1015,12 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     private fun VideoUiModel.dataSourceFactory(): DataSource.Factory {
-        val httpFactory = playbackDataSourceFactory ?: DefaultHttpDataSource.Factory()
+        // Several long-running radio endpoints use an HTTP entry URL which
+        // immediately redirects to an HTTPS CDN. Media3 deliberately rejects
+        // cross-protocol redirects unless the client opts in, while browsers
+        // and the legacy Grayjay HTTP stack follow these redirects normally.
+        val httpFactory = playbackDataSourceFactory
+            ?: DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
         if (playbackRequestHeaders.isNotEmpty()) {
             httpFactory.setDefaultRequestProperties(playbackRequestHeaders)
         }
@@ -1053,6 +1090,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override fun setPlaybackSpeed(speed: Float) {
         exoPlayer.setPlaybackSpeed(speed.coerceIn(0.25f, 3f))
         syncPlayback()
+    }
+
+    override fun setOtherAudioDucking(enabled: Boolean, volumePercent: Int) {
+        otherAudioDuckingController.configure(enabled, volumePercent)
     }
 
     override fun setVideoQuality(height: Int?) {
@@ -1195,6 +1236,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun release() {
         PlaybackNotificationService.dismiss(appContext)
+        otherAudioDuckingController.release()
         audioSpectrumAnalyzer.setEnabled(false)
         activePluginDataSources.forEach(JSHttpDataSource.Factory::closeExecutors)
         activePluginDataSources = emptySet()

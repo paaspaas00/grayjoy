@@ -19,6 +19,8 @@ data class GrayjayUiState(
     val showRecommendations: Boolean = true,
     val searchHistoryEnabled: Boolean = true,
     val keepScreenAwake: Boolean = true,
+    val otherAudioDuckingEnabled: Boolean = true,
+    val otherAudioDuckVolumePercent: Int = 35,
     val profiles: List<ProfileUiModel> = emptyList(),
     val activeProfileId: String = "main",
     val followedCreatorIds: Set<String> = emptySet(),

@@ -2,6 +2,14 @@
 <resources>
     <!-- Complete Grayjoy translation; legacy Grayjay text is reused where available. -->
     <string name="app_name">Grayjoy</string>
+    <string name="add_profile">Profil ekle</string>
+    <string name="protect_with_pin">PIN ile koru</string>
+    <string name="protect_with_pin_description">Bu profil her açıldığında PIN iste</string>
+    <string name="live_radio">Canlı radyo</string>
+    <string name="lower_volume_for_other_audio">Diğer sesler için ses düzeyini azalt</string>
+    <string name="lower_volume_for_other_audio_description">Başka bir uygulama ses çalarken Grayjoy sesini yumuşakça azalt</string>
+    <string name="reduced_playback_volume">Azaltılmış oynatma sesi</string>
+    <string name="reduced_playback_volume_value">Normal sesin %1$d%% kadarı</string>
     <string name="nav_home">Ana Sayfa</string>
     <string name="nav_following">Takip etme</string>
     <string name="nav_subscriptions">Abonelikler</string>

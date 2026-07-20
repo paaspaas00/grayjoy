@@ -223,6 +223,8 @@ private data class PlaybackPresentation(
     val showRecommendations: Boolean,
     val searchHistoryEnabled: Boolean,
     val keepScreenAwake: Boolean,
+    val otherAudioDuckingEnabled: Boolean,
+    val otherAudioDuckVolumePercent: Int,
     val themeMode: ThemeMode,
     val showPrivateThemeToggle: Boolean,
     val isDarkTheme: Boolean,
@@ -234,6 +236,8 @@ private data class PlaybackPresentation(
     val onShowRecommendationsChange: (Boolean) -> Unit,
     val onSearchHistoryChange: (Boolean) -> Unit,
     val onKeepScreenAwakeChange: (Boolean) -> Unit,
+    val onOtherAudioDuckingChange: (Boolean) -> Unit,
+    val onOtherAudioDuckVolumeChange: (Int) -> Unit,
     val onThemeModeChange: (ThemeMode) -> Unit,
 )
 
@@ -334,6 +338,8 @@ fun GrayjayApp(
     onShowRecommendationsChange: (Boolean) -> Unit,
     onSearchHistoryChange: (Boolean) -> Unit,
     onKeepScreenAwakeChange: (Boolean) -> Unit,
+    onOtherAudioDuckingChange: (Boolean) -> Unit = {},
+    onOtherAudioDuckVolumeChange: (Int) -> Unit = {},
     deviceIsLandscape: Boolean = false,
     onFullscreenPresentationChanged: (Boolean, Boolean) -> Unit = { _, _ -> },
 ) {
@@ -538,6 +544,8 @@ fun GrayjayApp(
         showRecommendations = uiState.showRecommendations,
         searchHistoryEnabled = uiState.searchHistoryEnabled,
         keepScreenAwake = uiState.keepScreenAwake,
+        otherAudioDuckingEnabled = uiState.otherAudioDuckingEnabled,
+        otherAudioDuckVolumePercent = uiState.otherAudioDuckVolumePercent,
         themeMode = uiState.themeMode,
         showPrivateThemeToggle = uiState.activeProfileId == "private",
         isDarkTheme = isDarkTheme,
@@ -549,6 +557,8 @@ fun GrayjayApp(
         onShowRecommendationsChange = onShowRecommendationsChange,
         onSearchHistoryChange = onSearchHistoryChange,
         onKeepScreenAwakeChange = onKeepScreenAwakeChange,
+        onOtherAudioDuckingChange = onOtherAudioDuckingChange,
+        onOtherAudioDuckVolumeChange = onOtherAudioDuckVolumeChange,
         onThemeModeChange = onThemeModeChange,
     )
 
@@ -1406,6 +1416,10 @@ private fun GrayjayScaffold(
                         onSearchHistoryChange = playback.onSearchHistoryChange,
                         keepScreenAwake = playback.keepScreenAwake,
                         onKeepScreenAwakeChange = playback.onKeepScreenAwakeChange,
+                        otherAudioDuckingEnabled = playback.otherAudioDuckingEnabled,
+                        onOtherAudioDuckingChange = playback.onOtherAudioDuckingChange,
+                        otherAudioDuckVolumePercent = playback.otherAudioDuckVolumePercent,
+                        onOtherAudioDuckVolumeChange = playback.onOtherAudioDuckVolumeChange,
                     )
                     GrayjayDestination.Sources -> SourcesScreen(
                         sources = sourcePresentation.sources,

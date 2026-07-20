@@ -162,6 +162,8 @@ data class GrayjayPlaybackSource(
     val audioVariants: List<GrayjayAudioVariant> = emptyList(),
     val storyboard: GrayjayStoryboard? = null,
     val isDrmProtected: Boolean = false,
+    val isLive: Boolean = false,
+    val isAudioOnly: Boolean = false,
     /** The selected video representation already contains its audio track. */
     val videoHasMuxedAudio: Boolean = false,
 )
@@ -404,6 +406,9 @@ class GrayjayPluginBackend(context: Context) {
     }
 
     private fun loadPluginPayload(endpoint: PluginEndpoint): LoadedPluginPayload {
+        endpoint.configAssetPath?.let { assetPath ->
+            return validatePluginPayload(endpoint, loadEmbeddedPlugin(assetPath))
+        }
         val cached = cachedPlugin(endpoint.pluginId)
         val downloaded = runCatching { downloadPlugin(endpoint.configUrl) }
         val downloadedPayload = downloaded.mapCatching { validatePluginPayload(endpoint, it) }
@@ -416,6 +421,40 @@ class GrayjayPluginBackend(context: Context) {
             ?: cachedPayload?.exceptionOrNull()
             ?: downloaded.exceptionOrNull()
             ?: error("No plugin payload is available for ${endpoint.pluginId}.")
+    }
+
+    /**
+     * Loads a plugin shipped in the APK through the same JSClient path as downloaded plugins.
+     * Keeping this in the backend (instead of special-casing station data in Compose) means the
+     * source remains a real Grayjay JavaScript plugin with the standard models and capabilities.
+     */
+    private fun loadEmbeddedPlugin(configAssetPath: String): Pair<String, String> {
+        val normalizedConfigPath = configAssetPath.normalizedAssetPath()
+        val configText = appContext.assets.open(normalizedConfigPath)
+            .bufferedReader()
+            .use { it.readText() }
+        val config = SourcePluginConfig.fromJson(configText)
+        val scriptUrl = config.scriptUrl.trim()
+        require(!scriptUrl.contains("://")) {
+            "Embedded plugin ${config.name} must use a relative script URL."
+        }
+        val configDirectory = normalizedConfigPath.substringBeforeLast('/', "")
+        val scriptPath = sequenceOf(configDirectory, scriptUrl.removePrefix("./"))
+            .filter(String::isNotBlank)
+            .joinToString("/")
+            .normalizedAssetPath()
+        val scriptText = appContext.assets.open(scriptPath)
+            .bufferedReader()
+            .use { it.readText() }
+        return configText to scriptText
+    }
+
+    private fun String.normalizedAssetPath(): String {
+        val normalized = replace('\\', '/').trimStart('/')
+        require(normalized.isNotBlank() && normalized.split('/').none { it == ".." }) {
+            "Invalid embedded plugin asset path."
+        }
+        return normalized
     }
 
     private fun isTrustedPluginPayload(
@@ -678,7 +717,6 @@ class GrayjayPluginBackend(context: Context) {
         val rawDataSourceFactory = rawDashSource?.dataSourceFactoryOrNull()
         val video = if (manifestUrl == null && rawDashManifest == null) {
             descriptorSources.bestVideoUrl()
-                ?: error("The plugin returned no supported video stream.")
         } else {
             null
         }
@@ -888,23 +926,38 @@ class GrayjayPluginBackend(context: Context) {
             .distinctBy(GrayjayAudioVariant::bitrate)
             .sortedByDescending(GrayjayAudioVariant::bitrate)
 
-        val selectedSource = hlsSource ?: dashSource ?: liveSource ?: rawDashSource ?: requireNotNull(video)
-        val playbackDashManifest = rawDashManifest ?: rangeDashManifest
-        val requestUrl = manifestUrl
-            ?: rawDashSource?.url?.takeIf(String::isNotBlank)
-            ?: video?.getVideoUrl()
-            ?: contentUrl
-        val selectedDataSourceFactory = rawDataSourceFactory
-            ?: selectedSource.dataSourceFactoryOrNull()
+        val selectedVideoSource: IVideoSource? =
+            hlsSource ?: dashSource ?: liveSource ?: rawDashSource ?: video
+        val isAudioOnly = selectedVideoSource == null && playbackAudioSource != null
+        require(selectedVideoSource != null || isAudioOnly) {
+            "The plugin returned no supported video or audio stream."
+        }
+        val playbackDashManifest = if (isAudioOnly) null else rawDashManifest ?: rangeDashManifest
+        val requestUrl = if (isAudioOnly) {
+            requireNotNull(audioRequest).url
+        } else {
+            manifestUrl
+                ?: rawDashSource?.url?.takeIf(String::isNotBlank)
+                ?: video?.getVideoUrl()
+                ?: contentUrl
+        }
+        val selectedDataSourceFactory = if (isAudioOnly) {
+            audioDataSourceFactory
+        } else {
+            rawDataSourceFactory ?: requireNotNull(selectedVideoSource).dataSourceFactoryOrNull()
+        }
         // Custom request modifiers are stateful and must see every manifest, segment, and byte
         // range request. Keep the original URL here and let the playback data source invoke them.
-        val request = if (selectedDataSourceFactory == null) {
-            selectedSource.resolveRequest(requestUrl)
+        val request = if (isAudioOnly) {
+            requireNotNull(audioRequest)
+        } else if (selectedDataSourceFactory == null) {
+            requireNotNull(selectedVideoSource).resolveRequest(requestUrl)
         } else {
             ResolvedRequest(requestUrl, emptyMap())
         }
         val resolvedVideoUrl = request.url
         val streamType = when {
+            isAudioOnly && playbackAudioSource is IHLSManifestAudioSource -> GrayjayStreamType.Hls
             hlsUrl != null -> GrayjayStreamType.Hls
             dashUrl != null || playbackDashManifest != null -> GrayjayStreamType.Dash
             else -> inferStreamType(resolvedVideoUrl)
@@ -916,6 +969,7 @@ class GrayjayPluginBackend(context: Context) {
             videoUrl = resolvedVideoUrl,
             streamType = streamType,
             audioUrl = audio.takeIf {
+                !isAudioOnly &&
                 rangeDashManifest == null && rawDashManifest == null
             },
             audioRequestHeaders = audioRequest?.headers.orEmpty(),
@@ -946,8 +1000,10 @@ class GrayjayPluginBackend(context: Context) {
             videoVariants = videoVariants,
             audioVariants = audioVariants,
             storyboard = storyboardDeferred?.await(),
-            isDrmProtected = selectedSource is IWidevineSource && videoVariants.isEmpty(),
-            videoHasMuxedAudio = !details.video.isUnMuxed,
+            isDrmProtected = selectedVideoSource is IWidevineSource && videoVariants.isEmpty(),
+            isLive = details.isLive,
+            isAudioOnly = isAudioOnly,
+            videoHasMuxedAudio = !isAudioOnly && !details.video.isUnMuxed,
         )
     }
 
@@ -1607,6 +1663,7 @@ data class PluginEndpoint(
     val pluginId: String,
     val configUrl: String,
     val iconUrl: String = "",
+    val configAssetPath: String? = null,
 )
 
 private fun IRating.counts(): Pair<Long?, Long?> = when (this) {

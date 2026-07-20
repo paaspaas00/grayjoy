@@ -322,6 +322,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
             keepScreenAwake = preferences.keepScreenAwake,
+            otherAudioDuckingEnabled = preferences.otherAudioDuckingEnabled,
+            otherAudioDuckVolumePercent = preferences.otherAudioDuckVolumePercent,
             profiles = profileRepository.profiles(),
             activeProfileId = activeProfileId,
             followedCreatorIds = followedCreatorIds,
@@ -339,7 +341,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             engine.playback.collect { playback ->
                 _uiState.update { it.copy(playback = playback.toUiState()) }
                 val currentId = playback.currentVideoId
-                if (currentId != null && _uiState.value.nowPlaying.video?.id != currentId) {
+                // engine.pausePlayback() publishes the old Media3 item while a newly selected
+                // video/playlist is still resolving. Treating that stale item as a transition
+                // cancels the new details job and can append the new queue behind the old media.
+                // Wait until Media3 actually exposes the pending selection.
+                val awaitingPendingSelection = pendingPlaybackVideoId?.let { it != currentId } == true
+                if (
+                    !awaitingPendingSelection &&
+                    currentId != null &&
+                    _uiState.value.nowPlaying.video?.id != currentId
+                ) {
                     findVideo(currentId)?.let { currentVideo ->
                         recordHistory(currentVideo)
                         detailsJob?.cancel()
@@ -355,6 +366,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         detailsJob = viewModelScope.launch { loadExtras(currentVideo) }
                     }
                 } else if (
+                    !awaitingPendingSelection &&
                     currentId == null &&
                     engine.player.mediaItemCount == 0 &&
                     pendingPlaybackVideoId == null &&
@@ -365,7 +377,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     extrasPagingJob?.cancel()
                     _uiState.update { it.copy(nowPlaying = NowPlayingUiState()) }
                 }
-                prepareQueueLookAhead(playback)
+                if (!awaitingPendingSelection) prepareQueueLookAhead(playback)
             }
         }
         viewModelScope.launch {
@@ -457,6 +469,23 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun setKeepScreenAwake(enabled: Boolean) {
         preferences.keepScreenAwake = enabled
         _uiState.update { it.copy(keepScreenAwake = enabled) }
+    }
+
+    fun setOtherAudioDuckingEnabled(enabled: Boolean) {
+        preferences.otherAudioDuckingEnabled = enabled
+        _uiState.update { it.copy(otherAudioDuckingEnabled = enabled) }
+        engine.setOtherAudioDucking(enabled, preferences.otherAudioDuckVolumePercent)
+    }
+
+    fun setOtherAudioDuckVolumePercent(percent: Int) {
+        preferences.otherAudioDuckVolumePercent = percent
+        _uiState.update {
+            it.copy(otherAudioDuckVolumePercent = preferences.otherAudioDuckVolumePercent)
+        }
+        engine.setOtherAudioDucking(
+            preferences.otherAudioDuckingEnabled,
+            preferences.otherAudioDuckVolumePercent,
+        )
     }
 
     private fun restoreHomeFromSession(): Boolean {
@@ -793,6 +822,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
             keepScreenAwake = preferences.keepScreenAwake,
+            otherAudioDuckingEnabled = preferences.otherAudioDuckingEnabled,
+            otherAudioDuckVolumePercent = preferences.otherAudioDuckVolumePercent,
             profiles = profileRepository.profiles(),
             activeProfileId = activeProfileId,
             followedCreatorIds = followedCreatorIds,
@@ -805,7 +836,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun createProfile(name: String, pin: String) {
-        val profile = profileRepository.createPinProfile(name, pin)
+        val profile = profileRepository.createProfile(name, pin.takeIf(String::isNotBlank))
         _uiState.update { it.copy(profiles = profileRepository.profiles()) }
         switchProfile(profile.id)
     }
@@ -1072,6 +1103,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private fun prepareQueueLookAhead(playback: EnginePlaybackState = engine.playback.value) {
         val session = playbackQueueSession ?: return
         if (session.generation != playbackGeneration || session.profileId != activeProfileId) return
+        if (pendingPlaybackVideoId?.let { it != playback.currentVideoId } == true) return
         if (playback.currentVideoId == null || engine.player.mediaItemCount == 0) return
         if (preparedQueueItemsAhead(playback.queueVideoIds, playback.currentVideoId) >= QUEUE_LOOKAHEAD) return
         if (session.pendingVideos.isEmpty() || queuePreparationJob?.isActive == true) return
@@ -3224,6 +3256,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private fun applyPlaybackPreferences() {
         engine.setPlaybackSpeed(preferences.defaultPlaybackSpeed)
+        engine.setOtherAudioDucking(
+            preferences.otherAudioDuckingEnabled,
+            preferences.otherAudioDuckVolumePercent,
+        )
         engine.setVideoQuality(preferences.preferredVideoQuality.takeIf { it > 0 })
         if (preferences.stickyCaptionsEnabled && preferences.captionsEnabled) {
             val language = preferences.subtitleLanguage

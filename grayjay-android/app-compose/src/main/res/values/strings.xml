@@ -1,5 +1,9 @@
 <resources>
     <string name="app_name">Grayjoy</string>
+    <string name="lower_volume_for_other_audio">Lower volume for other audio</string>
+    <string name="lower_volume_for_other_audio_description">Smoothly lower Grayjoy while another app plays audio</string>
+    <string name="reduced_playback_volume">Reduced playback volume</string>
+    <string name="reduced_playback_volume_value">%1$d%% of normal volume</string>
 
     <!-- Navigation and common actions -->
     <string name="nav_home">Home</string>
@@ -256,6 +260,9 @@
     <string name="fingerprint_or_device_lock">Fingerprint or device lock</string>
     <string name="profile_pin">Profile PIN</string>
     <string name="add_protected_profile">Add protected profile</string>
+    <string name="add_profile">Add profile</string>
+    <string name="protect_with_pin">Protect with PIN</string>
+    <string name="protect_with_pin_description">Leave off for a profile that opens without authentication</string>
     <string name="device_auth_unavailable_window">Device authentication is unavailable in this window.</string>
     <string name="device_auth_enroll_first">Set up a fingerprint, face, PIN, pattern, or password on this device first.</string>
     <string name="device_auth_no_hardware">This device has no supported biometric or screen-lock authentication.</string>
@@ -375,6 +382,7 @@
     <string name="source_description_redbull_tv">Sports, music, and live events</string>
     <string name="source_description_fosdem">Free and open-source software conference media</string>
     <string name="source_description_nasa_plus">NASA documentaries, missions, and live coverage</string>
+    <string name="live_radio">Live radio</string>
     <string name="signature_mismatch">Signature does not match</string>
     <string name="signature_mismatch_description">The signature for %1$s does not match the downloaded JavaScript. The source may have been modified or compromised.</string>
     <string name="publisher_label">Publisher: %1$s</string>

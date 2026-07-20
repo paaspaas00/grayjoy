@@ -2,6 +2,14 @@
 <resources>
     <!-- Complete Grayjoy translation; legacy Grayjay text is reused where available. -->
     <string name="app_name">Grayjoy</string>
+    <string name="add_profile">添加个人资料</string>
+    <string name="protect_with_pin">使用 PIN 保护</string>
+    <string name="protect_with_pin_description">每次打开此个人资料时都要求输入 PIN</string>
+    <string name="live_radio">直播电台</string>
+    <string name="lower_volume_for_other_audio">其他音频播放时降低音量</string>
+    <string name="lower_volume_for_other_audio_description">其他应用播放音频时平滑降低 Grayjoy 音量</string>
+    <string name="reduced_playback_volume">降低后的播放音量</string>
+    <string name="reduced_playback_volume_value">正常音量的 %1$d%%</string>
     <string name="nav_home">首页</string>
     <string name="nav_following">下列的</string>
     <string name="nav_subscriptions">订阅</string>
