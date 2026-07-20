@@ -4,6 +4,25 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
+def releaseStoreFile = providers.gradleProperty('GRAYJOY_RELEASE_STORE_FILE')
+    .orElse(providers.environmentVariable('GRAYJOY_RELEASE_STORE_FILE'))
+    .getOrNull()
+def releaseStorePassword = providers.gradleProperty('GRAYJOY_RELEASE_STORE_PASSWORD')
+    .orElse(providers.environmentVariable('GRAYJOY_RELEASE_STORE_PASSWORD'))
+    .getOrNull()
+def releaseKeyAlias = providers.gradleProperty('GRAYJOY_RELEASE_KEY_ALIAS')
+    .orElse(providers.environmentVariable('GRAYJOY_RELEASE_KEY_ALIAS'))
+    .getOrNull()
+def releaseKeyPassword = providers.gradleProperty('GRAYJOY_RELEASE_KEY_PASSWORD')
+    .orElse(providers.environmentVariable('GRAYJOY_RELEASE_KEY_PASSWORD'))
+    .getOrNull()
+def hasReleaseSigning = [
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+].every { value -> value != null && !value.trim().isEmpty() }
+
 android {
     namespace 'com.futo.platformplayer.compose'
     compileSdk 36
@@ -12,10 +31,33 @@ android {
         applicationId 'com.futo.platformplayer.compose'
         minSdk 28
         targetSdk 36
-        versionCode 2
-        versionName '0.1.1'
+        versionCode 900
+        versionName '0.9.0'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled false
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
     }
 
     buildFeatures {

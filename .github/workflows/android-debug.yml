@@ -1,4 +1,4 @@
-name: Build debug APK
+name: Build APKs
 
 on:
   workflow_dispatch:
@@ -10,12 +10,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: grayjoy-debug-${{ github.ref }}
+  group: grayjoy-build-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build-debug-apk:
-    name: Build Grayjoy debug APK
+  build-apks:
+    name: Build Grayjoy debug and release APKs
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -36,11 +36,53 @@ jobs:
         working-directory: grayjay-android
         run: chmod +x gradlew
 
-      - name: Build debug APK
-        working-directory: grayjay-android
-        run: ./gradlew --no-daemon :app-compose:assembleDebug
+      - name: Prepare release signing
+        id: signing
+        env:
+          GRAYJOY_SIGNING_KEY_BASE64: ${{ secrets.GRAYJOY_SIGNING_KEY_BASE64 }}
+          GRAYJOY_RELEASE_STORE_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_STORE_PASSWORD }}
+          GRAYJOY_RELEASE_KEY_ALIAS: ${{ secrets.GRAYJOY_RELEASE_KEY_ALIAS }}
+          GRAYJOY_RELEASE_KEY_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          required=(
+            GRAYJOY_SIGNING_KEY_BASE64
+            GRAYJOY_RELEASE_STORE_PASSWORD
+            GRAYJOY_RELEASE_KEY_ALIAS
+            GRAYJOY_RELEASE_KEY_PASSWORD
+          )
+          for variable in "${required[@]}"; do
+            if [[ -z "${!variable}" ]]; then
+              echo "Required release-signing secret ${variable} is not configured." >&2
+              exit 1
+            fi
+          done
 
-      - name: Prepare APK and checksum
+          store_file="${RUNNER_TEMP}/grayjoy-release.jks"
+          printf '%s' "${GRAYJOY_SIGNING_KEY_BASE64}" | base64 --decode > "${store_file}"
+          chmod 600 "${store_file}"
+          echo "store_file=${store_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build debug and signed release APKs
+        working-directory: grayjay-android
+        env:
+          GRAYJOY_RELEASE_STORE_FILE: ${{ steps.signing.outputs.store_file }}
+          GRAYJOY_RELEASE_STORE_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_STORE_PASSWORD }}
+          GRAYJOY_RELEASE_KEY_ALIAS: ${{ secrets.GRAYJOY_RELEASE_KEY_ALIAS }}
+          GRAYJOY_RELEASE_KEY_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon :app-compose:assembleDebug :app-compose:assembleRelease
+
+      - name: Verify release APK signature
+        shell: bash
+        run: |
+          apksigner="$(find "${ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [[ -z "${apksigner}" ]]; then
+            echo "Android apksigner was not found." >&2
+            exit 1
+          fi
+          "${apksigner}" verify --verbose grayjay-android/app-compose/build/outputs/apk/release/app-compose-release.apk
+
+      - name: Prepare APKs and checksums
         id: package
         shell: bash
         run: |
@@ -51,18 +93,24 @@ jobs:
           fi
 
           mkdir -p release
-          apk_path="release/Grayjoy-${version}-debug.apk"
-          checksum_path="${apk_path}.sha256"
-          cp grayjay-android/app-compose/build/outputs/apk/debug/app-compose-debug.apk "${apk_path}"
-          sha256sum "${apk_path}" > "${checksum_path}"
+          debug_apk_path="release/Grayjoy-${version}-debug.apk"
+          release_apk_path="release/Grayjoy-${version}-release.apk"
+          checksum_path="release/Grayjoy-${version}-SHA256SUMS.txt"
+          cp grayjay-android/app-compose/build/outputs/apk/debug/app-compose-debug.apk "${debug_apk_path}"
+          cp grayjay-android/app-compose/build/outputs/apk/release/app-compose-release.apk "${release_apk_path}"
+          (
+            cd release
+            sha256sum "$(basename "${debug_apk_path}")" "$(basename "${release_apk_path}")" > "$(basename "${checksum_path}")"
+          )
 
-          echo "apk_path=${apk_path}" >> "${GITHUB_OUTPUT}"
+          echo "debug_apk_path=${debug_apk_path}" >> "${GITHUB_OUTPUT}"
+          echo "release_apk_path=${release_apk_path}" >> "${GITHUB_OUTPUT}"
           echo "checksum_path=${checksum_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          name: Grayjoy-debug-${{ github.run_number }}
+          name: Grayjoy-APKs-${{ github.run_number }}
           path: release/*
           if-no-files-found: error
           retention-days: 30
@@ -71,12 +119,21 @@ jobs:
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
-          APK_PATH: ${{ steps.package.outputs.apk_path }}
+          DEBUG_APK_PATH: ${{ steps.package.outputs.debug_apk_path }}
+          RELEASE_APK_PATH: ${{ steps.package.outputs.release_apk_path }}
           CHECKSUM_PATH: ${{ steps.package.outputs.checksum_path }}
         shell: bash
         run: |
           if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" "${APK_PATH}" "${CHECKSUM_PATH}" --clobber --repo "${GITHUB_REPOSITORY}"
+            gh release upload "${GITHUB_REF_NAME}" "${DEBUG_APK_PATH}" "${RELEASE_APK_PATH}" "${CHECKSUM_PATH}" --clobber --repo "${GITHUB_REPOSITORY}"
           else
-            gh release create "${GITHUB_REF_NAME}" "${APK_PATH}#Grayjoy ${GITHUB_REF_NAME} debug APK" "${CHECKSUM_PATH}#SHA-256 checksum" --verify-tag --prerelease --title "Grayjoy ${GITHUB_REF_NAME}" --notes "Automated debug APK built from the ${GITHUB_REF_NAME} tag." --repo "${GITHUB_REPOSITORY}"
+            gh release create "${GITHUB_REF_NAME}" \
+              "${DEBUG_APK_PATH}#Grayjoy ${GITHUB_REF_NAME} debug APK" \
+              "${RELEASE_APK_PATH}#Grayjoy ${GITHUB_REF_NAME} signed release APK" \
+              "${CHECKSUM_PATH}#SHA-256 checksums" \
+              --verify-tag \
+              --prerelease \
+              --title "Grayjoy ${GITHUB_REF_NAME}" \
+              --notes "Automated debug and signed release APKs built from the ${GITHUB_REF_NAME} tag." \
+              --repo "${GITHUB_REPOSITORY}"
           fi
