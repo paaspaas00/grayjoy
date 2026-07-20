@@ -17,7 +17,7 @@ jobs:
   build-apks:
     name: Build Grayjoy debug and release APKs
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Check out source
@@ -72,7 +72,7 @@ jobs:
           GRAYJOY_RELEASE_KEY_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_KEY_PASSWORD }}
         run: ./gradlew --no-daemon :app-compose:assembleDebug :app-compose:assembleRelease
 
-      - name: Verify release APK signature
+      - name: Verify release APK signatures
         shell: bash
         run: |
           apksigner="$(find "${ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
@@ -80,7 +80,16 @@ jobs:
             echo "Android apksigner was not found." >&2
             exit 1
           fi
-          "${apksigner}" verify --verbose grayjay-android/app-compose/build/outputs/apk/release/app-compose-release.apk
+          shopt -s nullglob
+          release_apks=(grayjay-android/app-compose/build/outputs/apk/release/app-compose-*-release.apk)
+          if [[ ${#release_apks[@]} -ne 5 ]]; then
+            echo "Expected 5 signed release APKs, found ${#release_apks[@]}." >&2
+            printf 'Found: %s\n' "${release_apks[@]}" >&2
+            exit 1
+          fi
+          for apk in "${release_apks[@]}"; do
+            "${apksigner}" verify --verbose "${apk}"
+          done
 
       - name: Prepare APKs and checksums
         id: package
@@ -92,19 +101,28 @@ jobs:
             version="manual-${GITHUB_RUN_NUMBER}"
           fi
 
+          variants=(arm64-v8a armeabi-v7a x86 x86_64 universal)
           mkdir -p release
-          debug_apk_path="release/Grayjoy-${version}-debug.apk"
-          release_apk_path="release/Grayjoy-${version}-release.apk"
+          for variant in "${variants[@]}"; do
+            debug_source="grayjay-android/app-compose/build/outputs/apk/debug/app-compose-${variant}-debug.apk"
+            release_source="grayjay-android/app-compose/build/outputs/apk/release/app-compose-${variant}-release.apk"
+            debug_target="release/Grayjoy-${version}-${variant}-debug.apk"
+            release_target="release/Grayjoy-${version}-${variant}-release.apk"
+
+            if [[ ! -f "${debug_source}" || ! -f "${release_source}" ]]; then
+              echo "Missing APK output for ${variant}." >&2
+              exit 1
+            fi
+            cp "${debug_source}" "${debug_target}"
+            cp "${release_source}" "${release_target}"
+          done
+
           checksum_path="release/Grayjoy-${version}-SHA256SUMS.txt"
-          cp grayjay-android/app-compose/build/outputs/apk/debug/app-compose-debug.apk "${debug_apk_path}"
-          cp grayjay-android/app-compose/build/outputs/apk/release/app-compose-release.apk "${release_apk_path}"
           (
             cd release
-            sha256sum "$(basename "${debug_apk_path}")" "$(basename "${release_apk_path}")" > "$(basename "${checksum_path}")"
+            sha256sum Grayjoy-*.apk > "$(basename "${checksum_path}")"
           )
 
-          echo "debug_apk_path=${debug_apk_path}" >> "${GITHUB_OUTPUT}"
-          echo "release_apk_path=${release_apk_path}" >> "${GITHUB_OUTPUT}"
           echo "checksum_path=${checksum_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload workflow artifact
@@ -119,21 +137,24 @@ jobs:
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
-          DEBUG_APK_PATH: ${{ steps.package.outputs.debug_apk_path }}
-          RELEASE_APK_PATH: ${{ steps.package.outputs.release_apk_path }}
           CHECKSUM_PATH: ${{ steps.package.outputs.checksum_path }}
         shell: bash
         run: |
           if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" "${DEBUG_APK_PATH}" "${RELEASE_APK_PATH}" "${CHECKSUM_PATH}" --clobber --repo "${GITHUB_REPOSITORY}"
+            gh release upload "${GITHUB_REF_NAME}" release/* --clobber --repo "${GITHUB_REPOSITORY}"
           else
-            gh release create "${GITHUB_REF_NAME}" \
-              "${DEBUG_APK_PATH}#Grayjoy ${GITHUB_REF_NAME} debug APK" \
-              "${RELEASE_APK_PATH}#Grayjoy ${GITHUB_REF_NAME} signed release APK" \
-              "${CHECKSUM_PATH}#SHA-256 checksums" \
+            variants=(arm64-v8a armeabi-v7a x86 x86_64 universal)
+            assets=()
+            for variant in "${variants[@]}"; do
+              assets+=("release/Grayjoy-${GITHUB_REF_NAME}-${variant}-debug.apk#Grayjoy ${GITHUB_REF_NAME} ${variant} debug APK")
+              assets+=("release/Grayjoy-${GITHUB_REF_NAME}-${variant}-release.apk#Grayjoy ${GITHUB_REF_NAME} ${variant} signed release APK")
+            done
+            assets+=("${CHECKSUM_PATH}#SHA-256 checksums")
+
+            gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
               --verify-tag \
               --prerelease \
               --title "Grayjoy ${GITHUB_REF_NAME}" \
-              --notes "Automated debug and signed release APKs built from the ${GITHUB_REF_NAME} tag." \
+              --notes "Automated per-architecture and universal debug and signed release APKs built from the ${GITHUB_REF_NAME} tag." \
               --repo "${GITHUB_REPOSITORY}"
           fi
