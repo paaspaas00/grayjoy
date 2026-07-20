@@ -5,6 +5,29 @@ import org.junit.Test
 
 class GrayjayPluginBackendTest {
     @Test
+    fun pluginSignatureState_treatsMissingAndBlankPairsAsUnsigned() {
+        assertEquals(PluginSignatureState.Unsigned, pluginSignatureState(null, null))
+        assertEquals(PluginSignatureState.Unsigned, pluginSignatureState("", ""))
+        assertEquals(PluginSignatureState.Unsigned, pluginSignatureState("  ", "\t"))
+    }
+
+    @Test
+    fun pluginSignatureState_requiresBothSignatureFields() {
+        assertEquals(PluginSignatureState.Incomplete, pluginSignatureState("signature", null))
+        assertEquals(PluginSignatureState.Incomplete, pluginSignatureState(null, "public-key"))
+        assertEquals(PluginSignatureState.Incomplete, pluginSignatureState("signature", ""))
+        assertEquals(PluginSignatureState.Incomplete, pluginSignatureState("", "public-key"))
+    }
+
+    @Test
+    fun pluginSignatureState_recognizesCompleteSignedPayload() {
+        assertEquals(
+            PluginSignatureState.Signed,
+            pluginSignatureState("signature", "public-key"),
+        )
+    }
+
+    @Test
     fun interleaveSourceResults_keepsEverySourceVisibleNearTop() {
         val merged = interleaveSourceResults(
             listOf(

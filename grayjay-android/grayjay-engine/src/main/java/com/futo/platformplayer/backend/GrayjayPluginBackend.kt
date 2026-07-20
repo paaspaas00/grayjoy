@@ -373,8 +373,8 @@ class GrayjayPluginBackend(context: Context) {
         val config = runCatching { SourcePluginConfig.fromJson(configText, "") }.getOrNull() ?: return
         if (
             config.id == pluginId &&
-            config.scriptSignature != null &&
-            config.scriptPublicKey != null &&
+            pluginSignatureState(config.scriptSignature, config.scriptPublicKey) ==
+                PluginSignatureState.Signed &&
             !config.validate(scriptText)
         ) {
             trustPluginPayload(pluginId, configText, scriptText)
@@ -396,11 +396,17 @@ class GrayjayPluginBackend(context: Context) {
         require(config.id == endpoint.pluginId) {
             "Plugin ID mismatch for ${config.name}: expected ${endpoint.pluginId}, received ${config.id}."
         }
-        if (config.scriptSignature != null && config.scriptPublicKey != null) {
-            require(
-                config.validate(scriptText) ||
-                    isTrustedPluginPayload(config.id, configText, scriptText),
-            ) { "Plugin signature validation failed for ${config.name}." }
+        when (pluginSignatureState(config.scriptSignature, config.scriptPublicKey)) {
+            PluginSignatureState.Unsigned -> Unit
+            PluginSignatureState.Incomplete -> error(
+                "Plugin signature metadata is incomplete for ${config.name}.",
+            )
+            PluginSignatureState.Signed -> {
+                require(
+                    config.validate(scriptText) ||
+                        isTrustedPluginPayload(config.id, configText, scriptText),
+                ) { "Plugin signature validation failed for ${config.name}." }
+            }
         }
         return LoadedPluginPayload(config, configText, scriptText)
     }
@@ -1210,8 +1216,12 @@ class GrayjayPluginBackend(context: Context) {
             }
             val (configText, scriptText) = downloadPlugin(configUrl)
             val config = SourcePluginConfig.fromJson(configText, configUrl)
-            if (config.scriptSignature != null && config.scriptPublicKey != null) {
-                if (!config.validate(scriptText)) {
+            when (pluginSignatureState(config.scriptSignature, config.scriptPublicKey)) {
+                PluginSignatureState.Unsigned -> Unit
+                PluginSignatureState.Incomplete -> error(
+                    "Plugin signature metadata is incomplete for ${config.name}.",
+                )
+                PluginSignatureState.Signed -> if (!config.validate(scriptText)) {
                     pendingUntrustedPlugins.entries.removeAll {
                         it.value.config.sourceUrl == configUrl
                     }
@@ -1229,7 +1239,7 @@ class GrayjayPluginBackend(context: Context) {
                             publisher = config.author,
                             publisherUrl = config.authorUrl,
                             configUrl = configUrl,
-                            publicKeyFingerprint = config.scriptPublicKey.fingerprint(),
+                            publicKeyFingerprint = config.scriptPublicKey.orEmpty().fingerprint(),
                         ),
                     )
                 }
@@ -1656,6 +1666,25 @@ internal fun <T> interleaveSourceResults(sourceResults: List<List<T>>): List<T> 
                 results.getOrNull(index)?.let(::add)
             }
         }
+    }
+}
+
+internal enum class PluginSignatureState {
+    Unsigned,
+    Signed,
+    Incomplete,
+}
+
+internal fun pluginSignatureState(
+    signature: String?,
+    publicKey: String?,
+): PluginSignatureState {
+    val hasSignature = !signature.isNullOrBlank()
+    val hasPublicKey = !publicKey.isNullOrBlank()
+    return when {
+        !hasSignature && !hasPublicKey -> PluginSignatureState.Unsigned
+        hasSignature && hasPublicKey -> PluginSignatureState.Signed
+        else -> PluginSignatureState.Incomplete
     }
 }
 
