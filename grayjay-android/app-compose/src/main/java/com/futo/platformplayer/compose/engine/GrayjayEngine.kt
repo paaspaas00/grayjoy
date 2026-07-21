@@ -48,6 +48,8 @@ import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.downloads.GrayjoyDownloadStore
 import com.futo.platformplayer.backend.GrayjayPluginBackend
 import com.futo.platformplayer.backend.GrayjayChannelDetails
+import com.futo.platformplayer.backend.GrayjayChannelPage
+import com.futo.platformplayer.backend.GrayjayPlaylistDetails
 import com.futo.platformplayer.backend.GrayjayChannelRequest
 import com.futo.platformplayer.backend.GrayjayComment
 import com.futo.platformplayer.backend.GrayjaySearchItem
@@ -59,6 +61,7 @@ import com.futo.platformplayer.backend.GrayjayPluginMetadata
 import com.futo.platformplayer.backend.PluginEndpoint
 import com.futo.platformplayer.backend.formatRelativeDate
 import com.futo.platformplayer.compose.ui.ChannelUiModel
+import com.futo.platformplayer.compose.ui.ChannelContentTab
 import com.futo.platformplayer.compose.ui.HomeFeedType
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.SourceUiModel
@@ -143,6 +146,22 @@ data class EngineChannelDetails(
     val videos: List<VideoUiModel>,
     val continuationId: String? = null,
     val hasMore: Boolean = false,
+    val supportsShorts: Boolean = false,
+    val supportsPlaylists: Boolean = false,
+)
+
+data class EngineChannelPage(
+    val videos: List<VideoUiModel> = emptyList(),
+    val playlists: List<PlaylistUiModel> = emptyList(),
+    val continuationId: String? = null,
+    val hasMore: Boolean = false,
+)
+
+data class EnginePlaylistDetails(
+    val playlist: PlaylistUiModel,
+    val videos: List<VideoUiModel>,
+    val continuationId: String? = null,
+    val hasMore: Boolean = false,
 )
 
 internal fun VideoUiModel.pluginContentUrlOrNull(): String? =
@@ -172,6 +191,7 @@ interface GrayjayEngine {
     fun discardUntrustedSource(token: String)
     fun clearSourceCache(sourceId: String)
     fun removeSource(sourceId: String)
+    fun purgePlugin(pluginId: String)
     fun setPluginSettings(pluginId: String, settings: Map<String, String?>)
 
     suspend fun search(
@@ -191,7 +211,9 @@ interface GrayjayEngine {
     suspend fun loadMoreHome(feed: HomeFeedType, continuationId: String): EngineVideoPage
     suspend fun suggestions(query: String, enabledSourceIds: Set<String>): List<String>
     suspend fun loadChannel(channel: ChannelUiModel): EngineChannelDetails
-    suspend fun loadMoreChannel(continuationId: String): EngineVideoPage
+    suspend fun loadChannelPage(channel: ChannelUiModel, tab: ChannelContentTab): EngineChannelPage
+    suspend fun loadMoreChannel(continuationId: String): EngineChannelPage
+    suspend fun loadPlaylist(playlist: PlaylistUiModel): EnginePlaylistDetails
     suspend fun resolve(video: VideoUiModel): VideoUiModel
     suspend fun loadExtras(video: VideoUiModel): EngineVideoExtras
     suspend fun loadMoreRecommendations(continuationId: String): EngineVideoPage
@@ -492,6 +514,20 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         pluginBackend.clearPlugin(sourceId, endpoint.pluginId)
     }
 
+    override fun purgePlugin(pluginId: String) {
+        val aliases = pluginEndpoints.entries
+            .filter { it.value.pluginId == pluginId }
+            .map(Map.Entry<String, PluginEndpoint>::key)
+        if (aliases.isEmpty()) {
+            pluginBackend.clearPlugin(pluginId, pluginId)
+        } else {
+            aliases.forEach { alias ->
+                pluginEndpoints.remove(alias)
+                pluginBackend.clearPlugin(alias, pluginId)
+            }
+        }
+    }
+
     override fun setPluginSettings(pluginId: String, settings: Map<String, String?>) {
         pluginBackend.setPluginSettings(pluginId, settings)
     }
@@ -616,14 +652,48 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         return details.toEngineChannelDetails(channel, endpoint, appContext)
     }
 
-    override suspend fun loadMoreChannel(continuationId: String): EngineVideoPage {
-        val page = pluginBackend.loadMoreVideos(continuationId)
-        return EngineVideoPage(
-            videos = page.videos.map { it.toVideoUiModel(pluginEndpoints[it.sourceId], appContext) },
-            continuationId = page.continuationId,
-            hasMore = page.hasMore,
-        )
+    override suspend fun loadChannelPage(
+        channel: ChannelUiModel,
+        tab: ChannelContentTab,
+    ): EngineChannelPage {
+        val endpoint = pluginEndpoints[channel.sourceId]
+            ?: error(appContext.getString(R.string.source_plugin_unavailable, channel.source))
+        val type = when (tab) {
+            ChannelContentTab.Videos -> com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_VIDEOS
+            ChannelContentTab.Shorts -> com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_SHORTS
+            ChannelContentTab.Playlists -> GrayjayPluginBackend.CHANNEL_PLAYLISTS_TYPE
+        }
+        return pluginBackend.loadChannelPage(channel.sourceId, channel.id, endpoint, type)
+            .toEngineChannelPage(endpoint, appContext)
     }
+
+    override suspend fun loadMoreChannel(continuationId: String): EngineChannelPage {
+        val page = pluginBackend.loadMoreChannelPage(continuationId)
+        // A valid pager continuation is allowed to end with an empty page. ConcurrentHashMap
+        // rejects null keys, so never infer-and-index the source in one expression here. Items
+        // on non-empty pages still carry their own source id and are converted with that endpoint.
+        val pageSourceId = page.videos.firstOrNull()?.sourceId
+            ?: page.playlists.firstOrNull()?.sourceId
+        val endpoint = pageSourceId?.let(pluginEndpoints::get)
+        return page.toEngineChannelPage(endpoint, appContext)
+    }
+
+    override suspend fun loadPlaylist(playlist: PlaylistUiModel): EnginePlaylistDetails {
+        val endpoint = pluginEndpoints[playlist.sourceId]
+            ?: error(appContext.getString(R.string.source_plugin_unavailable, playlist.sourceId))
+        return pluginBackend.loadPlaylist(playlist.sourceId, playlist.id, endpoint)
+            .toEnginePlaylistDetails(playlist, endpoint, appContext)
+    }
+
+    private fun GrayjayChannelPage.toEngineChannelPage(
+        endpoint: PluginEndpoint?,
+        context: Context,
+    ) = EngineChannelPage(
+        videos = videos.map { it.toVideoUiModel(endpoint ?: pluginEndpoints[it.sourceId], context) },
+        playlists = playlists.map { it.toPlaylistUiModel(context) },
+        continuationId = continuationId,
+        hasMore = hasMore,
+    )
 
     override suspend fun resolve(video: VideoUiModel): VideoUiModel {
         if (video.playbackUrl.isNotBlank()) return video
@@ -819,10 +889,17 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         queueIds = playableVideos.map(VideoUiModel::id)
         openedVideos = playableVideos
         updateAudioSpectrumAnalysis(currentVideoId)
-        activeQualityVariantHeight = null
-        activeQualityVariantVideoId = null
+        val automaticVariantHeights = playableVideos.map {
+            it.nearestQualityVariantHeight(AUTOMATIC_VIDEO_HEIGHT)
+        }
+        activeQualityVariantHeight = automaticVariantHeights[currentIndex]
+        activeQualityVariantVideoId = currentVideoId.takeIf {
+            activeQualityVariantHeight != null
+        }
         lastError = null
-        val mediaSources = playableVideos.map { it.buildMediaSource() }
+        val mediaSources = playableVideos.mapIndexed { index, video ->
+            video.buildMediaSource(automaticVariantHeights[index])
+        }
         captionsEnabled = false
         selectedSubtitleLanguage = null
         selectedSubtitleTrackIndex = null
@@ -857,9 +934,20 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         activePluginDataSources = activePluginDataSources + additions.pluginDataSourceFactories()
         openedVideos = openedVideos + additions
         queueIds = queueIds + additions.map(VideoUiModel::id)
-        exoPlayer.addMediaSources(additions.map { it.buildMediaSource() })
+        val targetHeight = selectedVideoQuality ?: AUTOMATIC_VIDEO_HEIGHT
+        exoPlayer.addMediaSources(
+            additions.map { video ->
+                video.buildMediaSource(video.nearestQualityVariantHeight(targetHeight))
+            },
+        )
         syncPlayback()
     }
+
+    private fun VideoUiModel.nearestQualityVariantHeight(targetHeight: Int): Int? =
+        qualityVariants.minWithOrNull(
+            compareBy<VideoQualityUiModel> { kotlin.math.abs(it.height - targetHeight) }
+                .thenBy(VideoQualityUiModel::height),
+        )?.height
 
     private fun List<VideoUiModel>.pluginDataSourceFactories(): Set<JSHttpDataSource.Factory> = (
         mapNotNull { it.playbackDataSourceFactory as? JSHttpDataSource.Factory } +
@@ -1049,6 +1137,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     private companion object {
         const val TAG = "AndroidGrayjayEngine"
+        // Official Grayjay maps its default/automatic preferred quality to a 1280x720 target.
+        // Treating automatic as "unbounded" made raw plugin sources start at 3K/4K instead.
+        const val AUTOMATIC_VIDEO_HEIGHT = 720
         const val CLOSE_NOTIFICATION_ACTION =
             "com.futo.platformplayer.compose.action.CLOSE_PLAYBACK"
         const val SUBTITLE_USER_AGENT =
@@ -1100,9 +1191,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val requestedHeight = height?.takeIf { it > 0 }
         val currentVideoId = exoPlayer.currentMediaItem?.mediaId
         val currentVideoIndex = openedVideos.indexOfFirst { it.id == currentVideoId }
-        val hasPluginVariant = currentVideoIndex >= 0 && requestedHeight != null &&
-            openedVideos[currentVideoIndex].qualityVariants.any { it.height == requestedHeight }
-        val nextVariantHeight = requestedHeight.takeIf { hasPluginVariant }
+        val targetHeight = requestedHeight ?: AUTOMATIC_VIDEO_HEIGHT
+        val nextVariantHeight = currentVideoIndex
+            .takeIf { it >= 0 }
+            ?.let { openedVideos[it].nearestQualityVariantHeight(targetHeight) }
+        val hasPluginVariant = nextVariantHeight != null
 
         selectedVideoQuality = requestedHeight
         val nextVariantVideoId = currentVideoId.takeIf { nextVariantHeight != null }
@@ -1115,8 +1208,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             val shouldPlay = exoPlayer.playWhenReady
             activeQualityVariantHeight = nextVariantHeight
             activeQualityVariantVideoId = nextVariantVideoId
-            val sources = openedVideos.mapIndexed { index, video ->
-                video.buildMediaSource(nextVariantHeight.takeIf { index == currentVideoIndex })
+            val sources = openedVideos.map { video ->
+                video.buildMediaSource(video.nearestQualityVariantHeight(targetHeight))
             }
             exoPlayer.setMediaSources(sources, currentVideoIndex, currentPosition)
             exoPlayer.prepare()
@@ -1126,11 +1219,17 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             activeQualityVariantVideoId = nextVariantVideoId
         }
 
+        Log.i(
+            TAG,
+            "Video quality ${requestedHeight?.let { "${it}p" } ?: "automatic (${AUTOMATIC_VIDEO_HEIGHT}p target)"}" +
+                (nextVariantHeight?.let { " selected plugin rendition ${it}p" } ?: " using adaptive constraints"),
+        )
+
         val parameters = exoPlayer.trackSelectionParameters.buildUpon()
-        if (selectedVideoQuality == null || hasPluginVariant) {
+        if (hasPluginVariant) {
             parameters.clearVideoSizeConstraints()
         } else {
-            parameters.setMaxVideoSize(Int.MAX_VALUE, requireNotNull(selectedVideoQuality))
+            parameters.setMaxVideoSize(Int.MAX_VALUE, targetHeight)
         }
         exoPlayer.trackSelectionParameters = parameters.build()
         syncPlayback()
@@ -1374,6 +1473,27 @@ private fun GrayjayChannelDetails.toEngineChannelDetails(
     videos = videos.map { it.toVideoUiModel(endpoint, context) },
     continuationId = continuationId,
     hasMore = hasMore,
+    supportsShorts = supportsShorts,
+    supportsPlaylists = supportsPlaylists,
+)
+
+private fun GrayjayPlaylistDetails.toEnginePlaylistDetails(
+    fallback: PlaylistUiModel,
+    endpoint: PluginEndpoint,
+    context: Context,
+) = EnginePlaylistDetails(
+    playlist = playlist.toPlaylistUiModel(context).copy(
+        id = fallback.id,
+        title = playlist.title.ifBlank { fallback.title },
+        description = playlist.toPlaylistUiModel(context).description
+            .ifBlank { fallback.description },
+        sourceId = fallback.sourceId,
+        thumbnailUrl = playlist.thumbnailUrl.orEmpty().ifBlank { fallback.thumbnailUrl },
+        videoCount = playlist.videoCount.takeIf { it >= 0 } ?: fallback.videoCount,
+    ),
+    videos = videos.map { it.toVideoUiModel(endpoint, context) },
+    continuationId = continuationId,
+    hasMore = hasMore,
 )
 
 private fun GrayjayComment.toVideoCommentUiModel() = VideoCommentUiModel(
@@ -1402,6 +1522,9 @@ private fun GrayjaySearchPlaylist.toPlaylistUiModel(context: Context) = Playlist
         }
     }.ifBlank { context.getString(R.string.source_playlist) },
     videoIds = emptyList(),
+    sourceId = sourceId,
+    thumbnailUrl = thumbnailUrl.orEmpty(),
+    videoCount = videoCount.coerceAtLeast(0),
 )
 
 private val officialPluginIconUrls = mapOf(

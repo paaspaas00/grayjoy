@@ -46,18 +46,25 @@ class PlaybackNotificationService : Service() {
                         notification: Notification,
                         ongoing: Boolean,
                     ) {
-                        if (ongoing) {
-                            startForegroundCompat(notificationId, notification)
-                        } else {
-                            stopForeground(STOP_FOREGROUND_DETACH)
-                        }
+                        // A paused player is still an active playback session. Detaching the
+                        // foreground service here lets Android kill it after the screen locks,
+                        // which also loses the player and queue. Keep the service foreground
+                        // until the user explicitly dismisses/closes playback.
+                        startForegroundCompat(notificationId, notification)
                     }
 
             override fun onNotificationCancelled(
                 notificationId: Int,
                 dismissedByUser: Boolean,
             ) {
-                closeFromNotification()
+                if (dismissedByUser) {
+                    closeFromNotification()
+                } else if (attachment != null && !closingFromNotification) {
+                    // Media3 can briefly cancel/recreate its notification during state or
+                    // metadata changes. That is not the same as the user swiping it away.
+                    startForegroundCompat(NOTIFICATION_ID, bootstrapNotification())
+                    playerNotificationManager.invalidate()
+                }
             }
         }
         val closeActionReceiver = CloseActionReceiver(this)
@@ -99,7 +106,7 @@ class PlaybackNotificationService : Service() {
         playerNotificationManager.setMediaSessionToken(playback.mediaSession.platformToken)
         playerNotificationManager.setPlayer(playback.player)
         playerNotificationManager.invalidate()
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

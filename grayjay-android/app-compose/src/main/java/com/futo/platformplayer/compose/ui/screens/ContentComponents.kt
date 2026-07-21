@@ -514,40 +514,68 @@ internal fun PlaylistRow(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Outlined.PlaylistPlay,
-                    contentDescription = null,
-                    modifier = Modifier.padding(14.dp),
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            if (playlist.thumbnailUrl.isNotBlank()) {
+                val placeholderColor = MaterialTheme.colorScheme.secondaryContainer.toArgb()
+                AndroidView(
+                    factory = { context ->
+                        ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+                    },
+                    update = { imageView ->
+                        Glide.with(imageView)
+                            .load(playlist.thumbnailUrl)
+                            .placeholder(ColorDrawable(placeholderColor))
+                            .error(ColorDrawable(placeholderColor))
+                            .centerCrop()
+                            .into(imageView)
+                    },
+                    modifier = Modifier
+                        .width(112.dp)
+                        .height(64.dp)
+                        .clip(MaterialTheme.shapes.medium),
                 )
+            } else {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.PlaylistPlay,
+                        contentDescription = null,
+                        modifier = Modifier.padding(14.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
             }
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(playlist.title, style = MaterialTheme.typography.titleMedium)
+                val displayedVideoCount = if (playlist.sourceId.isBlank()) {
+                    playlist.videoIds.size
+                } else {
+                    playlist.videoCount
+                }
                 Text(
                     pluralStringResource(
                         R.plurals.video_count,
-                        playlist.videoIds.size,
-                        playlist.videoIds.size,
+                        displayedVideoCount,
+                        displayedVideoCount,
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            IconButton(
-                onClick = onRename,
-                modifier = Modifier.testTag("rename-playlist-${playlist.id}"),
-            ) {
-                Icon(
-                    Icons.Outlined.Edit,
-                    contentDescription = stringResource(R.string.rename_playlist),
-                )
+            if (playlist.sourceId.isBlank()) {
+                IconButton(
+                    onClick = onRename,
+                    modifier = Modifier.testTag("rename-playlist-${playlist.id}"),
+                ) {
+                    Icon(
+                        Icons.Outlined.Edit,
+                        contentDescription = stringResource(R.string.rename_playlist),
+                    )
+                }
             }
         }
     }

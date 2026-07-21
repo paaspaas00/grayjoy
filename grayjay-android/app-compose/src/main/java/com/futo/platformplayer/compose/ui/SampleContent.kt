@@ -117,6 +117,9 @@ data class PlaylistUiModel(
     val title: String,
     val description: String,
     val videoIds: List<String>,
+    val sourceId: String = "",
+    val thumbnailUrl: String = "",
+    val videoCount: Int = videoIds.size,
 )
 
 data class SourceUiModel(

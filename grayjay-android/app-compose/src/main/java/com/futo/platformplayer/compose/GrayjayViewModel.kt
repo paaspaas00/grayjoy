@@ -46,11 +46,14 @@ import com.futo.platformplayer.compose.ui.DatabaseImportSelection
 import com.futo.platformplayer.compose.ui.DatabaseImportUiState
 import com.futo.platformplayer.compose.ui.DatabaseImportFormat
 import com.futo.platformplayer.compose.ui.ChannelDetailUiState
+import com.futo.platformplayer.compose.ui.ChannelContentTab
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.AudioQualityUiModel
 import com.futo.platformplayer.compose.ui.HomeFeedType
 import com.futo.platformplayer.compose.ui.HomeUiState
 import com.futo.platformplayer.compose.ui.NowPlayingUiState
+import com.futo.platformplayer.compose.ui.PlaylistUiModel
+import com.futo.platformplayer.compose.ui.RemotePlaylistDetailUiState
 import com.futo.platformplayer.compose.ui.PlaybackUiState
 import com.futo.platformplayer.compose.ui.SearchUiState
 import com.futo.platformplayer.compose.ui.SearchContentType
@@ -103,6 +106,7 @@ private object HomeSessionCache {
 }
 
 private const val QUEUE_LOOKAHEAD = 2
+private const val WATCH_PROGRESS_WRITE_DEBOUNCE_MS = 250L
 
 /**
  * Detaches tracked jobs before cancelling them. A cancellation may run a job's `finally` block
@@ -271,10 +275,15 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var searchPagingJob: Job? = null
     private var homePagingJob: Job? = null
     private var channelPagingJob: Job? = null
+    private var remotePlaylistJob: Job? = null
+    private var remotePlaylistPagingJob: Job? = null
     private var extrasPagingJob: Job? = null
+    private var resumePromptJob: Job? = null
     private var downloadQueueRestoreJob: Job? = null
     private var offlinePlaylistSyncJob: Job? = null
     private var queuePreparationJob: Job? = null
+    private var watchProgressWriteJob: Job? = null
+    private val historyWriteJobs = mutableMapOf<String, Job>()
     private var homeLoadGeneration = 0L
     private var playbackGeneration = 0L
     private var playbackQueueSession: PlaybackQueueSession? = null
@@ -360,9 +369,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                                     video = currentVideo,
                                     isLoadingExtras = true,
                                     isFollowing = preferences.isCreatorFollowed(currentVideo.creatorKey()),
+                                    resumePositionFraction = currentVideo.resumePositionFraction(),
                                 ),
                             )
                         }
+                        scheduleResumePromptDismiss(currentVideo.id, currentVideo.resumePositionFraction())
                         detailsJob = viewModelScope.launch { loadExtras(currentVideo) }
                     }
                 } else if (
@@ -383,11 +394,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             var progressTicks = 0
             while (isActive) {
-                engine.refreshProgress()
                 progressTicks += 1
-                if (progressTicks % 10 == 0) persistCurrentPlaybackProgress()
-                if (progressTicks % 2 == 0) syncDownloadState()
-                delay(500)
+                if (progressTicks % 5 == 0) persistCurrentPlaybackProgress()
+                syncDownloadState()
+                delay(1_000)
             }
         }
         viewModelScope.launch {
@@ -742,12 +752,21 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private suspend fun switchProfileInternal(profileId: String) {
         if (profileId == activeProfileId) return
+        // Make sure a newly opened item exists before storing its final playback fraction.
+        historyWriteJobs.values.toList().forEach { it.join() }
+        historyWriteJobs.clear()
         persistCurrentPlaybackProgress()
+        // Finish the write against the old profile repository before replacing it. The write is
+        // intentionally off the main thread, but a profile switch is also a durability boundary.
+        watchProgressWriteJob?.join()
         invalidatePlaybackQueue()
         detailsJob?.cancel()
         extrasPagingJob?.cancel()
         channelJob?.cancel()
         channelPagingJob?.cancel()
+        remotePlaylistJob?.cancel()
+        remotePlaylistPagingJob?.cancel()
+        resumePromptJob?.cancel()
         homeJob?.cancel()
         homePagingJob?.cancel()
         searchJob?.cancel()
@@ -881,6 +900,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun openVideo(videoId: String) {
         val video = findVideo(videoId) ?: return
+        val resumePositionFraction = video.resumePositionFraction()
         val profileAtStart = activeProfileId
         val generation = invalidatePlaybackQueue()
         activePlaylistId = null
@@ -900,9 +920,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     isLoadingPlayback = true,
                     isLoadingExtras = true,
                     isFollowing = preferences.isCreatorFollowed(video.creatorKey()),
+                    resumePositionFraction = resumePositionFraction,
                 ),
             )
         }
+        scheduleResumePromptDismiss(video.id, resumePositionFraction)
         detailsJob = viewModelScope.launch {
             try {
                 val resolved = resolveForPlayback(video, profileAtStart)
@@ -1026,9 +1048,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     isLoadingPlayback = true,
                     isLoadingExtras = true,
                     isFollowing = preferences.isCreatorFollowed(queue.first().creatorKey()),
+                    resumePositionFraction = queue.first().resumePositionFraction(),
                 ),
             )
         }
+        scheduleResumePromptDismiss(queue.first().id, queue.first().resumePositionFraction())
         detailsJob = viewModelScope.launch {
             val first = try {
                 resolveForPlayback(queue.first(), profileAtStart)
@@ -1251,6 +1275,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 channels = visibleKnownChannels(),
                 channelDetail = ChannelDetailUiState(
                     channelId = initialChannel.id,
+                    channel = initialChannel,
                     isLoading = true,
                 ),
             )
@@ -1269,11 +1294,21 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         channels = visibleKnownChannels(),
                         channelDetail = ChannelDetailUiState(
                             channelId = detailedChannel.id,
+                            channel = detailedChannel,
                             videos = channelVideos,
                             isLoading = false,
                             isLoaded = true,
+                            loadedTabs = setOf(ChannelContentTab.Videos),
+                            continuationIds = details.continuationId?.let {
+                                mapOf(ChannelContentTab.Videos to it)
+                            }.orEmpty(),
+                            tabsWithMore = setOf(ChannelContentTab.Videos)
+                                .takeIf { details.hasMore }
+                                .orEmpty(),
                             continuationId = details.continuationId,
                             hasMore = details.hasMore,
+                            supportsShorts = details.supportsShorts,
+                            supportsPlaylists = details.supportsPlaylists,
                         ),
                     )
                 }
@@ -1293,9 +1328,78 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun selectChannelTab(tab: ChannelContentTab) {
+        val current = _uiState.value.channelDetail
+        val channel = current.channel ?: return
+        if (tab == ChannelContentTab.Shorts && !current.supportsShorts) return
+        if (tab == ChannelContentTab.Playlists && !current.supportsPlaylists) return
+        _uiState.update {
+            it.copy(
+                channelDetail = it.channelDetail.copy(
+                    selectedTab = tab,
+                    isLoading = tab !in it.channelDetail.loadedTabs,
+                    isLoadingMore = false,
+                    errorMessage = null,
+                    continuationId = it.channelDetail.continuationIds[tab],
+                    hasMore = tab in it.channelDetail.tabsWithMore,
+                ),
+            )
+        }
+        if (tab in current.loadedTabs) return
+        channelJob?.cancel()
+        channelPagingJob?.cancel()
+        channelJob = viewModelScope.launch {
+            try {
+                val page = engine.loadChannelPage(channel, tab)
+                val videos = page.videos.map { it.withPersistedLibraryState() }
+                videos.forEach { remoteVideos[it.id] = it }
+                videos.forEach(::registerRemoteChannel)
+                _uiState.update { state ->
+                    if (
+                        state.channelDetail.channelId != channel.id ||
+                        state.channelDetail.selectedTab != tab
+                    ) state else state.copy(
+                        channels = visibleKnownChannels(),
+                        channelDetail = state.channelDetail.copy(
+                            shorts = if (tab == ChannelContentTab.Shorts) videos else state.channelDetail.shorts,
+                            playlists = if (tab == ChannelContentTab.Playlists) page.playlists else state.channelDetail.playlists,
+                            loadedTabs = state.channelDetail.loadedTabs + tab,
+                            continuationIds = state.channelDetail.continuationIds
+                                .toMutableMap()
+                                .apply {
+                                    if (page.continuationId == null) remove(tab)
+                                    else put(tab, page.continuationId)
+                                },
+                            tabsWithMore = if (page.hasMore) {
+                                state.channelDetail.tabsWithMore + tab
+                            } else {
+                                state.channelDetail.tabsWithMore - tab
+                            },
+                            isLoading = false,
+                            continuationId = page.continuationId,
+                            hasMore = page.hasMore,
+                        ),
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update { state ->
+                    if (state.channelDetail.channelId != channel.id) state else state.copy(
+                        channelDetail = state.channelDetail.copy(
+                            isLoading = false,
+                            errorMessage = error.localizedMessage ?: text(R.string.creator_load_failed),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     fun loadMoreChannel() {
         val current = _uiState.value.channelDetail
-        val continuationId = current.continuationId
+        val tab = current.selectedTab
+        val continuationId = current.continuationIds[tab]
         if (!current.hasMore || current.isLoading || current.isLoadingMore || continuationId == null) return
         val channelId = current.channelId ?: return
         channelPagingJob?.cancel()
@@ -1313,8 +1417,25 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     ) state else state.copy(
                         channels = visibleKnownChannels(),
                         channelDetail = state.channelDetail.copy(
-                            videos = (state.channelDetail.videos + videos).distinctBy(VideoUiModel::id),
+                            videos = if (tab == ChannelContentTab.Videos) {
+                                (state.channelDetail.videos + videos).distinctBy(VideoUiModel::id)
+                            } else state.channelDetail.videos,
+                            shorts = if (tab == ChannelContentTab.Shorts) {
+                                (state.channelDetail.shorts + videos).distinctBy(VideoUiModel::id)
+                            } else state.channelDetail.shorts,
+                            playlists = if (tab == ChannelContentTab.Playlists) {
+                                (state.channelDetail.playlists + page.playlists).distinctBy(PlaylistUiModel::id)
+                            } else state.channelDetail.playlists,
                             isLoadingMore = false,
+                            continuationIds = state.channelDetail.continuationIds
+                                .toMutableMap()
+                                .apply {
+                                    if (page.continuationId == null) remove(tab)
+                                    else put(tab, page.continuationId)
+                                },
+                            tabsWithMore = if (page.hasMore) {
+                                state.channelDetail.tabsWithMore + tab
+                            } else state.channelDetail.tabsWithMore - tab,
                             continuationId = page.continuationId,
                             hasMore = page.hasMore,
                         ),
@@ -1335,12 +1456,254 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun loadRemotePlaylist(playlist: PlaylistUiModel) {
+        if (playlist.sourceId.isBlank()) return
+        val current = _uiState.value.remotePlaylistDetail
+        if (current.playlist?.id == playlist.id && (current.isLoading || current.videos.isNotEmpty())) return
+        remotePlaylistJob?.cancel()
+        remotePlaylistPagingJob?.cancel()
+        _uiState.update {
+            it.copy(
+                remotePlaylistDetail = RemotePlaylistDetailUiState(
+                    playlist = playlist,
+                    isLoading = true,
+                ),
+            )
+        }
+        remotePlaylistJob = viewModelScope.launch {
+            try {
+                val details = engine.loadPlaylist(playlist)
+                val videos = details.videos.map { it.withPersistedLibraryState() }
+                videos.forEach { remoteVideos[it.id] = it }
+                videos.forEach(::registerRemoteChannel)
+                _uiState.update { state ->
+                    if (state.remotePlaylistDetail.playlist?.id != playlist.id) state else state.copy(
+                        channels = visibleKnownChannels(),
+                        remotePlaylistDetail = RemotePlaylistDetailUiState(
+                            playlist = details.playlist.copy(videoIds = videos.map(VideoUiModel::id)),
+                            videos = videos,
+                            continuationId = details.continuationId,
+                            hasMore = details.hasMore,
+                        ),
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.e("GrayjayViewModel", "Loading remote playlist ${playlist.id} failed.", error)
+                _uiState.update { state ->
+                    if (state.remotePlaylistDetail.playlist?.id != playlist.id) state else state.copy(
+                        remotePlaylistDetail = state.remotePlaylistDetail.copy(
+                            isLoading = false,
+                            errorMessage = error.localizedMessage ?: text(R.string.playlist_load_failed),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadMoreRemotePlaylist() {
+        val current = _uiState.value.remotePlaylistDetail
+        val playlistId = current.playlist?.id ?: return
+        val continuationId = current.continuationId ?: return
+        if (!current.hasMore || current.isLoading || current.isLoadingMore || current.isLoadingAll) return
+        remotePlaylistPagingJob?.cancel()
+        _uiState.update {
+            it.copy(remotePlaylistDetail = it.remotePlaylistDetail.copy(isLoadingMore = true))
+        }
+        remotePlaylistPagingJob = viewModelScope.launch {
+            try {
+                appendRemotePlaylistPage(playlistId, continuationId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.e("GrayjayViewModel", "Loading another page for remote playlist $playlistId failed.", error)
+                _uiState.update { state ->
+                    if (state.remotePlaylistDetail.playlist?.id != playlistId) state else state.copy(
+                        remotePlaylistDetail = state.remotePlaylistDetail.copy(
+                            isLoadingMore = false,
+                            errorMessage = error.localizedMessage ?: text(R.string.playlist_load_failed),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun appendRemotePlaylistPage(
+        playlistId: String,
+        continuationId: String,
+    ): RemotePlaylistDetailUiState {
+        val page = engine.loadMoreChannel(continuationId)
+        val videos = page.videos.map { it.withPersistedLibraryState() }
+        videos.forEach { remoteVideos[it.id] = it }
+        videos.forEach(::registerRemoteChannel)
+        var updated = _uiState.value.remotePlaylistDetail
+        _uiState.update { state ->
+            if (state.remotePlaylistDetail.playlist?.id != playlistId) state else {
+                val combined = (state.remotePlaylistDetail.videos + videos)
+                    .distinctBy(VideoUiModel::id)
+                updated = state.remotePlaylistDetail.copy(
+                    playlist = requireNotNull(state.remotePlaylistDetail.playlist).copy(
+                        videoIds = combined.map(VideoUiModel::id),
+                    ),
+                    videos = combined,
+                    isLoadingMore = false,
+                    continuationId = page.continuationId,
+                    hasMore = page.hasMore,
+                    errorMessage = null,
+                )
+                state.copy(
+                    channels = visibleKnownChannels(),
+                    remotePlaylistDetail = updated,
+                )
+            }
+        }
+        return updated
+    }
+
+    private suspend fun fullyLoadRemotePlaylist(playlistId: String): List<VideoUiModel> {
+        var current = _uiState.value.remotePlaylistDetail
+        while (current.playlist?.id == playlistId && current.hasMore) {
+            val continuationId = current.continuationId ?: break
+            current = appendRemotePlaylistPage(playlistId, continuationId)
+        }
+        return current.videos
+    }
+
+    fun createLocalPlaylistFromRemote(title: String) {
+        val playlist = _uiState.value.remotePlaylistDetail.playlist ?: return
+        if (_uiState.value.remotePlaylistDetail.isLoadingAll) return
+        remotePlaylistPagingJob?.cancel()
+        remotePlaylistJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(remotePlaylistDetail = it.remotePlaylistDetail.copy(isLoadingAll = true))
+            }
+            try {
+                val videos = fullyLoadRemotePlaylist(playlist.id)
+                if (videos.isNotEmpty()) {
+                    libraryRepository.createPlaylist(title.trim().ifBlank { playlist.title }, videos)
+                    reloadLibrary()
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        remotePlaylistDetail = it.remotePlaylistDetail.copy(
+                            errorMessage = error.localizedMessage ?: text(R.string.playlist_load_failed),
+                        ),
+                    )
+                }
+            } finally {
+                _uiState.update {
+                    it.copy(remotePlaylistDetail = it.remotePlaylistDetail.copy(isLoadingAll = false))
+                }
+            }
+        }
+    }
+
+    fun downloadRemotePlaylist(mediaType: DownloadMediaType) {
+        val playlist = _uiState.value.remotePlaylistDetail.playlist ?: return
+        if (_uiState.value.remotePlaylistDetail.isLoadingAll) return
+        remotePlaylistPagingJob?.cancel()
+        remotePlaylistJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(remotePlaylistDetail = it.remotePlaylistDetail.copy(isLoadingAll = true))
+            }
+            try {
+                val videos = fullyLoadRemotePlaylist(playlist.id)
+                downloadVideos(videos.filterNot(VideoUiModel::isLive).map(VideoUiModel::id), mediaType)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        remotePlaylistDetail = it.remotePlaylistDetail.copy(
+                            errorMessage = error.localizedMessage ?: text(R.string.playlist_load_failed),
+                        ),
+                    )
+                }
+            } finally {
+                _uiState.update {
+                    it.copy(remotePlaylistDetail = it.remotePlaylistDetail.copy(isLoadingAll = false))
+                }
+            }
+        }
+    }
+
+    fun playRemotePlaylist() {
+        val playlist = _uiState.value.remotePlaylistDetail.playlist ?: return
+        if (_uiState.value.remotePlaylistDetail.isLoadingAll) return
+        remotePlaylistPagingJob?.cancel()
+        remotePlaylistJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(remotePlaylistDetail = it.remotePlaylistDetail.copy(isLoadingAll = true))
+            }
+            try {
+                val videos = fullyLoadRemotePlaylist(playlist.id)
+                activePlaylistId = null
+                startQueue(videos.map(VideoUiModel::id))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        remotePlaylistDetail = it.remotePlaylistDetail.copy(
+                            errorMessage = error.localizedMessage ?: text(R.string.playlist_load_failed),
+                        ),
+                    )
+                }
+            } finally {
+                _uiState.update {
+                    it.copy(remotePlaylistDetail = it.remotePlaylistDetail.copy(isLoadingAll = false))
+                }
+            }
+        }
+    }
+
     fun seekPlayback(fraction: Float) {
         engine.seekToFraction(fraction)
         _uiState.value.playback.currentVideoId?.let { setWatchProgress(it, fraction) }
     }
 
+    fun resumePlaybackFromHistory() {
+        val fraction = _uiState.value.nowPlaying.resumePositionFraction ?: return
+        engine.seekToFraction(fraction)
+        _uiState.value.playback.currentVideoId?.let { setWatchProgress(it, fraction) }
+        dismissResumePrompt()
+    }
+
+    fun dismissResumePrompt() {
+        resumePromptJob?.cancel()
+        resumePromptJob = null
+        _uiState.update {
+            it.copy(nowPlaying = it.nowPlaying.copy(resumePositionFraction = null))
+        }
+    }
+
+    private fun scheduleResumePromptDismiss(videoId: String, fraction: Float?) {
+        resumePromptJob?.cancel()
+        resumePromptJob = null
+        if (fraction == null) return
+        resumePromptJob = viewModelScope.launch {
+            delay(10_000)
+            _uiState.update { state ->
+                if (
+                    state.nowPlaying.video?.id != videoId ||
+                    state.nowPlaying.resumePositionFraction != fraction
+                ) state else state.copy(
+                    nowPlaying = state.nowPlaying.copy(resumePositionFraction = null),
+                )
+            }
+            resumePromptJob = null
+        }
+    }
+
     fun closePlayback() {
+        resumePromptJob?.cancel()
+        resumePromptJob = null
         invalidatePlaybackQueue()
         pendingPlaybackVideoId = null
         activePlaylistId = null
@@ -2126,13 +2489,26 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setWatchProgress(videoId: String, progress: Float) {
+        if (_uiState.value.privateSessionEnabled) return
+        val normalizedProgress = progress.coerceIn(0f, 1f)
         _uiState.update { state ->
-            if (state.privateSessionEnabled) return@update state
-            val normalizedProgress = progress.coerceIn(0f, 1f)
-            findVideo(videoId)?.let(libraryRepository::saveVideo)
-            libraryRepository.setWatchProgress(videoId, normalizedProgress)
-            updateVideoEverywhere(state, videoId) { it.copy(watchProgress = normalizedProgress) }
-                .copy(libraryVideos = libraryRepository.loadSavedVideos())
+            if (state.privateSessionEnabled) state else {
+                updateVideoEverywhere(state, videoId) {
+                    it.copy(watchProgress = normalizedProgress)
+                }
+            }
+        }
+
+        // History can contain hundreds or thousands of entries. SharedPreferencesLibraryRepository
+        // stores it as one JSON document, so parsing and serialising it from this method used to
+        // stop the main thread every five seconds during playback. recordHistory() has already
+        // ensured that the item exists; persist only the changed fraction, off the playback/UI
+        // path, and collapse rapid seek updates into one write.
+        val repositoryAtScheduleTime = libraryRepository
+        watchProgressWriteJob?.cancel()
+        watchProgressWriteJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(WATCH_PROGRESS_WRITE_DEBOUNCE_MS)
+            repositoryAtScheduleTime.setWatchProgress(videoId, normalizedProgress)
         }
     }
 
@@ -2641,9 +3017,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         extrasPagingJob?.cancel()
         channelJob?.cancel()
         channelPagingJob?.cancel()
+        remotePlaylistJob?.cancel()
+        remotePlaylistPagingJob?.cancel()
+        resumePromptJob?.cancel()
         homeJob?.cancel()
         homePagingJob?.cancel()
-        persistCurrentPlaybackProgress()
+        // viewModelScope is cancelled as this method returns, so a newly scheduled debounced write
+        // would never run. A final synchronous write here is safe and preserves the last position.
+        watchProgressWriteJob?.cancel()
+        historyWriteJobs.values.forEach(Job::cancel)
+        historyWriteJobs.clear()
+        persistCurrentPlaybackProgressImmediately()
         networkMonitor.close()
         engine.release()
         super.onCleared()
@@ -2925,7 +3309,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun VideoUiModel.withPersistedLibraryState(): VideoUiModel {
-        val saved = libraryRepository.load(listOf(this))[id] ?: return this
+        // allVideos is the in-memory mirror of the active profile's library. The former helper
+        // called LibraryRepository.load() here, which reparsed the complete history JSON once per
+        // search/home/channel result (80 full parses after a typical subscription refresh) and
+        // twice while opening a video.
+        val saved = allVideos.firstOrNull { it.id == id } ?: return this
         return copy(
             isWatchLater = saved.isWatchLater,
             isDownloaded = saved.isDownloaded,
@@ -3125,12 +3513,36 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private fun recordHistory(video: VideoUiModel) {
         if (_uiState.value.privateSessionEnabled) return
-        libraryRepository.recordHistory(video)
-        reloadLibrary()
+        val repositoryAtScheduleTime = libraryRepository
+        val profileAtScheduleTime = activeProfileId
+        historyWriteJobs.remove(video.id)?.cancel()
+        historyWriteJobs[video.id] = viewModelScope.launch(Dispatchers.IO) {
+            repositoryAtScheduleTime.recordHistory(video)
+            val savedVideos = repositoryAtScheduleTime.loadSavedVideos()
+            val playlists = repositoryAtScheduleTime.loadPlaylists()
+            withContext(Dispatchers.Main) {
+                if (
+                    profileAtScheduleTime == activeProfileId &&
+                    repositoryAtScheduleTime === libraryRepository
+                ) {
+                    applyLibrarySnapshot(savedVideos, playlists)
+                }
+            }
+        }
     }
 
     private fun reloadLibrary() {
-        allVideos = libraryRepository.loadSavedVideos()
+        applyLibrarySnapshot(
+            savedVideos = libraryRepository.loadSavedVideos(),
+            playlists = libraryRepository.loadPlaylists(),
+        )
+    }
+
+    private fun applyLibrarySnapshot(
+        savedVideos: List<VideoUiModel>,
+        playlists: List<PlaylistUiModel>,
+    ) {
+        allVideos = savedVideos
         val saved = allVideos.associateBy(VideoUiModel::id)
         fun merge(video: VideoUiModel): VideoUiModel = saved[video.id]?.let { stored ->
             video.copy(
@@ -3150,8 +3562,15 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 subscriptionVideos = state.subscriptionVideos.map(::merge),
                 home = state.home.copy(videos = state.home.videos.map(::merge)),
                 libraryVideos = allVideos,
-                playlists = libraryRepository.loadPlaylists(),
+                playlists = playlists,
                 search = state.search.copy(videos = state.search.videos.map(::merge)),
+                channelDetail = state.channelDetail.copy(
+                    videos = state.channelDetail.videos.map(::merge),
+                    shorts = state.channelDetail.shorts.map(::merge),
+                ),
+                remotePlaylistDetail = state.remotePlaylistDetail.copy(
+                    videos = state.remotePlaylistDetail.videos.map(::merge),
+                ),
                 nowPlaying = state.nowPlaying.copy(
                     video = state.nowPlaying.video?.let(::merge),
                     recommendations = state.nowPlaying.recommendations.map(::merge),
@@ -3185,6 +3604,19 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             },
             search = state.search.copy(
                 videos = state.search.videos.map { if (it.id == videoId) transform(it) else it },
+            ),
+            channelDetail = state.channelDetail.copy(
+                videos = state.channelDetail.videos.map {
+                    if (it.id == videoId) transform(it) else it
+                },
+                shorts = state.channelDetail.shorts.map {
+                    if (it.id == videoId) transform(it) else it
+                },
+            ),
+            remotePlaylistDetail = state.remotePlaylistDetail.copy(
+                videos = state.remotePlaylistDetail.videos.map {
+                    if (it.id == videoId) transform(it) else it
+                },
             ),
             nowPlaying = state.nowPlaying.copy(
                 video = state.nowPlaying.video?.let { if (it.id == videoId) transform(it) else it },
@@ -3248,10 +3680,25 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             .filter { it.sourceId in enabledSourceIds }
 
     private fun persistCurrentPlaybackProgress() {
-        val playback = engine.playback.value
-        if (playback.durationMs <= 0L) return
-        val videoId = playback.currentVideoId ?: return
-        setWatchProgress(videoId, playback.positionMs.toFloat() / playback.durationMs)
+        currentPlaybackProgress()?.let { (videoId, progress) ->
+            setWatchProgress(videoId, progress)
+        }
+    }
+
+    private fun persistCurrentPlaybackProgressImmediately() {
+        if (_uiState.value.privateSessionEnabled) return
+        val (videoId, progress) = currentPlaybackProgress() ?: return
+        val currentVideo = _uiState.value.nowPlaying.video?.takeIf { it.id == videoId }
+        if (currentVideo != null) libraryRepository.recordHistory(currentVideo, progress)
+        else libraryRepository.setWatchProgress(videoId, progress)
+    }
+
+    private fun currentPlaybackProgress(): Pair<String, Float>? {
+        val durationMs = engine.player.duration.takeIf { it > 0L } ?: return null
+        val videoId = engine.player.currentMediaItem?.mediaId
+            ?: engine.playback.value.currentVideoId
+            ?: return null
+        return videoId to (engine.player.currentPosition.toFloat() / durationMs).coerceIn(0f, 1f)
     }
 
     private fun applyPlaybackPreferences() {
@@ -3272,6 +3719,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val state = _uiState.value
         return remoteVideos[videoId]
             ?: state.channelDetail.videos.firstOrNull { it.id == videoId }
+            ?: state.channelDetail.shorts.firstOrNull { it.id == videoId }
+            ?: state.remotePlaylistDetail.videos.firstOrNull { it.id == videoId }
             ?: state.search.videos.firstOrNull { it.id == videoId }
             ?: state.home.videos.firstOrNull { it.id == videoId }
             ?: state.subscriptionVideos.firstOrNull { it.id == videoId }
@@ -3282,6 +3731,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             ?: state.nowPlaying.recommendations.firstOrNull { it.id == videoId }
     }
 }
+
+internal fun VideoUiModel.resumePositionFraction(): Float? = watchProgress
+    .takeIf { progress -> !isLive && progress >= 0.002f && progress < 0.95f }
 
 internal fun pluginUrlFromQrContent(content: String): String? {
     val value = content.trim()

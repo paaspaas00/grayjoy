@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.media3.datasource.HttpDataSource
 import com.futo.platformplayer.api.media.models.contents.IPlatformContent
 import com.futo.platformplayer.api.media.models.IPlatformChannelContent
+import com.futo.platformplayer.api.media.models.ResultCapabilities
 import com.futo.platformplayer.api.media.models.playlists.IPlatformPlaylist
 import com.futo.platformplayer.api.media.models.comments.IPlatformComment
 import com.futo.platformplayer.api.media.models.ratings.IRating
@@ -22,7 +23,9 @@ import com.futo.platformplayer.api.media.models.streams.sources.IVideoUrlSource
 import com.futo.platformplayer.api.media.models.streams.sources.IWidevineSource
 import com.futo.platformplayer.api.media.models.video.IPlatformVideo
 import com.futo.platformplayer.api.media.models.video.IPlatformVideoDetails
+import com.futo.platformplayer.api.media.PlatformMultiClientPool
 import com.futo.platformplayer.api.media.structures.IPager
+import com.futo.platformplayer.api.media.structures.PlatformContentPager
 import com.futo.platformplayer.api.media.platforms.js.JSClient
 import com.futo.platformplayer.api.media.platforms.js.SourcePluginConfig
 import com.futo.platformplayer.api.media.platforms.js.SourcePluginDescriptor
@@ -92,6 +95,22 @@ data class GrayjayChannelDetails(
     val subscribers: Long,
     val description: String?,
     val links: Map<String, String>,
+    val videos: List<GrayjaySearchItem>,
+    val continuationId: String? = null,
+    val hasMore: Boolean = false,
+    val supportsShorts: Boolean = false,
+    val supportsPlaylists: Boolean = false,
+)
+
+data class GrayjayChannelPage(
+    val videos: List<GrayjaySearchItem> = emptyList(),
+    val playlists: List<GrayjaySearchPlaylist> = emptyList(),
+    val continuationId: String? = null,
+    val hasMore: Boolean = false,
+)
+
+data class GrayjayPlaylistDetails(
+    val playlist: GrayjaySearchPlaylist,
     val videos: List<GrayjaySearchItem>,
     val continuationId: String? = null,
     val hasMore: Boolean = false,
@@ -295,6 +314,22 @@ class GrayjayPluginBackend(context: Context) {
     private val sourceAliases = ConcurrentHashMap<String, String>()
     private val pendingUntrustedPlugins = ConcurrentHashMap<String, PendingUntrustedPlugin>()
     private val pagerSessions = ConcurrentHashMap<String, PagerSession>()
+    // JS execution is protected by one lock per client. Running subscription coroutines against
+    // the same client therefore remains completely serial. Legacy Grayjay uses a six-client pool
+    // for channel refreshes; share that machinery here so independent RSS/channel requests can
+    // actually progress concurrently without making the plugin runtime unsafe.
+    private val subscriptionClientPool = PlatformMultiClientPool(
+        "Compose subscriptions",
+        SUBSCRIPTION_CONCURRENCY,
+    )
+    // Match StatePlatform's user-critical pool. A plugin call is synchronous once it enters V8,
+    // so cancelling its coroutine cannot necessarily stop an in-flight browser/network promise.
+    // Keeping two credentialed clients prevents that stale call from blocking the next video for
+    // the V8 lock timeout (65 seconds).
+    private val mainClientPool = PlatformMultiClientPool(
+        "Compose main",
+        MAIN_CLIENT_CONCURRENCY,
+    )
     private val storyboardCache = ConcurrentHashMap<String, CachedStoryboard>()
     private val storyboardFailures = ConcurrentHashMap<String, Long>()
     private val loadMutex = Mutex()
@@ -492,6 +527,9 @@ class GrayjayPluginBackend(context: Context) {
     companion object {
         private const val TAG = "GrayjayPluginBackend"
         private const val YOUTUBE_PLUGIN_ID = "35ae969a-a7db-11ed-afa1-0242ac120002"
+        private const val SUBSCRIPTION_CONCURRENCY = 6
+        private const val MAIN_CLIENT_CONCURRENCY = 2
+        const val CHANNEL_PLAYLISTS_TYPE = "PLAYLISTS"
         private const val STORYBOARD_CACHE_TTL_MS = 30L * 60L * 1_000L
         private const val STORYBOARD_FAILURE_TTL_MS = 2L * 60L * 1_000L
         private const val STORYBOARD_USER_AGENT =
@@ -555,18 +593,60 @@ class GrayjayPluginBackend(context: Context) {
         val requests = channels
             .filter { it.url.isNotBlank() && it.sourceId in enabledSources }
             .distinctBy { "${it.sourceId}:${it.url}" }
+        val requestOrdinals = requests
+            .groupBy(GrayjayChannelRequest::sourceId)
+            .values
+            .flatMap { sourceRequests ->
+                sourceRequests.mapIndexed { index, request ->
+                    "${request.sourceId}:${request.url}" to index
+                }
+            }
+            .toMap()
         val completedRequests = AtomicInteger(0)
+        val fullRequests = AtomicInteger(0)
+        val peekRequests = AtomicInteger(0)
         onProgress(0, requests.size)
         val outcomes = coroutineScope {
             requests.map { request ->
                 async {
                     val outcome = runCatching {
                         val endpoint = requireNotNull(enabledSources[request.sourceId])
-                        val plugin = getOrLoad(request.sourceId, endpoint)
+                        val basePlugin = getOrLoad(request.sourceId, endpoint)
+                        val plugin = subscriptionClientPool.getClientPooled(
+                            basePlugin,
+                            SUBSCRIPTION_CONCURRENCY,
+                        )
+                        val ordinal = requestOrdinals["${request.sourceId}:${request.url}"] ?: 0
+                        val rateLimit = basePlugin.getSubscriptionRateLimit()
+                            ?.takeIf { it > 0 }
+                            ?: Int.MAX_VALUE
+                        val peekType = if (
+                            ordinal >= rateLimit && basePlugin.capabilities.hasPeekChannelContents
+                        ) {
+                            basePlugin.getPeekChannelTypes().let { types ->
+                                when {
+                                    ResultCapabilities.TYPE_MIXED in types ->
+                                        ResultCapabilities.TYPE_MIXED
+                                    ResultCapabilities.TYPE_VIDEOS in types ->
+                                        ResultCapabilities.TYPE_VIDEOS
+                                    else -> null
+                                }
+                            }
+                        } else null
+                        val pager = if (peekType != null) {
+                            peekRequests.incrementAndGet()
+                            PlatformContentPager(
+                                plugin.peekChannelContents(request.url, peekType),
+                                perChannelLimit.coerceAtLeast(1),
+                            )
+                        } else {
+                            fullRequests.incrementAndGet()
+                            plugin.getChannelContents(request.url)
+                        }
                         SourcePagerSession(
                             request.sourceId,
-                            plugin.id,
-                            plugin.getChannelContents(request.url),
+                            basePlugin.id,
+                            pager,
                         )
                     }.onFailure { error ->
                         Log.e(TAG, "Subscription feed failed for ${request.url}.", error)
@@ -576,6 +656,11 @@ class GrayjayPluginBackend(context: Context) {
                 }
             }.awaitAll()
         }
+        Log.i(
+            TAG,
+            "Subscription refresh completed with ${fullRequests.get()} full and " +
+                "${peekRequests.get()} lightweight peek requests.",
+        )
         if (outcomes.isNotEmpty() && outcomes.all { it.isFailure }) {
             throw outcomes.firstNotNullOf { it.exceptionOrNull() }
         }
@@ -596,6 +681,13 @@ class GrayjayPluginBackend(context: Context) {
         readExistingSession(continuationId, pageSize).toVideoPage()
     }
 
+    suspend fun loadMoreChannelPage(
+        continuationId: String,
+        pageSize: Int = 30,
+    ): GrayjayChannelPage = withContext(Dispatchers.IO) {
+        readExistingSession(continuationId, pageSize).toChannelPage()
+    }
+
     suspend fun loadChannel(
         sourceId: String,
         channelUrl: String,
@@ -605,7 +697,13 @@ class GrayjayPluginBackend(context: Context) {
         require(channelUrl.isNotBlank()) { "This video did not provide a creator URL." }
         val plugin = getOrLoad(sourceId, endpoint)
         val channel = plugin.getChannel(channelUrl)
-        val pager = channel.getContents(plugin)
+        val capabilities = plugin.getChannelCapabilities()
+        val resolvedUrl = channel.url.ifBlank { channelUrl }
+        val pager = if (capabilities.hasType(ResultCapabilities.TYPE_VIDEOS)) {
+            plugin.getChannelContents(resolvedUrl, ResultCapabilities.TYPE_VIDEOS)
+        } else {
+            channel.getContents(plugin)
+        }
         val page = readNewSession(
             PagerSession(
                 kind = PagerContentKind.Videos,
@@ -625,6 +723,62 @@ class GrayjayPluginBackend(context: Context) {
             videos = page.videos,
             continuationId = page.continuationId,
             hasMore = page.hasMore,
+            supportsShorts = capabilities.hasType(ResultCapabilities.TYPE_SHORTS),
+            supportsPlaylists = plugin.capabilities.hasGetChannelPlaylists,
+        )
+    }
+
+    suspend fun loadChannelPage(
+        sourceId: String,
+        channelUrl: String,
+        endpoint: PluginEndpoint,
+        type: String,
+        pageSize: Int = 30,
+    ): GrayjayChannelPage = withContext(Dispatchers.IO) {
+        val plugin = getOrLoad(sourceId, endpoint)
+        val isPlaylists = type == CHANNEL_PLAYLISTS_TYPE
+        val pager = if (isPlaylists) {
+            require(plugin.capabilities.hasGetChannelPlaylists) {
+                "This source does not expose channel playlists."
+            }
+            plugin.getChannelPlaylists(channelUrl)
+        } else {
+            plugin.getChannelContents(channelUrl, type)
+        }
+        val page = readNewSession(
+            PagerSession(
+                kind = if (isPlaylists) PagerContentKind.Playlists else PagerContentKind.Videos,
+                sources = listOf(SourcePagerSession(sourceId, plugin.id, pager)),
+            ),
+            pageSize,
+        )
+        page.toChannelPage()
+    }
+
+    suspend fun loadPlaylist(
+        sourceId: String,
+        playlistUrl: String,
+        endpoint: PluginEndpoint,
+        videoLimit: Int = 30,
+    ): GrayjayPlaylistDetails = withContext(Dispatchers.IO) {
+        require(playlistUrl.isNotBlank()) { "The source playlist URL is missing." }
+        val plugin = getOrLoad(sourceId, endpoint)
+        require(plugin.capabilities.hasGetPlaylist) {
+            "This source does not support opening playlists."
+        }
+        val playlist = plugin.getPlaylist(playlistUrl)
+        val page = readNewSession(
+            PagerSession(
+                kind = PagerContentKind.Videos,
+                sources = listOf(SourcePagerSession(sourceId, plugin.id, playlist.contents)),
+            ),
+            videoLimit,
+        )
+        GrayjayPlaylistDetails(
+            playlist = playlist.toSearchPlaylist(sourceId, plugin.id),
+            videos = page.videos,
+            continuationId = page.continuationId,
+            hasMore = page.hasMore,
         )
     }
 
@@ -639,7 +793,10 @@ class GrayjayPluginBackend(context: Context) {
                 setPluginSettings(endpoint.pluginId, settings)
             }
         }
-        var plugin = getOrLoad(sourceId, endpoint)
+        var plugin = mainClientPool.getClientPooled(
+            getOrLoad(sourceId, endpoint),
+            MAIN_CLIENT_CONCURRENCY,
+        ) as JSClient
         val detailsResult = runCatching { plugin.getContentDetails(contentUrl) }
         val rawDetails = detailsResult.getOrElse { error ->
             if (
@@ -652,7 +809,10 @@ class GrayjayPluginBackend(context: Context) {
                     put("composeLegacyAgeFallback", "true")
                 }
                 setPluginSettings(endpoint.pluginId, updatedSettings)
-                plugin = getOrLoad(sourceId, endpoint)
+                plugin = mainClientPool.getClientPooled(
+                    getOrLoad(sourceId, endpoint),
+                    MAIN_CLIENT_CONCURRENCY,
+                ) as JSClient
                 runCatching { plugin.getContentDetails(contentUrl) }.getOrElse { fallbackError ->
                     Log.w(TAG, "Anonymous age-restriction fallback failed; source login is required.", fallbackError)
                     val restoredSettings = loadPluginSettings(endpoint.pluginId).apply {
@@ -1020,7 +1180,10 @@ class GrayjayPluginBackend(context: Context) {
         recommendationLimit: Int = 20,
         commentLimit: Int = 40,
     ): GrayjayContentExtras = withContext(Dispatchers.IO) {
-        val plugin = getOrLoad(sourceId, endpoint)
+        val plugin = mainClientPool.getClientPooled(
+            getOrLoad(sourceId, endpoint),
+            MAIN_CLIENT_CONCURRENCY,
+        )
         val details = plugin.getContentDetails(contentUrl) as? IPlatformVideoDetails
             ?: return@withContext GrayjayContentExtras(emptyList(), emptyList(), false, false)
 
@@ -1192,6 +1355,13 @@ class GrayjayPluginBackend(context: Context) {
     private fun PagerBatch.toSearchResult() = GrayjayPluginSearchResult(
         videos = videos,
         channels = channels,
+        playlists = playlists,
+        continuationId = continuationId,
+        hasMore = hasMore,
+    )
+
+    private fun PagerBatch.toChannelPage() = GrayjayChannelPage(
+        videos = videos,
         playlists = playlists,
         continuationId = continuationId,
         hasMore = hasMore,

@@ -105,6 +105,7 @@ import com.futo.platformplayer.compose.ui.screens.LibraryScreen
 import com.futo.platformplayer.compose.ui.screens.MiniPlayer
 import com.futo.platformplayer.compose.ui.screens.MiniPlayerChrome
 import com.futo.platformplayer.compose.ui.screens.PlaylistDetailScreen
+import com.futo.platformplayer.compose.ui.screens.RemotePlaylistDetailScreen
 import com.futo.platformplayer.compose.ui.screens.SearchScreen
 import com.futo.platformplayer.compose.ui.screens.SettingsScreen
 import com.futo.platformplayer.compose.ui.screens.SubscriptionsScreen
@@ -165,6 +166,7 @@ private data class PlaybackPresentation(
     val queue: List<VideoUiModel>,
     val nowPlaying: NowPlayingUiState,
     val channelDetail: ChannelDetailUiState,
+    val remotePlaylistDetail: RemotePlaylistDetailUiState,
     val channels: List<ChannelUiModel>,
     val player: Player,
     val state: PlaybackUiState,
@@ -193,7 +195,13 @@ private data class PlaybackPresentation(
     val onToggleFollowing: () -> Unit,
     val onCreatorFollowedChange: (String, Boolean) -> Unit,
     val onLoadChannel: (ChannelUiModel) -> Unit,
+    val onChannelTabSelected: (ChannelContentTab) -> Unit,
     val onLoadMoreChannel: () -> Unit,
+    val onLoadRemotePlaylist: (PlaylistUiModel) -> Unit,
+    val onLoadMoreRemotePlaylist: () -> Unit,
+    val onPlayRemotePlaylist: () -> Unit,
+    val onDownloadRemotePlaylist: (DownloadMediaType) -> Unit,
+    val onCreateLocalPlaylistFromRemote: (String) -> Unit,
     val onLoadMoreRecommendations: () -> Unit,
     val onLoadMoreComments: () -> Unit,
     val onClose: () -> Unit,
@@ -214,6 +222,7 @@ private data class PlaybackPresentation(
     val onRemoveVideosFromPlaylist: (String, List<String>) -> Unit,
     val onReorderPlaylist: (String, List<String>) -> Unit,
     val onSeek: (Float) -> Unit,
+    val onResumeFromHistory: () -> Unit,
     val libraryVideos: List<VideoUiModel>,
     val onOpenProfiles: () -> Unit,
     val defaultPlaybackSpeed: Float,
@@ -274,6 +283,7 @@ fun GrayjayApp(
     onPrivateSessionChange: (Boolean) -> Unit,
     onOpenVideo: (String) -> Unit,
     onLoadChannel: (ChannelUiModel) -> Unit,
+    onChannelTabSelected: (ChannelContentTab) -> Unit = {},
     onHomeFeedSelected: (HomeFeedType) -> Unit,
     onRefreshHome: () -> Unit,
     onLoadMoreHome: () -> Unit = {},
@@ -317,9 +327,15 @@ fun GrayjayApp(
     onSearchSubmit: (String, SearchContentType, Set<String>) -> Unit,
     onLoadMoreSearch: () -> Unit = {},
     onLoadMoreChannel: () -> Unit = {},
+    onLoadRemotePlaylist: (PlaylistUiModel) -> Unit = {},
+    onLoadMoreRemotePlaylist: () -> Unit = {},
+    onPlayRemotePlaylist: () -> Unit = {},
+    onDownloadRemotePlaylist: (DownloadMediaType) -> Unit = {},
+    onCreateLocalPlaylistFromRemote: (String) -> Unit = {},
     onLoadMoreRecommendations: () -> Unit = {},
     onLoadMoreComments: () -> Unit = {},
     onToggleFollowing: () -> Unit,
+    onResumeFromHistory: () -> Unit = {},
     onCreatorFollowedChange: (String, Boolean) -> Unit,
     onChooseDatabaseImport: () -> Unit,
     onChooseNewPipeImport: () -> Unit = {},
@@ -358,12 +374,16 @@ fun GrayjayApp(
     val selected = GrayjayDestination.valueOf(destinationName)
     val availableVideos = uiState.videos + uiState.subscriptionVideos +
         uiState.libraryVideos + uiState.search.videos + uiState.home.videos +
-        uiState.channelDetail.videos +
+        uiState.channelDetail.videos + uiState.channelDetail.shorts +
+        uiState.remotePlaylistDetail.videos +
         listOfNotNull(uiState.nowPlaying.video) + uiState.nowPlaying.recommendations
     val selectedVideo = uiState.nowPlaying.video?.takeIf { it.id == selectedVideoId }
         ?: availableVideos.firstOrNull { it.id == selectedVideoId }
     val selectedChannel = uiState.channels.firstOrNull { it.id == selectedChannelId }
     val selectedPlaylist = uiState.playlists.firstOrNull { it.id == selectedPlaylistId }
+        ?: uiState.remotePlaylistDetail.playlist?.takeIf { it.id == selectedPlaylistId }
+        ?: (uiState.search.playlists + uiState.channelDetail.playlists)
+            .firstOrNull { it.id == selectedPlaylistId }
     val playbackVideo = availableVideos.firstOrNull { it.id == uiState.playback.currentVideoId }
         ?: uiState.nowPlaying.video
     var playerTransitionProgress by rememberSaveable { mutableFloatStateOf(1f) }
@@ -415,6 +435,7 @@ fun GrayjayApp(
         playerTransitionProgress = 1f
     }
     val onPlaylistClick: (PlaylistUiModel) -> Unit = {
+        if (it.sourceId.isNotBlank()) onLoadRemotePlaylist(it)
         selectedPlaylistId = it.id
         selectedChannelId = null
         selectedVideoId = null
@@ -450,6 +471,7 @@ fun GrayjayApp(
         queue = queueVideos,
         nowPlaying = uiState.nowPlaying,
         channelDetail = uiState.channelDetail,
+        remotePlaylistDetail = uiState.remotePlaylistDetail,
         channels = uiState.channels,
         player = player,
         state = uiState.playback,
@@ -492,7 +514,18 @@ fun GrayjayApp(
         onToggleFollowing = onToggleFollowing,
         onCreatorFollowedChange = onCreatorFollowedChange,
         onLoadChannel = onLoadChannel,
+        onChannelTabSelected = onChannelTabSelected,
         onLoadMoreChannel = onLoadMoreChannel,
+        onLoadRemotePlaylist = onLoadRemotePlaylist,
+        onLoadMoreRemotePlaylist = onLoadMoreRemotePlaylist,
+        onPlayRemotePlaylist = {
+            onPlayRemotePlaylist()
+            uiState.remotePlaylistDetail.videos.firstOrNull()?.let { first ->
+                settlePlayer(0f, first.id)
+            }
+        },
+        onDownloadRemotePlaylist = onDownloadRemotePlaylist,
+        onCreateLocalPlaylistFromRemote = onCreateLocalPlaylistFromRemote,
         onLoadMoreRecommendations = onLoadMoreRecommendations,
         onLoadMoreComments = onLoadMoreComments,
         onClose = {
@@ -535,6 +568,7 @@ fun GrayjayApp(
         onRemoveVideosFromPlaylist = onRemoveVideosFromPlaylist,
         onReorderPlaylist = onReorderPlaylist,
         onSeek = onSeekPlayback,
+        onResumeFromHistory = onResumeFromHistory,
         libraryVideos = uiState.libraryVideos,
         onOpenProfiles = { profileDialogVisible = true },
         defaultPlaybackSpeed = uiState.defaultPlaybackSpeed,
@@ -678,6 +712,8 @@ fun GrayjayApp(
             onCaptionsEnabledChange = playback.onCaptionsEnabledChange,
             onSubtitleLanguageChange = playback.onSubtitleLanguageChange,
             onRetryPlayback = playback.onRetry,
+            resumePositionFraction = playback.nowPlaying.resumePositionFraction,
+            onResumeFromHistory = playback.onResumeFromHistory,
             onExitFullscreen = playback.onExitFullscreen,
             portraitFullscreen = portraitFullscreen,
             modifier = Modifier.graphicsLayer {
@@ -1284,7 +1320,10 @@ private fun GrayjayScaffold(
                 val animatedPlaylist = animatedPageKey
                     .takeIf { it.startsWith("playlist:") }
                     ?.substringAfter("playlist:")
-                    ?.let { id -> playlists.firstOrNull { it.id == id } }
+                    ?.let { id ->
+                        selectedPlaylist?.takeIf { it.id == id }
+                            ?: playlists.firstOrNull { it.id == id }
+                    }
                 val animatedDestination = animatedPageKey
                     .takeIf { it.startsWith("destination:") }
                     ?.substringAfter("destination:")
@@ -1293,22 +1332,10 @@ private fun GrayjayScaffold(
                 if (animatedChannel != null) {
                 ChannelDetailScreen(
                     channel = animatedChannel,
-                    videos = if (playback.channelDetail.channelId == animatedChannel.id) {
-                        playback.channelDetail.videos
-                    } else {
-                        videos
-                    },
-                    videosAreChannelScoped = playback.channelDetail.channelId == animatedChannel.id,
-                    isLoading = playback.channelDetail.channelId == animatedChannel.id &&
-                        playback.channelDetail.isLoading,
-                    isLoadingMore = playback.channelDetail.channelId == animatedChannel.id &&
-                        playback.channelDetail.isLoadingMore,
-                    hasMore = playback.channelDetail.channelId == animatedChannel.id &&
-                        playback.channelDetail.hasMore,
+                    detail = playback.channelDetail,
                     onLoadMore = playback.onLoadMoreChannel,
-                    errorMessage = playback.channelDetail
-                        .takeIf { it.channelId == animatedChannel.id }
-                        ?.errorMessage,
+                    onTabSelected = playback.onChannelTabSelected,
+                    onPlaylistClick = onPlaylistClick,
                     isFollowing = animatedChannel.id in playback.followedCreatorIds,
                     onFollowingChange = {
                         playback.onCreatorFollowedChange(animatedChannel.id, it)
@@ -1317,7 +1344,7 @@ private fun GrayjayScaffold(
                     onVideoLongClick = playback.onVideoLongClick,
                 )
                 } else if (animatedPlaylist != null) {
-                PlaylistDetailScreen(
+                if (animatedPlaylist.sourceId.isBlank()) PlaylistDetailScreen(
                     playlist = animatedPlaylist,
                     videos = (videos + playback.libraryVideos).distinctBy(VideoUiModel::id),
                     downloads = playback.downloads,
@@ -1343,6 +1370,16 @@ private fun GrayjayScaffold(
                     onReorder = { ids ->
                         playback.onReorderPlaylist(animatedPlaylist.id, ids)
                     },
+                )
+                else RemotePlaylistDetailScreen(
+                    detail = playback.remotePlaylistDetail,
+                    downloads = playback.downloads,
+                    onVideoClick = onVideoClick,
+                    onVideoLongClick = playback.onVideoLongClick,
+                    onPlayAll = playback.onPlayRemotePlaylist,
+                    onDownloadAll = playback.onDownloadRemotePlaylist,
+                    onCreateLocalPlaylist = playback.onCreateLocalPlaylistFromRemote,
+                    onLoadMore = playback.onLoadMoreRemotePlaylist,
                 )
                 } else {
                     when (animatedDestination) {
@@ -1573,6 +1610,7 @@ private fun GrayjayScaffold(
                                 onFullscreen = playback.onEnterFullscreen,
                                 onLoadMoreRecommendations = playback.onLoadMoreRecommendations,
                                 onLoadMoreComments = playback.onLoadMoreComments,
+                                onResumeFromHistory = playback.onResumeFromHistory,
                                 renderPlayer = false,
                                 onPlayerBoundsChanged = { measuredBounds ->
                                     val normalizedBounds = Rect(
@@ -1647,6 +1685,8 @@ private fun GrayjayScaffold(
                 onRetryPlayback = playback.onRetry,
                 onFullscreen = playback.onEnterFullscreen,
                 controlsAlpha = if (!isTransitionDragging && progress <= 0.001f) 1f else 0f,
+                resumePositionFraction = playback.nowPlaying.resumePositionFraction,
+                onResumeFromHistory = playback.onResumeFromHistory,
                 modifier = Modifier
                     .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
                     .size(

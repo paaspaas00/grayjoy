@@ -34,6 +34,7 @@ data class GrayjayUiState(
     val playback: PlaybackUiState = PlaybackUiState(),
     val search: SearchUiState = SearchUiState(),
     val channelDetail: ChannelDetailUiState = ChannelDetailUiState(),
+    val remotePlaylistDetail: RemotePlaylistDetailUiState = RemotePlaylistDetailUiState(),
     val nowPlaying: NowPlayingUiState = NowPlayingUiState(),
 )
 
@@ -112,12 +113,38 @@ data class HomeUiState(
     val subscriptionsTotal: Int = 0,
 )
 
+enum class ChannelContentTab(@param:StringRes val labelRes: Int) {
+    Videos(R.string.videos),
+    Shorts(R.string.shorts),
+    Playlists(R.string.playlists),
+}
+
 data class ChannelDetailUiState(
     val channelId: String? = null,
+    val channel: ChannelUiModel? = null,
+    val selectedTab: ChannelContentTab = ChannelContentTab.Videos,
     val videos: List<VideoUiModel> = emptyList(),
+    val shorts: List<VideoUiModel> = emptyList(),
+    val playlists: List<PlaylistUiModel> = emptyList(),
+    val loadedTabs: Set<ChannelContentTab> = emptySet(),
+    val continuationIds: Map<ChannelContentTab, String> = emptyMap(),
+    val tabsWithMore: Set<ChannelContentTab> = emptySet(),
+    val supportsShorts: Boolean = false,
+    val supportsPlaylists: Boolean = false,
     val isLoading: Boolean = false,
     val isLoaded: Boolean = false,
     val isLoadingMore: Boolean = false,
+    val continuationId: String? = null,
+    val hasMore: Boolean = false,
+    val errorMessage: String? = null,
+)
+
+data class RemotePlaylistDetailUiState(
+    val playlist: PlaylistUiModel? = null,
+    val videos: List<VideoUiModel> = emptyList(),
+    val isLoading: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val isLoadingAll: Boolean = false,
     val continuationId: String? = null,
     val hasMore: Boolean = false,
     val errorMessage: String? = null,
@@ -218,6 +245,7 @@ data class NowPlayingUiState(
     val hasMoreRecommendations: Boolean = false,
     val hasMoreComments: Boolean = false,
     val isFollowing: Boolean = false,
+    val resumePositionFraction: Float? = null,
     val errorMessage: String? = null,
 )
 

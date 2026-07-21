@@ -46,6 +46,7 @@
     <string name="videos">Video</string>
     <string name="creators">Creator</string>
     <string name="playlists">Playlist</string>
+    <string name="shorts">Shorts</string>
     <string name="history">Cronologia</string>
     <string name="watch_later">Guarda più tardi</string>
     <string name="downloads">Download</string>
@@ -184,6 +185,8 @@
     <string name="videos_with_count">Video (%1$d)</string>
     <string name="results_with_count">Risultati (%1$d)</string>
     <string name="source_returned_no_videos">Questa sorgente non ha restituito video.</string>
+    <string name="source_returned_no_content">Questa sorgente non ha restituito contenuti.</string>
+    <string name="playlist_load_failed">Impossibile caricare questa playlist dalla sorgente.</string>
     <string name="no_channel_videos_match">Nessun video del canale corrisponde a “%1$s”.</string>
     <string name="view_channel">Visualizza canale</string>
 
@@ -464,6 +467,9 @@
     <string name="no_playable_media">La sorgente non ha restituito contenuti multimediali riproducibili.</string>
     <string name="views_count_compact">%1$s visualizzazioni</string>
     <string name="source_playlist">Playlist della sorgente</string>
+    <string name="make_local_playlist">Crea playlist locale</string>
+    <string name="make_local_playlist_description">Copia tutti i video in una playlist locale. Mantieni il nome originale o inseriscine uno diverso.</string>
+    <string name="continue_from_position">Continua da %1$s</string>
     <string name="unknown_creator">Creator sconosciuto</string>
     <string name="incorrect_backup_password">La password del backup non è corretta.</string>
     <string name="backup_empty">Il backup selezionato è vuoto.</string>
