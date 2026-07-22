@@ -96,10 +96,11 @@ jobs:
 
           expected_digest=""
           for apk in "${debug_apks[@]}" "${release_apks[@]}"; do
-            certificate_output="$("${apksigner}" verify --verbose --print-certs "${apk}")"
-            digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"${certificate_output}" | head -n 1)"
+            certificate_output="$("${apksigner}" verify --verbose --print-certs "${apk}" 2>&1)"
+            digest="$(awk -F ': ' '/certificate SHA-256 digest:/ { print $NF; exit }' <<<"${certificate_output}" | tr -d '\r')"
             if [[ -z "${digest}" ]]; then
               echo "Could not determine the signing certificate for ${apk}." >&2
+              printf '%s\n' "${certificate_output}" >&2
               exit 1
             fi
             if [[ -z "${expected_digest}" ]]; then
