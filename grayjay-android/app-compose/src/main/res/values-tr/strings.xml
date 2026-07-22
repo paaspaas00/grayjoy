@@ -98,6 +98,15 @@
     <string name="use_dark_theme">Koyu temayı kullan</string>
     <string name="private_session_enabled">Özel oturum etkinleştirildi</string>
     <string name="cast_to_device">Bir cihaza yayınla</string>
+    <string name="chromecast">Chromecast</string>
+    <string name="chromecast_connected">Bağlandı</string>
+    <string name="chromecast_connecting">Bağlanıyor…</string>
+    <string name="disconnect">Bağlantıyı kes</string>
+    <string name="looking_for_chromecast">Chromecast cihazları aranıyor…</string>
+    <string name="chromecast_same_wifi">Telefonun ve Chromecast cihazının aynı Wi-Fi ağında olduğundan emin olun.</string>
+    <string name="looking_for_cast_devices">%1$s cihazları aranıyor…</string>
+    <string name="cast_same_wifi">Telefonun ve %1$s alıcısının aynı Wi-Fi ağında olduğundan emin olun.</string>
+    <string name="available_devices">Kullanılabilir cihazlar</string>
     <string name="open_profile">Profili aç</string>
     <string name="open_item">%1$s\'ı açın</string>
     <string name="nothing_here_yet">Burada henüz bir şey yok.</string>
@@ -282,7 +291,7 @@
     <string name="profile_isolation_description">Geçmiş, abonelikler, kaynaklar, çalma listeleri ve ayarlar profil başına ayrıdır.</string>
     <string name="profile_name">Profil İsmi</string>
     <string name="confirm_pin">PIN\'ı onaylayın</string>
-    <string name="settings_tagline">Grayjay sizin olsun</string>
+    <string name="settings_tagline">Grayjoy sizin olsun</string>
     <string name="settings_description">Anlaşılabilir kalan kontrollerle gizliliğe saygılı varsayılanlar.</string>
     <string name="settings_appearance">Dış görünüş</string>
     <string name="use_wallpaper_colors">Duvar kağıdı renklerini kullanın</string>
@@ -295,6 +304,8 @@
     <string name="remember_subtitles_description">Bir sonraki video için altyazıları ve dili geri yükleyin</string>
     <string name="keep_screen_awake">Ekranı uyanık tut</string>
     <string name="keep_screen_awake_description">Uygulama açıkken ekranın uyku moduna geçmesini önleyin</string>
+    <string name="picture_in_picture">Kayan oynatıcı</string>
+    <string name="picture_in_picture_description">Grayjoy arka plana geçtiğinde videoyu küçük bir pencerede göster</string>
     <string name="settings_content">İçerik</string>
     <string name="show_recommendations">Önerileri göster</string>
     <string name="show_recommendations_description">İlgili videoları aşağıya yükleyin Şimdi Yürütülüyor</string>

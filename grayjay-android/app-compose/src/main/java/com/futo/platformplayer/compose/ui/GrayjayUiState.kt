@@ -19,6 +19,7 @@ data class GrayjayUiState(
     val showRecommendations: Boolean = true,
     val searchHistoryEnabled: Boolean = true,
     val keepScreenAwake: Boolean = true,
+    val pictureInPictureEnabled: Boolean = true,
     val otherAudioDuckingEnabled: Boolean = true,
     val otherAudioDuckVolumePercent: Int = 35,
     val profiles: List<ProfileUiModel> = emptyList(),
@@ -36,6 +37,29 @@ data class GrayjayUiState(
     val channelDetail: ChannelDetailUiState = ChannelDetailUiState(),
     val remotePlaylistDetail: RemotePlaylistDetailUiState = RemotePlaylistDetailUiState(),
     val nowPlaying: NowPlayingUiState = NowPlayingUiState(),
+    val chromecast: ChromecastUiState = ChromecastUiState(),
+)
+
+data class ChromecastDeviceUiModel(
+    val id: String,
+    val name: String,
+    val protocol: CastProtocolUi,
+)
+
+enum class CastProtocolUi { Chromecast, FCast }
+
+data class ChromecastUiState(
+    val devices: List<ChromecastDeviceUiModel> = emptyList(),
+    val isDiscovering: Boolean = false,
+    val activeDeviceId: String? = null,
+    val activeDeviceName: String? = null,
+    val activeProtocol: CastProtocolUi? = null,
+    val isConnecting: Boolean = false,
+    val isConnected: Boolean = false,
+    val isPlaying: Boolean = false,
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L,
+    val errorMessage: String? = null,
 )
 
 enum class DownloadStatus {
@@ -204,6 +228,7 @@ data class DatabaseImportSelection(
 data class PlaybackUiState(
     val currentVideoId: String? = null,
     val queueVideoIds: List<String> = emptyList(),
+    val isCasting: Boolean = false,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
     val positionMs: Long = 0,

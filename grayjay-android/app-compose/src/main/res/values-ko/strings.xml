@@ -98,6 +98,15 @@
     <string name="use_dark_theme">어두운 테마 사용</string>
     <string name="private_session_enabled">비공개 세션이 활성화되었습니다.</string>
     <string name="cast_to_device">기기로 전송</string>
+    <string name="chromecast">Chromecast</string>
+    <string name="chromecast_connected">연결됨</string>
+    <string name="chromecast_connecting">연결 중…</string>
+    <string name="disconnect">연결 해제</string>
+    <string name="looking_for_chromecast">Chromecast 기기 검색 중…</string>
+    <string name="chromecast_same_wifi">휴대전화와 Chromecast가 같은 Wi-Fi 네트워크에 연결되어 있는지 확인하세요.</string>
+    <string name="looking_for_cast_devices">%1$s 기기 검색 중…</string>
+    <string name="cast_same_wifi">휴대전화와 %1$s 수신기가 같은 Wi-Fi 네트워크에 연결되어 있는지 확인하세요.</string>
+    <string name="available_devices">사용 가능한 기기</string>
     <string name="open_profile">프로필 열기</string>
     <string name="open_item">%1$s 열기</string>
     <string name="nothing_here_yet">아직 아무것도 없습니다.</string>
@@ -282,7 +291,7 @@
     <string name="profile_isolation_description">기록, 구독, 소스, 재생 목록 및 설정은 프로필별로 격리됩니다.</string>
     <string name="profile_name">프로필 이름</string>
     <string name="confirm_pin">PIN 확인</string>
-    <string name="settings_tagline">Grayjay을(를) 당신의 것으로 만드세요</string>
+    <string name="settings_tagline">Grayjoy을(를) 당신의 것으로 만드세요</string>
     <string name="settings_description">이해하기 쉬운 제어 기능을 갖춘 개인 정보 보호 기본값.</string>
     <string name="settings_appearance">모습</string>
     <string name="use_wallpaper_colors">벽지 색상 사용</string>
@@ -295,6 +304,8 @@
     <string name="remember_subtitles_description">다음 동영상의 캡션 및 언어 복원</string>
     <string name="keep_screen_awake">화면을 활성 상태로 유지</string>
     <string name="keep_screen_awake_description">앱이 열려 있는 동안 디스플레이가 절전 모드로 전환되지 않도록 방지</string>
+    <string name="picture_in_picture">플로팅 플레이어</string>
+    <string name="picture_in_picture_description">Grayjoy가 백그라운드로 전환될 때 동영상을 작은 창으로 표시합니다</string>
     <string name="settings_content">콘텐츠</string>
     <string name="show_recommendations">추천 표시</string>
     <string name="show_recommendations_description">지금 재생 중 아래에서 관련 동영상 로드</string>

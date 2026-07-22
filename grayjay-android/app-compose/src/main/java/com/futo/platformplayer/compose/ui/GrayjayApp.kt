@@ -1,12 +1,8 @@
 package com.futo.platformplayer.compose.ui
 
-import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import android.media.MediaRouter2
 import android.net.Uri
-import android.os.Build
-import android.provider.Settings
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -41,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Cast
+import androidx.compose.material.icons.outlined.CastConnected
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.DownloadDone
@@ -102,6 +99,7 @@ import androidx.media3.common.Player
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.screens.HomeScreen
 import com.futo.platformplayer.compose.ui.screens.ChannelDetailScreen
+import com.futo.platformplayer.compose.ui.screens.ChromecastSheet
 import com.futo.platformplayer.compose.ui.screens.LibraryScreen
 import com.futo.platformplayer.compose.ui.screens.MiniPlayer
 import com.futo.platformplayer.compose.ui.screens.MiniPlayerChrome
@@ -236,6 +234,7 @@ private data class PlaybackPresentation(
     val showRecommendations: Boolean,
     val searchHistoryEnabled: Boolean,
     val keepScreenAwake: Boolean,
+    val pictureInPictureEnabled: Boolean,
     val otherAudioDuckingEnabled: Boolean,
     val otherAudioDuckVolumePercent: Int,
     val themeMode: ThemeMode,
@@ -249,9 +248,12 @@ private data class PlaybackPresentation(
     val onShowRecommendationsChange: (Boolean) -> Unit,
     val onSearchHistoryChange: (Boolean) -> Unit,
     val onKeepScreenAwakeChange: (Boolean) -> Unit,
+    val onPictureInPictureChange: (Boolean) -> Unit,
     val onOtherAudioDuckingChange: (Boolean) -> Unit,
     val onOtherAudioDuckVolumeChange: (Int) -> Unit,
     val onThemeModeChange: (ThemeMode) -> Unit,
+    val chromecast: ChromecastUiState,
+    val onOpenChromecast: () -> Unit,
 )
 
 private data class SourcePresentation(
@@ -360,9 +362,14 @@ fun GrayjayApp(
     onShowRecommendationsChange: (Boolean) -> Unit,
     onSearchHistoryChange: (Boolean) -> Unit,
     onKeepScreenAwakeChange: (Boolean) -> Unit,
+    onPictureInPictureChange: (Boolean) -> Unit = {},
+    onStartChromecastDiscovery: () -> Unit = {},
+    onConnectChromecast: (String) -> Unit = {},
+    onDisconnectChromecast: () -> Unit = {},
     onOtherAudioDuckingChange: (Boolean) -> Unit = {},
     onOtherAudioDuckVolumeChange: (Int) -> Unit = {},
     deviceIsLandscape: Boolean = false,
+    pictureInPictureMode: Boolean = false,
     onFullscreenPresentationChanged: (Boolean, Boolean) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
@@ -378,6 +385,7 @@ fun GrayjayApp(
     var actionIsRemotePlaylistVideo by rememberSaveable { mutableStateOf(false) }
     var playlistPickerVideoIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var profileDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var chromecastSheetVisible by rememberSaveable { mutableStateOf(false) }
     val selected = GrayjayDestination.valueOf(destinationName)
     val availableVideos = uiState.videos + uiState.subscriptionVideos +
         uiState.libraryVideos + uiState.search.videos + uiState.home.videos +
@@ -594,6 +602,7 @@ fun GrayjayApp(
         showRecommendations = uiState.showRecommendations,
         searchHistoryEnabled = uiState.searchHistoryEnabled,
         keepScreenAwake = uiState.keepScreenAwake,
+        pictureInPictureEnabled = uiState.pictureInPictureEnabled,
         otherAudioDuckingEnabled = uiState.otherAudioDuckingEnabled,
         otherAudioDuckVolumePercent = uiState.otherAudioDuckVolumePercent,
         themeMode = uiState.themeMode,
@@ -607,9 +616,15 @@ fun GrayjayApp(
         onShowRecommendationsChange = onShowRecommendationsChange,
         onSearchHistoryChange = onSearchHistoryChange,
         onKeepScreenAwakeChange = onKeepScreenAwakeChange,
+        onPictureInPictureChange = onPictureInPictureChange,
         onOtherAudioDuckingChange = onOtherAudioDuckingChange,
         onOtherAudioDuckVolumeChange = onOtherAudioDuckVolumeChange,
         onThemeModeChange = onThemeModeChange,
+        chromecast = uiState.chromecast,
+        onOpenChromecast = {
+            chromecastSheetVisible = true
+            onStartChromecastDiscovery()
+        },
     )
 
     LaunchedEffect(uiState.playback.currentVideoId, uiState.nowPlaying.video?.id) {
@@ -621,6 +636,45 @@ fun GrayjayApp(
         if (selectedVideoId != null) {
             uiState.playback.currentVideoId?.let { selectedVideoId = it }
         }
+    }
+
+    LaunchedEffect(pictureInPictureMode, playbackVideo?.id) {
+        if (pictureInPictureMode && playbackVideo != null) {
+            // Match legacy Grayjay: returning from PiP always expands the same player back into
+            // Now Playing instead of revealing both the internal mini-player and the detail view.
+            playerTransitionJob?.cancel()
+            playerTransitionProgress = 0f
+            selectedVideoId = playbackVideo.id
+            fullscreenEnteredByRotation = false
+            isFullscreen = false
+            onFullscreenPresentationChanged(false, false)
+        }
+    }
+    if (pictureInPictureMode && playbackVideo != null) {
+        val queueIndex = uiState.playback.queueVideoIds.indexOf(uiState.playback.currentVideoId)
+        PlayerSurface(
+            video = playbackVideo,
+            player = player,
+            playback = uiState.playback,
+            isLoading = uiState.nowPlaying.isLoadingPlayback || uiState.playback.isBuffering,
+            isFullscreen = false,
+            canGoPrevious = queueIndex > 0 || uiState.playback.positionMs > 5_000L,
+            canGoNext = queueIndex >= 0 && queueIndex < uiState.playback.queueVideoIds.lastIndex,
+            onTogglePlayback = onTogglePlayback,
+            onSkipPrevious = onSkipToPrevious,
+            onSkipNext = onSkipToNext,
+            onSeekBy = onSeekPlaybackBy,
+            onSeek = onSeekPlayback,
+            onSpeedChange = onPlaybackSpeedChange,
+            onQualityChange = onVideoQualityChange,
+            onCaptionsEnabledChange = onCaptionsEnabledChange,
+            onSubtitleLanguageChange = onSubtitleLanguageChange,
+            onRetryPlayback = onRetryPlayback,
+            onFullscreen = {},
+            controlsAlpha = 0f,
+            modifier = Modifier.fillMaxSize(),
+        )
+        return
     }
     val sources = SourcePresentation(
         sources = visibleSourcesForQuery(uiState.sources, ""),
@@ -896,6 +950,14 @@ fun GrayjayApp(
         onCreate = onCreateProfile,
         onVerifyPin = onVerifyProfilePin,
     )
+    if (chromecastSheetVisible) {
+        ChromecastSheet(
+            state = uiState.chromecast,
+            onConnect = onConnectChromecast,
+            onDisconnect = onDisconnectChromecast,
+            onDismiss = { chromecastSheetVisible = false },
+        )
+    }
 }
 
 internal fun usePortraitPlayerFullscreen(
@@ -1494,6 +1556,8 @@ private fun GrayjayScaffold(
                         onSearchHistoryChange = playback.onSearchHistoryChange,
                         keepScreenAwake = playback.keepScreenAwake,
                         onKeepScreenAwakeChange = playback.onKeepScreenAwakeChange,
+                        pictureInPictureEnabled = playback.pictureInPictureEnabled,
+                        onPictureInPictureChange = playback.onPictureInPictureChange,
                         otherAudioDuckingEnabled = playback.otherAudioDuckingEnabled,
                         onOtherAudioDuckingChange = playback.onOtherAudioDuckingChange,
                         otherAudioDuckVolumePercent = playback.otherAudioDuckVolumePercent,
@@ -1583,10 +1647,19 @@ private fun GrayjayScaffold(
                                     }
                                 },
                                 actions = {
-                                    IconButton(onClick = { openCastSelector(context) }) {
+                                    IconButton(
+                                        onClick = playback.onOpenChromecast,
+                                        modifier = Modifier.testTag("chromecast-button"),
+                                    ) {
                                         Icon(
-                                            Icons.Outlined.Cast,
+                                            if (playback.chromecast.isConnected) Icons.Outlined.CastConnected
+                                            else Icons.Outlined.Cast,
                                             contentDescription = stringResource(R.string.cast_to_device),
+                                            tint = if (playback.chromecast.isConnected) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
                                         )
                                     }
                                 },
@@ -1743,16 +1816,6 @@ private fun GrayjayScaffold(
 
 private fun lerp(start: Float, end: Float, progress: Float): Float =
     start + (end - start) * progress
-
-private fun openCastSelector(context: Context) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
-        MediaRouter2.getInstance(context).showSystemOutputSwitcher()
-    ) {
-        return
-    }
-    runCatching { context.startActivity(Intent(Settings.ACTION_CAST_SETTINGS)) }
-        .getOrElse { context.startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS)) }
-}
 
 @Composable
 private fun TransitionViewport(

@@ -319,5 +319,11 @@ class PlaybackNotificationService : Service() {
             NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
             context.stopService(Intent(context, PlaybackNotificationService::class.java))
         }
+
+        fun toggleAttachedPlayback() {
+            attachment?.player?.let { player ->
+                if (player.isPlaying) player.pause() else player.play()
+            }
+        }
     }
 }

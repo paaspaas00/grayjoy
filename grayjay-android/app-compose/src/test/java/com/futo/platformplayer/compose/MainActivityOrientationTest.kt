@@ -13,6 +13,69 @@ import org.junit.Test
 
 class MainActivityOrientationTest {
     @Test
+    fun `picture in picture aspect ratio follows video and clamps unsupported extremes`() {
+        assertEquals(16 to 9, normalizedPictureInPictureAspectRatio(0, 0))
+        assertEquals(4 to 3, normalizedPictureInPictureAspectRatio(4, 3))
+        assertEquals(16 to 9, normalizedPictureInPictureAspectRatio(4_000, 1_000))
+        assertEquals(9 to 16, normalizedPictureInPictureAspectRatio(1_000, 4_000))
+    }
+
+    @Test
+    fun `picture in picture requires enabled visual playback`() {
+        assertTrue(
+            shouldEnterPictureInPicture(
+                enabled = true,
+                hasVideo = true,
+                audioOnly = false,
+                isPlaying = true,
+                isBuffering = false,
+                isLoading = false,
+            ),
+        )
+        assertFalse(
+            shouldEnterPictureInPicture(
+                enabled = false,
+                hasVideo = true,
+                audioOnly = false,
+                isPlaying = true,
+                isBuffering = false,
+                isLoading = false,
+            ),
+        )
+        assertFalse(
+            shouldEnterPictureInPicture(
+                enabled = true,
+                hasVideo = true,
+                audioOnly = true,
+                isPlaying = true,
+                isBuffering = false,
+                isLoading = false,
+            ),
+        )
+        assertFalse(
+            shouldEnterPictureInPicture(
+                enabled = true,
+                hasVideo = true,
+                audioOnly = false,
+                isPlaying = false,
+                isBuffering = false,
+                isLoading = false,
+            ),
+        )
+        assertFalse(
+            shouldEnterPictureInPicture(
+                enabled = true,
+                hasVideo = true,
+                audioOnly = false,
+                isPlaying = true,
+                isBuffering = false,
+                isLoading = false,
+                isCasting = true,
+            ),
+        )
+    }
+
+    @Test
     fun `landscape sensor ranges select fullscreen posture`() {
         listOf(60, 90, 120, 240, 270, 300).forEach { degrees ->
             assertEquals(true, physicalLandscapeAt(degrees))

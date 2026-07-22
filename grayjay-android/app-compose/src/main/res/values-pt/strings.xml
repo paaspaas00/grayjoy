@@ -98,6 +98,15 @@
     <string name="use_dark_theme">Usar tema escuro</string>
     <string name="private_session_enabled">Sessão privada ativada</string>
     <string name="cast_to_device">Transmitir para um dispositivo</string>
+    <string name="chromecast">Chromecast</string>
+    <string name="chromecast_connected">Conectado</string>
+    <string name="chromecast_connecting">Conectando…</string>
+    <string name="disconnect">Desconectar</string>
+    <string name="looking_for_chromecast">Procurando dispositivos Chromecast…</string>
+    <string name="chromecast_same_wifi">Confirme que o telefone e o Chromecast estão na mesma rede Wi-Fi.</string>
+    <string name="looking_for_cast_devices">Procurando dispositivos %1$s…</string>
+    <string name="cast_same_wifi">Confirme que o telefone e o receptor %1$s estão na mesma rede Wi-Fi.</string>
+    <string name="available_devices">Dispositivos disponíveis</string>
     <string name="open_profile">Abrir perfil</string>
     <string name="open_item">Abra %1$s</string>
     <string name="nothing_here_yet">Nada aqui ainda.</string>
@@ -282,7 +291,7 @@
     <string name="profile_isolation_description">Histórico, assinaturas, fontes, playlists e configurações são isolados por perfil.</string>
     <string name="profile_name">Nome do Perfil</string>
     <string name="confirm_pin">Confirme PIN</string>
-    <string name="settings_tagline">Faça Grayjay seu</string>
+    <string name="settings_tagline">Faça Grayjoy seu</string>
     <string name="settings_description">Padrões que respeitam a privacidade com controles que permanecem compreensíveis.</string>
     <string name="settings_appearance">Aparência</string>
     <string name="use_wallpaper_colors">Use cores de papel de parede</string>
@@ -295,6 +304,8 @@
     <string name="remember_subtitles_description">Restaure as legendas e o idioma do próximo vídeo</string>
     <string name="keep_screen_awake">Mantenha a tela ativa</string>
     <string name="keep_screen_awake_description">Impedir que a tela hiberne enquanto o aplicativo estiver aberto</string>
+    <string name="picture_in_picture">Reprodutor flutuante</string>
+    <string name="picture_in_picture_description">Mostrar o vídeo numa janela pequena quando o Grayjoy passa para segundo plano</string>
     <string name="settings_content">Contente</string>
     <string name="show_recommendations">Mostrar recomendações</string>
     <string name="show_recommendations_description">Carregue vídeos relacionados abaixo Reproduzindo Agora</string>

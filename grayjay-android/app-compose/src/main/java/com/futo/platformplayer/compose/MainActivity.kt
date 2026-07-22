@@ -1,14 +1,22 @@
 package com.futo.platformplayer.compose
 
 import android.Manifest
+import android.app.PictureInPictureParams
+import android.app.RemoteAction
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.graphics.Rect
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.util.Rational
 import android.view.OrientationEventListener
+import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -24,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -34,14 +43,19 @@ import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.ThemeMode
 import com.futo.platformplayer.compose.ui.theme.GrayjayTheme
+import com.futo.platformplayer.compose.playback.PictureInPictureActionReceiver
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import androidx.media3.ui.PlayerView
 
 class MainActivity : FragmentActivity() {
     private val grayjayViewModel by viewModels<GrayjayViewModel>()
     private var pendingSourceUrl by mutableStateOf<String?>(null)
     private var pendingDatabaseImportUri by mutableStateOf<Uri?>(null)
     private var deviceIsLandscape by mutableStateOf(false)
+    private var pictureInPictureMode by mutableStateOf(false)
+    private var pictureInPictureEntryPending = false
+    private var pictureInPictureSourceRect: Rect? = null
     private var playerFullscreen = false
     private var playerLandscapeFullscreen = false
     private val deviceOrientationListener by lazy {
@@ -101,6 +115,19 @@ class MainActivity : FragmentActivity() {
                 } else {
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
+            }
+
+            LaunchedEffect(
+                uiState.pictureInPictureEnabled,
+                uiState.nowPlaying.video?.id,
+                uiState.playback.isPlaying,
+                uiState.playback.isBuffering,
+                uiState.nowPlaying.isLoadingPlayback,
+                uiState.playback.currentVideoWidth,
+                uiState.playback.currentVideoHeight,
+                pictureInPictureMode,
+            ) {
+                updatePictureInPictureParams()
             }
 
             LaunchedEffect(pendingSourceUrl) {
@@ -274,8 +301,13 @@ class MainActivity : FragmentActivity() {
                     onShowRecommendationsChange = viewModel::setShowRecommendations,
                     onSearchHistoryChange = viewModel::setSearchHistoryEnabled,
                     onKeepScreenAwakeChange = viewModel::setKeepScreenAwake,
+                    onPictureInPictureChange = viewModel::setPictureInPictureEnabled,
+                    onStartChromecastDiscovery = viewModel::startChromecastDiscovery,
+                    onConnectChromecast = viewModel::connectChromecast,
+                    onDisconnectChromecast = viewModel::disconnectChromecast,
                     onOtherAudioDuckingChange = viewModel::setOtherAudioDuckingEnabled,
                     onOtherAudioDuckVolumeChange = viewModel::setOtherAudioDuckVolumePercent,
+                    pictureInPictureMode = pictureInPictureMode,
                 )
             }
         }
@@ -283,20 +315,68 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        pictureInPictureEntryPending = false
+        if (!isInPictureInPictureMode) pictureInPictureMode = false
         applyPlayerStatusBarVisibility()
         grayjayViewModel.setAppForeground(true)
         if (!isSystemAutoRotateEnabled()) deviceIsLandscape = false
         if (deviceOrientationListener.canDetectOrientation()) {
             deviceOrientationListener.enable()
         }
+        window.decorView.post {
+            capturePictureInPictureSourceRect()
+            updatePictureInPictureParams()
+        }
     }
 
     override fun onPause() {
         grayjayViewModel.setAppForeground(false)
         deviceOrientationListener.disable()
-        WindowCompat.getInsetsController(window, window.decorView)
-            .show(WindowInsetsCompat.Type.statusBars())
+        if (!pictureInPictureEntryPending && !pictureInPictureMode && !isInPictureInPictureMode) {
+            WindowCompat.getInsetsController(window, window.decorView)
+                .show(WindowInsetsCompat.Type.statusBars())
+        }
         super.onPause()
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (!shouldEnterPictureInPicture(grayjayViewModel.uiState.value)) {
+            pictureInPictureEntryPending = false
+            return
+        }
+        pictureInPictureEntryPending = true
+        capturePictureInPictureSourceRect()
+        val params = buildPictureInPictureParams()
+        setPictureInPictureParams(params)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            runCatching { enterPictureInPictureMode(params) }
+                .onFailure { pictureInPictureEntryPending = false }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        val wasInPictureInPicture = pictureInPictureMode
+        val isStopping = lifecycle.currentState == Lifecycle.State.CREATED
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pictureInPictureEntryPending = false
+        pictureInPictureMode = isInPictureInPictureMode
+        if (isInPictureInPictureMode) {
+            setFullscreenPresentation(fullscreen = false, portraitVideo = false)
+        } else {
+            if (wasInPictureInPicture && isStopping) {
+                // The system X closes the PiP activity. Mirror legacy Grayjay and close the
+                // playback session instead of leaving an invisible player/notification behind.
+                grayjayViewModel.closePlayback()
+            }
+            window.decorView.post {
+                capturePictureInPictureSourceRect()
+                updatePictureInPictureParams()
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -329,6 +409,67 @@ class MainActivity : FragmentActivity() {
         applyPlayerStatusBarVisibility()
     }
 
+    private fun updatePictureInPictureParams() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (!pictureInPictureMode) capturePictureInPictureSourceRect()
+        runCatching { setPictureInPictureParams(buildPictureInPictureParams()) }
+    }
+
+    private fun buildPictureInPictureParams(): PictureInPictureParams {
+        val state = grayjayViewModel.uiState.value
+        val hasVideo = state.nowPlaying.video != null &&
+            state.playback.currentVideoId != null &&
+            state.nowPlaying.video?.playbackAudioOnly != true
+        val autoEnter = shouldEnterPictureInPicture(state)
+        val videoSize = normalizedPictureInPictureAspectRatio(
+            state.playback.currentVideoWidth ?: grayjayViewModel.player.videoSize.width,
+            state.playback.currentVideoHeight ?: grayjayViewModel.player.videoSize.height,
+        )
+        return PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(videoSize.first, videoSize.second))
+            .apply {
+                pictureInPictureSourceRect
+                    ?.takeUnless { it.isEmpty }
+                    ?.let(::setSourceRectHint)
+                setActions(
+                    if (hasVideo) listOf(pictureInPicturePlayPauseAction(state.playback.isPlaying))
+                    else emptyList(),
+                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    setAutoEnterEnabled(autoEnter)
+                    setSeamlessResizeEnabled(true)
+                }
+            }
+            .build()
+    }
+
+    private fun pictureInPicturePlayPauseAction(isPlaying: Boolean): RemoteAction {
+        val label = getString(if (isPlaying) R.string.pause else R.string.play)
+        return RemoteAction(
+            Icon.createWithResource(
+                this,
+                if (isPlaying) R.drawable.ic_pip_pause else R.drawable.ic_pip_play,
+            ),
+            label,
+            label,
+            PictureInPictureActionReceiver.togglePlaybackIntent(this),
+        )
+    }
+
+    private fun capturePictureInPictureSourceRect() {
+        if (pictureInPictureMode) return
+        val playerView = window.decorView.findVisiblePlayerView() ?: return
+        if (playerView.width <= 1 || playerView.height <= 1) return
+        val location = IntArray(2)
+        playerView.getLocationInWindow(location)
+        pictureInPictureSourceRect = Rect(
+            location[0],
+            location[1],
+            location[0] + playerView.width,
+            location[1] + playerView.height,
+        )
+    }
+
     private fun applyPlayerStatusBarVisibility() {
         WindowCompat.getInsetsController(window, window.decorView).run {
             if (playerLandscapeFullscreen) hide(WindowInsetsCompat.Type.statusBars())
@@ -343,6 +484,46 @@ class MainActivity : FragmentActivity() {
         const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "requested"
     }
 }
+
+private fun View.findVisiblePlayerView(): PlayerView? {
+    if (this is PlayerView && isShown && alpha > 0f) return this
+    if (this !is ViewGroup) return null
+    for (index in 0 until childCount) {
+        getChildAt(index).findVisiblePlayerView()?.let { return it }
+    }
+    return null
+}
+
+internal fun normalizedPictureInPictureAspectRatio(width: Int, height: Int): Pair<Int, Int> {
+    if (width <= 0 || height <= 0) return 16 to 9
+    val ratio = width.toDouble() / height.toDouble()
+    return when {
+        ratio > 2.38 -> 16 to 9
+        ratio < 0.43 -> 9 to 16
+        else -> width to height
+    }
+}
+
+internal fun shouldEnterPictureInPicture(state: com.futo.platformplayer.compose.ui.GrayjayUiState): Boolean =
+    shouldEnterPictureInPicture(
+        enabled = state.pictureInPictureEnabled,
+        hasVideo = state.nowPlaying.video != null && state.playback.currentVideoId != null,
+        audioOnly = state.nowPlaying.video?.playbackAudioOnly == true,
+        isPlaying = state.playback.isPlaying,
+        isBuffering = state.playback.isBuffering,
+        isLoading = state.nowPlaying.isLoadingPlayback,
+        isCasting = state.chromecast.isConnected || state.chromecast.isConnecting,
+    )
+
+internal fun shouldEnterPictureInPicture(
+    enabled: Boolean,
+    hasVideo: Boolean,
+    audioOnly: Boolean,
+    isPlaying: Boolean,
+    isBuffering: Boolean,
+    isLoading: Boolean,
+    isCasting: Boolean = false,
+): Boolean = enabled && hasVideo && !audioOnly && !isCasting && (isPlaying || isBuffering || isLoading)
 
 internal fun physicalLandscapeAt(orientation: Int): Boolean? = when {
     orientation == OrientationEventListener.ORIENTATION_UNKNOWN -> null

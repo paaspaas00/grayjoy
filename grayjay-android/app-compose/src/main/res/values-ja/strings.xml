@@ -98,6 +98,15 @@
     <string name="use_dark_theme">ダークテーマを使用する</string>
     <string name="private_session_enabled">プライベートセッションが有効になりました</string>
     <string name="cast_to_device">デバイスにキャストする</string>
+    <string name="chromecast">Chromecast</string>
+    <string name="chromecast_connected">接続済み</string>
+    <string name="chromecast_connecting">接続中…</string>
+    <string name="disconnect">切断</string>
+    <string name="looking_for_chromecast">Chromecast デバイスを検索中…</string>
+    <string name="chromecast_same_wifi">スマートフォンと Chromecast を同じ Wi-Fi ネットワークに接続してください。</string>
+    <string name="looking_for_cast_devices">%1$s デバイスを検索中…</string>
+    <string name="cast_same_wifi">スマートフォンと %1$s レシーバーを同じ Wi-Fi ネットワークに接続してください。</string>
+    <string name="available_devices">利用可能なデバイス</string>
     <string name="open_profile">プロフィールを開く</string>
     <string name="open_item">%1$s を開く</string>
     <string name="nothing_here_yet">ここにはまだ何もありません。</string>
@@ -282,7 +291,7 @@
     <string name="profile_isolation_description">履歴、サブスクリプション、ソース、プレイリスト、設定はプロファイルごとに分離されます。</string>
     <string name="profile_name">プロファイル名</string>
     <string name="confirm_pin">PIN を確認してください</string>
-    <string name="settings_tagline">Grayjay をあなたのものにしましょう</string>
+    <string name="settings_tagline">Grayjoy をあなたのものにしましょう</string>
     <string name="settings_description">プライバシーを尊重し、わかりやすいコントロールをデフォルトで備えています。</string>
     <string name="settings_appearance">外観</string>
     <string name="use_wallpaper_colors">壁紙の色を使用する</string>
@@ -295,6 +304,8 @@
     <string name="remember_subtitles_description">次のビデオのキャプションと言語を復元します</string>
     <string name="keep_screen_awake">画面を起動したままにする</string>
     <string name="keep_screen_awake_description">アプリを開いているときにディスプレイがスリープしないようにする</string>
+    <string name="picture_in_picture">フローティングプレーヤー</string>
+    <string name="picture_in_picture_description">Grayjoy がバックグラウンドに移動したとき、動画を小さなウィンドウで表示します</string>
     <string name="settings_content">コンテンツ</string>
     <string name="show_recommendations">推奨事項を表示する</string>
     <string name="show_recommendations_description">「再生中」の下に関連ビデオをロードします</string>

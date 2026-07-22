@@ -95,6 +95,15 @@
     <string name="use_dark_theme">Usa il tema scuro</string>
     <string name="private_session_enabled">Sessione privata attiva</string>
     <string name="cast_to_device">Trasmetti a un dispositivo</string>
+    <string name="chromecast">Chromecast</string>
+    <string name="chromecast_connected">Connesso</string>
+    <string name="chromecast_connecting">Connessione…</string>
+    <string name="disconnect">Disconnetti</string>
+    <string name="looking_for_chromecast">Ricerca dispositivi Chromecast…</string>
+    <string name="chromecast_same_wifi">Assicurati che il telefono e Chromecast siano sulla stessa rete Wi-Fi.</string>
+    <string name="looking_for_cast_devices">Ricerca dispositivi %1$s…</string>
+    <string name="cast_same_wifi">Assicurati che il telefono e il ricevitore %1$s siano sulla stessa rete Wi-Fi.</string>
+    <string name="available_devices">Dispositivi disponibili</string>
     <string name="open_profile">Apri profilo</string>
     <string name="open_item">Apri %1$s</string>
     <string name="nothing_here_yet">Ancora nulla qui.</string>
@@ -298,7 +307,7 @@
     <string name="confirm_pin">Conferma PIN</string>
 
     <!-- Impostazioni -->
-    <string name="settings_tagline">Personalizza Grayjay</string>
+    <string name="settings_tagline">Personalizza Grayjoy</string>
     <string name="settings_description">Impostazioni predefinite rispettose della privacy e controlli facili da capire.</string>
     <string name="settings_appearance">Aspetto</string>
     <string name="use_wallpaper_colors">Usa i colori dello sfondo</string>
@@ -311,6 +320,8 @@
     <string name="remember_subtitles_description">Ripristina sottotitoli e lingua nel video successivo</string>
     <string name="keep_screen_awake">Mantieni lo schermo attivo</string>
     <string name="keep_screen_awake_description">Impedisci allo schermo di spegnersi mentre l’app è aperta</string>
+    <string name="picture_in_picture">Player flottante</string>
+    <string name="picture_in_picture_description">Mostra il video in una piccola finestra quando Grayjoy passa in background</string>
     <string name="settings_content">Contenuti</string>
     <string name="show_recommendations">Mostra consigli</string>
     <string name="show_recommendations_description">Carica video correlati sotto In riproduzione</string>

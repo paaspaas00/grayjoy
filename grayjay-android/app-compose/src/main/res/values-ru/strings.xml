@@ -98,6 +98,15 @@
     <string name="use_dark_theme">Использовать темную тему</string>
     <string name="private_session_enabled">Частный сеанс включен</string>
     <string name="cast_to_device">Трансляция на устройство</string>
+    <string name="chromecast">Chromecast</string>
+    <string name="chromecast_connected">Подключено</string>
+    <string name="chromecast_connecting">Подключение…</string>
+    <string name="disconnect">Отключить</string>
+    <string name="looking_for_chromecast">Поиск устройств Chromecast…</string>
+    <string name="chromecast_same_wifi">Телефон и Chromecast должны находиться в одной сети Wi-Fi.</string>
+    <string name="looking_for_cast_devices">Поиск устройств %1$s…</string>
+    <string name="cast_same_wifi">Телефон и приёмник %1$s должны находиться в одной сети Wi-Fi.</string>
+    <string name="available_devices">Доступные устройства</string>
     <string name="open_profile">Открыть профиль</string>
     <string name="open_item">Открыть %1$s</string>
     <string name="nothing_here_yet">Здесь пока ничего.</string>
@@ -282,7 +291,7 @@
     <string name="profile_isolation_description">История, подписки, источники, плейлисты и настройки изолированы для каждого профиля.</string>
     <string name="profile_name">Имя профиля</string>
     <string name="confirm_pin">Подтвердите PIN</string>
-    <string name="settings_tagline">Сделайте Grayjay своим</string>
+    <string name="settings_tagline">Сделайте Grayjoy своим</string>
     <string name="settings_description">Настройки по умолчанию, соблюдающие конфиденциальность, и элементы управления, которые остаются понятными.</string>
     <string name="settings_appearance">Появление</string>
     <string name="use_wallpaper_colors">Используйте цвета обоев</string>
@@ -295,6 +304,8 @@
     <string name="remember_subtitles_description">Восстановить субтитры и язык для следующего видео</string>
     <string name="keep_screen_awake">Держите экран включенным</string>
     <string name="keep_screen_awake_description">Запретить спящий режим дисплея, пока приложение открыто</string>
+    <string name="picture_in_picture">Плавающий проигрыватель</string>
+    <string name="picture_in_picture_description">Показывать видео в небольшом окне, когда Grayjoy работает в фоновом режиме</string>
     <string name="settings_content">Содержание</string>
     <string name="show_recommendations">Показать рекомендации</string>
     <string name="show_recommendations_description">Загрузите похожие видео ниже «Сейчас исполняется»</string>

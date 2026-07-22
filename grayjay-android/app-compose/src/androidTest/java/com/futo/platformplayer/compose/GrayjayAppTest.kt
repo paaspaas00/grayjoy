@@ -23,6 +23,9 @@ import androidx.compose.ui.test.swipe
 import androidx.media3.exoplayer.ExoPlayer
 import com.futo.platformplayer.compose.ui.GrayjayApp
 import com.futo.platformplayer.compose.ui.GrayjayUiState
+import com.futo.platformplayer.compose.ui.CastProtocolUi
+import com.futo.platformplayer.compose.ui.ChromecastDeviceUiModel
+import com.futo.platformplayer.compose.ui.ChromecastUiState
 import com.futo.platformplayer.compose.ui.DatabaseImportPreviewUiModel
 import com.futo.platformplayer.compose.ui.DatabaseImportSelection
 import com.futo.platformplayer.compose.ui.DatabaseImportUiState
@@ -99,7 +102,6 @@ class GrayjayAppTest {
                     onDownloadAudio = { _, _ -> },
                     onDownloadVideos = { _, _ -> },
                     onDownloadPlaylist = { _, _ -> },
-                    onToggleLiked = { id -> updateVideo(id) { it.copy(isLiked = !it.isLiked) } },
                     onCreatePlaylist = { title, ids -> createPlaylist(title, ids) },
                     onRenamePlaylist = { _, _ -> },
                     onAddVideosToPlaylist = { playlistId, ids -> addToPlaylist(playlistId, ids) },
@@ -178,13 +180,13 @@ class GrayjayAppTest {
     }
 
     @Test
-    fun longPressVideoOffersLikeShareAndPlaylistActions() {
+    fun longPressVideoOffersShareAndPlaylistActions() {
         composeRule.onNodeWithTag("video-card-real-video-one").performScrollTo().performTouchInput {
             longClick()
         }
 
-        composeRule.onNodeWithTag("video-action-like").assertIsDisplayed().performClick()
-        composeRule.runOnIdle { assertTrue(state.value.videos.single().isLiked) }
+        composeRule.onNodeWithTag("video-action-share").assertIsDisplayed()
+        composeRule.onNodeWithTag("video-action-playlist").assertIsDisplayed()
     }
 
     @Test
@@ -330,6 +332,28 @@ class GrayjayAppTest {
         }
         composeRule.onNodeWithText("Now playing").assertIsDisplayed()
         composeRule.onNodeWithTag("mini-player").assertDoesNotExist()
+    }
+
+    @Test
+    fun castSheetSeparatesChromecastAndFCastDevicesIntoTabs() {
+        openVideo("real-video-one")
+        state.value = state.value.copy(
+            chromecast = ChromecastUiState(
+                devices = listOf(
+                    ChromecastDeviceUiModel("chromecast:living-room", "Living Room", CastProtocolUi.Chromecast),
+                    ChromecastDeviceUiModel("fcast:desktop", "Desktop FCast", CastProtocolUi.FCast),
+                ),
+            ),
+        )
+
+        composeRule.onNodeWithTag("chromecast-button").performClick()
+        composeRule.onNodeWithTag("cast-tab-chromecast").assertIsDisplayed()
+        composeRule.onNodeWithText("Living Room").assertIsDisplayed()
+        composeRule.onNodeWithText("Desktop FCast").assertDoesNotExist()
+
+        composeRule.onNodeWithTag("cast-tab-fcast").performClick()
+        composeRule.onNodeWithText("Desktop FCast").assertIsDisplayed()
+        composeRule.onNodeWithText("Living Room").assertDoesNotExist()
     }
 
     private fun openVideo(id: String) {

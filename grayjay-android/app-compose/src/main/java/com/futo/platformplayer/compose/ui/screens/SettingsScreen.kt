@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.ClosedCaption
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.PictureInPicture
 import androidx.compose.material.icons.outlined.Recommend
 import androidx.compose.material.icons.outlined.ScreenLockPortrait
 import androidx.compose.material.icons.outlined.Search
@@ -73,6 +74,8 @@ fun SettingsScreen(
     onSearchHistoryChange: (Boolean) -> Unit,
     keepScreenAwake: Boolean,
     onKeepScreenAwakeChange: (Boolean) -> Unit,
+    pictureInPictureEnabled: Boolean,
+    onPictureInPictureChange: (Boolean) -> Unit,
     otherAudioDuckingEnabled: Boolean,
     onOtherAudioDuckingChange: (Boolean) -> Unit,
     otherAudioDuckVolumePercent: Int,
@@ -175,6 +178,15 @@ fun SettingsScreen(
                     checked = keepScreenAwake,
                     onCheckedChange = onKeepScreenAwakeChange,
                     testTag = "keep-screen-awake",
+                )
+                HorizontalDivider()
+                ToggleSetting(
+                    title = stringResource(R.string.picture_in_picture),
+                    description = stringResource(R.string.picture_in_picture_description),
+                    icon = Icons.Outlined.PictureInPicture,
+                    checked = pictureInPictureEnabled,
+                    onCheckedChange = onPictureInPictureChange,
+                    testTag = "picture-in-picture",
                 )
                 HorizontalDivider()
                 ToggleSetting(

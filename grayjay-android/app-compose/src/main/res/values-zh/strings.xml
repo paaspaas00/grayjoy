@@ -98,6 +98,15 @@
     <string name="use_dark_theme">使用深色主题</string>
     <string name="private_session_enabled">已启用私人会话</string>
     <string name="cast_to_device">投射到设备</string>
+    <string name="chromecast">Chromecast</string>
+    <string name="chromecast_connected">已连接</string>
+    <string name="chromecast_connecting">正在连接…</string>
+    <string name="disconnect">断开连接</string>
+    <string name="looking_for_chromecast">正在查找 Chromecast 设备…</string>
+    <string name="chromecast_same_wifi">请确保手机和 Chromecast 位于同一 Wi-Fi 网络。</string>
+    <string name="looking_for_cast_devices">正在查找 %1$s 设备…</string>
+    <string name="cast_same_wifi">请确保手机和 %1$s 接收器位于同一 Wi-Fi 网络。</string>
+    <string name="available_devices">可用设备</string>
     <string name="open_profile">打开个人资料</string>
     <string name="open_item">打开%1$s</string>
     <string name="nothing_here_yet">这里还什么都没有。</string>
@@ -282,7 +291,7 @@
     <string name="profile_isolation_description">每个配置文件的历史记录、订阅、来源、播放列表和设置都是独立的。</string>
     <string name="profile_name">配置名</string>
     <string name="confirm_pin">确认PIN</string>
-    <string name="settings_tagline">让 Grayjay 成为你的</string>
+    <string name="settings_tagline">让 Grayjoy 成为你的</string>
     <string name="settings_description">尊重隐私的默认设置以及易于理解的控件。</string>
     <string name="settings_appearance">外貌</string>
     <string name="use_wallpaper_colors">使用壁纸颜色</string>
@@ -295,6 +304,8 @@
     <string name="remember_subtitles_description">恢复下一个视频的字幕和语言</string>
     <string name="keep_screen_awake">保持屏幕唤醒</string>
     <string name="keep_screen_awake_description">防止应用程序打开时显示屏休眠</string>
+    <string name="picture_in_picture">悬浮播放器</string>
+    <string name="picture_in_picture_description">当 Grayjoy 转入后台时，在小窗口中显示正在播放的视频</string>
     <string name="settings_content">内容</string>
     <string name="show_recommendations">显示推荐</string>
     <string name="show_recommendations_description">加载下面正在播放的相关视频</string>

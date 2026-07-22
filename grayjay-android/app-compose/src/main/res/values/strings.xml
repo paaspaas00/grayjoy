@@ -95,6 +95,15 @@
     <string name="use_dark_theme">Use dark theme</string>
     <string name="private_session_enabled">Private session enabled</string>
     <string name="cast_to_device">Cast to a device</string>
+    <string name="chromecast">Chromecast</string>
+    <string name="chromecast_connected">Connected</string>
+    <string name="chromecast_connecting">Connecting…</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="looking_for_chromecast">Looking for Chromecast devices…</string>
+    <string name="chromecast_same_wifi">Make sure the phone and Chromecast are on the same Wi-Fi network.</string>
+    <string name="looking_for_cast_devices">Looking for %1$s devices…</string>
+    <string name="cast_same_wifi">Make sure the phone and %1$s receiver are on the same Wi-Fi network.</string>
+    <string name="available_devices">Available devices</string>
     <string name="open_profile">Open profile</string>
     <string name="open_item">Open %1$s</string>
     <string name="nothing_here_yet">Nothing here yet.</string>
@@ -298,7 +307,7 @@
     <string name="confirm_pin">Confirm PIN</string>
 
     <!-- Settings -->
-    <string name="settings_tagline">Make Grayjay yours</string>
+    <string name="settings_tagline">Make Grayjoy yours</string>
     <string name="settings_description">Privacy-respecting defaults with controls that stay understandable.</string>
     <string name="settings_appearance">Appearance</string>
     <string name="use_wallpaper_colors">Use wallpaper colors</string>
@@ -311,6 +320,8 @@
     <string name="remember_subtitles_description">Restore captions and language for the next video</string>
     <string name="keep_screen_awake">Keep screen awake</string>
     <string name="keep_screen_awake_description">Prevent the display from sleeping while the app is open</string>
+    <string name="picture_in_picture">Floating player</string>
+    <string name="picture_in_picture_description">Show the playing video in a small window when Grayjoy goes into the background</string>
     <string name="settings_content">Content</string>
     <string name="show_recommendations">Show recommendations</string>
     <string name="show_recommendations_description">Load related videos below Now Playing</string>

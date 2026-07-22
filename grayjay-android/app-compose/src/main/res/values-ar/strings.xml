@@ -98,6 +98,15 @@
     <string name="use_dark_theme">استخدم المظهر الداكن</string>
     <string name="private_session_enabled">تم تمكين الجلسة الخاصة</string>
     <string name="cast_to_device">إرسال إلى جهاز</string>
+    <string name="chromecast">Chromecast</string>
+    <string name="chromecast_connected">متصل</string>
+    <string name="chromecast_connecting">جارٍ الاتصال…</string>
+    <string name="disconnect">قطع الاتصال</string>
+    <string name="looking_for_chromecast">جارٍ البحث عن أجهزة Chromecast…</string>
+    <string name="chromecast_same_wifi">تأكد من اتصال الهاتف وChromecast بشبكة Wi-Fi نفسها.</string>
+    <string name="looking_for_cast_devices">جارٍ البحث عن أجهزة %1$s…</string>
+    <string name="cast_same_wifi">تأكد من اتصال الهاتف وجهاز استقبال %1$s بشبكة Wi-Fi نفسها.</string>
+    <string name="available_devices">الأجهزة المتاحة</string>
     <string name="open_profile">افتح الملف الشخصي</string>
     <string name="open_item">فتح %1$s</string>
     <string name="nothing_here_yet">لا شيء هنا بعد.</string>
@@ -282,7 +291,7 @@
     <string name="profile_isolation_description">يتم عزل السجل والاشتراكات والمصادر وقوائم التشغيل والإعدادات لكل ملف تعريف.</string>
     <string name="profile_name">اسم الملف الشخصي</string>
     <string name="confirm_pin">تأكيد PIN</string>
-    <string name="settings_tagline">اجعل Grayjay لك</string>
+    <string name="settings_tagline">اجعل Grayjoy لك</string>
     <string name="settings_description">الإعدادات الافتراضية التي تحترم الخصوصية مع وجود عناصر تحكم تظل مفهومة.</string>
     <string name="settings_appearance">مظهر</string>
     <string name="use_wallpaper_colors">استخدام ألوان ورق الحائط</string>
@@ -295,6 +304,8 @@
     <string name="remember_subtitles_description">استعادة التسميات التوضيحية واللغة للفيديو التالي</string>
     <string name="keep_screen_awake">إبقاء الشاشة مستيقظة</string>
     <string name="keep_screen_awake_description">منع الشاشة من النوم أثناء فتح التطبيق</string>
+    <string name="picture_in_picture">المشغل العائم</string>
+    <string name="picture_in_picture_description">عرض الفيديو في نافذة صغيرة عند انتقال Grayjoy إلى الخلفية</string>
     <string name="settings_content">محتوى</string>
     <string name="show_recommendations">عرض التوصيات</string>
     <string name="show_recommendations_description">قم بتحميل مقاطع الفيديو ذات الصلة أدناه قيد التشغيل</string>

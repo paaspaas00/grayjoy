@@ -779,6 +779,7 @@ internal fun PlayerSurface(
             PlayerTimelineRow(
                 video = video,
                 player = player,
+                remotePositionMs = playback.positionMs.takeIf { playback.isCasting },
                 durationMs = playback.durationMs,
                 isFullscreen = isFullscreen,
                 isPortraitFullscreen = isPortraitFullscreen,
@@ -928,6 +929,7 @@ internal fun PlayerSurface(
 private fun PlayerTimelineRow(
     video: VideoUiModel,
     player: Player,
+    remotePositionMs: Long?,
     durationMs: Long,
     isFullscreen: Boolean,
     isPortraitFullscreen: Boolean,
@@ -944,19 +946,22 @@ private fun PlayerTimelineRow(
     var seekTooltipHeightPx by remember(video.id, isFullscreen) { mutableStateOf(0) }
     var storyboardUnavailable by remember(video.id, video.storyboard) { mutableStateOf(false) }
 
-    LaunchedEffect(player, video.id) {
-        while (isActive) {
-            val currentPosition = player.currentPosition.coerceAtLeast(0L)
-            if (playerPositionMs != currentPosition) playerPositionMs = currentPosition
-            delay(500)
+    LaunchedEffect(player, video.id, remotePositionMs != null) {
+        if (remotePositionMs == null) {
+            while (isActive) {
+                val currentPosition = player.currentPosition.coerceAtLeast(0L)
+                if (playerPositionMs != currentPosition) playerPositionMs = currentPosition
+                delay(500)
+            }
         }
     }
     DisposableEffect(video.id) {
         onDispose { onSeekingChanged(false) }
     }
 
+    val currentPositionMs = remotePositionMs ?: playerPositionMs
     val positionProgress = if (durationMs > 0L) {
-        (playerPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+        (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
     } else {
         0f
     }
@@ -964,7 +969,7 @@ private fun PlayerTimelineRow(
     val displayedPositionMs = if (isSeeking) {
         seekPreviewPositionMs(durationMs, seekProgress)
     } else {
-        playerPositionMs
+        currentPositionMs
     }
 
     Row(

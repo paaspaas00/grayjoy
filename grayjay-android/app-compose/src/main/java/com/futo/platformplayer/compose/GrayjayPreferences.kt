@@ -97,6 +97,12 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
             preferences.edit().putBoolean(KEY_KEEP_SCREEN_AWAKE, value).apply()
         }
 
+    var pictureInPictureEnabled: Boolean
+        get() = preferences.getBoolean(KEY_PICTURE_IN_PICTURE, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_PICTURE_IN_PICTURE, value).apply()
+        }
+
     var otherAudioDuckingEnabled: Boolean
         get() = preferences.getBoolean(KEY_OTHER_AUDIO_DUCKING, true)
         set(value) {
@@ -230,6 +236,7 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         private const val KEY_SEARCH_HISTORY_ENABLED = "search_history_enabled"
         private const val KEY_SEARCH_HISTORY = "search_history"
         private const val KEY_KEEP_SCREEN_AWAKE = "keep_screen_awake"
+        private const val KEY_PICTURE_IN_PICTURE = "picture_in_picture_enabled"
         private const val KEY_OTHER_AUDIO_DUCKING = "other_audio_ducking_enabled"
         private const val KEY_OTHER_AUDIO_DUCK_VOLUME = "other_audio_duck_volume_percent"
         private const val PRIVATE_PROFILE_ID = "private"

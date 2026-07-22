@@ -98,6 +98,15 @@
     <string name="use_dark_theme">Utiliser un thème sombre</string>
     <string name="private_session_enabled">Session privée activée</string>
     <string name="cast_to_device">Caster sur un appareil</string>
+    <string name="chromecast">Chromecast</string>
+    <string name="chromecast_connected">Connecté</string>
+    <string name="chromecast_connecting">Connexion…</string>
+    <string name="disconnect">Déconnecter</string>
+    <string name="looking_for_chromecast">Recherche des appareils Chromecast…</string>
+    <string name="chromecast_same_wifi">Vérifiez que le téléphone et le Chromecast utilisent le même réseau Wi-Fi.</string>
+    <string name="looking_for_cast_devices">Recherche des appareils %1$s…</string>
+    <string name="cast_same_wifi">Vérifiez que le téléphone et le récepteur %1$s utilisent le même réseau Wi-Fi.</string>
+    <string name="available_devices">Appareils disponibles</string>
     <string name="open_profile">Ouvrir le profil</string>
     <string name="open_item">Ouvrir %1$s</string>
     <string name="nothing_here_yet">Rien ici encore.</string>
@@ -282,7 +291,7 @@
     <string name="profile_isolation_description">L\'historique, les abonnements, les sources, les listes de lecture et les paramètres sont isolés par profil.</string>
     <string name="profile_name">Nom du profil</string>
     <string name="confirm_pin">Confirmez PIN</string>
-    <string name="settings_tagline">Faites vôtre Grayjay</string>
+    <string name="settings_tagline">Faites vôtre Grayjoy</string>
     <string name="settings_description">Paramètres par défaut respectueux de la confidentialité avec des contrôles qui restent compréhensibles.</string>
     <string name="settings_appearance">Apparence</string>
     <string name="use_wallpaper_colors">Utiliser les couleurs du papier peint</string>
@@ -295,6 +304,8 @@
     <string name="remember_subtitles_description">Restaurer les sous-titres et la langue pour la prochaine vidéo</string>
     <string name="keep_screen_awake">Gardez l\'écran éveillé</string>
     <string name="keep_screen_awake_description">Empêcher l\'écran de se mettre en veille lorsque l\'application est ouverte</string>
+    <string name="picture_in_picture">Lecteur flottant</string>
+    <string name="picture_in_picture_description">Afficher la vidéo dans une petite fenêtre lorsque Grayjoy passe en arrière-plan</string>
     <string name="settings_content">Contenu</string>
     <string name="show_recommendations">Afficher les recommandations</string>
     <string name="show_recommendations_description">Charger les vidéos associées ci-dessous Lecture en cours</string>

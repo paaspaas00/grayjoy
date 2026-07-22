@@ -28,6 +28,7 @@ import com.futo.platformplayer.compose.data.SourceRepository
 import com.futo.platformplayer.compose.data.visibleContentForSources
 import com.futo.platformplayer.compose.data.withLibraryState
 import com.futo.platformplayer.compose.data.buildImportLibrary
+import com.futo.platformplayer.compose.casting.ChromecastManager
 import com.futo.platformplayer.compose.engine.AndroidGrayjayEngine
 import com.futo.platformplayer.compose.engine.EnginePlaybackState
 import com.futo.platformplayer.compose.engine.GrayjayEngine
@@ -50,6 +51,7 @@ import com.futo.platformplayer.compose.ui.DatabaseImportFormat
 import com.futo.platformplayer.compose.ui.ChannelDetailUiState
 import com.futo.platformplayer.compose.ui.ChannelContentTab
 import com.futo.platformplayer.compose.ui.ChannelUiModel
+import com.futo.platformplayer.compose.ui.ChromecastUiState
 import com.futo.platformplayer.compose.ui.AudioQualityUiModel
 import com.futo.platformplayer.compose.ui.HomeFeedType
 import com.futo.platformplayer.compose.ui.HomeUiState
@@ -248,6 +250,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var sourceRepository: SourceRepository =
         SharedPreferencesSourceRepository(application, activeProfileId)
     private val engine: GrayjayEngine = AndroidGrayjayEngine(application)
+    private val chromecastManager = ChromecastManager(application)
     private val downloadStore = GrayjoyDownloadStore.get(application)
     private val downloadExporter = GrayjoyDownloadExporter(application, downloadStore)
     private val downloadQueue = GrayjoyDownloadQueue(application)
@@ -293,6 +296,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var pendingPlaybackVideoId: String? = null
     private var activePlaylistId: String? = null
     private var appIsForeground = false
+    private var suppressChromecastHandoff = false
+    private var resumeLocalAfterFailedCast = false
     private val downloadJobs = mutableMapOf<String, Job>()
     // Old Grayjay prepares the next queued video immediately before transferring it. Keeping
     // this single-file queue prevents signed plugin URLs for later playlist items expiring.
@@ -334,6 +339,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
             keepScreenAwake = preferences.keepScreenAwake,
+            pictureInPictureEnabled = preferences.pictureInPictureEnabled,
             otherAudioDuckingEnabled = preferences.otherAudioDuckingEnabled,
             otherAudioDuckVolumePercent = preferences.otherAudioDuckVolumePercent,
             profiles = profileRepository.profiles(),
@@ -346,12 +352,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         engine.setProfile(activeProfileId)
+        chromecastManager.onMediaEnded = {
+            viewModelScope.launch(Dispatchers.Main.immediate) { skipToNext() }
+        }
         preferences.loadImportedChannels().forEach { remoteChannels[it.id] = it }
         allVideos.forEach(::registerRemoteChannel)
         _uiState.update { it.copy(channels = visibleKnownChannels()) }
         viewModelScope.launch {
             engine.playback.collect { playback ->
-                _uiState.update { it.copy(playback = playback.toUiState()) }
+                val cast = chromecastManager.state.value
+                _uiState.update { it.copy(playback = playback.toUiState().withChromecast(cast)) }
                 val currentId = playback.currentVideoId
                 // engine.pausePlayback() publishes the old Media3 item while a newly selected
                 // video/playlist is still resolving. Treating that stale item as a transition
@@ -392,6 +402,34 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update { it.copy(nowPlaying = NowPlayingUiState()) }
                 }
                 if (!awaitingPendingSelection) prepareQueueLookAhead(playback)
+            }
+        }
+        viewModelScope.launch {
+            var previous = chromecastManager.state.value
+            chromecastManager.state.collect { cast ->
+                _uiState.update { state ->
+                    state.copy(
+                        chromecast = cast,
+                        playback = state.playback.withChromecast(cast),
+                    )
+                }
+                if (previous.isConnected && !cast.isConnected) {
+                    if (suppressChromecastHandoff) {
+                        suppressChromecastHandoff = false
+                    } else {
+                        handoffChromecastToLocal(previous)
+                    }
+                } else if (
+                    previous.isConnecting &&
+                    !cast.isConnecting &&
+                    !cast.isConnected &&
+                    resumeLocalAfterFailedCast
+                ) {
+                    if (!engine.playback.value.isPlaying) engine.togglePlayback()
+                    resumeLocalAfterFailedCast = false
+                }
+                if (cast.isConnected) resumeLocalAfterFailedCast = false
+                previous = cast
             }
         }
         viewModelScope.launch {
@@ -482,6 +520,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun setKeepScreenAwake(enabled: Boolean) {
         preferences.keepScreenAwake = enabled
         _uiState.update { it.copy(keepScreenAwake = enabled) }
+    }
+
+    fun setPictureInPictureEnabled(enabled: Boolean) {
+        preferences.pictureInPictureEnabled = enabled
+        _uiState.update { it.copy(pictureInPictureEnabled = enabled) }
     }
 
     fun setOtherAudioDuckingEnabled(enabled: Boolean) {
@@ -755,6 +798,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private suspend fun switchProfileInternal(profileId: String) {
         if (profileId == activeProfileId) return
+        suppressChromecastHandoff = chromecastManager.state.value.isConnected
+        chromecastManager.disconnect(stopRemotePlayback = true)
         // Make sure a newly opened item exists before storing its final playback fraction.
         historyWriteJobs.values.toList().forEach { it.join() }
         historyWriteJobs.clear()
@@ -844,6 +889,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
             keepScreenAwake = preferences.keepScreenAwake,
+            pictureInPictureEnabled = preferences.pictureInPictureEnabled,
             otherAudioDuckingEnabled = preferences.otherAudioDuckingEnabled,
             otherAudioDuckVolumePercent = preferences.otherAudioDuckVolumePercent,
             profiles = profileRepository.profiles(),
@@ -960,11 +1006,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         ),
                     )
                 }
-                engine.open(
-                    videos = listOf(resolved),
-                    currentVideoId = resolved.id,
-                    playWhenReady = resolved.playbackFromDownload ||
-                        resolved.contentUrl.isNotBlank(),
+                openLocallyOrCast(
+                    video = resolved,
+                    playWhenReady = resolved.playbackFromDownload || resolved.contentUrl.isNotBlank(),
                 )
                 _uiState.update { state ->
                     if (state.nowPlaying.video?.id != resolved.id) state else state.copy(
@@ -1108,7 +1152,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }
             // Hand the selected item to Media3 before touching later entries. A slow, deleted,
             // restricted, or signed-out item farther down the playlist must never block startup.
-            engine.open(listOf(first), first.id, playWhenReady = true)
+            openLocallyOrCast(first, playWhenReady = true)
             _uiState.update { state ->
                 if (state.nowPlaying.video?.id != first.id) state else state.copy(
                     nowPlaying = state.nowPlaying.copy(isLoadingPlayback = false),
@@ -1199,17 +1243,130 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         return playbackGeneration
     }
 
-    fun togglePlayback() = engine.togglePlayback()
+    fun togglePlayback() {
+        if (chromecastManager.state.value.isConnected) chromecastManager.togglePlayback()
+        else engine.togglePlayback()
+    }
 
-    fun skipToNext() = engine.skipToNext()
+    fun skipToNext() {
+        if (!chromecastManager.state.value.isConnected) {
+            engine.skipToNext()
+            return
+        }
+        if (!engine.player.hasNextMediaItem()) return
+        engine.player.pause()
+        engine.player.seekToNextMediaItem()
+        castCurrentEngineItem(positionMs = 0L)
+    }
 
-    fun skipToPrevious() = engine.skipToPrevious()
+    fun skipToPrevious() {
+        val cast = chromecastManager.state.value
+        if (!cast.isConnected) {
+            engine.skipToPrevious()
+            return
+        }
+        if (cast.positionMs > 5_000L || !engine.player.hasPreviousMediaItem()) {
+            chromecastManager.seekTo(0L)
+            return
+        }
+        engine.player.pause()
+        engine.player.seekToPreviousMediaItem()
+        castCurrentEngineItem(positionMs = 0L)
+    }
 
-    fun seekPlaybackBy(deltaMs: Long) = engine.seekBy(deltaMs)
+    fun seekPlaybackBy(deltaMs: Long) {
+        val cast = chromecastManager.state.value
+        if (cast.isConnected) {
+            chromecastManager.seekTo(
+                (cast.positionMs + deltaMs).coerceIn(0L, cast.durationMs.takeIf { it > 0L } ?: Long.MAX_VALUE),
+            )
+        } else engine.seekBy(deltaMs)
+    }
 
-    fun setPlaybackSpeed(speed: Float) = engine.setPlaybackSpeed(speed)
+    fun setPlaybackSpeed(speed: Float) {
+        if (chromecastManager.state.value.isConnected) chromecastManager.setPlaybackSpeed(speed)
+        else engine.setPlaybackSpeed(speed)
+    }
 
-    fun setVideoQuality(height: Int?) = engine.setVideoQuality(height)
+    fun setVideoQuality(height: Int?) {
+        engine.setVideoQuality(height)
+        val cast = chromecastManager.state.value
+        if (cast.isConnected) {
+            _uiState.value.nowPlaying.video?.let { video ->
+                chromecastManager.cast(
+                    video,
+                    _uiState.value.playback.copy(
+                        selectedVideoQuality = height,
+                        positionMs = cast.positionMs,
+                        isPlaying = cast.isPlaying,
+                    ),
+                )
+            }
+        }
+    }
+
+    fun startChromecastDiscovery() = chromecastManager.startDiscovery()
+
+    fun connectChromecast(deviceId: String) {
+        val video = _uiState.value.nowPlaying.video ?: return
+        val playback = _uiState.value.playback
+        viewModelScope.launch {
+            val castVideo = try {
+                if (video.playbackFromDownload) engine.resolve(video.onlinePlaybackInput()) else video
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.e("GrayjayViewModel", "Could not prepare online cast source.", error)
+                return@launch
+            }
+            resumeLocalAfterFailedCast = playback.isPlaying
+            engine.pausePlayback()
+            chromecastManager.connect(deviceId, castVideo, playback)
+        }
+    }
+
+    fun disconnectChromecast() = chromecastManager.disconnect(stopRemotePlayback = true)
+
+    private fun openLocallyOrCast(
+        video: VideoUiModel,
+        playWhenReady: Boolean,
+        castPositionMs: Long = 0L,
+    ) {
+        val casting = chromecastManager.state.value.isConnected
+        engine.open(listOf(video), video.id, playWhenReady = playWhenReady && !casting)
+        if (casting) {
+            chromecastManager.cast(
+                video,
+                _uiState.value.playback.copy(
+                    currentVideoId = video.id,
+                    isPlaying = playWhenReady,
+                    positionMs = castPositionMs,
+                    errorMessage = null,
+                ),
+            )
+        }
+    }
+
+    private fun castCurrentEngineItem(positionMs: Long) {
+        val videoId = engine.player.currentMediaItem?.mediaId.orEmpty()
+        val video = findVideo(videoId) ?: return
+        chromecastManager.cast(
+            video,
+            _uiState.value.playback.copy(
+                currentVideoId = video.id,
+                isPlaying = true,
+                positionMs = positionMs,
+                errorMessage = null,
+            ),
+        )
+    }
+
+    private fun handoffChromecastToLocal(cast: ChromecastUiState) {
+        if (engine.player.mediaItemCount == 0) return
+        val localPosition = engine.playback.value.positionMs
+        engine.seekBy(cast.positionMs - localPosition)
+        if (cast.isPlaying && !engine.playback.value.isPlaying) engine.togglePlayback()
+    }
 
     fun setCaptionsEnabled(enabled: Boolean) {
         engine.setCaptionsEnabled(enabled)
@@ -1700,14 +1857,18 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun seekPlayback(fraction: Float) {
-        engine.seekToFraction(fraction)
+        val cast = chromecastManager.state.value
+        if (cast.isConnected && cast.durationMs > 0L) {
+            chromecastManager.seekTo((cast.durationMs * fraction.coerceIn(0f, 1f)).toLong())
+        } else {
+            engine.seekToFraction(fraction)
+        }
         _uiState.value.playback.currentVideoId?.let { setWatchProgress(it, fraction) }
     }
 
     fun resumePlaybackFromHistory() {
         val fraction = _uiState.value.nowPlaying.resumePositionFraction ?: return
-        engine.seekToFraction(fraction)
-        _uiState.value.playback.currentVideoId?.let { setWatchProgress(it, fraction) }
+        seekPlayback(fraction)
         dismissResumePrompt()
     }
 
@@ -1738,6 +1899,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun closePlayback() {
+        suppressChromecastHandoff = chromecastManager.state.value.isConnected
+        chromecastManager.disconnect(stopRemotePlayback = true)
         resumePromptJob?.cancel()
         resumePromptJob = null
         invalidatePlaybackQueue()
@@ -2070,8 +2233,15 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     ) {
                         remoteVideos[online.id] = online
                         registerRemoteChannel(online)
-                        engine.open(listOf(online), online.id, playWhenReady = resumePlaying)
-                        if (resumePositionMs > 0L) engine.seekBy(resumePositionMs)
+                        openLocallyOrCast(
+                            video = online,
+                            playWhenReady = resumePlaying,
+                            castPositionMs = resumePositionMs,
+                        )
+                        if (
+                            resumePositionMs > 0L &&
+                            !chromecastManager.state.value.isConnected
+                        ) engine.seekBy(resumePositionMs)
                         _uiState.update { current ->
                             if (current.nowPlaying.video?.id != videoId) current else current.copy(
                                 nowPlaying = current.nowPlaying.copy(video = online),
@@ -3088,6 +3258,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun onCleared() {
+        suppressChromecastHandoff = true
+        chromecastManager.release()
         searchJob?.cancel()
         searchPagingJob?.cancel()
         suggestionJob?.cancel()
@@ -3261,6 +3433,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         errorMessage = errorMessage,
         audioSpectrum = audioSpectrum,
     )
+
+    private fun PlaybackUiState.withChromecast(cast: ChromecastUiState): PlaybackUiState =
+        if (!cast.isConnected) copy(isCasting = false) else copy(
+            isCasting = true,
+            isPlaying = cast.isPlaying,
+            isBuffering = cast.isConnecting,
+            positionMs = cast.positionMs,
+            durationMs = cast.durationMs.takeIf { it > 0L } ?: durationMs,
+            errorMessage = cast.errorMessage,
+        )
 
     private suspend fun loadExtras(video: VideoUiModel) {
         try {
