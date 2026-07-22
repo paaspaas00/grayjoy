@@ -1,6 +1,8 @@
 package com.futo.platformplayer.compose.downloads
 
 import android.content.Context
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -8,6 +10,7 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.core.net.toUri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.Clock
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.dash.DashMediaSource
@@ -66,6 +69,12 @@ internal class GrayjoyDownloadExporter(
             val temporaryFile = exportDirectory.resolve("${UUID.randomUUID()}.$extension")
             try {
                 transformToFile(descriptor, mediaType, temporaryFile)
+                validateExportedFile(
+                    output = temporaryFile,
+                    mediaType = mediaType,
+                    expectsAudio = mediaType == DownloadMediaType.Audio ||
+                        descriptor.expectsAudioInVideoExport(),
+                )
                 copyToDestination(
                     input = temporaryFile,
                     destination = destination,
@@ -98,6 +107,10 @@ internal class GrayjoyDownloadExporter(
             lateinit var transformer: Transformer
             transformer = Transformer.Builder(appContext)
                 .setAssetLoaderFactory(assetLoaderFactory)
+                // MP4 can technically carry Opus, but a large number of gallery, automotive,
+                // and desktop players silently ignore that combination. Export ordinary AAC so
+                // an MP4/M4A produced by Grayjoy has broadly playable audio.
+                .setAudioMimeType(MimeTypes.AUDIO_AAC)
                 .addListener(
                     object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
@@ -132,6 +145,32 @@ internal class GrayjoyDownloadExporter(
                 output.delete()
                 if (continuation.isActive) continuation.resumeWithException(error)
             }
+        }
+    }
+
+    private fun validateExportedFile(
+        output: File,
+        mediaType: DownloadMediaType,
+        expectsAudio: Boolean,
+    ) {
+        val extractor = MediaExtractor()
+        val trackMimeTypes = try {
+            extractor.setDataSource(output.absolutePath)
+            buildList {
+                repeat(extractor.trackCount) { trackIndex ->
+                    extractor.getTrackFormat(trackIndex)
+                        .getString(MediaFormat.KEY_MIME)
+                        ?.let(::add)
+                }
+            }
+        } finally {
+            extractor.release()
+        }
+        if (!isCompatibleExport(mediaType, expectsAudio, trackMimeTypes)) {
+            throw IOException(
+                "Exported ${mediaType.name.lowercase()} has incompatible tracks: " +
+                    trackMimeTypes.joinToString().ifBlank { "none" },
+            )
         }
     }
 
@@ -199,6 +238,30 @@ internal class GrayjoyDownloadExporter(
             suffix += 1
         }
         return candidate
+    }
+}
+
+internal fun VideoUiModel.expectsAudioInVideoExport(): Boolean =
+    audioUrl.isNotBlank() ||
+        playbackHasMuxedAudio ||
+        rawDashManifestContainsAudio(playbackManifest) ||
+        playbackManifest.contains("TYPE=AUDIO", ignoreCase = true)
+
+internal fun isCompatibleExport(
+    mediaType: DownloadMediaType,
+    expectsAudio: Boolean,
+    trackMimeTypes: List<String>,
+): Boolean {
+    val hasVideo = trackMimeTypes.any { it.startsWith("video/") }
+    val audioTypes = trackMimeTypes.filter { it.startsWith("audio/") }
+    val hasCompatibleAudio = audioTypes.any {
+        it == MimeTypes.AUDIO_AAC || it == "audio/aac"
+    }
+    return when (mediaType) {
+        DownloadMediaType.Audio -> hasCompatibleAudio && !hasVideo
+        DownloadMediaType.Video -> hasVideo &&
+            (!expectsAudio || hasCompatibleAudio) &&
+            (audioTypes.isEmpty() || hasCompatibleAudio)
     }
 }
 
