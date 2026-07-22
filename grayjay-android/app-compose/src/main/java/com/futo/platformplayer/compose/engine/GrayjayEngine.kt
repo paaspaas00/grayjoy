@@ -396,6 +396,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     updateAudioSpectrumAnalysis(mediaItem?.mediaId)
                     syncPlayback()
+                    PlaybackNotificationService.refresh(appContext)
                 }
 
                 override fun onTracksChanged(tracks: Tracks) = syncPlayback()
@@ -941,6 +942,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             },
         )
         syncPlayback()
+        // Playlist entries are appended lazily. Explicitly reattach the foreground notification
+        // after the timeline changes so Media3 cannot leave only the MediaSession/AVRCP controls
+        // alive while the visible notification disappears.
+        PlaybackNotificationService.refresh(appContext)
     }
 
     private fun VideoUiModel.nearestQualityVariantHeight(targetHeight: Int): Int? =

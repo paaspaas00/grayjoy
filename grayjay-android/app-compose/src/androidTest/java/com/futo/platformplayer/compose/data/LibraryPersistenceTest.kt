@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -49,5 +50,24 @@ class LibraryPersistenceTest {
         assertTrue(savedVideo.lastWatchedAt > 0L)
         assertEquals(listOf("Saved"), savedVideo.playlistNames)
         assertEquals(listOf(video.id), reloaded.loadPlaylists().single().videoIds)
+    }
+
+    @Test
+    fun duplicatePlaylistNamesAreRejectedAndSelectedPlaylistsCanBeRemoved() {
+        val repository = SharedPreferencesLibraryRepository(context)
+        val video = VideoUiModel(
+            id = "video-one",
+            title = "Video one",
+            creator = "Creator",
+            metadata = "Now",
+            duration = "1:00",
+        )
+        val created = repository.createPlaylist("Road Trip", listOf(video))
+
+        assertNull(repository.createPlaylist("  road   trip  ", listOf(video)))
+        assertEquals(1, repository.loadPlaylists().size)
+        assertEquals(1, repository.removePlaylists(listOf(created!!.id)))
+        assertTrue(repository.loadPlaylists().isEmpty())
+        assertTrue(repository.loadSavedVideos().single().playlistNames.isEmpty())
     }
 }

@@ -27,6 +27,34 @@ class LibraryRepositoryTest {
         assertTrue(merged[1].isDownloaded)
     }
 
+    @Test
+    fun playlistNamesAreComparedCaseInsensitivelyAndIgnoreExtraWhitespace() {
+        assertTrue(playlistTitleExists("  Road   trip ", listOf("Road Trip")))
+        assertFalse(playlistTitleExists("Road trips", listOf("Road Trip")))
+    }
+
+    @Test
+    fun duplicateRemotePlaylistAddsChannelAndThenNumericSuffix() {
+        assertEquals(
+            "Favorites - Example Channel",
+            uniqueRemotePlaylistTitle(
+                requestedTitle = "Favorites",
+                channelName = "Example Channel",
+                existingTitles = listOf("Favorites"),
+                fallbackTitle = "Imported playlist",
+            ),
+        )
+        assertEquals(
+            "Favorites - Example Channel (2)",
+            uniqueRemotePlaylistTitle(
+                requestedTitle = "Favorites",
+                channelName = "Example Channel",
+                existingTitles = listOf("Favorites", "Favorites - Example Channel"),
+                fallbackTitle = "Imported playlist",
+            ),
+        )
+    }
+
     private fun video(id: String, isDownloaded: Boolean = false) = VideoUiModel(
         id = id,
         title = id,

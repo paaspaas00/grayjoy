@@ -495,4 +495,8 @@
     <string name="playback_notification_channel_description">Steuerelemente für die Videowiedergabe</string>
     <string name="preparing_playback">Wiedergabe vorbereiten</string>
     <string name="close_playback">Schließen Sie die Wiedergabe</string>
+    <string name="playlist_name_already_exists">Eine Playlist mit diesem Namen ist bereits vorhanden.</string>
+    <string name="remove_playlists_title">Ausgewählte Playlists löschen?</string>
+    <string name="remove_playlists_body">Die ausgewählten Playlists werden gelöscht. Heruntergeladene Videos und der Wiedergabeverlauf bleiben erhalten.</string>
+    <string name="mini_player_audio">Audio</string>
 </resources>

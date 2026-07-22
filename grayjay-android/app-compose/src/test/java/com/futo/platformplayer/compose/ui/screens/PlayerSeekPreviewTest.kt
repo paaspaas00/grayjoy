@@ -24,6 +24,13 @@ class PlayerSeekPreviewTest {
     }
 
     @Test
+    fun pendingSeekIsReleasedOnlyWhenPlayerReachesRequestedPosition() {
+        assertEquals(true, seekPositionReached(89_100L, 90_000L))
+        assertEquals(true, seekPositionReached(91_500L, 90_000L))
+        assertEquals(false, seekPositionReached(45_000L, 90_000L))
+    }
+
+    @Test
     fun storyboardFrameSelectsSharpLevelAndCorrectSpriteCell() {
         val storyboard = StoryboardUiModel(
             levels = listOf(

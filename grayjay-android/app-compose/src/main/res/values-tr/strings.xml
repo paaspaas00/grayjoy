@@ -495,4 +495,8 @@
     <string name="playback_notification_channel_description">Video oynatma kontrolleri</string>
     <string name="preparing_playback">Oynatmayı hazırlama</string>
     <string name="close_playback">Oynatmayı kapat</string>
+    <string name="playlist_name_already_exists">Bu ada sahip bir oynatma listesi zaten var.</string>
+    <string name="remove_playlists_title">Seçili oynatma listeleri silinsin mi?</string>
+    <string name="remove_playlists_body">Seçili oynatma listeleri silinecek. İndirilen videolar ve izleme geçmişi korunacak.</string>
+    <string name="mini_player_audio">Ses</string>
 </resources>

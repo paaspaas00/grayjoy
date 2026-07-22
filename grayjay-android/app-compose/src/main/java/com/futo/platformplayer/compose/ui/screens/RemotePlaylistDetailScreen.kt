@@ -37,8 +37,11 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.data.playlistTitleExists
+import com.futo.platformplayer.compose.data.uniqueRemotePlaylistTitle
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
+import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.RemotePlaylistDetailUiState
 import com.futo.platformplayer.compose.ui.VideoUiModel
 
@@ -47,6 +50,7 @@ import com.futo.platformplayer.compose.ui.VideoUiModel
 fun RemotePlaylistDetailScreen(
     detail: RemotePlaylistDetailUiState,
     downloads: Map<String, DownloadUiModel>,
+    localPlaylists: List<PlaylistUiModel> = emptyList(),
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
     onPlayAll: () -> Unit,
@@ -57,7 +61,17 @@ fun RemotePlaylistDetailScreen(
     val playlist = detail.playlist ?: return
     val listState = rememberLazyListState()
     var showCreateSheet by rememberSaveable(playlist.id) { mutableStateOf(false) }
-    var localTitle by rememberSaveable(playlist.id) { mutableStateOf(playlist.title) }
+    val existingPlaylistTitles = localPlaylists.map(PlaylistUiModel::title)
+    val suggestedLocalTitle = uniqueRemotePlaylistTitle(
+        requestedTitle = playlist.title,
+        channelName = detail.videos.firstOrNull()?.creator.orEmpty(),
+        existingTitles = existingPlaylistTitles,
+        fallbackTitle = stringResource(R.string.imported_playlist),
+    )
+    var localTitle by rememberSaveable(playlist.id, suggestedLocalTitle) {
+        mutableStateOf(suggestedLocalTitle)
+    }
+    val duplicateLocalTitle = playlistTitleExists(localTitle, existingPlaylistTitles)
     RequestNextPageEffect(
         listState = listState,
         canLoadMore = detail.hasMore && !detail.isLoading && !detail.isLoadingMore && !detail.isLoadingAll,
@@ -201,6 +215,12 @@ fun RemotePlaylistDetailScreen(
                     onValueChange = { localTitle = it.take(80) },
                     modifier = Modifier.fillMaxWidth().testTag("remote-playlist-local-name"),
                     label = { Text(stringResource(R.string.playlist_name)) },
+                    isError = duplicateLocalTitle,
+                    supportingText = if (duplicateLocalTitle) {
+                        { Text(stringResource(R.string.playlist_name_already_exists)) }
+                    } else {
+                        null
+                    },
                     singleLine = true,
                 )
                 Row(
@@ -215,7 +235,7 @@ fun RemotePlaylistDetailScreen(
                             showCreateSheet = false
                             onCreateLocalPlaylist(localTitle)
                         },
-                        enabled = localTitle.isNotBlank(),
+                        enabled = localTitle.isNotBlank() && !duplicateLocalTitle,
                         modifier = Modifier.testTag("remote-playlist-confirm-local"),
                     ) {
                         Text(stringResource(R.string.create))

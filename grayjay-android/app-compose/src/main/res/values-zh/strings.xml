@@ -495,4 +495,8 @@
     <string name="playback_notification_channel_description">视频播放控件</string>
     <string name="preparing_playback">准备播放</string>
     <string name="close_playback">关闭播放</string>
+    <string name="playlist_name_already_exists">已存在同名播放列表。</string>
+    <string name="remove_playlists_title">删除所选播放列表？</string>
+    <string name="remove_playlists_body">所选播放列表将被删除。已下载的视频和观看记录将保留。</string>
+    <string name="mini_player_audio">音频</string>
 </resources>

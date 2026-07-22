@@ -525,4 +525,8 @@
     <string name="playback_notification_channel_description">Controlli di riproduzione video</string>
     <string name="preparing_playback">Preparazione riproduzione</string>
     <string name="close_playback">Chiudi riproduzione</string>
+    <string name="playlist_name_already_exists">Esiste già una playlist con questo nome.</string>
+    <string name="remove_playlists_title">Eliminare le playlist selezionate?</string>
+    <string name="remove_playlists_body">Le playlist selezionate verranno eliminate. I video scaricati e la cronologia saranno mantenuti.</string>
+    <string name="mini_player_audio">Audio</string>
 </resources>

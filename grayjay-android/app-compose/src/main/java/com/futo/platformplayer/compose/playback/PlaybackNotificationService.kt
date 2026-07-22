@@ -10,7 +10,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -35,6 +37,16 @@ class PlaybackNotificationService : Service() {
     private lateinit var playerNotificationManager: PlayerNotificationManager
     private lateinit var descriptionAdapter: DescriptionAdapter
     private var closingFromNotification = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val restoreNotification = Runnable {
+        val playback = attachment
+        if (playback == null || closingFromNotification) return@Runnable
+        // Run after PlayerNotificationManager has completely finished its transient cancellation.
+        // Reposting synchronously from onNotificationCancelled can be overwritten by the tail of
+        // the same Media3 update, which is most visible while a playlist grows or changes items.
+        startForegroundCompat(NOTIFICATION_ID, bootstrapNotification())
+        attachAndInvalidate(playback)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -59,11 +71,16 @@ class PlaybackNotificationService : Service() {
             ) {
                 if (dismissedByUser) {
                     closeFromNotification()
-                } else if (attachment != null && !closingFromNotification) {
+                } else if (shouldRestorePlaybackNotification(
+                        hasAttachment = attachment != null,
+                        closingFromNotification = closingFromNotification,
+                        dismissedByUser = false,
+                    )
+                ) {
                     // Media3 can briefly cancel/recreate its notification during state or
-                    // metadata changes. That is not the same as the user swiping it away.
-                    startForegroundCompat(NOTIFICATION_ID, bootstrapNotification())
-                    playerNotificationManager.invalidate()
+                    // metadata/queue changes. Restore it outside the cancellation callback.
+                    mainHandler.removeCallbacks(restoreNotification)
+                    mainHandler.post(restoreNotification)
                 }
             }
         }
@@ -103,19 +120,26 @@ class PlaybackNotificationService : Service() {
             return START_NOT_STICKY
         }
 
-        playerNotificationManager.setMediaSessionToken(playback.mediaSession.platformToken)
-        playerNotificationManager.setPlayer(playback.player)
-        playerNotificationManager.invalidate()
+        closingFromNotification = false
+        mainHandler.removeCallbacks(restoreNotification)
+        attachAndInvalidate(playback)
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(restoreNotification)
         descriptionAdapter.clearArtworkRequest()
         playerNotificationManager.setPlayer(null)
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
+    }
+
+    private fun attachAndInvalidate(playback: Attachment) {
+        playerNotificationManager.setMediaSessionToken(playback.mediaSession.platformToken)
+        playerNotificationManager.setPlayer(playback.player)
+        playerNotificationManager.invalidate()
     }
 
     private fun closeFromNotification() {
@@ -314,6 +338,15 @@ class PlaybackNotificationService : Service() {
             )
         }
 
+        /** Reattaches the current session after queue and media-item transitions. */
+        fun refresh(context: Context) {
+            if (attachment == null) return
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, PlaybackNotificationService::class.java),
+            )
+        }
+
         fun dismiss(context: Context) {
             attachment = null
             NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
@@ -327,3 +360,9 @@ class PlaybackNotificationService : Service() {
         }
     }
 }
+
+internal fun shouldRestorePlaybackNotification(
+    hasAttachment: Boolean,
+    closingFromNotification: Boolean,
+    dismissedByUser: Boolean,
+): Boolean = hasAttachment && !closingFromNotification && !dismissedByUser

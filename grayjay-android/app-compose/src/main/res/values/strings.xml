@@ -525,4 +525,8 @@
     <string name="playback_notification_channel_description">Video playback controls</string>
     <string name="preparing_playback">Preparing playback</string>
     <string name="close_playback">Close playback</string>
+    <string name="playlist_name_already_exists">A playlist with this name already exists.</string>
+    <string name="remove_playlists_title">Delete selected playlists?</string>
+    <string name="remove_playlists_body">The selected playlists will be deleted. Downloaded videos and watch history will be kept.</string>
+    <string name="mini_player_audio">Audio</string>
 </resources>

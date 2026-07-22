@@ -35,6 +35,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.data.normalizedPlaylistTitle
+import com.futo.platformplayer.compose.data.playlistTitleExists
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
@@ -248,6 +250,7 @@ internal fun PlaylistPickerDialog(
 ) {
     var creatingNew by rememberSaveable { mutableStateOf(playlists.isEmpty()) }
     var title by rememberSaveable { mutableStateOf("") }
+    val duplicateTitle = playlistTitleExists(title, playlists.map(PlaylistUiModel::title))
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -263,6 +266,10 @@ internal fun PlaylistPickerDialog(
                         .testTag("new-playlist-name"),
                     singleLine = true,
                     label = { Text(stringResource(R.string.playlist_name)) },
+                    isError = duplicateTitle,
+                    supportingText = if (duplicateTitle) {
+                        { Text(stringResource(R.string.playlist_name_already_exists)) }
+                    } else null,
                 )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -297,7 +304,7 @@ internal fun PlaylistPickerDialog(
                         onCreate(title.trim(), videoIds)
                         onDismiss()
                     },
-                    enabled = title.isNotBlank(),
+                    enabled = title.isNotBlank() && !duplicateTitle,
                     modifier = Modifier.testTag("create-playlist"),
                 ) { Text(stringResource(R.string.create)) }
             } else {
@@ -311,10 +318,15 @@ internal fun PlaylistPickerDialog(
 @Composable
 internal fun RenamePlaylistDialog(
     playlist: PlaylistUiModel,
+    existingPlaylistTitles: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onRename: (String) -> Unit,
 ) {
     var title by rememberSaveable(playlist.id) { mutableStateOf(playlist.title) }
+    val otherTitles = existingPlaylistTitles.filterNot {
+        normalizedPlaylistTitle(it) == normalizedPlaylistTitle(playlist.title)
+    }
+    val duplicateTitle = playlistTitleExists(title, otherTitles)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.rename_playlist)) },
@@ -327,6 +339,10 @@ internal fun RenamePlaylistDialog(
                     .testTag("rename-playlist-name"),
                 singleLine = true,
                 label = { Text(stringResource(R.string.playlist_name)) },
+                isError = duplicateTitle,
+                supportingText = if (duplicateTitle) {
+                    { Text(stringResource(R.string.playlist_name_already_exists)) }
+                } else null,
             )
         },
         confirmButton = {
@@ -335,7 +351,7 @@ internal fun RenamePlaylistDialog(
                     onRename(title.trim())
                     onDismiss()
                 },
-                enabled = title.isNotBlank() && title.trim() != playlist.title,
+                enabled = title.isNotBlank() && title.trim() != playlist.title && !duplicateTitle,
                 modifier = Modifier.testTag("confirm-rename-playlist"),
             ) { Text(stringResource(R.string.save)) }
         },

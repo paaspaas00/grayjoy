@@ -495,4 +495,8 @@
     <string name="playback_notification_channel_description">Controles de reproducción de vídeo</string>
     <string name="preparing_playback">Preparando la reproducción</string>
     <string name="close_playback">Cerrar reproducción</string>
+    <string name="playlist_name_already_exists">Ya existe una lista de reproducción con este nombre.</string>
+    <string name="remove_playlists_title">¿Eliminar las listas de reproducción seleccionadas?</string>
+    <string name="remove_playlists_body">Se eliminarán las listas seleccionadas. Los vídeos descargados y el historial se conservarán.</string>
+    <string name="mini_player_audio">Audio</string>
 </resources>

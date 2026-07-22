@@ -495,4 +495,8 @@
     <string name="playback_notification_channel_description">ビデオ再生コントロール</string>
     <string name="preparing_playback">再生の準備中</string>
     <string name="close_playback">再生を閉じる</string>
+    <string name="playlist_name_already_exists">同じ名前の再生リストが既に存在します。</string>
+    <string name="remove_playlists_title">選択した再生リストを削除しますか？</string>
+    <string name="remove_playlists_body">選択した再生リストを削除します。ダウンロード済み動画と再生履歴は保持されます。</string>
+    <string name="mini_player_audio">音声</string>
 </resources>

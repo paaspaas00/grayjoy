@@ -496,18 +496,30 @@ internal fun ChannelAvatarImage(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun PlaylistRow(
     playlist: PlaylistUiModel,
+    selected: Boolean = false,
     onClick: () -> Unit,
-    onRename: () -> Unit = {},
+    onLongClick: () -> Unit = {},
+    onRename: (() -> Unit)? = null,
 ) {
     Card(
-        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .testTag("playlist-${playlist.id}"),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            },
+        ),
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -566,7 +578,7 @@ internal fun PlaylistRow(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            if (playlist.sourceId.isBlank()) {
+            if (playlist.sourceId.isBlank() && onRename != null) {
                 IconButton(
                     onClick = onRename,
                     modifier = Modifier.testTag("rename-playlist-${playlist.id}"),

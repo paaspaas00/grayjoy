@@ -7,6 +7,7 @@ import com.futo.platformplayer.compose.ui.SubtitleUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 import java.util.UUID
 
 data class LibraryVideoState(
@@ -28,6 +29,44 @@ internal fun normalizePlaylistOrder(
         existingVideoIds.filterNot(requestedIds::contains)
 }
 
+internal fun normalizedPlaylistTitle(title: String): String = title
+    .trim()
+    .replace(Regex("\\s+"), " ")
+    .lowercase(Locale.ROOT)
+
+internal fun playlistTitleExists(title: String, existingTitles: Collection<String>): Boolean {
+    val normalized = normalizedPlaylistTitle(title)
+    return normalized.isNotBlank() && existingTitles.any {
+        normalizedPlaylistTitle(it) == normalized
+    }
+}
+
+internal fun uniqueRemotePlaylistTitle(
+    requestedTitle: String,
+    channelName: String,
+    existingTitles: Collection<String>,
+    fallbackTitle: String,
+): String {
+    val baseTitle = requestedTitle.trim().ifBlank { fallbackTitle }.take(80)
+    if (!playlistTitleExists(baseTitle, existingTitles)) return baseTitle
+
+    val owner = channelName.trim().ifBlank { fallbackTitle }.take(32)
+    val attributedBase = buildString {
+        append(baseTitle.take((80 - owner.length - 3).coerceAtLeast(1)).trimEnd())
+        append(" - ")
+        append(owner)
+    }.take(80)
+    if (!playlistTitleExists(attributedBase, existingTitles)) return attributedBase
+
+    var suffixNumber = 2
+    while (true) {
+        val suffix = " ($suffixNumber)"
+        val candidate = attributedBase.take(80 - suffix.length).trimEnd() + suffix
+        if (!playlistTitleExists(candidate, existingTitles)) return candidate
+        suffixNumber += 1
+    }
+}
+
 interface LibraryRepository {
     fun load(videos: List<VideoUiModel>): Map<String, LibraryVideoState>
     fun loadSavedVideos(): List<VideoUiModel>
@@ -41,8 +80,9 @@ interface LibraryRepository {
     fun setLiked(videoId: String, enabled: Boolean)
     fun setWatchProgress(videoId: String, progress: Float)
     fun removeFromHistory(videoIds: Collection<String>)
-    fun createPlaylist(title: String, videos: List<VideoUiModel>): PlaylistUiModel
+    fun createPlaylist(title: String, videos: List<VideoUiModel>): PlaylistUiModel?
     fun renamePlaylist(playlistId: String, title: String): PlaylistUiModel?
+    fun removePlaylists(playlistIds: Collection<String>): Int
     fun addVideosToPlaylist(playlistId: String, videos: List<VideoUiModel>): PlaylistUiModel?
     fun removeVideosFromPlaylist(playlistId: String, videoIds: Collection<String>): PlaylistUiModel?
     fun reorderPlaylist(playlistId: String, orderedVideoIds: List<String>): PlaylistUiModel?
@@ -200,15 +240,18 @@ internal class SharedPreferencesLibraryRepository(
     }
 
     @Synchronized
-    override fun createPlaylist(title: String, videos: List<VideoUiModel>): PlaylistUiModel {
+    override fun createPlaylist(title: String, videos: List<VideoUiModel>): PlaylistUiModel? {
         val normalizedTitle = title.trim().ifBlank { appContext.getString(R.string.new_playlist) }
+            .take(80)
+        val playlists = readPlaylists()
+        if (playlistTitleExists(normalizedTitle, playlists.map(PlaylistUiModel::title))) return null
         val playlist = PlaylistUiModel(
             id = UUID.randomUUID().toString(),
             title = normalizedTitle,
             description = appContext.getString(R.string.local_playlist_description),
             videoIds = videos.map(VideoUiModel::id).distinct(),
         )
-        writePlaylists(readPlaylists() + playlist)
+        writePlaylists(playlists + playlist)
         videos.forEach(::saveVideo)
         synchronizePlaylistNames()
         return playlist
@@ -220,10 +263,29 @@ internal class SharedPreferencesLibraryRepository(
         val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
         val normalizedTitle = title.trim().take(80)
         if (normalizedTitle.isBlank()) return null
+        if (
+            playlistTitleExists(
+                normalizedTitle,
+                playlists.filterNot { it.id == playlistId }.map(PlaylistUiModel::title),
+            )
+        ) return null
         val renamed = existing.copy(title = normalizedTitle)
         writePlaylists(playlists.map { if (it.id == playlistId) renamed else it })
         synchronizePlaylistNames()
         return renamed
+    }
+
+    @Synchronized
+    override fun removePlaylists(playlistIds: Collection<String>): Int {
+        val removedIds = playlistIds.toSet()
+        if (removedIds.isEmpty()) return 0
+        val playlists = readPlaylists()
+        val retained = playlists.filterNot { it.id in removedIds }
+        val removedCount = playlists.size - retained.size
+        if (removedCount == 0) return 0
+        writePlaylists(retained)
+        synchronizePlaylistNames()
+        return removedCount
     }
 
     @Synchronized

@@ -32,7 +32,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.Lifecycle
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -241,6 +240,7 @@ class MainActivity : FragmentActivity() {
                     onReorderPlaylist = viewModel::reorderPlaylist,
                     onRemoveVideosFromHistory = viewModel::removeVideosFromHistory,
                     onRemoveDownloads = viewModel::removeDownloads,
+                    onRemovePlaylists = viewModel::removePlaylists,
                     onExportDownloads = viewModel::exportDownloads,
                     onSeekPlayback = viewModel::seekPlayback,
                     onResumeFromHistory = viewModel::resumePlaybackFromHistory,
@@ -359,19 +359,17 @@ class MainActivity : FragmentActivity() {
         isInPictureInPictureMode: Boolean,
         newConfig: Configuration,
     ) {
-        val wasInPictureInPicture = pictureInPictureMode
-        val isStopping = lifecycle.currentState == Lifecycle.State.CREATED
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         pictureInPictureEntryPending = false
         pictureInPictureMode = isInPictureInPictureMode
         if (isInPictureInPictureMode) {
             setFullscreenPresentation(fullscreen = false, portraitVideo = false)
         } else {
-            if (wasInPictureInPicture && isStopping) {
-                // The system X closes the PiP activity. Mirror legacy Grayjay and close the
-                // playback session instead of leaving an invisible player/notification behind.
-                grayjayViewModel.closePlayback()
-            }
+            // Lifecycle is still CREATED both when Android closes the PiP window and when the
+            // user expands it back into this Activity. Treating CREATED as a dismissal therefore
+            // closed the real playback while Grayjoy was returning to the foreground. A genuine
+            // PiP close finishes the Activity and clears its ViewModel/player naturally; a normal
+            // expansion must leave Now Playing untouched.
             window.decorView.post {
                 capturePictureInPictureSourceRect()
                 updatePictureInPictureParams()

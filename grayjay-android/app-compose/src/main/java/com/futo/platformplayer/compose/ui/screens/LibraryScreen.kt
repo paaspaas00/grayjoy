@@ -121,6 +121,7 @@ fun LibraryScreen(
     onAddSelectionToPlaylist: (List<String>) -> Unit,
     onRemoveSelectionFromHistory: (List<String>) -> Unit,
     onRemoveDownloads: (List<String>) -> Unit = {},
+    onRemovePlaylists: (List<String>) -> Unit = {},
     onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit = { _, _, _ -> },
     onRenamePlaylist: (String, String) -> Unit = { _, _ -> },
 ) {
@@ -131,6 +132,7 @@ fun LibraryScreen(
     var pendingExportMediaType by rememberSaveable { mutableStateOf<DownloadMediaType?>(null) }
     var renamingPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedVideoIds = remember { mutableStateListOf<String>() }
+    val selectedPlaylistIds = remember { mutableStateListOf<String>() }
     val filters = LibraryFilter.entries
     val selectedFilter = LibraryFilter.valueOf(selectedFilterName)
     val pagerState = rememberPagerState(
@@ -144,6 +146,7 @@ fun LibraryScreen(
     fun leaveSelectionMode() {
         selectionMode = false
         selectedVideoIds.clear()
+        selectedPlaylistIds.clear()
     }
 
     val exportDirectoryLauncher = rememberLauncherForActivityResult(
@@ -245,6 +248,7 @@ fun LibraryScreen(
                             selectionMode && pageFilter in setOf(
                                 LibraryFilter.History,
                                 LibraryFilter.Downloads,
+                                LibraryFilter.Playlists,
                             )
                         ) {
                             88.dp
@@ -262,16 +266,20 @@ fun LibraryScreen(
             ) {
                 Text(stringResource(pageFilter.labelRes), style = MaterialTheme.typography.titleLarge)
                 if (
-                    pageFilter in setOf(LibraryFilter.History, LibraryFilter.Downloads) &&
+                    pageFilter in setOf(
+                        LibraryFilter.History,
+                        LibraryFilter.Downloads,
+                        LibraryFilter.Playlists,
+                    ) &&
                     selectionMode
                 ) {
                     TextButton(
                         onClick = ::leaveSelectionMode,
                         modifier = Modifier.testTag(
-                            if (pageFilter == LibraryFilter.History) {
-                                "history-select-inline"
-                            } else {
-                                "downloads-select-inline"
+                            when (pageFilter) {
+                                LibraryFilter.History -> "history-select-inline"
+                                LibraryFilter.Downloads -> "downloads-select-inline"
+                                else -> "playlists-select-inline"
                             },
                         ),
                     ) {
@@ -291,8 +299,28 @@ fun LibraryScreen(
             items(playlists, key = PlaylistUiModel::id) { playlist ->
                 PlaylistRow(
                     playlist = playlist,
-                    onClick = { onPlaylistClick(playlist) },
-                    onRename = { renamingPlaylistId = playlist.id },
+                    selected = playlist.id in selectedPlaylistIds,
+                    onClick = {
+                        if (selectionMode) {
+                            if (playlist.id in selectedPlaylistIds) {
+                                selectedPlaylistIds.remove(playlist.id)
+                            } else {
+                                selectedPlaylistIds.add(playlist.id)
+                            }
+                            if (selectedPlaylistIds.isEmpty()) leaveSelectionMode()
+                        } else {
+                            onPlaylistClick(playlist)
+                        }
+                    },
+                    onLongClick = {
+                        selectionMode = true
+                        if (playlist.id !in selectedPlaylistIds) {
+                            selectedPlaylistIds.add(playlist.id)
+                        }
+                    },
+                    onRename = if (selectionMode) null else {
+                        { renamingPlaylistId = playlist.id }
+                    },
                 )
             }
         } else {
@@ -349,7 +377,11 @@ fun LibraryScreen(
             }
 
             if (
-                selectedFilter in setOf(LibraryFilter.History, LibraryFilter.Downloads) &&
+                selectedFilter in setOf(
+                    LibraryFilter.History,
+                    LibraryFilter.Downloads,
+                    LibraryFilter.Playlists,
+                ) &&
                 selectionMode
             ) {
                 Surface(
@@ -357,10 +389,10 @@ fun LibraryScreen(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .testTag(
-                            if (selectedFilter == LibraryFilter.History) {
-                                "history-selection-bar"
-                            } else {
-                                "downloads-selection-bar"
+                            when (selectedFilter) {
+                                LibraryFilter.History -> "history-selection-bar"
+                                LibraryFilter.Downloads -> "downloads-selection-bar"
+                                else -> "playlists-selection-bar"
                             },
                         ),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -371,11 +403,16 @@ fun LibraryScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        val selectedCount = if (selectedFilter == LibraryFilter.Playlists) {
+                            selectedPlaylistIds.size
+                        } else {
+                            selectedVideoIds.size
+                        }
                         Text(
                             pluralStringResource(
                                 R.plurals.selected_count,
-                                selectedVideoIds.size,
-                                selectedVideoIds.size,
+                                selectedCount,
+                                selectedCount,
                             ),
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
@@ -391,7 +428,7 @@ fun LibraryScreen(
                                     contentDescription = stringResource(R.string.add_to_playlist),
                                 )
                             }
-                        } else {
+                        } else if (selectedFilter == LibraryFilter.Downloads) {
                             TextButton(
                                 onClick = { showExportSheet = true },
                                 enabled = selectedVideoIds.isNotEmpty(),
@@ -406,12 +443,16 @@ fun LibraryScreen(
                         }
                         IconButton(
                             onClick = { confirmRemoval = true },
-                            enabled = selectedVideoIds.isNotEmpty(),
+                            enabled = if (selectedFilter == LibraryFilter.Playlists) {
+                                selectedPlaylistIds.isNotEmpty()
+                            } else {
+                                selectedVideoIds.isNotEmpty()
+                            },
                             modifier = Modifier.testTag(
-                                if (selectedFilter == LibraryFilter.History) {
-                                    "history-remove"
-                                } else {
-                                    "downloads-remove"
+                                when (selectedFilter) {
+                                    LibraryFilter.History -> "history-remove"
+                                    LibraryFilter.Downloads -> "downloads-remove"
+                                    else -> "playlists-remove"
                                 },
                             ),
                         ) {
@@ -432,10 +473,10 @@ fun LibraryScreen(
             title = {
                 Text(
                     stringResource(
-                        if (selectedFilter == LibraryFilter.Downloads) {
-                            R.string.remove_downloads_title
-                        } else {
-                            R.string.remove_from_history_title
+                        when (selectedFilter) {
+                            LibraryFilter.Downloads -> R.string.remove_downloads_title
+                            LibraryFilter.Playlists -> R.string.remove_playlists_title
+                            else -> R.string.remove_from_history_title
                         },
                     ),
                 )
@@ -443,10 +484,10 @@ fun LibraryScreen(
             text = {
                 Text(
                     stringResource(
-                        if (selectedFilter == LibraryFilter.Downloads) {
-                            R.string.remove_downloads_body
-                        } else {
-                            R.string.remove_from_history_body
+                        when (selectedFilter) {
+                            LibraryFilter.Downloads -> R.string.remove_downloads_body
+                            LibraryFilter.Playlists -> R.string.remove_playlists_body
+                            else -> R.string.remove_from_history_body
                         },
                     ),
                 )
@@ -456,6 +497,8 @@ fun LibraryScreen(
                     onClick = {
                         if (selectedFilter == LibraryFilter.Downloads) {
                             onRemoveDownloads(selectedVideoIds.toList())
+                        } else if (selectedFilter == LibraryFilter.Playlists) {
+                            onRemovePlaylists(selectedPlaylistIds.toList())
                         } else {
                             onRemoveSelectionFromHistory(selectedVideoIds.toList())
                         }
@@ -484,6 +527,7 @@ fun LibraryScreen(
     playlists.firstOrNull { it.id == renamingPlaylistId }?.let { playlist ->
         RenamePlaylistDialog(
             playlist = playlist,
+            existingPlaylistTitles = playlists.map(PlaylistUiModel::title),
             onDismiss = { renamingPlaylistId = null },
             onRename = { title -> onRenamePlaylist(playlist.id, title) },
         )

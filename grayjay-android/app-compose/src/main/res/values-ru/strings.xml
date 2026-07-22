@@ -495,4 +495,8 @@
     <string name="playback_notification_channel_description">Управление воспроизведением видео</string>
     <string name="preparing_playback">Подготовка воспроизведения</string>
     <string name="close_playback">Закрыть воспроизведение</string>
+    <string name="playlist_name_already_exists">Плейлист с таким названием уже существует.</string>
+    <string name="remove_playlists_title">Удалить выбранные плейлисты?</string>
+    <string name="remove_playlists_body">Выбранные плейлисты будут удалены. Загруженные видео и история просмотров сохранятся.</string>
+    <string name="mini_player_audio">Аудио</string>
 </resources>

@@ -219,6 +219,7 @@ private data class PlaybackPresentation(
     val onAddSelectionToPlaylist: (List<String>) -> Unit,
     val onRemoveSelectionFromHistory: (List<String>) -> Unit,
     val onRemoveDownloads: (List<String>) -> Unit,
+    val onRemovePlaylists: (List<String>) -> Unit,
     val onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit,
     val onRenamePlaylist: (String, String) -> Unit,
     val onRemoveVideosFromPlaylist: (String, List<String>) -> Unit,
@@ -320,6 +321,7 @@ fun GrayjayApp(
     onReorderPlaylist: (String, List<String>) -> Unit,
     onRemoveVideosFromHistory: (List<String>) -> Unit,
     onRemoveDownloads: (List<String>) -> Unit = {},
+    onRemovePlaylists: (List<String>) -> Unit = {},
     onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit = { _, _, _ -> },
     onSeekPlayback: (Float) -> Unit,
     onSourceEnabledChange: (String, Boolean) -> Unit,
@@ -399,8 +401,13 @@ fun GrayjayApp(
         ?: uiState.remotePlaylistDetail.playlist?.takeIf { it.id == selectedPlaylistId }
         ?: (uiState.search.playlists + uiState.channelDetail.playlists)
             .firstOrNull { it.id == selectedPlaylistId }
-    val playbackVideo = availableVideos.firstOrNull { it.id == uiState.playback.currentVideoId }
-        ?: uiState.nowPlaying.video
+    // The same content can exist in feeds as its online video model and in Now Playing as a
+    // resolved offline/audio-only model. The resolved active model must win; otherwise the final
+    // frame of the collapse swaps playbackAudioOnly back to false and covers the audio mini-player
+    // artwork with an empty video surface.
+    val playbackVideo = uiState.nowPlaying.video?.takeIf {
+        it.id == uiState.playback.currentVideoId
+    } ?: availableVideos.firstOrNull { it.id == uiState.playback.currentVideoId }
     var playerTransitionProgress by rememberSaveable { mutableFloatStateOf(1f) }
     var navigationBackProgress by remember { mutableFloatStateOf(0f) }
     val playerTransitionScope = rememberCoroutineScope()
@@ -587,6 +594,7 @@ fun GrayjayApp(
         onAddSelectionToPlaylist = { playlistPickerVideoIds = it },
         onRemoveSelectionFromHistory = onRemoveVideosFromHistory,
         onRemoveDownloads = onRemoveDownloads,
+        onRemovePlaylists = onRemovePlaylists,
         onExportDownloads = onExportDownloads,
         onRenamePlaylist = onRenamePlaylist,
         onRemoveVideosFromPlaylist = onRemoveVideosFromPlaylist,
@@ -1476,6 +1484,7 @@ private fun GrayjayScaffold(
                 else RemotePlaylistDetailScreen(
                     detail = playback.remotePlaylistDetail,
                     downloads = playback.downloads,
+                    localPlaylists = playlists,
                     onVideoClick = onVideoClick,
                     onVideoLongClick = onRemotePlaylistVideoLongClick,
                     onPlayAll = playback.onPlayRemotePlaylist,
@@ -1526,6 +1535,7 @@ private fun GrayjayScaffold(
                         onAddSelectionToPlaylist = playback.onAddSelectionToPlaylist,
                         onRemoveSelectionFromHistory = playback.onRemoveSelectionFromHistory,
                         onRemoveDownloads = playback.onRemoveDownloads,
+                        onRemovePlaylists = playback.onRemovePlaylists,
                         onExportDownloads = playback.onExportDownloads,
                         onRenamePlaylist = playback.onRenamePlaylist,
                     )
@@ -1779,7 +1789,7 @@ private fun GrayjayScaffold(
             val width = lerp(start.width, end.width, progress).coerceAtLeast(1f)
             val height = lerp(start.height, end.height, progress).coerceAtLeast(1f)
             val queueIndex = playback.state.queueVideoIds.indexOf(playback.state.currentVideoId)
-            PlayerSurface(
+            if (!(transitionVideo.playbackAudioOnly && progress >= 0.999f)) PlayerSurface(
                 video = transitionVideo,
                 player = playback.player,
                 playback = playback.state,
@@ -1808,6 +1818,9 @@ private fun GrayjayScaffold(
                         height = with(density) { height.toDp() },
                     )
                     .then(transitionDragModifier)
+                    .graphicsLayer {
+                        alpha = if (transitionVideo.playbackAudioOnly) 1f - progress else 1f
+                    }
                     .zIndex(2f),
             )
         }

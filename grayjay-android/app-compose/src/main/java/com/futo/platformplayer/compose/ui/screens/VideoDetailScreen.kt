@@ -137,6 +137,7 @@ import com.futo.platformplayer.compose.ui.VideoCommentUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlin.math.abs
 
 private enum class DetailSection { UpNext, Comments }
 private enum class PlayerSettingsPage { Main, Quality, Speed, Subtitles }
@@ -942,6 +943,7 @@ private fun PlayerTimelineRow(
     }
     var seekProgress by rememberSaveable(video.id) { mutableFloatStateOf(0f) }
     var isSeeking by remember(video.id) { mutableStateOf(false) }
+    var pendingSeekPositionMs by remember(video.id) { mutableStateOf<Long?>(null) }
     var seekTooltipWidthPx by remember(video.id, isFullscreen) { mutableStateOf(0) }
     var seekTooltipHeightPx by remember(video.id, isFullscreen) { mutableStateOf(0) }
     var storyboardUnavailable by remember(video.id, video.storyboard) { mutableStateOf(false) }
@@ -959,7 +961,19 @@ private fun PlayerTimelineRow(
         onDispose { onSeekingChanged(false) }
     }
 
-    val currentPositionMs = remotePositionMs ?: playerPositionMs
+    val observedPositionMs = remotePositionMs ?: playerPositionMs
+    LaunchedEffect(observedPositionMs, pendingSeekPositionMs) {
+        val targetPositionMs = pendingSeekPositionMs ?: return@LaunchedEffect
+        if (seekPositionReached(observedPositionMs, targetPositionMs)) {
+            pendingSeekPositionMs = null
+        } else {
+            // Media3 and cast receivers normally expose the requested position immediately. Keep
+            // the thumb pinned briefly for slower receivers, but do not mask a failed seek forever.
+            delay(2_000)
+            if (pendingSeekPositionMs == targetPositionMs) pendingSeekPositionMs = null
+        }
+    }
+    val currentPositionMs = pendingSeekPositionMs ?: observedPositionMs
     val positionProgress = if (durationMs > 0L) {
         (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
     } else {
@@ -1016,6 +1030,9 @@ private fun PlayerTimelineRow(
                     seekProgress = it
                 },
                 onValueChangeFinished = {
+                    val targetPositionMs = seekPreviewPositionMs(durationMs, seekProgress)
+                    pendingSeekPositionMs = targetPositionMs
+                    if (remotePositionMs == null) playerPositionMs = targetPositionMs
                     onSeek(seekProgress)
                     isSeeking = false
                     onSeekingChanged(false)
@@ -2387,6 +2404,12 @@ private fun formatPlaybackTime(milliseconds: Long): String {
 internal fun seekPreviewPositionMs(durationMs: Long, progress: Float): Long =
     if (durationMs <= 0L) 0L
     else (durationMs * progress.coerceIn(0f, 1f).toDouble()).toLong()
+
+internal fun seekPositionReached(
+    observedPositionMs: Long,
+    targetPositionMs: Long,
+    toleranceMs: Long = 1_500L,
+): Boolean = abs(observedPositionMs - targetPositionMs) <= toleranceMs
 
 private fun formatSpeed(speed: Float): String =
     if (speed == speed.toInt().toFloat()) "${speed.toInt()}×" else "${speed}×"

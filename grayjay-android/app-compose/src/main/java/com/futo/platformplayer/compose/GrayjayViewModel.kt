@@ -28,6 +28,7 @@ import com.futo.platformplayer.compose.data.SourceRepository
 import com.futo.platformplayer.compose.data.visibleContentForSources
 import com.futo.platformplayer.compose.data.withLibraryState
 import com.futo.platformplayer.compose.data.buildImportLibrary
+import com.futo.platformplayer.compose.data.uniqueRemotePlaylistTitle
 import com.futo.platformplayer.compose.casting.ChromecastManager
 import com.futo.platformplayer.compose.engine.AndroidGrayjayEngine
 import com.futo.platformplayer.compose.engine.EnginePlaybackState
@@ -1743,8 +1744,15 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val videos = fullyLoadRemotePlaylist(playlist.id)
                 if (videos.isNotEmpty()) {
-                    libraryRepository.createPlaylist(title.trim().ifBlank { playlist.title }, videos)
-                    reloadLibrary()
+                    val resolvedTitle = uniqueRemotePlaylistTitle(
+                        requestedTitle = title.trim().ifBlank { playlist.title },
+                        channelName = videos.firstOrNull()?.creator.orEmpty(),
+                        existingTitles = libraryRepository.loadPlaylists().map(PlaylistUiModel::title),
+                        fallbackTitle = text(R.string.imported_playlist),
+                    )
+                    if (libraryRepository.createPlaylist(resolvedTitle, videos) != null) {
+                        reloadLibrary()
+                    }
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -2691,6 +2699,18 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun renamePlaylist(playlistId: String, title: String) {
         libraryRepository.renamePlaylist(playlistId, title) ?: return
+        reloadLibrary()
+    }
+
+    fun removePlaylists(playlistIds: List<String>) {
+        val removedIds = playlistIds.distinct().toSet()
+        if (libraryRepository.removePlaylists(removedIds) == 0) return
+        // Deleting a collection must not also delete media the user explicitly downloaded.
+        // Detach the automatic playlist-download records before a later sync sees the missing
+        // playlist and treats all of its offline media as orphaned.
+        offlinePlaylistStore.all(activeProfileId)
+            .filter { it.playlistId in removedIds }
+            .forEach(offlinePlaylistStore::remove)
         reloadLibrary()
     }
 

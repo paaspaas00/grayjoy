@@ -108,6 +108,11 @@ class GrayjayAppTest {
                     onRemoveVideosFromPlaylist = { _, _ -> },
                     onReorderPlaylist = { _, _ -> },
                     onRemoveVideosFromHistory = {},
+                    onRemovePlaylists = { ids ->
+                        state.value = state.value.copy(
+                            playlists = state.value.playlists.filterNot { it.id in ids },
+                        )
+                    },
                     onSeekPlayback = {},
                     onSourceEnabledChange = { id, enabled ->
                         state.value = state.value.copy(
@@ -202,6 +207,29 @@ class GrayjayAppTest {
         composeRule.runOnIdle {
             assertEquals("Research", state.value.playlists.single().title)
             assertEquals(2, state.value.playlists.single().videoIds.size)
+        }
+    }
+
+    @Test
+    fun playlistsSupportLongPressSelectionAndDeletion() {
+        state.value = state.value.copy(
+            playlists = listOf(
+                PlaylistUiModel("playlist-one", "One", "Local playlist", listOf("real-video-one")),
+                PlaylistUiModel("playlist-two", "Two", "Local playlist", listOf("real-video-two")),
+            ),
+        )
+        composeRule.onNodeWithTag("nav-library").performClick()
+        composeRule.onNodeWithTag("library-filter-playlists").performClick()
+        composeRule.onNodeWithTag("playlist-playlist-one").performScrollTo().performTouchInput {
+            longClick()
+        }
+
+        composeRule.onNodeWithTag("playlists-selection-bar").assertIsDisplayed()
+        composeRule.onNodeWithTag("playlists-remove").performClick()
+        composeRule.onNodeWithText("Remove").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(listOf("playlist-two"), state.value.playlists.map(PlaylistUiModel::id))
         }
     }
 
@@ -332,6 +360,25 @@ class GrayjayAppTest {
         }
         composeRule.onNodeWithText("Now playing").assertIsDisplayed()
         composeRule.onNodeWithTag("mini-player").assertDoesNotExist()
+    }
+
+    @Test
+    fun audioOnlyMiniPlayerShowsAudioArtwork() {
+        val audio = video("audio-only", "Offline audio", 1_100L).copy(playbackAudioOnly = true)
+        state.value = state.value.copy(
+            // Feed/library copies represent the online video. Now Playing carries the resolved
+            // audio-only download descriptor and must remain authoritative after collapsing.
+            videos = listOf(audio.copy(playbackAudioOnly = false)),
+            libraryVideos = listOf(audio.copy(playbackAudioOnly = false)),
+            playback = PlaybackUiState(
+                currentVideoId = audio.id,
+                queueVideoIds = listOf(audio.id),
+            ),
+            nowPlaying = NowPlayingUiState(video = audio),
+        )
+
+        composeRule.onNodeWithTag("mini-player-audio-only").assertIsDisplayed()
+        composeRule.onNodeWithText("Audio").assertIsDisplayed()
     }
 
     @Test

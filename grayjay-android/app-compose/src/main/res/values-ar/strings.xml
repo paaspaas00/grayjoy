@@ -495,4 +495,8 @@
     <string name="playback_notification_channel_description">ضوابط تشغيل الفيديو</string>
     <string name="preparing_playback">تحضير التشغيل</string>
     <string name="close_playback">إغلاق التشغيل</string>
+    <string name="playlist_name_already_exists">توجد قائمة تشغيل بهذا الاسم بالفعل.</string>
+    <string name="remove_playlists_title">هل تريد حذف قوائم التشغيل المحددة؟</string>
+    <string name="remove_playlists_body">سيتم حذف قوائم التشغيل المحددة. ستبقى الفيديوهات المنزلة وسجل المشاهدة.</string>
+    <string name="mini_player_audio">صوت</string>
 </resources>

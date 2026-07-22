@@ -495,4 +495,8 @@
     <string name="playback_notification_channel_description">Commandes de lecture vidéo</string>
     <string name="preparing_playback">Préparation de la lecture</string>
     <string name="close_playback">Fermer la lecture</string>
+    <string name="playlist_name_already_exists">Une playlist portant ce nom existe déjà.</string>
+    <string name="remove_playlists_title">Supprimer les playlists sélectionnées ?</string>
+    <string name="remove_playlists_body">Les playlists sélectionnées seront supprimées. Les vidéos téléchargées et l’historique seront conservés.</string>
+    <string name="mini_player_audio">Audio</string>
 </resources>
