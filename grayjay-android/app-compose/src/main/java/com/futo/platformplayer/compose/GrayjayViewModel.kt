@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose
 import android.app.Application
 import android.net.Uri
 import android.util.Log
+import android.widget.Toast
 import android.provider.OpenableColumns
 import java.net.URI
 import androidx.annotation.PluralsRes
@@ -32,6 +33,7 @@ import com.futo.platformplayer.compose.engine.EnginePlaybackState
 import com.futo.platformplayer.compose.engine.GrayjayEngine
 import com.futo.platformplayer.compose.engine.SearchCorpus
 import com.futo.platformplayer.compose.downloads.GrayjoyDownloadStore
+import com.futo.platformplayer.compose.downloads.GrayjoyDownloadExporter
 import com.futo.platformplayer.compose.downloads.GrayjoyDownloadQueue
 import com.futo.platformplayer.compose.downloads.GrayjoyOfflinePlaylistStore
 import com.futo.platformplayer.compose.downloads.QueuedDownload
@@ -247,6 +249,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         SharedPreferencesSourceRepository(application, activeProfileId)
     private val engine: GrayjayEngine = AndroidGrayjayEngine(application)
     private val downloadStore = GrayjoyDownloadStore.get(application)
+    private val downloadExporter = GrayjoyDownloadExporter(application, downloadStore)
     private val downloadQueue = GrayjoyDownloadQueue(application)
     private val networkMonitor = NetworkMonitor(application)
     private val offlinePlaylistStore = GrayjoyOfflinePlaylistStore(application)
@@ -1663,6 +1666,39 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun playRemotePlaylistFrom(videoId: String) {
+        val playlist = _uiState.value.remotePlaylistDetail.playlist ?: return
+        if (_uiState.value.remotePlaylistDetail.isLoadingAll) return
+        remotePlaylistPagingJob?.cancel()
+        remotePlaylistJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(remotePlaylistDetail = it.remotePlaylistDetail.copy(isLoadingAll = true))
+            }
+            try {
+                val videos = fullyLoadRemotePlaylist(playlist.id)
+                val queueIds = playlistQueueFrom(videos.map(VideoUiModel::id), videoId)
+                if (queueIds.isNotEmpty()) {
+                    activePlaylistId = null
+                    startQueue(queueIds)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        remotePlaylistDetail = it.remotePlaylistDetail.copy(
+                            errorMessage = error.localizedMessage ?: text(R.string.playlist_load_failed),
+                        ),
+                    )
+                }
+            } finally {
+                _uiState.update {
+                    it.copy(remotePlaylistDetail = it.remotePlaylistDetail.copy(isLoadingAll = false))
+                }
+            }
+        }
+    }
+
     fun seekPlayback(fraction: Float) {
         engine.seekToFraction(fraction)
         _uiState.value.playback.currentVideoId?.let { setWatchProgress(it, fraction) }
@@ -1910,6 +1946,49 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleAudioDownloaded(videoId: String) {
         toggleDownloadType(videoId, DownloadMediaType.Audio)
+    }
+
+    fun removeDownloads(videoIds: List<String>) {
+        videoIds.distinct().forEach { videoId ->
+            DownloadMediaType.entries.forEach { mediaType ->
+                offlinePlaylistStore.excludeVideo(activeProfileId, videoId, mediaType)
+                removeDownloadType(videoId, mediaType)
+            }
+        }
+    }
+
+    fun exportDownloads(
+        videoIds: List<String>,
+        mediaType: DownloadMediaType,
+        directoryUri: Uri,
+    ) {
+        val profileAtStart = activeProfileId
+        val videos = videoIds.distinct().mapNotNull(::findVideo)
+        if (videos.size != videoIds.distinct().size) return
+        viewModelScope.launch {
+            try {
+                val exported = downloadExporter.export(
+                    profileId = profileAtStart,
+                    videos = videos,
+                    mediaType = mediaType,
+                    directoryUri = directoryUri,
+                )
+                Toast.makeText(
+                    getApplication(),
+                    getApplication<Application>().getString(R.string.downloads_exported, exported),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.e("GrayjayViewModel", "Exporting downloads failed.", error)
+                Toast.makeText(
+                    getApplication(),
+                    R.string.downloads_export_failed,
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
     }
 
     /** Starts or retries a video download using either the app default or an explicit height. */

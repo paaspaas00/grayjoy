@@ -605,11 +605,16 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         .associateBy(DownloadUiModel::videoId)
 
     @Synchronized
-    fun playbackDescriptorFor(profileId: String, video: VideoUiModel): VideoUiModel? {
+    fun playbackDescriptorFor(
+        profileId: String,
+        video: VideoUiModel,
+        mediaType: DownloadMediaType? = null,
+    ): VideoUiModel? {
         reconcileCompletedCatalog()
         val completedRequestIds = completedRecords.values
             .filter { record ->
-                record.key.profileId == profileId && record.key.videoId == video.id
+                record.key.profileId == profileId && record.key.videoId == video.id &&
+                    (mediaType == null || record.key.mediaType == mediaType)
             }
             .flatMapTo(mutableSetOf(), CompletedDownloadRecord::requestIds)
         if (completedRequestIds.isEmpty()) return null

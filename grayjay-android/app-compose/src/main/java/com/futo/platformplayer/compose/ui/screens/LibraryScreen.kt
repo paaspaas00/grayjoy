@@ -1,7 +1,11 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import android.net.Uri
 import androidx.annotation.StringRes
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +25,7 @@ import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Button
@@ -31,6 +36,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -53,6 +60,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
@@ -82,6 +90,25 @@ internal fun videosForLibraryFilter(
         .sortedByDescending(VideoUiModel::lastWatchedAt)
 }
 
+internal data class DownloadExportAvailability(
+    val canExportVideo: Boolean,
+    val canExportAudio: Boolean,
+)
+
+internal fun downloadExportAvailability(
+    selectedVideoIds: Collection<String>,
+    downloads: Map<String, DownloadUiModel>,
+): DownloadExportAvailability {
+    fun allComplete(mediaType: DownloadMediaType): Boolean =
+        selectedVideoIds.isNotEmpty() && selectedVideoIds.all { videoId ->
+            downloads[videoId]?.isComplete(mediaType) == true
+        }
+    return DownloadExportAvailability(
+        canExportVideo = allComplete(DownloadMediaType.Video),
+        canExportAudio = allComplete(DownloadMediaType.Audio),
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
@@ -93,12 +120,15 @@ fun LibraryScreen(
     onPlaylistClick: (PlaylistUiModel) -> Unit,
     onAddSelectionToPlaylist: (List<String>) -> Unit,
     onRemoveSelectionFromHistory: (List<String>) -> Unit,
-    onToggleDownload: (String) -> Unit = {},
+    onRemoveDownloads: (List<String>) -> Unit = {},
+    onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit = { _, _, _ -> },
     onRenamePlaylist: (String, String) -> Unit = { _, _ -> },
 ) {
     var selectedFilterName by rememberSaveable { mutableStateOf(LibraryFilter.History.name) }
     var selectionMode by rememberSaveable { mutableStateOf(false) }
     var confirmRemoval by rememberSaveable { mutableStateOf(false) }
+    var showExportSheet by rememberSaveable { mutableStateOf(false) }
+    var pendingExportMediaType by rememberSaveable { mutableStateOf<DownloadMediaType?>(null) }
     var renamingPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedVideoIds = remember { mutableStateListOf<String>() }
     val filters = LibraryFilter.entries
@@ -114,6 +144,17 @@ fun LibraryScreen(
     fun leaveSelectionMode() {
         selectionMode = false
         selectedVideoIds.clear()
+    }
+
+    val exportDirectoryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { directoryUri ->
+        val mediaType = pendingExportMediaType
+        pendingExportMediaType = null
+        if (directoryUri != null && mediaType != null && selectedVideoIds.isNotEmpty()) {
+            onExportDownloads(selectedVideoIds.toList(), mediaType, directoryUri)
+            leaveSelectionMode()
+        }
     }
 
     LaunchedEffect(pagerState) {
@@ -200,7 +241,12 @@ fun LibraryScreen(
                         start = 16.dp,
                         top = 6.dp,
                         end = 16.dp,
-                        bottom = if (selectionMode && pageFilter == LibraryFilter.History) {
+                        bottom = if (
+                            selectionMode && pageFilter in setOf(
+                                LibraryFilter.History,
+                                LibraryFilter.Downloads,
+                            )
+                        ) {
                             88.dp
                         } else {
                             16.dp
@@ -215,10 +261,19 @@ fun LibraryScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(pageFilter.labelRes), style = MaterialTheme.typography.titleLarge)
-                if (pageFilter == LibraryFilter.History && selectionMode) {
+                if (
+                    pageFilter in setOf(LibraryFilter.History, LibraryFilter.Downloads) &&
+                    selectionMode
+                ) {
                     TextButton(
                         onClick = ::leaveSelectionMode,
-                        modifier = Modifier.testTag("history-select-inline"),
+                        modifier = Modifier.testTag(
+                            if (pageFilter == LibraryFilter.History) {
+                                "history-select-inline"
+                            } else {
+                                "downloads-select-inline"
+                            },
+                        ),
                     ) {
                         Text(stringResource(R.string.cancel))
                     }
@@ -249,10 +304,16 @@ fun LibraryScreen(
                     video = video,
                     index = index,
                     download = downloads[video.id],
-                    selected = pageFilter == LibraryFilter.History && video.id in selectedVideoIds,
+                    selected = pageFilter in setOf(
+                        LibraryFilter.History,
+                        LibraryFilter.Downloads,
+                    ) && video.id in selectedVideoIds,
                     showProgress = pageFilter == LibraryFilter.History,
                     onClick = {
-                        if (pageFilter == LibraryFilter.History && selectionMode) {
+                        if (
+                            pageFilter in setOf(LibraryFilter.History, LibraryFilter.Downloads) &&
+                            selectionMode
+                        ) {
                             if (video.id in selectedVideoIds) selectedVideoIds.remove(video.id)
                             else selectedVideoIds.add(video.id)
                             if (selectedVideoIds.isEmpty()) leaveSelectionMode()
@@ -261,7 +322,7 @@ fun LibraryScreen(
                         }
                     },
                     onLongClick = {
-                        if (pageFilter == LibraryFilter.History) {
+                        if (pageFilter in setOf(LibraryFilter.History, LibraryFilter.Downloads)) {
                             selectionMode = true
                             if (video.id !in selectedVideoIds) selectedVideoIds.add(video.id)
                         } else {
@@ -287,12 +348,21 @@ fun LibraryScreen(
                 }
             }
 
-            if (selectedFilter == LibraryFilter.History && selectionMode) {
+            if (
+                selectedFilter in setOf(LibraryFilter.History, LibraryFilter.Downloads) &&
+                selectionMode
+            ) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .testTag("history-selection-bar"),
+                        .testTag(
+                            if (selectedFilter == LibraryFilter.History) {
+                                "history-selection-bar"
+                            } else {
+                                "downloads-selection-bar"
+                            },
+                        ),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     tonalElevation = 3.dp,
                 ) {
@@ -310,20 +380,40 @@ fun LibraryScreen(
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
                         )
-                        IconButton(
-                            onClick = { onAddSelectionToPlaylist(selectedVideoIds.toList()) },
-                            enabled = selectedVideoIds.isNotEmpty(),
-                            modifier = Modifier.testTag("history-add-to-playlist"),
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Outlined.PlaylistAdd,
-                                contentDescription = stringResource(R.string.add_to_playlist),
-                            )
+                        if (selectedFilter == LibraryFilter.History) {
+                            IconButton(
+                                onClick = { onAddSelectionToPlaylist(selectedVideoIds.toList()) },
+                                enabled = selectedVideoIds.isNotEmpty(),
+                                modifier = Modifier.testTag("history-add-to-playlist"),
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.PlaylistAdd,
+                                    contentDescription = stringResource(R.string.add_to_playlist),
+                                )
+                            }
+                        } else {
+                            TextButton(
+                                onClick = { showExportSheet = true },
+                                enabled = selectedVideoIds.isNotEmpty(),
+                                modifier = Modifier.testTag("downloads-export"),
+                            ) {
+                                Icon(
+                                    Icons.Outlined.FileUpload,
+                                    contentDescription = null,
+                                )
+                                Text(stringResource(R.string.export))
+                            }
                         }
                         IconButton(
                             onClick = { confirmRemoval = true },
                             enabled = selectedVideoIds.isNotEmpty(),
-                            modifier = Modifier.testTag("history-remove"),
+                            modifier = Modifier.testTag(
+                                if (selectedFilter == LibraryFilter.History) {
+                                    "history-remove"
+                                } else {
+                                    "downloads-remove"
+                                },
+                            ),
                         ) {
                             Icon(
                                 Icons.Outlined.DeleteOutline,
@@ -339,12 +429,36 @@ fun LibraryScreen(
     if (confirmRemoval) {
         AlertDialog(
             onDismissRequest = { confirmRemoval = false },
-            title = { Text(stringResource(R.string.remove_from_history_title)) },
-            text = { Text(stringResource(R.string.remove_from_history_body)) },
+            title = {
+                Text(
+                    stringResource(
+                        if (selectedFilter == LibraryFilter.Downloads) {
+                            R.string.remove_downloads_title
+                        } else {
+                            R.string.remove_from_history_title
+                        },
+                    ),
+                )
+            },
+            text = {
+                Text(
+                    stringResource(
+                        if (selectedFilter == LibraryFilter.Downloads) {
+                            R.string.remove_downloads_body
+                        } else {
+                            R.string.remove_from_history_body
+                        },
+                    ),
+                )
+            },
             confirmButton = {
                 Button(
                     onClick = {
-                        onRemoveSelectionFromHistory(selectedVideoIds.toList())
+                        if (selectedFilter == LibraryFilter.Downloads) {
+                            onRemoveDownloads(selectedVideoIds.toList())
+                        } else {
+                            onRemoveSelectionFromHistory(selectedVideoIds.toList())
+                        }
                         confirmRemoval = false
                         leaveSelectionMode()
                     },
@@ -355,6 +469,18 @@ fun LibraryScreen(
             },
         )
     }
+    if (showExportSheet) {
+        val availability = downloadExportAvailability(selectedVideoIds, downloads)
+        DownloadExportSheet(
+            availability = availability,
+            onDismiss = { showExportSheet = false },
+            onChoose = { mediaType ->
+                showExportSheet = false
+                pendingExportMediaType = mediaType
+                exportDirectoryLauncher.launch(null)
+            },
+        )
+    }
     playlists.firstOrNull { it.id == renamingPlaylistId }?.let { playlist ->
         RenamePlaylistDialog(
             playlist = playlist,
@@ -362,6 +488,81 @@ fun LibraryScreen(
             onRename = { title -> onRenamePlaylist(playlist.id, title) },
         )
     }
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun DownloadExportSheet(
+    availability: DownloadExportAvailability,
+    onDismiss: () -> Unit,
+    onChoose: (DownloadMediaType) -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                stringResource(R.string.export_downloads),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            ExportMediaTypeRow(
+                title = stringResource(R.string.export_video),
+                unavailableMessage = stringResource(R.string.export_video_unavailable),
+                enabled = availability.canExportVideo,
+                tag = "export-downloads-video",
+                onClick = { onChoose(DownloadMediaType.Video) },
+            )
+            ExportMediaTypeRow(
+                title = stringResource(R.string.export_audio),
+                unavailableMessage = stringResource(R.string.export_audio_unavailable),
+                enabled = availability.canExportAudio,
+                tag = "export-downloads-audio",
+                onClick = { onChoose(DownloadMediaType.Audio) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExportMediaTypeRow(
+    title: String,
+    unavailableMessage: String,
+    enabled: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = {
+            Text(
+                if (enabled) stringResource(R.string.choose_export_folder) else unavailableMessage,
+            )
+        },
+        leadingContent = { Icon(Icons.Outlined.FileUpload, contentDescription = null) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .testTag(tag),
+        colors = androidx.compose.material3.ListItemDefaults.colors(
+            headlineColor = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            },
+            supportingColor = if (enabled) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.error
+            },
+            leadingIconColor = if (enabled) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            },
+        ),
+    )
 }
 
 

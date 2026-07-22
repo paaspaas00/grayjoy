@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.media.MediaRouter2
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.annotation.StringRes
@@ -200,6 +201,7 @@ private data class PlaybackPresentation(
     val onLoadRemotePlaylist: (PlaylistUiModel) -> Unit,
     val onLoadMoreRemotePlaylist: () -> Unit,
     val onPlayRemotePlaylist: () -> Unit,
+    val onPlayRemotePlaylistFrom: (String) -> Unit,
     val onDownloadRemotePlaylist: (DownloadMediaType) -> Unit,
     val onCreateLocalPlaylistFromRemote: (String) -> Unit,
     val onLoadMoreRecommendations: () -> Unit,
@@ -218,6 +220,8 @@ private data class PlaybackPresentation(
     val onVideoLongClick: (VideoUiModel) -> Unit,
     val onAddSelectionToPlaylist: (List<String>) -> Unit,
     val onRemoveSelectionFromHistory: (List<String>) -> Unit,
+    val onRemoveDownloads: (List<String>) -> Unit,
+    val onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit,
     val onRenamePlaylist: (String, String) -> Unit,
     val onRemoveVideosFromPlaylist: (String, List<String>) -> Unit,
     val onReorderPlaylist: (String, List<String>) -> Unit,
@@ -307,13 +311,14 @@ fun GrayjayApp(
     onDownloadAudio: (String, Int?) -> Unit,
     onDownloadVideos: (List<String>, DownloadMediaType) -> Unit,
     onDownloadPlaylist: (String, DownloadMediaType) -> Unit,
-    onToggleLiked: (String) -> Unit,
     onCreatePlaylist: (String, List<String>) -> Unit,
     onRenamePlaylist: (String, String) -> Unit,
     onAddVideosToPlaylist: (String, List<String>) -> Unit,
     onRemoveVideosFromPlaylist: (String, List<String>) -> Unit,
     onReorderPlaylist: (String, List<String>) -> Unit,
     onRemoveVideosFromHistory: (List<String>) -> Unit,
+    onRemoveDownloads: (List<String>) -> Unit = {},
+    onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit = { _, _, _ -> },
     onSeekPlayback: (Float) -> Unit,
     onSourceEnabledChange: (String, Boolean) -> Unit,
     onInstallSource: (String) -> Unit,
@@ -330,6 +335,7 @@ fun GrayjayApp(
     onLoadRemotePlaylist: (PlaylistUiModel) -> Unit = {},
     onLoadMoreRemotePlaylist: () -> Unit = {},
     onPlayRemotePlaylist: () -> Unit = {},
+    onPlayRemotePlaylistFrom: (String) -> Unit = {},
     onDownloadRemotePlaylist: (DownloadMediaType) -> Unit = {},
     onCreateLocalPlaylistFromRemote: (String) -> Unit = {},
     onLoadMoreRecommendations: () -> Unit = {},
@@ -369,6 +375,7 @@ fun GrayjayApp(
     var isFullscreen by rememberSaveable { mutableStateOf(false) }
     var fullscreenEnteredByRotation by rememberSaveable { mutableStateOf(false) }
     var actionVideoId by rememberSaveable { mutableStateOf<String?>(null) }
+    var actionIsRemotePlaylistVideo by rememberSaveable { mutableStateOf(false) }
     var playlistPickerVideoIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var profileDialogVisible by rememberSaveable { mutableStateOf(false) }
     val selected = GrayjayDestination.valueOf(destinationName)
@@ -426,7 +433,10 @@ fun GrayjayApp(
         onOpenVideo(it.id)
         settlePlayer(0f, it.id)
     }
-    val onVideoLongClick: (VideoUiModel) -> Unit = { actionVideoId = it.id }
+    val onVideoLongClick: (VideoUiModel) -> Unit = {
+        actionIsRemotePlaylistVideo = false
+        actionVideoId = it.id
+    }
     val onChannelClick: (ChannelUiModel) -> Unit = {
         onLoadChannel(it)
         selectedChannelId = it.id
@@ -524,6 +534,10 @@ fun GrayjayApp(
                 settlePlayer(0f, first.id)
             }
         },
+        onPlayRemotePlaylistFrom = { videoId ->
+            onPlayRemotePlaylistFrom(videoId)
+            settlePlayer(0f, videoId)
+        },
         onDownloadRemotePlaylist = onDownloadRemotePlaylist,
         onCreateLocalPlaylistFromRemote = onCreateLocalPlaylistFromRemote,
         onLoadMoreRecommendations = onLoadMoreRecommendations,
@@ -564,6 +578,8 @@ fun GrayjayApp(
         onVideoLongClick = onVideoLongClick,
         onAddSelectionToPlaylist = { playlistPickerVideoIds = it },
         onRemoveSelectionFromHistory = onRemoveVideosFromHistory,
+        onRemoveDownloads = onRemoveDownloads,
+        onExportDownloads = onExportDownloads,
         onRenamePlaylist = onRenamePlaylist,
         onRemoveVideosFromPlaylist = onRemoveVideosFromPlaylist,
         onReorderPlaylist = onReorderPlaylist,
@@ -744,6 +760,10 @@ fun GrayjayApp(
                 onVideoClick = onVideoClick,
                 onChannelClick = onChannelClick,
                 onPlaylistClick = onPlaylistClick,
+                onRemotePlaylistVideoLongClick = { video ->
+                    actionIsRemotePlaylistVideo = true
+                    actionVideoId = video.id
+                },
                 onVideoBack = onNavigateBack,
                 nestedBackEnabled = nestedBackDestinationName != null,
                 onManageSources = onManageSources,
@@ -768,6 +788,10 @@ fun GrayjayApp(
                 onVideoClick = onVideoClick,
                 onChannelClick = onChannelClick,
                 onPlaylistClick = onPlaylistClick,
+                onRemotePlaylistVideoLongClick = { video ->
+                    actionIsRemotePlaylistVideo = true
+                    actionVideoId = video.id
+                },
                 onVideoBack = onNavigateBack,
                 nestedBackEnabled = nestedBackDestinationName != null,
                 onManageSources = onManageSources,
@@ -792,6 +816,10 @@ fun GrayjayApp(
                 onVideoClick = onVideoClick,
                 onChannelClick = onChannelClick,
                 onPlaylistClick = onPlaylistClick,
+                onRemotePlaylistVideoLongClick = { video ->
+                    actionIsRemotePlaylistVideo = true
+                    actionVideoId = video.id
+                },
                 onVideoBack = onNavigateBack,
                 nestedBackEnabled = nestedBackDestinationName != null,
                 onManageSources = onManageSources,
@@ -812,8 +840,10 @@ fun GrayjayApp(
         VideoActionsSheet(
             video = video,
             download = uiState.downloads[video.id],
-            onDismiss = { actionVideoId = null },
-            onToggleLike = { onToggleLiked(video.id) },
+            onDismiss = {
+                actionVideoId = null
+                actionIsRemotePlaylistVideo = false
+            },
             onToggleDownload = { onToggleDownloaded(video.id) },
             onDownloadAudio = { onToggleAudioDownloaded(video.id) },
             onShare = {
@@ -830,6 +860,9 @@ fun GrayjayApp(
                 )
             },
             onAddToPlaylist = { playlistPickerVideoIds = listOf(video.id) },
+            onPlayFromHere = if (actionIsRemotePlaylistVideo) {
+                { playback.onPlayRemotePlaylistFrom(video.id) }
+            } else null,
         )
     }
     if (playlistPickerVideoIds.isNotEmpty()) {
@@ -892,6 +925,7 @@ private fun BottomNavigationLayout(
     onVideoClick: (VideoUiModel) -> Unit,
     onChannelClick: (ChannelUiModel) -> Unit,
     onPlaylistClick: (PlaylistUiModel) -> Unit,
+    onRemotePlaylistVideoLongClick: (VideoUiModel) -> Unit,
     onVideoBack: () -> Unit,
     nestedBackEnabled: Boolean,
     onManageSources: () -> Unit,
@@ -915,6 +949,7 @@ private fun BottomNavigationLayout(
         onVideoClick = onVideoClick,
         onChannelClick = onChannelClick,
         onPlaylistClick = onPlaylistClick,
+        onRemotePlaylistVideoLongClick = onRemotePlaylistVideoLongClick,
         onVideoBack = onVideoBack,
         nestedBackEnabled = nestedBackEnabled,
         onManageSources = onManageSources,
@@ -960,6 +995,7 @@ private fun RailNavigationLayout(
     onVideoClick: (VideoUiModel) -> Unit,
     onChannelClick: (ChannelUiModel) -> Unit,
     onPlaylistClick: (PlaylistUiModel) -> Unit,
+    onRemotePlaylistVideoLongClick: (VideoUiModel) -> Unit,
     onVideoBack: () -> Unit,
     nestedBackEnabled: Boolean,
     onManageSources: () -> Unit,
@@ -1002,6 +1038,7 @@ private fun RailNavigationLayout(
             onVideoClick = onVideoClick,
             onChannelClick = onChannelClick,
             onPlaylistClick = onPlaylistClick,
+            onRemotePlaylistVideoLongClick = onRemotePlaylistVideoLongClick,
             onVideoBack = onVideoBack,
             nestedBackEnabled = nestedBackEnabled,
             onManageSources = onManageSources,
@@ -1031,6 +1068,7 @@ private fun DrawerNavigationLayout(
     onVideoClick: (VideoUiModel) -> Unit,
     onChannelClick: (ChannelUiModel) -> Unit,
     onPlaylistClick: (PlaylistUiModel) -> Unit,
+    onRemotePlaylistVideoLongClick: (VideoUiModel) -> Unit,
     onVideoBack: () -> Unit,
     nestedBackEnabled: Boolean,
     onManageSources: () -> Unit,
@@ -1079,6 +1117,7 @@ private fun DrawerNavigationLayout(
             onVideoClick = onVideoClick,
             onChannelClick = onChannelClick,
             onPlaylistClick = onPlaylistClick,
+            onRemotePlaylistVideoLongClick = onRemotePlaylistVideoLongClick,
             onVideoBack = onVideoBack,
             nestedBackEnabled = nestedBackEnabled,
             onManageSources = onManageSources,
@@ -1107,6 +1146,7 @@ private fun GrayjayScaffold(
     onVideoClick: (VideoUiModel) -> Unit,
     onChannelClick: (ChannelUiModel) -> Unit,
     onPlaylistClick: (PlaylistUiModel) -> Unit,
+    onRemotePlaylistVideoLongClick: (VideoUiModel) -> Unit,
     onVideoBack: () -> Unit,
     nestedBackEnabled: Boolean,
     onManageSources: () -> Unit,
@@ -1375,7 +1415,7 @@ private fun GrayjayScaffold(
                     detail = playback.remotePlaylistDetail,
                     downloads = playback.downloads,
                     onVideoClick = onVideoClick,
-                    onVideoLongClick = playback.onVideoLongClick,
+                    onVideoLongClick = onRemotePlaylistVideoLongClick,
                     onPlayAll = playback.onPlayRemotePlaylist,
                     onDownloadAll = playback.onDownloadRemotePlaylist,
                     onCreateLocalPlaylist = playback.onCreateLocalPlaylistFromRemote,
@@ -1423,7 +1463,8 @@ private fun GrayjayScaffold(
                         onPlaylistClick = onPlaylistClick,
                         onAddSelectionToPlaylist = playback.onAddSelectionToPlaylist,
                         onRemoveSelectionFromHistory = playback.onRemoveSelectionFromHistory,
-                        onToggleDownload = playback.onToggleDownloaded,
+                        onRemoveDownloads = playback.onRemoveDownloads,
+                        onExportDownloads = playback.onExportDownloads,
                         onRenamePlaylist = playback.onRenamePlaylist,
                     )
                     GrayjayDestination.Settings -> SettingsScreen(

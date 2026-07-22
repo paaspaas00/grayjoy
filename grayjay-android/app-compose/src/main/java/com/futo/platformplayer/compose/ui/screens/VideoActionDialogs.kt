@@ -10,8 +10,8 @@ import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,11 +47,11 @@ internal fun VideoActionsSheet(
     video: VideoUiModel,
     download: DownloadUiModel?,
     onDismiss: () -> Unit,
-    onToggleLike: () -> Unit,
     onToggleDownload: () -> Unit,
     onDownloadAudio: () -> Unit,
     onShare: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onPlayFromHere: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -75,16 +75,18 @@ internal fun VideoActionsSheet(
                 )
             }
             HorizontalDivider()
-            VideoAction(
-                title = stringResource(if (video.isLiked) R.string.unlike else R.string.like),
-                subtitle = stringResource(R.string.stored_locally_library),
-                icon = { Icon(Icons.Outlined.ThumbUp, contentDescription = null) },
-                tag = "video-action-like",
-                onClick = {
-                    onToggleLike()
-                    onDismiss()
-                },
-            )
+            onPlayFromHere?.let { playFromHere ->
+                VideoAction(
+                    title = stringResource(R.string.play_from_here),
+                    subtitle = stringResource(R.string.play_from_here_description),
+                    icon = { Icon(Icons.Outlined.PlayArrow, contentDescription = null) },
+                    tag = "video-action-play-from-here",
+                    onClick = {
+                        playFromHere()
+                        onDismiss()
+                    },
+                )
+            }
             if (!video.isLive) {
                 val audioDownloadComplete = download?.isComplete(DownloadMediaType.Audio) == true
                 val audioDownloadActive = download?.isActive(DownloadMediaType.Audio) == true
