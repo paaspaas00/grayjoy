@@ -499,4 +499,9 @@
     <string name="remove_playlists_title">Ausgewählte Playlists löschen?</string>
     <string name="remove_playlists_body">Die ausgewählten Playlists werden gelöscht. Heruntergeladene Videos und der Wiedergabeverlauf bleiben erhalten.</string>
     <string name="mini_player_audio">Audio</string>
+    <string name="link_not_supported_by_sources">Keine aktive Quelle kann diesen Link öffnen.</string>
+    <string name="update_available">Grayjoy-Update verfügbar</string>
+    <string name="update_available_description">Version %1$s ist auf GitHub verfügbar.</string>
+    <string name="open_release_page">Release-Seite öffnen</string>
+    <string name="version_information">Version %1$s • Build %2$d</string>
 </resources>

@@ -22,6 +22,9 @@ def hasReleaseSigning = [
     releaseKeyAlias,
     releaseKeyPassword,
 ].every { value -> value != null && !value.trim().isEmpty() }
+def debugApplicationIdSuffix = providers
+    .gradleProperty('GRAYJOY_DEBUG_APPLICATION_ID_SUFFIX')
+    .getOrNull()
 
 android {
     namespace 'com.futo.platformplayer.compose'
@@ -31,8 +34,8 @@ android {
         applicationId 'com.futo.platformplayer.compose'
         minSdk 28
         targetSdk 36
-        versionCode 908
-        versionName '0.9.8'
+        versionCode 909
+        versionName '0.9.9'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
@@ -51,6 +54,9 @@ android {
     buildTypes {
         debug {
             minifyEnabled false
+            if (debugApplicationIdSuffix != null && !debugApplicationIdSuffix.trim().isEmpty()) {
+                applicationIdSuffix debugApplicationIdSuffix
+            }
             // GitHub Actions is ephemeral, so its default ~/.android/debug.keystore changes on
             // every run and makes one tagged debug APK unable to update another. CI already
             // supplies the persistent Grayjoy signing identity; use it for published debug APKs

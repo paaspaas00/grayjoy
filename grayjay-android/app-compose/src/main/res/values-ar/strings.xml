@@ -499,4 +499,9 @@
     <string name="remove_playlists_title">هل تريد حذف قوائم التشغيل المحددة؟</string>
     <string name="remove_playlists_body">سيتم حذف قوائم التشغيل المحددة. ستبقى الفيديوهات المنزلة وسجل المشاهدة.</string>
     <string name="mini_player_audio">صوت</string>
+    <string name="link_not_supported_by_sources">لا يمكن لأي مصدر نشط فتح هذا الرابط.</string>
+    <string name="update_available">يتوفر تحديث لـ Grayjoy</string>
+    <string name="update_available_description">الإصدار %1$s متوفر على GitHub.</string>
+    <string name="open_release_page">فتح صفحة الإصدار</string>
+    <string name="version_information">الإصدار %1$s • البناء %2$d</string>
 </resources>

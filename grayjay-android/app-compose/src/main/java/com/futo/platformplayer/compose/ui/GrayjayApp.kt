@@ -127,6 +127,10 @@ import kotlin.math.roundToInt
 internal fun shouldCoverAppChromeDuringOrientationHandoff(windowOrientation: Int): Boolean =
     windowOrientation == Configuration.ORIENTATION_LANDSCAPE
 
+// Private GitHub repositories do not expose release metadata to unauthenticated app clients.
+// Keep the complete banner/check path dormant until the repository is made public.
+internal const val RELEASE_UPDATE_CHECK_ENABLED = false
+
 internal fun hasNowPlayingDownload(download: DownloadUiModel?): Boolean {
     if (download == null) return false
     if (download.completedMediaTypes.isEmpty()) {
@@ -166,11 +170,13 @@ private data class PlaybackPresentation(
     val nowPlaying: NowPlayingUiState,
     val channelDetail: ChannelDetailUiState,
     val remotePlaylistDetail: RemotePlaylistDetailUiState,
+    val availableUpdate: ReleaseUpdateUiModel?,
     val channels: List<ChannelUiModel>,
     val player: Player,
     val state: PlaybackUiState,
     val followedCreatorIds: Set<String>,
     val downloads: Map<String, DownloadUiModel>,
+    val activePlaylistDownloads: Set<PlaylistDownloadBatchUiModel>,
     val isPlaying: Boolean,
     val queueSize: Int,
     val transitionProgress: Float,
@@ -201,6 +207,7 @@ private data class PlaybackPresentation(
     val onPlayRemotePlaylist: () -> Unit,
     val onPlayRemotePlaylistFrom: (String) -> Unit,
     val onDownloadRemotePlaylist: (DownloadMediaType) -> Unit,
+    val onCancelDownloadRemotePlaylist: (DownloadMediaType) -> Unit,
     val onCreateLocalPlaylistFromRemote: (String) -> Unit,
     val onLoadMoreRecommendations: () -> Unit,
     val onLoadMoreComments: () -> Unit,
@@ -215,6 +222,7 @@ private data class PlaybackPresentation(
     val onDownloadAudio: (String, Int?) -> Unit,
     val onDownloadVideos: (List<String>, DownloadMediaType) -> Unit,
     val onDownloadPlaylist: (String, DownloadMediaType) -> Unit,
+    val onCancelDownloadPlaylist: (String, DownloadMediaType) -> Unit,
     val onVideoLongClick: (VideoUiModel) -> Unit,
     val onAddSelectionToPlaylist: (List<String>) -> Unit,
     val onRemoveSelectionFromHistory: (List<String>) -> Unit,
@@ -314,6 +322,7 @@ fun GrayjayApp(
     onDownloadAudio: (String, Int?) -> Unit,
     onDownloadVideos: (List<String>, DownloadMediaType) -> Unit,
     onDownloadPlaylist: (String, DownloadMediaType) -> Unit,
+    onCancelDownloadPlaylist: (String, DownloadMediaType) -> Unit = { _, _ -> },
     onCreatePlaylist: (String, List<String>) -> Unit,
     onRenamePlaylist: (String, String) -> Unit,
     onAddVideosToPlaylist: (String, List<String>) -> Unit,
@@ -341,6 +350,7 @@ fun GrayjayApp(
     onPlayRemotePlaylist: () -> Unit = {},
     onPlayRemotePlaylistFrom: (String) -> Unit = {},
     onDownloadRemotePlaylist: (DownloadMediaType) -> Unit = {},
+    onCancelDownloadRemotePlaylist: (DownloadMediaType) -> Unit = {},
     onCreateLocalPlaylistFromRemote: (String) -> Unit = {},
     onLoadMoreRecommendations: () -> Unit = {},
     onLoadMoreComments: () -> Unit = {},
@@ -370,6 +380,8 @@ fun GrayjayApp(
     onDisconnectChromecast: () -> Unit = {},
     onOtherAudioDuckingChange: (Boolean) -> Unit = {},
     onOtherAudioDuckVolumeChange: (Int) -> Unit = {},
+    onExternalNavigationHandled: (Long) -> Unit = {},
+    onCheckForUpdates: () -> Unit = {},
     deviceIsLandscape: Boolean = false,
     pictureInPictureMode: Boolean = false,
     onFullscreenPresentationChanged: (Boolean, Boolean) -> Unit = { _, _ -> },
@@ -466,6 +478,35 @@ fun GrayjayApp(
         selectedVideoId = null
         playerTransitionProgress = 1f
     }
+    LaunchedEffect(uiState.externalNavigation?.requestId) {
+        val request = uiState.externalNavigation ?: return@LaunchedEffect
+        when (request.kind) {
+            ExternalNavigationKind.Video -> {
+                selectedVideoId = request.contentId
+                selectedChannelId = null
+                selectedPlaylistId = null
+                settlePlayer(0f, request.contentId)
+            }
+            ExternalNavigationKind.Channel -> {
+                selectedChannelId = request.contentId
+                selectedVideoId = null
+                selectedPlaylistId = null
+                playerTransitionProgress = 1f
+            }
+            ExternalNavigationKind.Playlist -> {
+                selectedPlaylistId = request.contentId
+                selectedVideoId = null
+                selectedChannelId = null
+                playerTransitionProgress = 1f
+            }
+        }
+        onExternalNavigationHandled(request.requestId)
+    }
+    LaunchedEffect(selected) {
+        if (RELEASE_UPDATE_CHECK_ENABLED && selected == GrayjayDestination.Settings) {
+            onCheckForUpdates()
+        }
+    }
     val onNavigateBack: () -> Unit = {
         if (selectedVideoId != null) {
             settlePlayer(1f, selectedVideoId)
@@ -497,11 +538,13 @@ fun GrayjayApp(
         nowPlaying = uiState.nowPlaying,
         channelDetail = uiState.channelDetail,
         remotePlaylistDetail = uiState.remotePlaylistDetail,
+        availableUpdate = uiState.availableUpdate,
         channels = uiState.channels,
         player = player,
         state = uiState.playback,
         followedCreatorIds = uiState.followedCreatorIds,
         downloads = uiState.downloads,
+        activePlaylistDownloads = uiState.activePlaylistDownloads,
         isPlaying = uiState.playback.isPlaying,
         queueSize = uiState.playback.queueVideoIds.size,
         transitionProgress = playerTransitionProgress,
@@ -554,6 +597,7 @@ fun GrayjayApp(
             settlePlayer(0f, videoId)
         },
         onDownloadRemotePlaylist = onDownloadRemotePlaylist,
+        onCancelDownloadRemotePlaylist = onCancelDownloadRemotePlaylist,
         onCreateLocalPlaylistFromRemote = onCreateLocalPlaylistFromRemote,
         onLoadMoreRecommendations = onLoadMoreRecommendations,
         onLoadMoreComments = onLoadMoreComments,
@@ -590,6 +634,7 @@ fun GrayjayApp(
         onDownloadAudio = onDownloadAudio,
         onDownloadVideos = onDownloadVideos,
         onDownloadPlaylist = onDownloadPlaylist,
+        onCancelDownloadPlaylist = onCancelDownloadPlaylist,
         onVideoLongClick = onVideoLongClick,
         onAddSelectionToPlaylist = { playlistPickerVideoIds = it },
         onRemoveSelectionFromHistory = onRemoveVideosFromHistory,
@@ -1458,6 +1503,9 @@ private fun GrayjayScaffold(
                     playlist = animatedPlaylist,
                     videos = (videos + playback.libraryVideos).distinctBy(VideoUiModel::id),
                     downloads = playback.downloads,
+                    activeDownloadMediaTypes = playback.activePlaylistDownloads
+                        .filter { it.playlistId == animatedPlaylist.id }
+                        .mapTo(mutableSetOf()) { it.mediaType },
                     onVideoClick = onVideoClick,
                     onVideoLongClick = playback.onVideoLongClick,
                     onPlayAll = { playback.onPlayPlaylist(animatedPlaylist.id) },
@@ -1469,6 +1517,18 @@ private fun GrayjayScaffold(
                     },
                     onDownloadAllAsVideo = { ids ->
                         playback.onDownloadPlaylist(animatedPlaylist.id, DownloadMediaType.Video)
+                    },
+                    onCancelDownloadAllAsAudio = {
+                        playback.onCancelDownloadPlaylist(
+                            animatedPlaylist.id,
+                            DownloadMediaType.Audio,
+                        )
+                    },
+                    onCancelDownloadAllAsVideo = {
+                        playback.onCancelDownloadPlaylist(
+                            animatedPlaylist.id,
+                            DownloadMediaType.Video,
+                        )
                     },
                     onRename = { title ->
                         playback.onRenamePlaylist(animatedPlaylist.id, title)
@@ -1489,6 +1549,7 @@ private fun GrayjayScaffold(
                     onVideoLongClick = onRemotePlaylistVideoLongClick,
                     onPlayAll = playback.onPlayRemotePlaylist,
                     onDownloadAll = playback.onDownloadRemotePlaylist,
+                    onCancelDownloadAll = playback.onCancelDownloadRemotePlaylist,
                     onCreateLocalPlaylist = playback.onCreateLocalPlaylistFromRemote,
                     onLoadMore = playback.onLoadMoreRemotePlaylist,
                 )
@@ -1572,6 +1633,9 @@ private fun GrayjayScaffold(
                         onOtherAudioDuckingChange = playback.onOtherAudioDuckingChange,
                         otherAudioDuckVolumePercent = playback.otherAudioDuckVolumePercent,
                         onOtherAudioDuckVolumeChange = playback.onOtherAudioDuckVolumeChange,
+                        availableUpdate = playback.availableUpdate.takeIf {
+                            RELEASE_UPDATE_CHECK_ENABLED
+                        },
                     )
                     GrayjayDestination.Sources -> SourcesScreen(
                         sources = sourcePresentation.sources,

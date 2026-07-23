@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,6 +56,7 @@ fun RemotePlaylistDetailScreen(
     onVideoLongClick: (VideoUiModel) -> Unit,
     onPlayAll: () -> Unit,
     onDownloadAll: (DownloadMediaType) -> Unit,
+    onCancelDownloadAll: (DownloadMediaType) -> Unit = {},
     onCreateLocalPlaylist: (String) -> Unit,
     onLoadMore: () -> Unit,
 ) {
@@ -85,6 +87,8 @@ fun RemotePlaylistDetailScreen(
         downloads[it.id]?.isComplete(DownloadMediaType.Video) == true
     }
     val displayedVideoCount = playlist.videoCount.takeIf { it > 0 } ?: detail.videos.size
+    val audioBatchActive = DownloadMediaType.Audio in detail.activeDownloadMediaTypes
+    val videoBatchActive = DownloadMediaType.Video in detail.activeDownloadMediaTypes
 
     LazyColumn(
         state = listState,
@@ -113,26 +117,46 @@ fun RemotePlaylistDetailScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         OutlinedButton(
-                            onClick = { onDownloadAll(DownloadMediaType.Audio) },
-                            enabled = downloadableVideos.isNotEmpty() && !detail.isLoadingAll,
+                            onClick = {
+                                if (audioBatchActive) onCancelDownloadAll(DownloadMediaType.Audio)
+                                else onDownloadAll(DownloadMediaType.Audio)
+                            },
+                            enabled = audioBatchActive ||
+                                (downloadableVideos.isNotEmpty() && !detail.isLoadingAll),
                             modifier = Modifier.weight(1f).testTag("remote-playlist-download-audio"),
                         ) {
-                            Icon(Icons.Outlined.Download, contentDescription = null)
+                            Icon(
+                                if (audioBatchActive) Icons.Outlined.Close
+                                else Icons.Outlined.Download,
+                                contentDescription = null,
+                            )
                             Text(
-                                if (audioDownloaded > 0) {
+                                if (audioBatchActive) {
+                                    stringResource(R.string.cancel)
+                                } else if (audioDownloaded > 0) {
                                     "${stringResource(R.string.download_all_audio)} $audioDownloaded/${downloadableVideos.size}"
                                 } else stringResource(R.string.download_all_audio),
                                 maxLines = 1,
                             )
                         }
                         OutlinedButton(
-                            onClick = { onDownloadAll(DownloadMediaType.Video) },
-                            enabled = downloadableVideos.isNotEmpty() && !detail.isLoadingAll,
+                            onClick = {
+                                if (videoBatchActive) onCancelDownloadAll(DownloadMediaType.Video)
+                                else onDownloadAll(DownloadMediaType.Video)
+                            },
+                            enabled = videoBatchActive ||
+                                (downloadableVideos.isNotEmpty() && !detail.isLoadingAll),
                             modifier = Modifier.weight(1f).testTag("remote-playlist-download-video"),
                         ) {
-                            Icon(Icons.Outlined.Download, contentDescription = null)
+                            Icon(
+                                if (videoBatchActive) Icons.Outlined.Close
+                                else Icons.Outlined.Download,
+                                contentDescription = null,
+                            )
                             Text(
-                                if (videoDownloaded > 0) {
+                                if (videoBatchActive) {
+                                    stringResource(R.string.cancel)
+                                } else if (videoDownloaded > 0) {
                                     "${stringResource(R.string.download_all_video)} $videoDownloaded/${downloadableVideos.size}"
                                 } else stringResource(R.string.download_all_video),
                                 maxLines = 1,

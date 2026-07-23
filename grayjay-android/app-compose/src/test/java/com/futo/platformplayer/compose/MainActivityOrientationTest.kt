@@ -1,6 +1,7 @@
 package com.futo.platformplayer.compose
 
 import android.content.pm.ActivityInfo
+import android.content.Intent
 import android.view.OrientationEventListener
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadStatus
@@ -158,5 +159,24 @@ class MainActivityOrientationTest {
         )
 
         assertFalse(updateDownloadCompletionBatch(observed.pending, listOf(failed)).showCompletionToast)
+    }
+
+    @Test
+    fun `view and shared text intents extract a web content url`() {
+        val videoUrl = "https://www.youtube.com/watch?v=abc123"
+        assertEquals(
+            videoUrl,
+            externalContentUrl(Intent.ACTION_VIEW, videoUrl, null),
+        )
+        assertEquals(
+            videoUrl,
+            externalContentUrl(Intent.ACTION_SEND, null, "Watch this: $videoUrl"),
+        )
+    }
+
+    @Test
+    fun `non web intents do not become content links`() {
+        assertNull(externalContentUrl(Intent.ACTION_VIEW, "grayjay://plugin/example", null))
+        assertNull(externalContentUrl(Intent.ACTION_SEND, null, "No link here"))
     }
 }

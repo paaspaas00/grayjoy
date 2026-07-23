@@ -63,6 +63,17 @@ internal class GrayjoyOfflinePlaylistStore(context: Context) {
         save()
     }
 
+    @Synchronized
+    fun remove(
+        profileId: String,
+        playlistId: String,
+        mediaType: DownloadMediaType,
+    ): OfflinePlaylistDownload? {
+        val removed = records.remove(key(profileId, playlistId, mediaType)) ?: return null
+        save()
+        return removed
+    }
+
     /** Manual cancellation mirrors Grayjay's preventDownload list. */
     @Synchronized
     fun excludeVideo(profileId: String, videoId: String, mediaType: DownloadMediaType) {

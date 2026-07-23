@@ -499,4 +499,9 @@
     <string name="remove_playlists_title">删除所选播放列表？</string>
     <string name="remove_playlists_body">所选播放列表将被删除。已下载的视频和观看记录将保留。</string>
     <string name="mini_player_audio">音频</string>
+    <string name="link_not_supported_by_sources">没有启用的来源可以打开此链接。</string>
+    <string name="update_available">Grayjoy 有可用更新</string>
+    <string name="update_available_description">版本 %1$s 已在 GitHub 上发布。</string>
+    <string name="open_release_page">打开发布页面</string>
+    <string name="version_information">版本 %1$s • 构建 %2$d</string>
 </resources>

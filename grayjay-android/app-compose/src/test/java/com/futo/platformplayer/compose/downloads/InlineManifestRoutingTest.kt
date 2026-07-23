@@ -48,4 +48,28 @@ class InlineManifestRoutingTest {
             ),
         )
     }
+
+    @Test
+    fun refreshedSignedUrlKeepsStableCacheIdentity() {
+        assertEquals(
+            "https://media.example/video/representation",
+            stableCacheResourceUri(
+                "https://media.example/video/representation?expire=1&signature=old",
+            ),
+        )
+        assertEquals(
+            stableCacheResourceUri("https://media.example/video?id=1&signature=old"),
+            stableCacheResourceUri("https://media.example/video?signature=new&id=1"),
+        )
+    }
+
+    @Test
+    fun stableCacheIdentityPreservesInlineManifestFragment() {
+        assertEquals(
+            "https://media.example/video#grayjoy-inline-manifest-request-id",
+            stableCacheResourceUri(
+                "https://media.example/video?signature=old#grayjoy-inline-manifest-request-id",
+            ),
+        )
+    }
 }

@@ -499,4 +499,9 @@
     <string name="remove_playlists_title">選択した再生リストを削除しますか？</string>
     <string name="remove_playlists_body">選択した再生リストを削除します。ダウンロード済み動画と再生履歴は保持されます。</string>
     <string name="mini_player_audio">音声</string>
+    <string name="link_not_supported_by_sources">このリンクを開ける有効なソースがありません。</string>
+    <string name="update_available">Grayjoy のアップデートがあります</string>
+    <string name="update_available_description">バージョン %1$s が GitHub で公開されています。</string>
+    <string name="open_release_page">リリースページを開く</string>
+    <string name="version_information">バージョン %1$s • ビルド %2$d</string>
 </resources>

@@ -34,6 +34,7 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:exported="true"
+            android:launchMode="singleTask"
             android:resizeableActivity="true"
             android:screenOrientation="portrait"
             android:supportsPictureInPicture="true">
@@ -52,6 +53,49 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="vfuto" />
+            </intent-filter>
+            <!-- Keep this list aligned with the stable legacy Grayjay link handlers. Android
+                 cannot register plugin URL matchers dynamically, so installed third-party
+                 sources remain available through the text/plain share target below. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="youtu.be" />
+                <data android:host="www.youtu.be" />
+                <data android:host="youtube.com" />
+                <data android:host="www.youtube.com" />
+                <data android:host="m.youtube.com" />
+                <data android:host="music.youtube.com" />
+                <data android:host="rumble.com" />
+                <data android:host="kick.com" />
+                <data android:host="nebula.tv" />
+                <data android:host="odysee.com" />
+                <data android:host="www.odysee.com" />
+                <data android:host="patreon.com" />
+                <data android:host="soundcloud.com" />
+                <data android:host="twitch.tv" />
+                <data android:host="www.twitch.tv" />
+                <data android:host="m.twitch.tv" />
+                <data android:host="bilibili.com" />
+                <data android:host="bilibili.tv" />
+                <data android:host="dailymotion.com" />
+                <data android:host="www.dailymotion.com" />
+                <data android:host="bitchute.com" />
+                <data android:host="www.bitchute.com" />
+                <data android:host="old.bitchute.com" />
+                <data android:host="open.spotify.com" />
+                <data android:host="b23.tv" />
+                <data android:pathPrefix="/" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

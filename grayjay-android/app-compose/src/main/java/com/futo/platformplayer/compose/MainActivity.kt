@@ -51,6 +51,7 @@ class MainActivity : FragmentActivity() {
     private val grayjayViewModel by viewModels<GrayjayViewModel>()
     private var pendingSourceUrl by mutableStateOf<String?>(null)
     private var pendingDatabaseImportUri by mutableStateOf<Uri?>(null)
+    private var pendingExternalContentUrl by mutableStateOf<String?>(null)
     private var deviceIsLandscape by mutableStateOf(false)
     private var pictureInPictureMode by mutableStateOf(false)
     private var pictureInPictureEntryPending = false
@@ -73,6 +74,7 @@ class MainActivity : FragmentActivity() {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         pendingSourceUrl = intent.pluginSourceUrlOrNull()
         pendingDatabaseImportUri = intent.databaseImportUriOrNull()
+        pendingExternalContentUrl = intent.externalContentUrlOrNull()
         enableEdgeToEdge()
         setContent {
             val viewModel = grayjayViewModel
@@ -136,6 +138,10 @@ class MainActivity : FragmentActivity() {
             LaunchedEffect(pendingDatabaseImportUri) {
                 pendingDatabaseImportUri?.let(viewModel::prepareDatabaseImport)
                 pendingDatabaseImportUri = null
+            }
+            LaunchedEffect(pendingExternalContentUrl) {
+                pendingExternalContentUrl?.let(viewModel::openExternalUrl)
+                pendingExternalContentUrl = null
             }
             val hasActiveDownloads = uiState.downloads.values.any { it.isActive }
             var pendingDownloadCompletionKeys by remember(uiState.activeProfileId) {
@@ -227,11 +233,13 @@ class MainActivity : FragmentActivity() {
                     onDownloadAudio = viewModel::downloadAudio,
                     onDownloadVideos = viewModel::downloadVideos,
                     onDownloadPlaylist = viewModel::downloadPlaylist,
+                    onCancelDownloadPlaylist = viewModel::cancelPlaylistDownload,
                     onLoadRemotePlaylist = viewModel::loadRemotePlaylist,
                     onLoadMoreRemotePlaylist = viewModel::loadMoreRemotePlaylist,
                     onPlayRemotePlaylist = viewModel::playRemotePlaylist,
                     onPlayRemotePlaylistFrom = viewModel::playRemotePlaylistFrom,
                     onDownloadRemotePlaylist = viewModel::downloadRemotePlaylist,
+                    onCancelDownloadRemotePlaylist = viewModel::cancelRemotePlaylistDownload,
                     onCreateLocalPlaylistFromRemote = viewModel::createLocalPlaylistFromRemote,
                     onCreatePlaylist = viewModel::createPlaylist,
                     onRenamePlaylist = viewModel::renamePlaylist,
@@ -307,6 +315,8 @@ class MainActivity : FragmentActivity() {
                     onDisconnectChromecast = viewModel::disconnectChromecast,
                     onOtherAudioDuckingChange = viewModel::setOtherAudioDuckingEnabled,
                     onOtherAudioDuckVolumeChange = viewModel::setOtherAudioDuckVolumePercent,
+                    onExternalNavigationHandled = viewModel::consumeExternalNavigation,
+                    onCheckForUpdates = viewModel::checkForUpdates,
                     pictureInPictureMode = pictureInPictureMode,
                 )
             }
@@ -379,8 +389,10 @@ class MainActivity : FragmentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         pendingSourceUrl = intent.pluginSourceUrlOrNull()
         pendingDatabaseImportUri = intent.databaseImportUriOrNull()
+        pendingExternalContentUrl = intent.externalContentUrlOrNull()
     }
 
     private val notificationPermissionPreferences by lazy {
@@ -595,6 +607,24 @@ private fun Intent.pluginSourceUrlOrNull(): String? = dataString?.takeIf { value
         value.startsWith("vfuto://", ignoreCase = true)
 }
 
+private fun Intent.externalContentUrlOrNull(): String? = externalContentUrl(
+    action = action,
+    dataString = dataString,
+    sharedText = getStringExtra(Intent.EXTRA_TEXT),
+)
+
+internal fun externalContentUrl(
+    action: String?,
+    dataString: String?,
+    sharedText: String?,
+): String? {
+    val candidate = when (action) {
+        Intent.ACTION_SEND -> sharedText
+        else -> dataString
+    }?.trim().orEmpty()
+    return WEB_URL_REGEX.find(candidate)?.value
+}
+
 @Suppress("DEPRECATION")
 private fun Intent.databaseImportUriOrNull(): Uri? = when (action) {
     Intent.ACTION_VIEW -> data?.takeIf { uri ->
@@ -603,3 +633,5 @@ private fun Intent.databaseImportUriOrNull(): Uri? = when (action) {
     Intent.ACTION_SEND -> getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
     else -> null
 }
+
+private val WEB_URL_REGEX = Regex("""https?://[^\s<>"']+""", RegexOption.IGNORE_CASE)

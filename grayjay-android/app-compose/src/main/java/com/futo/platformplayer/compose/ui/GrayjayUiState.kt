@@ -30,6 +30,7 @@ data class GrayjayUiState(
     val sourceTrustRequest: SourceTrustRequestUiModel? = null,
     val databaseImport: DatabaseImportUiState = DatabaseImportUiState(),
     val downloads: Map<String, DownloadUiModel> = emptyMap(),
+    val activePlaylistDownloads: Set<PlaylistDownloadBatchUiModel> = emptySet(),
     val subscriptionVideos: List<VideoUiModel> = emptyList(),
     val home: HomeUiState = HomeUiState(),
     val playback: PlaybackUiState = PlaybackUiState(),
@@ -38,6 +39,21 @@ data class GrayjayUiState(
     val remotePlaylistDetail: RemotePlaylistDetailUiState = RemotePlaylistDetailUiState(),
     val nowPlaying: NowPlayingUiState = NowPlayingUiState(),
     val chromecast: ChromecastUiState = ChromecastUiState(),
+    val externalNavigation: ExternalNavigationUiModel? = null,
+    val availableUpdate: ReleaseUpdateUiModel? = null,
+)
+
+enum class ExternalNavigationKind { Video, Channel, Playlist }
+
+data class ExternalNavigationUiModel(
+    val requestId: Long,
+    val kind: ExternalNavigationKind,
+    val contentId: String,
+)
+
+data class ReleaseUpdateUiModel(
+    val versionName: String,
+    val releaseUrl: String,
 )
 
 data class ChromecastDeviceUiModel(
@@ -73,6 +89,11 @@ enum class DownloadStatus {
 }
 
 enum class DownloadMediaType { Video, Audio }
+
+data class PlaylistDownloadBatchUiModel(
+    val playlistId: String,
+    val mediaType: DownloadMediaType,
+)
 
 data class DownloadUiModel(
     val profileId: String,
@@ -169,6 +190,7 @@ data class RemotePlaylistDetailUiState(
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
     val isLoadingAll: Boolean = false,
+    val activeDownloadMediaTypes: Set<DownloadMediaType> = emptySet(),
     val continuationId: String? = null,
     val hasMore: Boolean = false,
     val errorMessage: String? = null,

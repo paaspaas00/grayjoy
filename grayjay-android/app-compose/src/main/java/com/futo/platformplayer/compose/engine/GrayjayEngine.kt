@@ -58,6 +58,7 @@ import com.futo.platformplayer.backend.GrayjaySearchPlaylist
 import com.futo.platformplayer.backend.GrayjaySearchType
 import com.futo.platformplayer.backend.GrayjayStreamType
 import com.futo.platformplayer.backend.GrayjayPluginMetadata
+import com.futo.platformplayer.backend.GrayjayUrlKind
 import com.futo.platformplayer.backend.PluginEndpoint
 import com.futo.platformplayer.backend.formatRelativeDate
 import com.futo.platformplayer.compose.ui.ChannelUiModel
@@ -82,6 +83,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
+import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 
 data class SearchCorpus(
@@ -164,6 +166,14 @@ data class EnginePlaylistDetails(
     val hasMore: Boolean = false,
 )
 
+enum class EngineUrlKind { Video, Channel, Playlist }
+
+data class EngineUrlRoute(
+    val url: String,
+    val sourceId: String,
+    val kind: EngineUrlKind,
+)
+
 internal fun VideoUiModel.pluginContentUrlOrNull(): String? =
     contentUrl.takeIf(String::isWebUrl)
         ?: id.takeIf(String::isWebUrl)
@@ -214,6 +224,7 @@ interface GrayjayEngine {
     suspend fun loadChannelPage(channel: ChannelUiModel, tab: ChannelContentTab): EngineChannelPage
     suspend fun loadMoreChannel(continuationId: String): EngineChannelPage
     suspend fun loadPlaylist(playlist: PlaylistUiModel): EnginePlaylistDetails
+    suspend fun routeUrl(url: String, enabledSourceIds: Set<String>): EngineUrlRoute?
     suspend fun resolve(video: VideoUiModel): VideoUiModel
     suspend fun loadExtras(video: VideoUiModel): EngineVideoExtras
     suspend fun loadMoreRecommendations(continuationId: String): EngineVideoPage
@@ -684,6 +695,30 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             ?: error(appContext.getString(R.string.source_plugin_unavailable, playlist.sourceId))
         return pluginBackend.loadPlaylist(playlist.sourceId, playlist.id, endpoint)
             .toEnginePlaylistDetails(playlist, endpoint, appContext)
+    }
+
+    override suspend fun routeUrl(
+        url: String,
+        enabledSourceIds: Set<String>,
+    ): EngineUrlRoute? {
+        val preferredSourceId = sourceIdHintForUrl(url)
+        val orderedSourceIds = enabledSourceIds.sortedWith(
+            compareBy<String> { it != preferredSourceId }.thenBy { it },
+        )
+        val enabledEndpoints = linkedMapOf<String, PluginEndpoint>()
+        orderedSourceIds.forEach { sourceId ->
+            pluginEndpoints[sourceId]?.let { enabledEndpoints[sourceId] = it }
+        }
+        val route = pluginBackend.routeUrl(url, enabledEndpoints) ?: return null
+        return EngineUrlRoute(
+            url = url,
+            sourceId = route.sourceId,
+            kind = when (route.kind) {
+                GrayjayUrlKind.Video -> EngineUrlKind.Video
+                GrayjayUrlKind.Channel -> EngineUrlKind.Channel
+                GrayjayUrlKind.Playlist -> EngineUrlKind.Playlist
+            },
+        )
     }
 
     private fun GrayjayChannelPage.toEngineChannelPage(
@@ -1598,6 +1633,27 @@ private fun String.toSourceId(): String = lowercase()
 
 private fun String.toDisplayName(): String =
     split('-').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+
+internal fun sourceIdHintForUrl(url: String): String? {
+    val host = runCatching { URI.create(url).host?.lowercase() }.getOrNull().orEmpty()
+    return when {
+        host == "youtu.be" || host.endsWith(".youtube.com") || host == "youtube.com" -> "youtube"
+        host == "odysee.com" || host.endsWith(".odysee.com") -> "odysee"
+        host == "rumble.com" || host.endsWith(".rumble.com") -> "rumble"
+        host == "twitch.tv" || host.endsWith(".twitch.tv") -> "twitch"
+        host == "soundcloud.com" || host.endsWith(".soundcloud.com") -> "soundcloud"
+        host == "kick.com" || host.endsWith(".kick.com") -> "kick"
+        host == "nebula.tv" || host.endsWith(".nebula.tv") -> "nebula"
+        host == "bilibili.com" || host.endsWith(".bilibili.com") ||
+            host == "bilibili.tv" || host.endsWith(".bilibili.tv") ||
+            host == "b23.tv" -> "bilibili"
+        host == "dailymotion.com" || host.endsWith(".dailymotion.com") ||
+            host == "dai.ly" -> "dailymotion"
+        host == "bitchute.com" || host.endsWith(".bitchute.com") -> "bitchute"
+        host == "patreon.com" || host.endsWith(".patreon.com") -> "patreon"
+        else -> null
+    }
+}
 
 private fun sourceAccentColor(sourceId: String): Long =
     0xFF000000L or (sourceId.hashCode().toLong() and 0x00FFFFFFL)

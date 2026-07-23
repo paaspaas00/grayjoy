@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Reorder
@@ -66,12 +67,15 @@ fun PlaylistDetailScreen(
     playlist: PlaylistUiModel,
     videos: List<VideoUiModel>,
     downloads: Map<String, DownloadUiModel> = emptyMap(),
+    activeDownloadMediaTypes: Set<DownloadMediaType> = emptySet(),
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
     onPlayAll: () -> Unit,
     onPlayFromHere: (String) -> Unit = {},
     onDownloadAllAsAudio: (List<String>) -> Unit = {},
     onDownloadAllAsVideo: (List<String>) -> Unit = {},
+    onCancelDownloadAllAsAudio: () -> Unit = {},
+    onCancelDownloadAllAsVideo: () -> Unit = {},
     onRename: (String) -> Unit = {},
     onAddSelectionToPlaylist: (List<String>) -> Unit = {},
     onRemoveVideos: (List<String>) -> Unit = {},
@@ -90,6 +94,8 @@ fun PlaylistDetailScreen(
     val videoDownloadCount = downloadableIds.count {
         downloads[it]?.isComplete(DownloadMediaType.Video) == true
     }
+    val audioBatchActive = DownloadMediaType.Audio in activeDownloadMediaTypes
+    val videoBatchActive = DownloadMediaType.Video in activeDownloadMediaTypes
 
     fun leaveSelectionMode() {
         selectionMode = false
@@ -147,18 +153,28 @@ fun PlaylistDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             OutlinedButton(
-                                onClick = { onDownloadAllAsAudio(downloadableIds) },
-                                enabled = downloadableIds.isNotEmpty() && downloadableIds.any {
-                                    downloads[it]?.isComplete(DownloadMediaType.Audio) != true &&
-                                        downloads[it]?.isActive(DownloadMediaType.Audio) != true
+                                onClick = {
+                                    if (audioBatchActive) onCancelDownloadAllAsAudio()
+                                    else onDownloadAllAsAudio(downloadableIds)
                                 },
+                                enabled = audioBatchActive ||
+                                    (downloadableIds.isNotEmpty() && downloadableIds.any {
+                                        downloads[it]?.isComplete(DownloadMediaType.Audio) != true &&
+                                            downloads[it]?.isActive(DownloadMediaType.Audio) != true
+                                    }),
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("playlist-download-audio"),
                             ) {
-                                Icon(Icons.Outlined.Download, contentDescription = null)
+                                Icon(
+                                    if (audioBatchActive) Icons.Outlined.Close
+                                    else Icons.Outlined.Download,
+                                    contentDescription = null,
+                                )
                                 Text(
-                                    if (audioDownloadCount > 0) {
+                                    if (audioBatchActive) {
+                                        stringResource(R.string.cancel)
+                                    } else if (audioDownloadCount > 0) {
                                         "${stringResource(R.string.download_all_audio)} $audioDownloadCount/${downloadableIds.size}"
                                     } else {
                                         stringResource(R.string.download_all_audio)
@@ -167,18 +183,28 @@ fun PlaylistDetailScreen(
                                 )
                             }
                             OutlinedButton(
-                                onClick = { onDownloadAllAsVideo(downloadableIds) },
-                                enabled = downloadableIds.isNotEmpty() && downloadableIds.any {
-                                    downloads[it]?.isComplete(DownloadMediaType.Video) != true &&
-                                        downloads[it]?.isActive(DownloadMediaType.Video) != true
+                                onClick = {
+                                    if (videoBatchActive) onCancelDownloadAllAsVideo()
+                                    else onDownloadAllAsVideo(downloadableIds)
                                 },
+                                enabled = videoBatchActive ||
+                                    (downloadableIds.isNotEmpty() && downloadableIds.any {
+                                        downloads[it]?.isComplete(DownloadMediaType.Video) != true &&
+                                            downloads[it]?.isActive(DownloadMediaType.Video) != true
+                                    }),
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("playlist-download-video"),
                             ) {
-                                Icon(Icons.Outlined.Download, contentDescription = null)
+                                Icon(
+                                    if (videoBatchActive) Icons.Outlined.Close
+                                    else Icons.Outlined.Download,
+                                    contentDescription = null,
+                                )
                                 Text(
-                                    if (videoDownloadCount > 0) {
+                                    if (videoBatchActive) {
+                                        stringResource(R.string.cancel)
+                                    } else if (videoDownloadCount > 0) {
                                         "${stringResource(R.string.download_all_video)} $videoDownloadCount/${downloadableIds.size}"
                                     } else {
                                         stringResource(R.string.download_all_video)

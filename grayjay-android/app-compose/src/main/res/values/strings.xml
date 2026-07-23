@@ -529,4 +529,9 @@
     <string name="remove_playlists_title">Delete selected playlists?</string>
     <string name="remove_playlists_body">The selected playlists will be deleted. Downloaded videos and watch history will be kept.</string>
     <string name="mini_player_audio">Audio</string>
+    <string name="link_not_supported_by_sources">None of the active sources can open this link.</string>
+    <string name="update_available">Grayjoy update available</string>
+    <string name="update_available_description">Version %1$s is available on GitHub.</string>
+    <string name="open_release_page">Open release page</string>
+    <string name="version_information">Version %1$s • build %2$d</string>
 </resources>

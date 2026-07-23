@@ -32,18 +32,22 @@ import com.futo.platformplayer.compose.data.uniqueRemotePlaylistTitle
 import com.futo.platformplayer.compose.casting.ChromecastManager
 import com.futo.platformplayer.compose.engine.AndroidGrayjayEngine
 import com.futo.platformplayer.compose.engine.EnginePlaybackState
+import com.futo.platformplayer.compose.engine.EngineUrlKind
 import com.futo.platformplayer.compose.engine.GrayjayEngine
 import com.futo.platformplayer.compose.engine.SearchCorpus
 import com.futo.platformplayer.compose.downloads.GrayjoyDownloadStore
 import com.futo.platformplayer.compose.downloads.GrayjoyDownloadExporter
 import com.futo.platformplayer.compose.downloads.GrayjoyDownloadQueue
 import com.futo.platformplayer.compose.downloads.GrayjoyOfflinePlaylistStore
+import com.futo.platformplayer.compose.downloads.OfflinePlaylistDownload
 import com.futo.platformplayer.compose.downloads.QueuedDownload
 import com.futo.platformplayer.compose.downloads.NetworkMonitor
 import com.futo.platformplayer.compose.downloads.isRecoverableConnectivityFailure
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
+import com.futo.platformplayer.compose.ui.ExternalNavigationKind
+import com.futo.platformplayer.compose.ui.ExternalNavigationUiModel
 import com.futo.platformplayer.compose.ui.GrayjayUiState
 import com.futo.platformplayer.compose.ui.DatabaseImportPreviewUiModel
 import com.futo.platformplayer.compose.ui.DatabaseImportSelection
@@ -58,7 +62,9 @@ import com.futo.platformplayer.compose.ui.HomeFeedType
 import com.futo.platformplayer.compose.ui.HomeUiState
 import com.futo.platformplayer.compose.ui.NowPlayingUiState
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
+import com.futo.platformplayer.compose.ui.PlaylistDownloadBatchUiModel
 import com.futo.platformplayer.compose.ui.RemotePlaylistDetailUiState
+import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
 import com.futo.platformplayer.compose.ui.PlaybackUiState
 import com.futo.platformplayer.compose.ui.SearchUiState
 import com.futo.platformplayer.compose.ui.SearchContentType
@@ -69,6 +75,7 @@ import com.futo.platformplayer.compose.ui.ThemeMode
 import com.futo.platformplayer.backend.GrayjaySignatureMismatchException
 import com.futo.platformplayer.engine.exceptions.ScriptLoginRequiredException
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.update.GitHubReleaseChecker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -127,6 +134,32 @@ internal fun <K> MutableMap<K, Job>.cancelAndClearJobs() {
 internal fun playlistQueueFrom(videoIds: List<String>, selectedVideoId: String): List<String> {
     val selectedIndex = videoIds.indexOf(selectedVideoId)
     return if (selectedIndex >= 0) videoIds.drop(selectedIndex) else emptyList()
+}
+
+internal fun activePlaylistDownloadBatches(
+    descriptors: List<OfflinePlaylistDownload>,
+    downloads: Map<String, DownloadUiModel>,
+): Set<PlaylistDownloadBatchUiModel> = descriptors.mapNotNullTo(mutableSetOf()) { descriptor ->
+    PlaylistDownloadBatchUiModel(descriptor.playlistId, descriptor.mediaType).takeIf {
+        (descriptor.managedVideoIds - descriptor.excludedVideoIds).any { videoId ->
+            downloads[videoId]?.isComplete(descriptor.mediaType) != true
+        }
+    }
+}
+
+internal fun pendingPlaylistCancellationIds(
+    cancelled: OfflinePlaylistDownload,
+    remainingDescriptors: List<OfflinePlaylistDownload>,
+    downloads: Map<String, DownloadUiModel>,
+): Set<String> {
+    val stillOwned = remainingDescriptors
+        .filter { it.mediaType == cancelled.mediaType }
+        .flatMapTo(mutableSetOf()) { it.managedVideoIds - it.excludedVideoIds }
+    return (cancelled.managedVideoIds - cancelled.excludedVideoIds)
+        .filterTo(mutableSetOf()) { videoId ->
+            downloads[videoId]?.isComplete(cancelled.mediaType) != true &&
+                videoId !in stillOwned
+        }
 }
 
 internal fun preparedQueueItemsAhead(
@@ -257,6 +290,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val downloadQueue = GrayjoyDownloadQueue(application)
     private val networkMonitor = NetworkMonitor(application)
     private val offlinePlaylistStore = GrayjoyOfflinePlaylistStore(application)
+    private val releaseChecker = GitHubReleaseChecker()
     private val baseEngineSources = engine.sources(content.sources)
     private var engineSources = (
         baseEngineSources + sourceRepository.loadCustomSources()
@@ -290,6 +324,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var offlinePlaylistSyncJob: Job? = null
     private var queuePreparationJob: Job? = null
     private var watchProgressWriteJob: Job? = null
+    private var externalUrlJob: Job? = null
+    private var releaseCheckJob: Job? = null
     private val historyWriteJobs = mutableMapOf<String, Job>()
     private var homeLoadGeneration = 0L
     private var playbackGeneration = 0L
@@ -297,6 +333,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var pendingPlaybackVideoId: String? = null
     private var activePlaylistId: String? = null
     private var appIsForeground = false
+    private var externalNavigationRequestId = 0L
     private var suppressChromecastHandoff = false
     private var resumeLocalAfterFailedCast = false
     private val downloadJobs = mutableMapOf<String, Job>()
@@ -821,6 +858,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         searchJob?.cancel()
         searchPagingJob?.cancel()
         suggestionJob?.cancel()
+        externalUrlJob?.cancel()
         downloadJobs.cancelAndClearJobs()
         downloadQueueRestoreJob?.cancel()
         offlinePlaylistSyncJob?.cancel()
@@ -916,6 +954,123 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun setAppForeground(foreground: Boolean) {
         appIsForeground = foreground
         if (foreground) syncDownloadState()
+    }
+
+    fun openExternalUrl(url: String) {
+        val normalizedUrl = url.trim()
+        if (
+            !normalizedUrl.startsWith("https://", ignoreCase = true) &&
+            !normalizedUrl.startsWith("http://", ignoreCase = true)
+        ) return
+        externalUrlJob?.cancel()
+        externalUrlJob = viewModelScope.launch {
+            try {
+                val route = engine.routeUrl(normalizedUrl, enabledSourceIds)
+                    ?: error(text(R.string.link_not_supported_by_sources))
+                val source = _uiState.value.sources.firstOrNull { it.id == route.sourceId }
+                val sourceName = source?.name
+                    ?: route.sourceId.replaceFirstChar(Char::uppercase)
+                when (route.kind) {
+                    EngineUrlKind.Video -> {
+                        val video = VideoUiModel(
+                            id = route.url,
+                            title = externalContentLabel(route.url),
+                            creator = sourceName,
+                            metadata = "",
+                            duration = "",
+                            sourceId = route.sourceId,
+                            contentUrl = route.url,
+                            shareUrl = route.url,
+                            sourceName = sourceName,
+                            sourceIconUrl = source?.iconUrl.orEmpty(),
+                        )
+                        remoteVideos[video.id] = video
+                        openVideo(video.id)
+                        publishExternalNavigation(ExternalNavigationKind.Video, video.id)
+                    }
+                    EngineUrlKind.Channel -> {
+                        val channel = ChannelUiModel(
+                            id = route.url,
+                            name = externalContentLabel(route.url),
+                            sourceId = route.sourceId,
+                            source = sourceName,
+                            unreadCount = 0,
+                            followerCount = text(R.string.creator),
+                            description = "",
+                        )
+                        loadChannel(channel)
+                        publishExternalNavigation(ExternalNavigationKind.Channel, channel.id)
+                    }
+                    EngineUrlKind.Playlist -> {
+                        val playlist = PlaylistUiModel(
+                            id = route.url,
+                            title = externalContentLabel(route.url),
+                            description = "",
+                            videoIds = emptyList(),
+                            sourceId = route.sourceId,
+                        )
+                        loadRemotePlaylist(playlist)
+                        publishExternalNavigation(ExternalNavigationKind.Playlist, playlist.id)
+                    }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.e("GrayjayViewModel", "Opening external URL failed: $normalizedUrl", error)
+                Toast.makeText(
+                    getApplication(),
+                    error.localizedMessage ?: text(R.string.link_not_supported_by_sources),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+
+    fun consumeExternalNavigation(requestId: Long) {
+        _uiState.update { state ->
+            if (state.externalNavigation?.requestId == requestId) {
+                state.copy(externalNavigation = null)
+            } else state
+        }
+    }
+
+    fun checkForUpdates() {
+        if (releaseCheckJob?.isActive == true) return
+        releaseCheckJob = viewModelScope.launch {
+            try {
+                val release = withContext(Dispatchers.IO) {
+                    releaseChecker.latestUpdate(
+                        currentVersionName = BuildConfig.VERSION_NAME,
+                    )
+                }
+                val availableUpdate = release?.let {
+                    ReleaseUpdateUiModel(
+                        versionName = it.versionName,
+                        releaseUrl = it.releaseUrl,
+                    )
+                }
+                _uiState.update { it.copy(availableUpdate = availableUpdate) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                // Prefs must remain instant and usable offline. A failed background check is
+                // intentionally silent; entering Prefs later retries it.
+                Log.d("GrayjayViewModel", "Could not check GitHub releases.", error)
+            }
+        }
+    }
+
+    private fun publishExternalNavigation(kind: ExternalNavigationKind, contentId: String) {
+        externalNavigationRequestId += 1L
+        _uiState.update {
+            it.copy(
+                externalNavigation = ExternalNavigationUiModel(
+                    requestId = externalNavigationRequestId,
+                    kind = kind,
+                    contentId = contentId,
+                ),
+            )
+        }
     }
 
     fun reloadSourceAuthentication(sourceId: String) {
@@ -1776,6 +1931,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val playlist = _uiState.value.remotePlaylistDetail.playlist ?: return
         if (_uiState.value.remotePlaylistDetail.isLoadingAll) return
         remotePlaylistPagingJob?.cancel()
+        _uiState.update {
+            it.copy(
+                remotePlaylistDetail = it.remotePlaylistDetail.copy(
+                    activeDownloadMediaTypes =
+                        it.remotePlaylistDetail.activeDownloadMediaTypes + mediaType,
+                ),
+            )
+        }
         remotePlaylistJob = viewModelScope.launch {
             _uiState.update {
                 it.copy(remotePlaylistDetail = it.remotePlaylistDetail.copy(isLoadingAll = true))
@@ -1799,6 +1962,33 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
+    }
+
+    fun cancelRemotePlaylistDownload(mediaType: DownloadMediaType) {
+        val detail = _uiState.value.remotePlaylistDetail
+        if (mediaType !in detail.activeDownloadMediaTypes) return
+        if (detail.isLoadingAll) remotePlaylistJob?.cancel()
+        _uiState.update {
+            it.copy(
+                remotePlaylistDetail = it.remotePlaylistDetail.copy(
+                    isLoadingAll = false,
+                    activeDownloadMediaTypes =
+                        it.remotePlaylistDetail.activeDownloadMediaTypes - mediaType,
+                ),
+            )
+        }
+        val locallyOwned = offlinePlaylistStore.all(activeProfileId)
+            .filter { it.mediaType == mediaType }
+            .flatMapTo(mutableSetOf()) { it.managedVideoIds - it.excludedVideoIds }
+        detail.videos
+            .asSequence()
+            .filterNot(VideoUiModel::isLive)
+            .filterNot { video ->
+                _uiState.value.downloads[video.id]?.isComplete(mediaType) == true
+            }
+            .filterNot { it.id in locallyOwned }
+            .forEach { performDownloadRemoval(it.id, mediaType) }
+        syncDownloadState()
     }
 
     fun playRemotePlaylist() {
@@ -2353,7 +2543,21 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 mediaType == DownloadMediaType.Video && it > 0
             },
         )
+        syncDownloadState()
         downloadVideos(downloadableIds, mediaType)
+    }
+
+    fun cancelPlaylistDownload(playlistId: String, mediaType: DownloadMediaType) {
+        val cancelled = offlinePlaylistStore.remove(activeProfileId, playlistId, mediaType)
+            ?: return
+        pendingPlaylistCancellationIds(
+            cancelled = cancelled,
+            remainingDescriptors = offlinePlaylistStore.all(activeProfileId),
+            downloads = _uiState.value.downloads,
+        )
+            .asSequence()
+            .forEach { videoId -> performDownloadRemoval(videoId, mediaType) }
+        syncDownloadState()
     }
 
     private fun scheduleOfflinePlaylistSync() {
@@ -2425,7 +2629,47 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         downloadQueueRestoreJob = viewModelScope.launch {
             while (!downloadStore.isInitialized()) delay(100L)
             if (profileAtStart != activeProfileId) return@launch
-            downloadQueue.all(profileAtStart).forEach { queued ->
+            val recoveryCandidates = downloadStore.recoveryCandidates(profileAtStart)
+            val recoveryKeys = recoveryCandidates
+                .mapTo(mutableSetOf()) { it.videoId to it.mediaType }
+            val persistedQueue = downloadQueue.all(profileAtStart)
+                .associateBy { it.videoId to it.mediaType }
+
+            // Media3 persists the request and partial cache, but a plugin's JS transport lives only
+            // in memory. Re-resolve those requests after every process/device restart and replace
+            // the same deterministic request IDs so completed parts and cached ranges survive.
+            recoveryCandidates.forEach { candidate ->
+                val video = findVideo(candidate.videoId) ?: return@forEach
+                val queued = persistedQueue[candidate.videoId to candidate.mediaType]
+                    ?: QueuedDownload(
+                        profileId = profileAtStart,
+                        videoId = candidate.videoId,
+                        mediaType = candidate.mediaType,
+                        status = DownloadStatus.Queued,
+                        createdAtMs = candidate.preparedAtMs?.takeIf { it > 0L }
+                            ?: System.currentTimeMillis(),
+                        targetVideoHeight = candidate.targetVideoHeight,
+                        targetAudioBitrate = candidate.targetAudioBitrate,
+                    ).also(downloadQueue::put)
+                downloadPreparationStates[
+                    downloadJobKey(profileAtStart, queued.videoId, queued.mediaType)
+                ] = candidate.copy(
+                    status = DownloadStatus.Queued,
+                    errorMessage = null,
+                    activeMediaTypes = setOf(queued.mediaType),
+                    failedMediaTypes = candidate.failedMediaTypes - queued.mediaType,
+                )
+                syncDownloadState()
+                startDownload(
+                    videoId = video.id,
+                    mediaType = queued.mediaType,
+                    replaceExisting = false,
+                    restored = queued,
+                )
+            }
+
+            persistedQueue.values.forEach { queued ->
+                if (queued.videoId to queued.mediaType in recoveryKeys) return@forEach
                 if (downloadStore.hasDownloadRecord(
                         profileAtStart,
                         queued.videoId,
@@ -3731,9 +3975,35 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     } ?: pending
                 }
         }
+        val activePlaylistDownloads = activePlaylistDownloadBatches(
+            descriptors = offlinePlaylistStore.all(activeProfileId),
+            downloads = visibleDownloads,
+        )
         _uiState.update { state ->
-            if (state.downloads == visibleDownloads) state
-            else state.copy(downloads = visibleDownloads)
+            val remoteDownloadTypes = if (state.remotePlaylistDetail.isLoadingAll) {
+                state.remotePlaylistDetail.activeDownloadMediaTypes
+            } else {
+                state.remotePlaylistDetail.activeDownloadMediaTypes.filterTo(mutableSetOf()) { type ->
+                    state.remotePlaylistDetail.videos
+                        .filterNot(VideoUiModel::isLive)
+                        .any { video -> visibleDownloads[video.id]?.isComplete(type) != true }
+                }
+            }
+            if (
+                state.downloads == visibleDownloads &&
+                state.activePlaylistDownloads == activePlaylistDownloads &&
+                state.remotePlaylistDetail.activeDownloadMediaTypes == remoteDownloadTypes
+            ) {
+                state
+            } else {
+                state.copy(
+                    downloads = visibleDownloads,
+                    activePlaylistDownloads = activePlaylistDownloads,
+                    remotePlaylistDetail = state.remotePlaylistDetail.copy(
+                        activeDownloadMediaTypes = remoteDownloadTypes,
+                    ),
+                )
+            }
         }
 
         if (!downloadStore.isInitialized()) return
@@ -3778,17 +4048,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             activeMediaTypes = setOf(download.mediaType),
             failedMediaTypes = download.failedMediaTypes - download.mediaType,
         )
-        viewModelScope.launch {
-            downloadStore.remove(profileAtStart, download.videoId, download.mediaType)
-            delay(750)
-            if (profileAtStart == activeProfileId) {
-                startDownload(
-                    videoId = download.videoId,
-                    mediaType = download.mediaType,
-                    targetVideoHeight = download.targetVideoHeight,
-                    targetAudioBitrate = download.targetAudioBitrate,
-                )
-            }
+        if (profileAtStart == activeProfileId) {
+            startDownload(
+                videoId = download.videoId,
+                mediaType = download.mediaType,
+                targetVideoHeight = download.targetVideoHeight,
+                targetAudioBitrate = download.targetAudioBitrate,
+            )
         }
     }
 
@@ -4049,6 +4315,14 @@ private fun inferImportedSourceId(url: String): String = when {
     "bitchute.com" in url -> "bitchute"
     else -> "youtube"
 }
+
+internal fun externalContentLabel(url: String): String =
+    runCatching {
+        Uri.parse(url).lastPathSegment
+            ?.let(Uri::decode)
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+    }.getOrNull() ?: url
 
 private const val DOWNLOAD_PREPARATION_TTL_MS = 15L * 60L * 1_000L
 private const val MAX_GRAYJAY_IMPORT_BYTES = 128 * 1024 * 1024

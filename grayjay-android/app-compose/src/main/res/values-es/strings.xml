@@ -499,4 +499,9 @@
     <string name="remove_playlists_title">¿Eliminar las listas de reproducción seleccionadas?</string>
     <string name="remove_playlists_body">Se eliminarán las listas seleccionadas. Los vídeos descargados y el historial se conservarán.</string>
     <string name="mini_player_audio">Audio</string>
+    <string name="link_not_supported_by_sources">Ninguna fuente activa puede abrir este enlace.</string>
+    <string name="update_available">Actualización de Grayjoy disponible</string>
+    <string name="update_available_description">La versión %1$s está disponible en GitHub.</string>
+    <string name="open_release_page">Abrir página de la versión</string>
+    <string name="version_information">Versión %1$s • compilación %2$d</string>
 </resources>

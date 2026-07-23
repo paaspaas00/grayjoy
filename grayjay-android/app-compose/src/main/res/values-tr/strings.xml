@@ -499,4 +499,9 @@
     <string name="remove_playlists_title">Seçili oynatma listeleri silinsin mi?</string>
     <string name="remove_playlists_body">Seçili oynatma listeleri silinecek. İndirilen videolar ve izleme geçmişi korunacak.</string>
     <string name="mini_player_audio">Ses</string>
+    <string name="link_not_supported_by_sources">Etkin kaynakların hiçbiri bu bağlantıyı açamıyor.</string>
+    <string name="update_available">Grayjoy güncellemesi mevcut</string>
+    <string name="update_available_description">%1$s sürümü GitHub üzerinde mevcut.</string>
+    <string name="open_release_page">Sürüm sayfasını aç</string>
+    <string name="version_information">Sürüm %1$s • derleme %2$d</string>
 </resources>

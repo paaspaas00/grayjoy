@@ -499,4 +499,9 @@
     <string name="remove_playlists_title">Удалить выбранные плейлисты?</string>
     <string name="remove_playlists_body">Выбранные плейлисты будут удалены. Загруженные видео и история просмотров сохранятся.</string>
     <string name="mini_player_audio">Аудио</string>
+    <string name="link_not_supported_by_sources">Ни один активный источник не может открыть эту ссылку.</string>
+    <string name="update_available">Доступно обновление Grayjoy</string>
+    <string name="update_available_description">Версия %1$s доступна на GitHub.</string>
+    <string name="open_release_page">Открыть страницу выпуска</string>
+    <string name="version_information">Версия %1$s • сборка %2$d</string>
 </resources>

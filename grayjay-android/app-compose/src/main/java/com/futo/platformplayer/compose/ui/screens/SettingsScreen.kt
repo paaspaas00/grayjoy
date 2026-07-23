@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.ClosedCaption
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.PictureInPicture
 import androidx.compose.material.icons.outlined.Recommend
 import androidx.compose.material.icons.outlined.ScreenLockPortrait
@@ -27,6 +28,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -42,10 +45,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.BuildConfig
+import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
 import com.futo.platformplayer.compose.ui.ThemeMode
 
 @Composable
@@ -80,7 +86,9 @@ fun SettingsScreen(
     onOtherAudioDuckingChange: (Boolean) -> Unit,
     otherAudioDuckVolumePercent: Int,
     onOtherAudioDuckVolumeChange: (Int) -> Unit,
+    availableUpdate: ReleaseUpdateUiModel? = null,
 ) {
+    val uriHandler = LocalUriHandler.current
     var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
     var showQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
@@ -98,6 +106,52 @@ fun SettingsScreen(
                     stringResource(R.string.settings_description),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+        availableUpdate?.let { update ->
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("update-available-banner"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.NewReleases, contentDescription = null)
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    stringResource(R.string.update_available),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    stringResource(
+                                        R.string.update_available_description,
+                                        update.versionName,
+                                    ),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            }
+                        }
+                        FilledTonalButton(
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .testTag("download-update"),
+                            onClick = { uriHandler.openUri(update.releaseUrl) },
+                        ) {
+                            Text(stringResource(R.string.open_release_page))
+                        }
+                    }
+                }
             }
         }
         item {
@@ -282,6 +336,30 @@ fun SettingsScreen(
                     icon = Icons.Outlined.FileUpload,
                     onClick = onImportNewPipeDatabase,
                     testTag = "import-newpipe-database",
+                )
+            }
+        }
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp)
+                    .testTag("version-information"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    stringResource(
+                        R.string.version_information,
+                        BuildConfig.VERSION_NAME,
+                        BuildConfig.VERSION_CODE,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
         }

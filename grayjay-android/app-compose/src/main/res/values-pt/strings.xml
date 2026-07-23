@@ -499,4 +499,9 @@
     <string name="remove_playlists_title">Eliminar as playlists selecionadas?</string>
     <string name="remove_playlists_body">As playlists selecionadas serão eliminadas. Os vídeos transferidos e o histórico serão mantidos.</string>
     <string name="mini_player_audio">Áudio</string>
+    <string name="link_not_supported_by_sources">Nenhuma fonte ativa consegue abrir este link.</string>
+    <string name="update_available">Atualização do Grayjoy disponível</string>
+    <string name="update_available_description">A versão %1$s está disponível no GitHub.</string>
+    <string name="open_release_page">Abrir página da versão</string>
+    <string name="version_information">Versão %1$s • compilação %2$d</string>
 </resources>

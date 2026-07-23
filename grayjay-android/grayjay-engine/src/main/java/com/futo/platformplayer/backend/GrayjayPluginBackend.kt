@@ -148,6 +148,14 @@ data class GrayjayVideoPage(
 
 enum class GrayjaySearchType { Videos, Creators, Playlists }
 
+enum class GrayjayUrlKind { Video, Channel, Playlist }
+
+data class GrayjayUrlRoute(
+    val sourceId: String,
+    val pluginId: String,
+    val kind: GrayjayUrlKind,
+)
+
 data class GrayjayPlaybackSource(
     val contentUrl: String,
     val shareUrl: String,
@@ -780,6 +788,35 @@ class GrayjayPluginBackend(context: Context) {
             continuationId = page.continuationId,
             hasMore = page.hasMore,
         )
+    }
+
+    /**
+     * Asks each enabled plugin whether it owns [url], using the same video -> channel -> playlist
+     * priority as legacy Grayjay's StatePlatform URL router. URL predicates are plugin code, so
+     * this also supports custom sources received through Android's Share sheet.
+     */
+    suspend fun routeUrl(
+        url: String,
+        endpoints: Map<String, PluginEndpoint>,
+    ): GrayjayUrlRoute? = withContext(Dispatchers.IO) {
+        endpoints.entries.firstNotNullOfOrNull { (sourceId, endpoint) ->
+            val plugin = runCatching { getOrLoad(sourceId, endpoint) }
+                .onFailure { error ->
+                    Log.w(TAG, "Could not load $sourceId while routing an external URL.", error)
+                }
+                .getOrNull()
+                ?: return@firstNotNullOfOrNull null
+            val kind = when {
+                runCatching { plugin.isContentDetailsUrl(url) }.getOrDefault(false) ->
+                    GrayjayUrlKind.Video
+                runCatching { plugin.isChannelUrl(url) }.getOrDefault(false) ->
+                    GrayjayUrlKind.Channel
+                runCatching { plugin.isPlaylistUrl(url) }.getOrDefault(false) ->
+                    GrayjayUrlKind.Playlist
+                else -> null
+            }
+            kind?.let { GrayjayUrlRoute(sourceId, plugin.id, it) }
+        }
     }
 
     suspend fun resolve(

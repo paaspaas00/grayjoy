@@ -70,8 +70,86 @@ private val SCOPED_CACHE_KEY_FACTORY = CacheKeyFactory { dataSpec ->
     }
 }
 
+/**
+ * Signed media URLs commonly change only their query string when a plugin resolves them again.
+ * The path still identifies the same representation, so keep cache ranges reusable across that
+ * refresh while preserving fragments (inline manifests deliberately use a distinct fragment).
+ */
+internal fun stableCacheResourceUri(rawUri: String): String {
+    val fragmentIndex = rawUri.indexOf('#')
+    val queryIndex = rawUri.indexOf('?')
+    if (queryIndex < 0 || fragmentIndex in 0 until queryIndex) return rawUri
+    val fragment = if (fragmentIndex >= 0) rawUri.substring(fragmentIndex) else ""
+    val queryEnd = fragmentIndex.takeIf { it >= 0 } ?: rawUri.length
+    val stableParameters = rawUri.substring(queryIndex + 1, queryEnd)
+        .split('&')
+        .filter { parameter ->
+            parameter.substringBefore('=').lowercase() in CACHE_IDENTITY_QUERY_PARAMETERS
+        }
+        .sorted()
+    return buildString {
+        append(rawUri.substring(0, queryIndex))
+        if (stableParameters.isNotEmpty()) {
+            append('?')
+            append(stableParameters.joinToString("&"))
+        }
+        append(fragment)
+    }
+}
+
+private val CACHE_IDENTITY_QUERY_PARAMETERS = setOf(
+    "id",
+    "itag",
+    "sq",
+    "segment",
+    "seg",
+    "part",
+    "sequence",
+    "seq",
+    "index",
+    "start",
+    "end",
+    "range",
+    "offset",
+)
+
 private fun namespacedCacheKeyFactory(namespace: String) = CacheKeyFactory { dataSpec ->
+    buildString {
+        append(namespace)
+        append('|')
+        append(stableCacheResourceUri(dataSpec.uri.toString()))
+        dataSpec.key?.let { key ->
+            append('#')
+            append(key)
+        }
+    }
+}
+
+private fun legacyNamespacedCacheKeyFactory(namespace: String) = CacheKeyFactory { dataSpec ->
     "$namespace|${SCOPED_CACHE_KEY_FACTORY.buildCacheKey(dataSpec)}"
+}
+
+private data class PreviousRootCache(
+    val stableUri: String,
+    val cacheKey: String,
+)
+
+private fun resumableNamespacedCacheKeyFactory(
+    namespace: String,
+    cache: SimpleCache,
+    previousRootCache: () -> PreviousRootCache? = { null },
+) = CacheKeyFactory { dataSpec ->
+    val stableKey = namespacedCacheKeyFactory(namespace).buildCacheKey(dataSpec)
+    val legacyKey = legacyNamespacedCacheKeyFactory(namespace).buildCacheKey(dataSpec)
+    val previous = previousRootCache()
+    when {
+        cache.isCached(stableKey, dataSpec.position, 1L) -> stableKey
+        dataSpec.key == null &&
+            previous?.stableUri == stableCacheResourceUri(dataSpec.uri.toString()) &&
+            cache.isCached(previous.cacheKey, dataSpec.position, 1L) -> previous.cacheKey
+        cache.isCached(legacyKey, dataSpec.position, 1L) -> legacyKey
+        else -> stableKey
+    }
 }
 
 /**
@@ -274,6 +352,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
     private val downloadsById = linkedMapOf<String, Download>()
     private val removingGroups = mutableSetOf<DownloadGroupKey>()
     private val requestDataSourceFactories = ConcurrentHashMap<String, DataSource.Factory>()
+    private val previousRootCaches = ConcurrentHashMap<String, PreviousRootCache>()
     private val failureMessages = mutableMapOf<String, String>()
     private val handler = Handler(Looper.getMainLooper())
     private var unmetRequirements = 0
@@ -289,6 +368,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             cache,
             downloaderExecutor,
             requestDataSourceFactories::get,
+            previousRootCaches::get,
         ),
     ).apply {
         maxParallelDownloads = 2
@@ -299,6 +379,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             object : DownloadManager.Listener {
                 override fun onInitialized(downloadManager: DownloadManager) {
                     reloadDownloadIndex()
+                    holdPluginDownloadsForRehydration()
                     initialized.complete(Unit)
                     resumeDownloads()
                 }
@@ -335,6 +416,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
                     downloadsById.remove(download.request.id)
                     failureMessages.remove(download.request.id)
                     releaseRequestDataSourceFactory(download.request.id)
+                    previousRootCaches.remove(download.request.id)
                     cleanupCacheIfUnused()
                     removedMetadata?.let { metadata ->
                         val key = DownloadGroupKey(
@@ -367,8 +449,12 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             .setUpstreamDataSourceFactory(null)
             .setCacheKeyFactory(
                 CacheKeyFactory { dataSpec ->
-                    val namespacedKey = cacheNamespace.takeIf(String::isNotBlank)?.let {
-                        namespacedCacheKeyFactory(it).buildCacheKey(dataSpec)
+                    val namespacedKey = cacheNamespace.takeIf(String::isNotBlank)?.let { namespace ->
+                        resumableNamespacedCacheKeyFactory(
+                            namespace = namespace,
+                            cache = cache,
+                            previousRootCache = { previousRootCaches[namespace] },
+                        ).buildCacheKey(dataSpec)
                     }
                     val scopedKey = SCOPED_CACHE_KEY_FACTORY.buildCacheKey(dataSpec)
                     val lengthToCheck = 1L
@@ -405,10 +491,13 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             }
         }
         val preparedAtMs = System.currentTimeMillis()
+        val existingById = synchronized(this) { downloadsById.toMap() }
         // Prepare and validate every selected output before handing any work to Media3. This
         // preserves Grayjay's VideoDownload invariant: a two-part video/audio job cannot start
         // as a one-part orphan merely because probing the second manifest failed.
         val preparedRequests = parts.mapIndexed { index, part ->
+            val requestId = downloadId(profileId, video.id, mediaType, part.name, index)
+            val previousRootCache = previousRootCaches[requestId]
             val metadata = DownloadRequestMetadata(
                 profileId = profileId,
                 videoId = video.id,
@@ -424,8 +513,9 @@ class GrayjoyDownloadStore private constructor(context: Context) {
                 requiresPluginTransport = part.dataSourceFactory != null ||
                     part.rawManifest.contains("grayjay.internal") ||
                     Uri.parse(part.uri).host == "grayjay.internal",
+                legacyRootCacheKey = previousRootCache?.cacheKey.orEmpty(),
+                legacyRootStableUri = previousRootCache?.stableUri.orEmpty(),
             )
-            val requestId = downloadId(profileId, video.id, mediaType, part.name, index)
             val requestUri = if (part.rawManifest.isNotBlank()) {
                 inlineManifestRequestUri(part.uri, requestId)
             } else {
@@ -445,20 +535,27 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             if (streamKeys.isNotEmpty()) requestBuilder.setStreamKeys(streamKeys)
             PreparedDownloadRequest(requestBuilder.build(), part.dataSourceFactory)
         }
-        preparedRequests.forEach { prepared ->
+        val requestsToSubmit = preparedRequests.filter { prepared ->
+            existingById[prepared.request.id]?.state != Download.STATE_COMPLETED
+        }
+        requestsToSubmit.forEach { prepared ->
             prepared.dataSourceFactory?.let {
                 requestDataSourceFactories[prepared.request.id] = it
             }
         }
         val submittedRequestIds = mutableListOf<String>()
         try {
-            preparedRequests.forEach { prepared ->
+            requestsToSubmit.forEach { prepared ->
                 GrayjoyDownloadService.add(appContext, prepared.request)
+                downloadManager.setStopReason(prepared.request.id, Download.STOP_REASON_NONE)
                 submittedRequestIds += prepared.request.id
             }
+            downloadManager.resumeDownloads()
         } catch (error: Throwable) {
-            submittedRequestIds.forEach(downloadManager::removeDownload)
-            preparedRequests.forEach { releaseRequestDataSourceFactory(it.request.id) }
+            submittedRequestIds
+                .filterNot(existingById::containsKey)
+                .forEach(downloadManager::removeDownload)
+            requestsToSubmit.forEach { releaseRequestDataSourceFactory(it.request.id) }
             throw error
         }
     }
@@ -604,6 +701,30 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         .filter { it.profileId == profileId }
         .associateBy(DownloadUiModel::videoId)
 
+    /**
+     * Requests that depend on a plugin transport cannot resume after process recreation until the
+     * plugin resolves them again. Return each media type separately so the ViewModel can rebuild
+     * the transient factory without discarding Media3's persisted request or cached bytes.
+     */
+    @Synchronized
+    fun recoveryCandidates(profileId: String): List<DownloadUiModel> {
+        reconcileCompletedCatalog()
+        return downloadsById.values
+            .mapNotNull { download ->
+                DownloadRequestMetadata.from(download.request.data)?.let { it to download }
+            }
+            .groupBy { (metadata, _) ->
+                DownloadGroupKey(metadata.profileId, metadata.videoId, metadata.mediaType)
+            }
+            .filterKeys { it.profileId == profileId }
+            .map { (key, entries) -> aggregate(key, entries) }
+            .filter { download ->
+                download.requiresPluginTransport &&
+                    download.status != DownloadStatus.Completed &&
+                    download.status != DownloadStatus.Removing
+            }
+    }
+
     @Synchronized
     fun playbackDescriptorFor(
         profileId: String,
@@ -686,11 +807,46 @@ class GrayjoyDownloadStore private constructor(context: Context) {
                 while (cursor.moveToNext()) {
                     val download = cursor.download
                     downloadsById[download.request.id] = download
+                    val metadata = DownloadRequestMetadata.from(download.request.data)
+                    val persistedPrevious = metadata
+                        ?.legacyRootCacheKey
+                        ?.takeIf(String::isNotBlank)
+                        ?.let { key ->
+                            PreviousRootCache(
+                                stableUri = metadata.legacyRootStableUri,
+                                cacheKey = key,
+                            )
+                        }
+                    previousRootCaches[download.request.id] = persistedPrevious
+                        ?: PreviousRootCache(
+                            stableUri = stableCacheResourceUri(download.request.uri.toString()),
+                            cacheKey = legacyNamespacedCacheKeyFactory(download.request.id)
+                                .buildCacheKey(DataSpec(download.request.uri)),
+                        )
                 }
             }
         }
         cleanupCacheIfUnused()
         publishDownloads()
+    }
+
+    private fun holdPluginDownloadsForRehydration() {
+        downloadsById.values
+            .filter { download ->
+                download.state != Download.STATE_COMPLETED &&
+                    download.state != Download.STATE_REMOVING &&
+                    DownloadRequestMetadata.from(download.request.data)?.let { metadata ->
+                        metadata.requiresPluginTransport ||
+                            metadata.rawManifest.contains("grayjay.internal") ||
+                            download.request.uri.host == "grayjay.internal"
+                    } == true
+            }
+            .forEach { download ->
+                downloadManager.setStopReason(
+                    download.request.id,
+                    RUNTIME_REHYDRATION_STOP_REASON,
+                )
+            }
     }
 
     private fun cleanupCacheIfUnused() {
@@ -761,8 +917,13 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         if (customKey != null && cache.isCached(customKey, 0L, 1L)) return true
         val dataSpec = DataSpec(request.uri)
         val namespacedKey = namespacedCacheKeyFactory(request.id).buildCacheKey(dataSpec)
+        val legacyNamespacedKey =
+            legacyNamespacedCacheKeyFactory(request.id).buildCacheKey(dataSpec)
+        val previousRootCacheKey = previousRootCaches[request.id]?.cacheKey
         val scopedKey = SCOPED_CACHE_KEY_FACTORY.buildCacheKey(dataSpec)
         return cache.isCached(namespacedKey, 0L, 1L) ||
+            cache.isCached(legacyNamespacedKey, 0L, 1L) ||
+            (previousRootCacheKey != null && cache.isCached(previousRootCacheKey, 0L, 1L)) ||
             cache.isCached(scopedKey, 0L, 1L) ||
             cache.isCached(request.uri.toString(), 0L, 1L)
     }
@@ -1063,6 +1224,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         private const val DOWNLOAD_REQUEST_SCHEMA_VERSION = 3
         private const val COMPLETED_CATALOG_PREFERENCES = "grayjoy_completed_downloads_v1"
         private const val COMPLETED_CATALOG_KEY = "records"
+        private const val RUNTIME_REHYDRATION_STOP_REASON = 23_407
         private val ACTIVE_STATES = setOf(
             Download.STATE_QUEUED,
             Download.STATE_DOWNLOADING,
@@ -1115,6 +1277,8 @@ private data class DownloadRequestMetadata(
     val targetVideoHeight: Int?,
     val targetAudioBitrate: Int?,
     val requiresPluginTransport: Boolean,
+    val legacyRootCacheKey: String = "",
+    val legacyRootStableUri: String = "",
 ) {
     fun toByteArray(): ByteArray = JSONObject().apply {
         put("profileId", profileId)
@@ -1129,6 +1293,10 @@ private data class DownloadRequestMetadata(
         targetVideoHeight?.let { put("targetVideoHeight", it) }
         targetAudioBitrate?.let { put("targetAudioBitrate", it) }
         put("requiresPluginTransport", requiresPluginTransport)
+        legacyRootCacheKey.takeIf(String::isNotBlank)?.let {
+            put("legacyRootCacheKey", it)
+            put("legacyRootStableUri", legacyRootStableUri)
+        }
     }.toString().toByteArray()
 
     companion object {
@@ -1156,6 +1324,8 @@ private data class DownloadRequestMetadata(
                 targetAudioBitrate = json.optInt("targetAudioBitrate").takeIf { it > 0 },
                 requiresPluginTransport = json.optBoolean("requiresPluginTransport") ||
                     json.optString("rawManifest").contains("grayjay.internal"),
+                legacyRootCacheKey = json.optString("legacyRootCacheKey"),
+                legacyRootStableUri = json.optString("legacyRootStableUri"),
             )
         }.getOrNull()
     }
@@ -1167,6 +1337,7 @@ private class RequestAwareDownloaderFactory(
     private val cache: SimpleCache,
     private val executor: ExecutorService,
     private val requestDataSourceFactory: (String) -> DataSource.Factory?,
+    private val previousRootCache: (String) -> PreviousRootCache?,
 ) : DownloaderFactory {
     override fun createDownloader(request: DownloadRequest): Downloader {
         val metadata = DownloadRequestMetadata.from(request.data)
@@ -1196,7 +1367,13 @@ private class RequestAwareDownloaderFactory(
         val cacheFactory = CacheDataSource.Factory()
             .setCache(cache)
             .setUpstreamDataSourceFactory(upstreamFactory)
-            .setCacheKeyFactory(namespacedCacheKeyFactory(request.id))
+            .setCacheKeyFactory(
+                resumableNamespacedCacheKeyFactory(
+                    namespace = request.id,
+                    cache = cache,
+                    previousRootCache = { previousRootCache(request.id) },
+                ),
+            )
         return DefaultDownloaderFactory(cacheFactory, executor).createDownloader(request)
     }
 }
