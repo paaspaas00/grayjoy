@@ -3,6 +3,9 @@ package com.futo.platformplayer.compose.ui.screens
 import android.content.Context
 import android.content.Intent
 import android.view.LayoutInflater
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -115,6 +118,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -124,6 +128,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 import com.futo.platformplayer.compose.R
@@ -140,7 +145,7 @@ import kotlinx.coroutines.isActive
 import kotlin.math.abs
 
 private enum class DetailSection { UpNext, Comments }
-private enum class PlayerSettingsPage { Main, Quality, Speed, Subtitles }
+private enum class PlayerSettingsPage { Main, Quality, Speed, ChannelSpeed, Subtitles }
 
 @Composable
 fun VideoDetailScreen(
@@ -165,6 +170,12 @@ fun VideoDetailScreen(
     onToggleFollowing: () -> Unit,
     onSeek: (Float) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    perChannelPlaybackSpeedEnabled: Boolean = true,
+    videoPlaybackSpeedOverride: Float? = null,
+    channelPlaybackSpeed: Float? = null,
+    defaultPlaybackSpeed: Float = 1f,
+    onUseChannelSpeed: () -> Unit = {},
+    onChannelSpeedChange: (Float?) -> Unit = {},
     onQualityChange: (Int?) -> Unit,
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
@@ -252,6 +263,12 @@ fun VideoDetailScreen(
             onSeekBy = onSeekBy,
             onSeek = onSeek,
             onSpeedChange = onSpeedChange,
+            perChannelPlaybackSpeedEnabled = perChannelPlaybackSpeedEnabled,
+            videoPlaybackSpeedOverride = videoPlaybackSpeedOverride,
+            channelPlaybackSpeed = channelPlaybackSpeed,
+            defaultPlaybackSpeed = defaultPlaybackSpeed,
+            onUseChannelSpeed = onUseChannelSpeed,
+            onChannelSpeedChange = onChannelSpeedChange,
             onQualityChange = onQualityChange,
             onCaptionsEnabledChange = onCaptionsEnabledChange,
             onSubtitleLanguageChange = onSubtitleLanguageChange,
@@ -417,6 +434,12 @@ fun FullscreenPlayerScreen(
     onSeekBy: (Long) -> Unit,
     onSeek: (Float) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    perChannelPlaybackSpeedEnabled: Boolean = true,
+    videoPlaybackSpeedOverride: Float? = null,
+    channelPlaybackSpeed: Float? = null,
+    defaultPlaybackSpeed: Float = 1f,
+    onUseChannelSpeed: () -> Unit = {},
+    onChannelSpeedChange: (Float?) -> Unit = {},
     onQualityChange: (Int?) -> Unit,
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
@@ -459,6 +482,12 @@ fun FullscreenPlayerScreen(
                 onSeekBy = onSeekBy,
                 onSeek = onSeek,
                 onSpeedChange = onSpeedChange,
+                perChannelPlaybackSpeedEnabled = perChannelPlaybackSpeedEnabled,
+                videoPlaybackSpeedOverride = videoPlaybackSpeedOverride,
+                channelPlaybackSpeed = channelPlaybackSpeed,
+                defaultPlaybackSpeed = defaultPlaybackSpeed,
+                onUseChannelSpeed = onUseChannelSpeed,
+                onChannelSpeedChange = onChannelSpeedChange,
                 onQualityChange = onQualityChange,
                 onCaptionsEnabledChange = onCaptionsEnabledChange,
                 onSubtitleLanguageChange = onSubtitleLanguageChange,
@@ -494,6 +523,12 @@ internal fun PlayerSurface(
     onSeekBy: (Long) -> Unit,
     onSeek: (Float) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    perChannelPlaybackSpeedEnabled: Boolean = true,
+    videoPlaybackSpeedOverride: Float? = null,
+    channelPlaybackSpeed: Float? = null,
+    defaultPlaybackSpeed: Float = 1f,
+    onUseChannelSpeed: () -> Unit = {},
+    onChannelSpeedChange: (Float?) -> Unit = {},
     onQualityChange: (Int?) -> Unit,
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
@@ -894,6 +929,12 @@ internal fun PlayerSurface(
             page = PlayerSettingsPage.valueOf(settingsPageName),
             video = video,
             playback = playback,
+            isFullscreen = isFullscreen,
+            isPortraitFullscreen = isPortraitFullscreen,
+            perChannelPlaybackSpeedEnabled = perChannelPlaybackSpeedEnabled,
+            videoPlaybackSpeedOverride = videoPlaybackSpeedOverride,
+            channelPlaybackSpeed = channelPlaybackSpeed,
+            defaultPlaybackSpeed = defaultPlaybackSpeed,
             onPageChange = { settingsPageName = it.name },
             onDismiss = { showSettings = false },
             onQualityChange = {
@@ -902,6 +943,14 @@ internal fun PlayerSurface(
             },
             onSpeedChange = {
                 onSpeedChange(it)
+                showSettings = false
+            },
+            onUseChannelSpeed = {
+                onUseChannelSpeed()
+                showSettings = false
+            },
+            onChannelSpeedChange = {
+                onChannelSpeedChange(it)
                 showSettings = false
             },
             onCaptionsEnabledChange = {
@@ -1296,10 +1345,18 @@ private fun PlayerSettingsSheet(
     page: PlayerSettingsPage,
     video: VideoUiModel,
     playback: PlaybackUiState,
+    isFullscreen: Boolean,
+    isPortraitFullscreen: Boolean,
+    perChannelPlaybackSpeedEnabled: Boolean,
+    videoPlaybackSpeedOverride: Float?,
+    channelPlaybackSpeed: Float?,
+    defaultPlaybackSpeed: Float,
     onPageChange: (PlayerSettingsPage) -> Unit,
     onDismiss: () -> Unit,
     onQualityChange: (Int?) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    onUseChannelSpeed: () -> Unit,
+    onChannelSpeedChange: (Float?) -> Unit,
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
     onLockControls: () -> Unit,
@@ -1333,6 +1390,10 @@ private fun PlayerSettingsSheet(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
+        PlayerSettingsSheetSystemBars(
+            isFullscreen = isFullscreen,
+            isPortraitFullscreen = isPortraitFullscreen,
+        )
         AnimatedContent(
             targetState = page,
             transitionSpec = {
@@ -1374,6 +1435,7 @@ private fun PlayerSettingsSheet(
                         PlayerSettingsPage.Main -> stringResource(R.string.player_settings)
                         PlayerSettingsPage.Quality -> stringResource(R.string.quality)
                         PlayerSettingsPage.Speed -> stringResource(R.string.playback_speed)
+                        PlayerSettingsPage.ChannelSpeed -> stringResource(R.string.channel_playback_speed)
                         PlayerSettingsPage.Subtitles -> stringResource(R.string.subtitles)
                     },
                     style = MaterialTheme.typography.titleLarge,
@@ -1396,6 +1458,16 @@ private fun PlayerSettingsSheet(
                         testTag = "player-settings-speed",
                         onClick = { onPageChange(PlayerSettingsPage.Speed) },
                     )
+                    if (perChannelPlaybackSpeedEnabled) {
+                        PlayerSettingRow(
+                            icon = Icons.Outlined.Speed,
+                            title = stringResource(R.string.channel_playback_speed),
+                            value = channelPlaybackSpeed?.let(::formatSpeed)
+                                ?: stringResource(R.string.default_speed_label),
+                            testTag = "player-settings-channel-speed",
+                            onClick = { onPageChange(PlayerSettingsPage.ChannelSpeed) },
+                        )
+                    }
                     PlayerSettingRow(
                         icon = Icons.Outlined.ClosedCaption,
                         title = stringResource(R.string.subtitles),
@@ -1414,32 +1486,102 @@ private fun PlayerSettingsSheet(
                 }
 
                 PlayerSettingsPage.Quality -> {
-                    PlayerSelectionRow(
-                        title = stringResource(R.string.auto),
-                        detail = playback.currentVideoHeight?.let {
-                            stringResource(R.string.currently_quality, it)
-                        },
-                        selected = playback.selectedVideoQuality == null,
-                        onClick = { onQualityChange(null) },
-                    )
-                    playback.availableVideoQualities.forEach { height ->
-                        PlayerSelectionRow(
-                            title = "${height}p",
-                            selected = playback.selectedVideoQuality == height,
-                            onClick = { onQualityChange(height) },
+                    val qualityOptions = buildList {
+                        add(
+                            PlayerSheetOption(
+                                title = stringResource(R.string.auto),
+                                detail = playback.currentVideoHeight?.let {
+                                    stringResource(R.string.currently_quality, it)
+                                },
+                                selected = playback.selectedVideoQuality == null,
+                                onClick = { onQualityChange(null) },
+                            ),
                         )
+                        playback.availableVideoQualities.forEach { height ->
+                            add(
+                                PlayerSheetOption(
+                                    title = "${height}p",
+                                    selected = playback.selectedVideoQuality == height,
+                                    onClick = { onQualityChange(height) },
+                                ),
+                            )
+                        }
                     }
+                    PlayerSheetOptions(
+                        options = qualityOptions,
+                        horizontal = isFullscreen,
+                    )
                 }
 
                 PlayerSettingsPage.Speed -> {
-                    listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f).forEach { speed ->
-                        PlayerSelectionRow(
-                            title = if (speed == 1f) stringResource(R.string.normal) else formatSpeed(speed),
-                            detail = if (speed == 1f) formatSpeed(speed) else null,
-                            selected = playback.playbackSpeed == speed,
-                            onClick = { onSpeedChange(speed) },
+                    val inheritedSpeed = channelPlaybackSpeed
+                        .takeIf { perChannelPlaybackSpeedEnabled }
+                        ?: defaultPlaybackSpeed
+                    val speedOptions = buildList {
+                        add(
+                            PlayerSheetOption(
+                                title = stringResource(
+                                    if (perChannelPlaybackSpeedEnabled) {
+                                        R.string.use_channel_speed
+                                    } else {
+                                        R.string.use_default_speed
+                                    },
+                                ),
+                                detail = formatSpeed(inheritedSpeed),
+                                selected = videoPlaybackSpeedOverride == null,
+                                onClick = onUseChannelSpeed,
+                            ),
                         )
+                        playerSpeedChoices.forEach { speed ->
+                            add(
+                                PlayerSheetOption(
+                                    title = if (speed == 1f) {
+                                        stringResource(R.string.normal)
+                                    } else {
+                                        formatSpeed(speed)
+                                    },
+                                    detail = if (speed == 1f) formatSpeed(speed) else null,
+                                    selected = videoPlaybackSpeedOverride == speed,
+                                    onClick = { onSpeedChange(speed) },
+                                ),
+                            )
+                        }
                     }
+                    PlayerSheetOptions(
+                        options = speedOptions,
+                        horizontal = isFullscreen,
+                    )
+                }
+
+                PlayerSettingsPage.ChannelSpeed -> {
+                    val channelOptions = buildList {
+                        add(
+                            PlayerSheetOption(
+                                title = stringResource(R.string.default_speed_label),
+                                detail = formatSpeed(defaultPlaybackSpeed),
+                                selected = channelPlaybackSpeed == null,
+                                onClick = { onChannelSpeedChange(null) },
+                            ),
+                        )
+                        playerSpeedChoices.forEach { speed ->
+                            add(
+                                PlayerSheetOption(
+                                    title = if (speed == 1f) {
+                                        stringResource(R.string.normal)
+                                    } else {
+                                        formatSpeed(speed)
+                                    },
+                                    detail = if (speed == 1f) formatSpeed(speed) else null,
+                                    selected = channelPlaybackSpeed == speed,
+                                    onClick = { onChannelSpeedChange(speed) },
+                                ),
+                            )
+                        }
+                    }
+                    PlayerSheetOptions(
+                        options = channelOptions,
+                        horizontal = isFullscreen,
+                    )
                 }
 
                 PlayerSettingsPage.Subtitles -> {
@@ -1471,6 +1613,96 @@ private fun PlayerSettingsSheet(
                 }
             }
             }
+        }
+    }
+}
+
+@Composable
+private fun PlayerSettingsSheetSystemBars(
+    isFullscreen: Boolean,
+    isPortraitFullscreen: Boolean,
+) {
+    val view = LocalView.current
+    DisposableEffect(view, isFullscreen, isPortraitFullscreen) {
+        val dialogWindow = (view.parent as? DialogWindowProvider)?.window
+        if (!isFullscreen || dialogWindow == null) {
+            onDispose {}
+        } else {
+            val hideBars = Runnable {
+                WindowCompat.getInsetsController(
+                    dialogWindow,
+                    dialogWindow.decorView,
+                ).apply {
+                    systemBarsBehavior =
+                        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    if (!isPortraitFullscreen) {
+                        hide(WindowInsetsCompat.Type.statusBars())
+                    }
+                    hide(WindowInsetsCompat.Type.navigationBars())
+                }
+            }
+            hideBars.run()
+            // ModalBottomSheet finishes configuring its dialog window after content enters
+            // composition. Reapply on the next loop so that setup cannot reveal Android's bars
+            // over the fullscreen player.
+            view.post(hideBars)
+            onDispose {
+                view.removeCallbacks(hideBars)
+            }
+        }
+    }
+}
+
+private val playerSpeedChoices =
+    listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+
+private data class PlayerSheetOption(
+    val title: String,
+    val detail: String? = null,
+    val selected: Boolean,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun PlayerSheetOptions(
+    options: List<PlayerSheetOption>,
+    horizontal: Boolean,
+) {
+    if (horizontal) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            options.forEach { option ->
+                FilterChip(
+                    selected = option.selected,
+                    onClick = option.onClick,
+                    label = {
+                        Column {
+                            Text(option.title)
+                            option.detail?.let { detail ->
+                                Text(
+                                    detail,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    } else {
+        options.forEach { option ->
+            PlayerSelectionRow(
+                title = option.title,
+                detail = option.detail,
+                selected = option.selected,
+                onClick = option.onClick,
+            )
         }
     }
 }

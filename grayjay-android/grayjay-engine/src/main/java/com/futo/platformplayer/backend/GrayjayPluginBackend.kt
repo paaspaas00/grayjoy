@@ -75,6 +75,8 @@ data class GrayjaySearchItem(
     val viewCount: Long,
     val datetime: OffsetDateTime?,
     val isLive: Boolean,
+    val playbackTimeSeconds: Long = -1,
+    val playbackDate: OffsetDateTime? = null,
 )
 
 data class GrayjaySearchChannel(
@@ -114,6 +116,33 @@ data class GrayjayPlaylistDetails(
     val videos: List<GrayjaySearchItem>,
     val continuationId: String? = null,
     val hasMore: Boolean = false,
+)
+
+enum class GrayjayUserImportStage {
+    Connecting,
+    Subscriptions,
+    History,
+    Playlists,
+}
+
+data class GrayjayUserImportSelection(
+    val subscriptions: Boolean = true,
+    val history: Boolean = true,
+    val playlists: Boolean = true,
+    val likedVideos: Boolean = true,
+)
+
+data class GrayjayUserImportProgress(
+    val stage: GrayjayUserImportStage,
+    val completed: Int = 0,
+    val total: Int? = null,
+)
+
+data class GrayjayUserImportResult(
+    val subscriptions: List<GrayjaySearchChannel> = emptyList(),
+    val history: List<GrayjaySearchItem> = emptyList(),
+    val playlists: List<GrayjayPlaylistDetails> = emptyList(),
+    val warnings: List<String> = emptyList(),
 )
 
 data class GrayjayChannelRequest(
@@ -535,6 +564,14 @@ class GrayjayPluginBackend(context: Context) {
     companion object {
         private const val TAG = "GrayjayPluginBackend"
         private const val YOUTUBE_PLUGIN_ID = "35ae969a-a7db-11ed-afa1-0242ac120002"
+        private const val YOUTUBE_LIKED_PLAYLIST_ID = "LL"
+        private const val YOUTUBE_LIKED_PLAYLIST_URL =
+            "https://www.youtube.com/playlist?list=$YOUTUBE_LIKED_PLAYLIST_ID"
+        private const val MAX_USER_IMPORT_SUBSCRIPTIONS = 5_000
+        private const val MAX_USER_IMPORT_PLAYLISTS = 2_000
+        private const val MAX_USER_IMPORT_PLAYLIST_VIDEOS = 20_000
+        private const val MAX_USER_IMPORT_HISTORY = 20_000
+        private const val MAX_USER_IMPORT_PAGES = 2_000
         private const val SUBSCRIPTION_CONCURRENCY = 6
         private const val MAIN_CLIENT_CONCURRENCY = 2
         const val CHANNEL_PLAYLISTS_TYPE = "PLAYLISTS"
@@ -787,6 +824,202 @@ class GrayjayPluginBackend(context: Context) {
             videos = page.videos,
             continuationId = page.continuationId,
             hasMore = page.hasMore,
+        )
+    }
+
+    /**
+     * Imports the authenticated account through the source's own migration APIs. This is the same
+     * machinery used by legacy Grayjay: no YouTube page markup is scraped in Compose, and the
+     * plugin remains responsible for authenticated requests, cookies, continuations, and models.
+     */
+    suspend fun importUserData(
+        sourceId: String,
+        endpoint: PluginEndpoint,
+        selection: GrayjayUserImportSelection,
+        onProgress: (GrayjayUserImportProgress) -> Unit = {},
+    ): GrayjayUserImportResult = withContext(Dispatchers.IO) {
+        require(isAuthenticated(endpoint.pluginId)) {
+            "Sign in to this source before importing account data."
+        }
+        onProgress(GrayjayUserImportProgress(GrayjayUserImportStage.Connecting))
+        val plugin = getOrLoad(sourceId, endpoint)
+        val warnings = mutableListOf<String>()
+
+        val subscriptions = if (
+            selection.subscriptions &&
+            plugin.capabilities.hasGetUserSubscriptions
+        ) {
+            val urls = runCatching {
+                plugin.getUserSubscriptions()
+                    .asSequence()
+                    .map(String::trim)
+                    .filter(String::isNotBlank)
+                    .distinct()
+                    .take(MAX_USER_IMPORT_SUBSCRIPTIONS)
+                    .toList()
+            }.onFailure { error ->
+                Log.w(TAG, "Could not list account subscriptions.", error)
+                warnings += "Subscriptions: ${error.userImportMessage()}"
+            }.getOrDefault(emptyList())
+            onProgress(
+                GrayjayUserImportProgress(
+                    GrayjayUserImportStage.Subscriptions,
+                    completed = 0,
+                    total = urls.size,
+                ),
+            )
+            buildList {
+                urls.forEachIndexed { index, url ->
+                    runCatching { plugin.getChannel(url) }
+                        .onSuccess { channel ->
+                            add(
+                                GrayjaySearchChannel(
+                                    id = channel.url.ifBlank { channel.id.value.orEmpty() },
+                                    url = channel.url.ifBlank { url },
+                                    sourceId = sourceId,
+                                    pluginId = plugin.id,
+                                    name = channel.name,
+                                    thumbnailUrl = channel.thumbnail,
+                                    subscribers = channel.subscribers.takeIf { it >= 0 },
+                                ),
+                            )
+                        }
+                        .onFailure { error ->
+                            Log.w(TAG, "Could not import subscription $url.", error)
+                            warnings += "Subscription $url: ${error.userImportMessage()}"
+                        }
+                    onProgress(
+                        GrayjayUserImportProgress(
+                            GrayjayUserImportStage.Subscriptions,
+                            completed = index + 1,
+                            total = urls.size,
+                        ),
+                    )
+                }
+            }
+        } else {
+            if (selection.subscriptions) {
+                warnings += "Subscriptions: this source does not support account import."
+            }
+            emptyList()
+        }
+
+        val history = if (selection.history && plugin.capabilities.hasGetUserHistory) {
+            runCatching { plugin.getUserHistory() }
+                .onFailure { error ->
+                    Log.w(TAG, "Could not open account watch history.", error)
+                    warnings += "Watch history: ${error.userImportMessage()}"
+                }
+                .getOrNull()
+                ?.let { pager ->
+                    drainVideoPager(
+                        pager = pager,
+                        maxItems = MAX_USER_IMPORT_HISTORY,
+                        maxPages = MAX_USER_IMPORT_PAGES,
+                        onProgress = { count ->
+                            onProgress(
+                                GrayjayUserImportProgress(
+                                    GrayjayUserImportStage.History,
+                                    completed = count,
+                                ),
+                            )
+                        },
+                        onFailure = { error ->
+                            Log.w(TAG, "Watch history import stopped after a partial page.", error)
+                            warnings += "Watch history: ${error.userImportMessage()}"
+                        },
+                    ).map { it.toSearchItem(sourceId, plugin.id) }
+                }
+                .orEmpty()
+        } else {
+            if (selection.history) {
+                warnings += "Watch history: this source does not support account import."
+            }
+            emptyList()
+        }
+
+        val playlistUrls = if (
+            selection.playlists &&
+            plugin.capabilities.hasGetUserPlaylists &&
+            plugin.capabilities.hasGetPlaylist
+        ) {
+            runCatching {
+                plugin.getUserPlaylists()
+                    .asSequence()
+                    .map(String::trim)
+                    .filter(String::isNotBlank)
+                    .filterNot { it.youtubePlaylistId() == YOUTUBE_LIKED_PLAYLIST_ID }
+                    .distinct()
+                    .take(MAX_USER_IMPORT_PLAYLISTS)
+                    .toMutableList()
+            }.onFailure { error ->
+                Log.w(TAG, "Could not list account playlists.", error)
+                warnings += "Playlists: ${error.userImportMessage()}"
+            }.getOrDefault(mutableListOf())
+        } else {
+            if (selection.playlists) {
+                warnings += "Playlists: this source does not support account import."
+            }
+            mutableListOf()
+        }
+        if (
+            selection.likedVideos &&
+            endpoint.pluginId == YOUTUBE_PLUGIN_ID &&
+            plugin.capabilities.hasGetPlaylist
+        ) {
+            playlistUrls += YOUTUBE_LIKED_PLAYLIST_URL
+        }
+
+        onProgress(
+            GrayjayUserImportProgress(
+                GrayjayUserImportStage.Playlists,
+                completed = 0,
+                total = playlistUrls.size,
+            ),
+        )
+        val playlists = buildList {
+            playlistUrls.distinct().forEachIndexed { index, url ->
+                runCatching {
+                    val playlist = plugin.getPlaylist(url)
+                    val videos = drainVideoPager(
+                        pager = playlist.contents,
+                        maxItems = MAX_USER_IMPORT_PLAYLIST_VIDEOS,
+                        maxPages = MAX_USER_IMPORT_PAGES,
+                        onFailure = { error ->
+                            Log.w(TAG, "Playlist $url stopped after a partial page.", error)
+                            warnings += "Playlist $url: ${error.userImportMessage()}"
+                        },
+                    ).map { it.toSearchItem(sourceId, plugin.id) }
+                    val playlistModel = playlist.toSearchPlaylist(sourceId, plugin.id)
+                    GrayjayPlaylistDetails(
+                        playlist = playlistModel.copy(
+                            id = playlistModel.id.ifBlank { url },
+                            url = playlistModel.url.ifBlank { url },
+                        ),
+                        videos = videos,
+                    )
+                }.onSuccess(::add)
+                    .onFailure { error ->
+                        Log.w(TAG, "Could not import playlist $url.", error)
+                        // A YouTube account may have no liked videos or may keep them private.
+                        // That is not fatal to the rest of the account migration.
+                        warnings += "Playlist $url: ${error.userImportMessage()}"
+                    }
+                onProgress(
+                    GrayjayUserImportProgress(
+                        GrayjayUserImportStage.Playlists,
+                        completed = index + 1,
+                        total = playlistUrls.size,
+                    ),
+                )
+            }
+        }
+
+        GrayjayUserImportResult(
+            subscriptions = subscriptions.distinctBy(GrayjaySearchChannel::url),
+            history = history.distinctBy(GrayjaySearchItem::url),
+            playlists = playlists.distinctBy { it.playlist.url },
+            warnings = warnings,
         )
     }
 
@@ -1723,6 +1956,8 @@ class GrayjayPluginBackend(context: Context) {
         viewCount = viewCount,
         datetime = datetime,
         isLive = isLive,
+        playbackTimeSeconds = playbackTime,
+        playbackDate = playbackDate,
     )
 
     private fun IPlatformChannelContent.toSearchChannel(
@@ -1959,3 +2194,43 @@ private fun String.fingerprint(): String = MessageDigest.getInstance("SHA-256")
     .digest(toByteArray())
     .take(8)
     .joinToString(":") { byte -> "%02X".format(byte.toInt() and 0xFF) }
+
+private fun String.youtubePlaylistId(): String? = runCatching {
+    android.net.Uri.parse(this).getQueryParameter("list")
+}.getOrNull()
+
+private fun Throwable.userImportMessage(): String =
+    localizedMessage?.takeIf(String::isNotBlank) ?: javaClass.simpleName
+
+private fun GrayjayPluginBackend.drainVideoPager(
+    pager: IPager<*>,
+    maxItems: Int,
+    maxPages: Int,
+    onProgress: (Int) -> Unit = {},
+    onFailure: (Throwable) -> Unit = {},
+): List<IPlatformVideo> {
+    val videos = linkedMapOf<String, IPlatformVideo>()
+    var pages = 0
+    while (pages < maxPages && videos.size < maxItems) {
+        val results = runCatching { pager.getResults() }
+            .onFailure(onFailure)
+            .getOrNull()
+            ?: break
+        results
+            .filterIsInstance<IPlatformVideo>()
+            .forEach { video ->
+                val key = video.url.ifBlank { video.id.value.orEmpty() }
+                if (key.isNotBlank() && key !in videos) videos[key] = video
+            }
+        pages += 1
+        onProgress(videos.size)
+        if (videos.size >= maxItems) break
+        val hasMore = runCatching { pager.hasMorePages() }
+            .onFailure(onFailure)
+            .getOrNull()
+            ?: break
+        if (!hasMore) break
+        if (runCatching { pager.nextPage() }.onFailure(onFailure).isFailure) break
+    }
+    return videos.values.take(maxItems)
+}

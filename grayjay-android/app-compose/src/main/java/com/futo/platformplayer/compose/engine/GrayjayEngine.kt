@@ -59,6 +59,9 @@ import com.futo.platformplayer.backend.GrayjaySearchType
 import com.futo.platformplayer.backend.GrayjayStreamType
 import com.futo.platformplayer.backend.GrayjayPluginMetadata
 import com.futo.platformplayer.backend.GrayjayUrlKind
+import com.futo.platformplayer.backend.GrayjayUserImportProgress
+import com.futo.platformplayer.backend.GrayjayUserImportSelection
+import com.futo.platformplayer.backend.GrayjayUserImportStage
 import com.futo.platformplayer.backend.PluginEndpoint
 import com.futo.platformplayer.backend.formatRelativeDate
 import com.futo.platformplayer.compose.ui.ChannelUiModel
@@ -174,6 +177,34 @@ data class EngineUrlRoute(
     val kind: EngineUrlKind,
 )
 
+enum class EngineUserImportStage {
+    Connecting,
+    Subscriptions,
+    History,
+    Playlists,
+}
+
+data class EngineUserImportSelection(
+    val subscriptions: Boolean = true,
+    val history: Boolean = true,
+    val playlists: Boolean = true,
+    val likedVideos: Boolean = true,
+)
+
+data class EngineUserImportProgress(
+    val stage: EngineUserImportStage,
+    val completed: Int = 0,
+    val total: Int? = null,
+)
+
+data class EngineUserImportResult(
+    val subscriptions: List<ChannelUiModel>,
+    val videos: List<VideoUiModel>,
+    val playlists: List<PlaylistUiModel>,
+    val historyCount: Int,
+    val warnings: List<String>,
+)
+
 internal fun VideoUiModel.pluginContentUrlOrNull(): String? =
     contentUrl.takeIf(String::isWebUrl)
         ?: id.takeIf(String::isWebUrl)
@@ -203,6 +234,11 @@ interface GrayjayEngine {
     fun removeSource(sourceId: String)
     fun purgePlugin(pluginId: String)
     fun setPluginSettings(pluginId: String, settings: Map<String, String?>)
+    suspend fun importUserData(
+        sourceId: String,
+        selection: EngineUserImportSelection,
+        onProgress: (EngineUserImportProgress) -> Unit = {},
+    ): EngineUserImportResult
 
     suspend fun search(
         query: String,
@@ -542,6 +578,79 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun setPluginSettings(pluginId: String, settings: Map<String, String?>) {
         pluginBackend.setPluginSettings(pluginId, settings)
+    }
+
+    override suspend fun importUserData(
+        sourceId: String,
+        selection: EngineUserImportSelection,
+        onProgress: (EngineUserImportProgress) -> Unit,
+    ): EngineUserImportResult = withContext(Dispatchers.IO) {
+        val endpoint = requireNotNull(pluginEndpoints[sourceId]) {
+            "The selected source is not installed."
+        }
+        val result = pluginBackend.importUserData(
+            sourceId = sourceId,
+            endpoint = endpoint,
+            selection = GrayjayUserImportSelection(
+                subscriptions = selection.subscriptions,
+                history = selection.history,
+                playlists = selection.playlists,
+                likedVideos = selection.likedVideos,
+            ),
+        ) { progress ->
+            onProgress(progress.toEngineProgress())
+        }
+        val historyTimestamps = orderedImportedHistoryTimestamps(
+            remoteTimestamps = result.history.map { item ->
+                item.playbackDate?.toInstant()?.toEpochMilli()
+            },
+            fallbackNow = System.currentTimeMillis(),
+        )
+        val historyVideos = result.history.mapIndexed { index, item ->
+            item.toVideoUiModel(endpoint, appContext).copy(
+                watchProgress = importedWatchProgress(
+                    playbackTimeSeconds = item.playbackTimeSeconds,
+                    durationSeconds = item.durationSeconds,
+                ),
+                lastWatchedAt = historyTimestamps[index],
+            )
+        }
+        val likedVideoIds = result.playlists
+            .filter { isYoutubeLikedPlaylistUrl(it.playlist.url) }
+            .flatMapTo(mutableSetOf()) { playlist -> playlist.videos.map { it.url } }
+        val playlistVideos = result.playlists
+            .flatMap { it.videos }
+            .distinctBy { it.url }
+            .map { item ->
+                item.toVideoUiModel(endpoint, appContext).copy(
+                    isLiked = item.url in likedVideoIds,
+                )
+            }
+        val allVideos = (historyVideos + playlistVideos)
+            .groupBy(VideoUiModel::id)
+            .map { (_, copies) ->
+                copies.reduce { current, incoming ->
+                    current.copy(
+                        isLiked = current.isLiked || incoming.isLiked,
+                        watchProgress = maxOf(current.watchProgress, incoming.watchProgress),
+                        lastWatchedAt = maxOf(current.lastWatchedAt, incoming.lastWatchedAt),
+                    )
+                }
+            }
+        EngineUserImportResult(
+            subscriptions = result.subscriptions.map { it.toChannelUiModel(appContext) },
+            videos = allVideos,
+            playlists = result.playlists.map { details ->
+                details.playlist.toPlaylistUiModel(appContext).copy(
+                    id = "account:${details.playlist.url}",
+                    videoIds = details.videos.map { it.url }.distinct(),
+                    sourceId = "",
+                    videoCount = details.videos.size,
+                )
+            },
+            historyCount = historyVideos.size,
+            warnings = result.warnings,
+        )
     }
 
     override suspend fun search(
@@ -1566,6 +1675,66 @@ private fun GrayjaySearchPlaylist.toPlaylistUiModel(context: Context) = Playlist
     thumbnailUrl = thumbnailUrl.orEmpty(),
     videoCount = videoCount.coerceAtLeast(0),
 )
+
+private fun GrayjayUserImportProgress.toEngineProgress() = EngineUserImportProgress(
+    stage = when (stage) {
+        GrayjayUserImportStage.Connecting -> EngineUserImportStage.Connecting
+        GrayjayUserImportStage.Subscriptions -> EngineUserImportStage.Subscriptions
+        GrayjayUserImportStage.History -> EngineUserImportStage.History
+        GrayjayUserImportStage.Playlists -> EngineUserImportStage.Playlists
+    },
+    completed = completed,
+    total = total,
+)
+
+private fun String.youtubePlaylistId(): String? = runCatching {
+    URI(this).rawQuery
+        ?.split('&')
+        ?.firstNotNullOfOrNull { parameter ->
+            val (key, value) = parameter.split('=', limit = 2).let {
+                it.firstOrNull().orEmpty() to it.getOrNull(1).orEmpty()
+            }
+            value.takeIf { key == "list" }
+        }
+}.getOrNull()
+
+private const val YOUTUBE_LIKED_PLAYLIST_ID = "LL"
+
+internal fun isYoutubeLikedPlaylistUrl(url: String): Boolean =
+    url.youtubePlaylistId() == YOUTUBE_LIKED_PLAYLIST_ID
+
+internal fun importedWatchProgress(
+    playbackTimeSeconds: Long,
+    durationSeconds: Long,
+): Float = if (durationSeconds > 0 && playbackTimeSeconds > 0) {
+    playbackTimeSeconds.toFloat()
+        .div(durationSeconds.toFloat())
+        .coerceIn(0f, 1f)
+} else {
+    0f
+}
+
+/**
+ * YouTube's history is already returned newest-first, but some entries have no published
+ * playback date and many entries share a coarse day-level timestamp. Give every row a strictly
+ * descending value so sorting the local history preserves the server order. Missing or unexpectedly
+ * newer dates remain immediately below the preceding row instead of jumping to the import time.
+ */
+internal fun orderedImportedHistoryTimestamps(
+    remoteTimestamps: List<Long?>,
+    fallbackNow: Long,
+): List<Long> {
+    var previous = fallbackNow.coerceAtLeast(1L) + 1L
+    return remoteTimestamps.map { remoteTimestamp ->
+        val candidate = remoteTimestamp
+            ?.takeIf { it > 0L }
+            ?.coerceAtMost(fallbackNow)
+            ?: previous - 1L
+        val ordered = minOf(candidate, previous - 1L).coerceAtLeast(1L)
+        previous = ordered
+        ordered
+    }
+}
 
 private val officialPluginIconUrls = mapOf(
     "youtube" to "https://plugins.grayjay.app/Youtube/youtube.png",

@@ -86,7 +86,11 @@ interface LibraryRepository {
     fun addVideosToPlaylist(playlistId: String, videos: List<VideoUiModel>): PlaylistUiModel?
     fun removeVideosFromPlaylist(playlistId: String, videoIds: Collection<String>): PlaylistUiModel?
     fun reorderPlaylist(playlistId: String, orderedVideoIds: List<String>): PlaylistUiModel?
-    fun mergeImportedData(videos: List<VideoUiModel>, playlists: List<PlaylistUiModel>)
+    fun mergeImportedData(
+        videos: List<VideoUiModel>,
+        playlists: List<PlaylistUiModel>,
+        repairSyntheticHistoryDates: Boolean = false,
+    )
 }
 
 internal class SharedPreferencesLibraryRepository(
@@ -336,14 +340,23 @@ internal class SharedPreferencesLibraryRepository(
     override fun mergeImportedData(
         videos: List<VideoUiModel>,
         playlists: List<PlaylistUiModel>,
+        repairSyntheticHistoryDates: Boolean,
     ) {
         val mergedVideos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
+        val syntheticHistoryIds = if (repairSyntheticHistoryDates) {
+            syntheticHistoryFallbackIds(mergedVideos.values)
+        } else {
+            emptySet()
+        }
         videos.forEach { imported ->
             val existing = mergedVideos[imported.id]
             mergedVideos[imported.id] = if (existing == null) {
                 imported.forLocalStorage()
             } else {
-                existing.mergeImported(imported).forLocalStorage()
+                existing.mergeImported(
+                    imported = imported,
+                    preferImportedHistory = imported.id in syntheticHistoryIds,
+                ).forLocalStorage()
             }
         }
         writeVideos(mergedVideos.values.toList())
@@ -491,14 +504,38 @@ private fun VideoUiModel.preservingStoredPlayback(existing: VideoUiModel?): Vide
     ).forLocalStorage(preservePlayback = true)
 }
 
-private fun VideoUiModel.mergeImported(imported: VideoUiModel): VideoUiModel {
+internal fun syntheticHistoryFallbackIds(videos: Collection<VideoUiModel>): Set<String> {
+    val ordered = videos
+        .filter { it.lastWatchedAt > 0L }
+        .sortedByDescending(VideoUiModel::lastWatchedAt)
+    if (ordered.size < 3) return emptySet()
+
+    val syntheticIds = mutableSetOf<String>()
+    var runStart = 0
+    for (index in 1..ordered.size) {
+        val continuesRun = index < ordered.size &&
+            ordered[index - 1].lastWatchedAt - ordered[index].lastWatchedAt == 1L
+        if (continuesRun) continue
+        if (index - runStart >= 3) {
+            ordered.subList(runStart, index).mapTo(syntheticIds, VideoUiModel::id)
+        }
+        runStart = index
+    }
+    return syntheticIds
+}
+
+private fun VideoUiModel.mergeImported(
+    imported: VideoUiModel,
+    preferImportedHistory: Boolean = false,
+): VideoUiModel {
     fun preferCurrent(current: String, fallback: String): String = when {
         current.isBlank() -> fallback
         current == id && fallback.isNotBlank() -> fallback
         current == "Unknown creator" && fallback.isNotBlank() -> fallback
         else -> current
     }
-    val importedHistoryIsNewer = imported.lastWatchedAt > lastWatchedAt
+    val importedHistoryIsNewer = preferImportedHistory ||
+        imported.lastWatchedAt > lastWatchedAt
     return copy(
         title = preferCurrent(title, imported.title),
         creator = preferCurrent(creator, imported.creator),
@@ -511,7 +548,11 @@ private fun VideoUiModel.mergeImported(imported: VideoUiModel): VideoUiModel {
         isDownloaded = isDownloaded || imported.isDownloaded,
         isWatchLater = isWatchLater || imported.isWatchLater,
         isLiked = isLiked || imported.isLiked,
-        lastWatchedAt = maxOf(lastWatchedAt, imported.lastWatchedAt),
+        lastWatchedAt = if (preferImportedHistory && imported.lastWatchedAt > 0L) {
+            imported.lastWatchedAt
+        } else {
+            maxOf(lastWatchedAt, imported.lastWatchedAt)
+        },
         contentUrl = preferCurrent(contentUrl, imported.contentUrl),
         thumbnailUrl = preferCurrent(thumbnailUrl, imported.thumbnailUrl),
         description = preferCurrent(description, imported.description),

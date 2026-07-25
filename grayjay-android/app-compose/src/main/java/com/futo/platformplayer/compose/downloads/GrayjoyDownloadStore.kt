@@ -242,6 +242,16 @@ internal fun aggregateDownloadStatus(
     else -> DownloadStatus.Queued
 }
 
+internal fun isExcludedRecoveryTransfer(
+    transferVideoId: String,
+    transferMediaType: DownloadMediaType,
+    excludingVideoId: String?,
+    excludingMediaType: DownloadMediaType?,
+): Boolean =
+    excludingVideoId != null &&
+        transferVideoId == excludingVideoId &&
+        (excludingMediaType == null || transferMediaType == excludingMediaType)
+
 private data class DownloadGroupKey(
     val profileId: String,
     val videoId: String,
@@ -774,9 +784,21 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         }
 
     @Synchronized
-    fun hasActiveTransfer(profileId: String): Boolean = downloadsById.values.any { download ->
-        download.state in ACTIVE_STATES &&
-            DownloadRequestMetadata.from(download.request.data)?.profileId == profileId
+    fun hasActiveTransfer(
+        profileId: String,
+        excludingVideoId: String? = null,
+        excludingMediaType: DownloadMediaType? = null,
+    ): Boolean = downloadsById.values.any { download ->
+        if (download.state !in ACTIVE_STATES) return@any false
+        val metadata = DownloadRequestMetadata.from(download.request.data) ?: return@any false
+        if (metadata.profileId != profileId) return@any false
+        val isExcludedRecoveryGroup = isExcludedRecoveryTransfer(
+            transferVideoId = metadata.videoId,
+            transferMediaType = metadata.mediaType,
+            excludingVideoId = excludingVideoId,
+            excludingMediaType = excludingMediaType,
+        )
+        !isExcludedRecoveryGroup
     }
 
     @Synchronized

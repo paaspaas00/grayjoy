@@ -504,4 +504,14 @@
     <string name="update_available_description">La versión %1$s está disponible en GitHub.</string>
     <string name="open_release_page">Abrir página de la versión</string>
     <string name="version_information">Versión %1$s • compilación %2$d</string>
+    <string name="enqueue">Añadir a la cola</string>
+    <string name="played_on_date">Reproducidos el %1$s</string>
+    <string name="per_channel_playback_speed">Velocidad por canal</string>
+    <string name="per_channel_playback_speed_description">Recuerda una velocidad preferida para cada canal. La velocidad elegida para un vídeo tiene prioridad.</string>
+    <string name="channel_playback_speed">Velocidad del canal</string>
+    <string name="channel_playback_speed_description">Elige la velocidad aplicada automáticamente a los vídeos de este canal.</string>
+    <string name="default_speed_label">Predeterminada de la app</string>
+    <string name="app_default_speed">Predeterminada de la app (%1$s)</string>
+    <string name="use_channel_speed">Usar velocidad del canal</string>
+    <string name="use_default_speed">Usar predeterminada de la app</string>
 </resources>

@@ -504,4 +504,14 @@
     <string name="update_available_description">版本 %1$s 已在 GitHub 上发布。</string>
     <string name="open_release_page">打开发布页面</string>
     <string name="version_information">版本 %1$s • 构建 %2$d</string>
+    <string name="enqueue">加入队列</string>
+    <string name="played_on_date">播放于 %1$s</string>
+    <string name="per_channel_playback_speed">按频道设置播放速度</string>
+    <string name="per_channel_playback_speed_description">记住每个频道的首选速度。为单个视频选择的速度优先。</string>
+    <string name="channel_playback_speed">频道播放速度</string>
+    <string name="channel_playback_speed_description">选择自动应用于此频道视频的速度。</string>
+    <string name="default_speed_label">应用默认值</string>
+    <string name="app_default_speed">应用默认值（%1$s）</string>
+    <string name="use_channel_speed">使用频道速度</string>
+    <string name="use_default_speed">使用应用默认值</string>
 </resources>

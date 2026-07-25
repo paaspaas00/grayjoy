@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -18,9 +19,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Badge
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -64,16 +67,29 @@ fun SubscriptionsScreen(
     onFollowedChange: (String, Boolean) -> Unit,
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
+    onQueueSelection: (List<String>) -> Unit,
     onChannelClick: (ChannelUiModel) -> Unit,
 ) {
     var isManaging by rememberSaveable { mutableStateOf(false) }
+    var videoSelectionMode by rememberSaveable { mutableStateOf(false) }
     val selectedChannelIds = remember { mutableStateListOf<String>() }
+    val selectedVideoIds = remember { mutableStateListOf<String>() }
     val followedChannels = channels.filter { it.id in followedCreatorIds }
     val followedVideos = videosForFollowedCreators(videos, followedCreatorIds)
-    LazyColumn(
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
+    fun leaveVideoSelectionMode() {
+        videoSelectionMode = false
+        selectedVideoIds.clear()
+    }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 16.dp,
+                top = 16.dp,
+                end = 16.dp,
+                bottom = if (videoSelectionMode) 88.dp else 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
         item {
             SectionHeading(
                 title = if (isManaging) {
@@ -90,6 +106,7 @@ fun SubscriptionsScreen(
                 onAction = {
                     isManaging = !isManaging
                     selectedChannelIds.clear()
+                    leaveVideoSelectionMode()
                 },
             )
         }
@@ -160,7 +177,21 @@ fun SubscriptionsScreen(
                 }
             }
         }
-        if (!isManaging) item { SectionHeading(stringResource(R.string.latest_uploads)) }
+        if (!isManaging) item {
+            SectionHeading(
+                title = if (videoSelectionMode) {
+                    pluralStringResource(
+                        R.plurals.selected_count,
+                        selectedVideoIds.size,
+                        selectedVideoIds.size,
+                    )
+                } else {
+                    stringResource(R.string.latest_uploads)
+                },
+                action = stringResource(R.string.cancel).takeIf { videoSelectionMode },
+                onAction = ::leaveVideoSelectionMode,
+            )
+        }
         if (!isManaging && followedVideos.isEmpty()) {
             item {
                 Text(
@@ -173,9 +204,61 @@ fun SubscriptionsScreen(
             VideoCard(
                 video = video,
                 index = index + 1,
-                onClick = { onVideoClick(video) },
-                onLongClick = { onVideoLongClick(video) },
+                selected = video.id in selectedVideoIds,
+                onClick = {
+                    if (videoSelectionMode) {
+                        if (video.id in selectedVideoIds) selectedVideoIds.remove(video.id)
+                        else selectedVideoIds.add(video.id)
+                        if (selectedVideoIds.isEmpty()) leaveVideoSelectionMode()
+                    } else {
+                        onVideoClick(video)
+                    }
+                },
+                onLongClick = {
+                    videoSelectionMode = true
+                    if (video.id !in selectedVideoIds) selectedVideoIds.add(video.id)
+                },
             )
+        }
+        }
+        if (videoSelectionMode) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .testTag("subscriptions-selection-bar"),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 3.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        pluralStringResource(
+                            R.plurals.selected_count,
+                            selectedVideoIds.size,
+                            selectedVideoIds.size,
+                        ),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    IconButton(
+                        onClick = {
+                            onQueueSelection(selectedVideoIds.toList())
+                            leaveVideoSelectionMode()
+                        },
+                        enabled = selectedVideoIds.isNotEmpty(),
+                        modifier = Modifier.testTag("subscriptions-enqueue"),
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.PlaylistPlay,
+                            contentDescription = stringResource(R.string.enqueue),
+                        )
+                    }
+                }
+            }
         }
     }
 }

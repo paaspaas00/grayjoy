@@ -13,6 +13,9 @@ data class GrayjayUiState(
     val themeMode: ThemeMode = ThemeMode.System,
     val privateSessionEnabled: Boolean = false,
     val defaultPlaybackSpeed: Float = 1f,
+    val perChannelPlaybackSpeedEnabled: Boolean = true,
+    val channelPlaybackSpeeds: Map<String, Float> = emptyMap(),
+    val videoPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val preferredVideoQuality: Int = 0,
     val preferredAudioBitrate: Int = Int.MAX_VALUE,
     val stickyCaptionsEnabled: Boolean = true,
@@ -28,6 +31,7 @@ data class GrayjayUiState(
     val sourceOperationInProgress: Boolean = false,
     val sourceOperationMessage: String? = null,
     val sourceTrustRequest: SourceTrustRequestUiModel? = null,
+    val youtubeImport: YoutubeImportUiState = YoutubeImportUiState(),
     val databaseImport: DatabaseImportUiState = DatabaseImportUiState(),
     val downloads: Map<String, DownloadUiModel> = emptyMap(),
     val activePlaylistDownloads: Set<PlaylistDownloadBatchUiModel> = emptySet(),
@@ -41,6 +45,30 @@ data class GrayjayUiState(
     val chromecast: ChromecastUiState = ChromecastUiState(),
     val externalNavigation: ExternalNavigationUiModel? = null,
     val availableUpdate: ReleaseUpdateUiModel? = null,
+)
+
+enum class YoutubeImportStageUi {
+    Connecting,
+    Subscriptions,
+    History,
+    Playlists,
+}
+
+data class YoutubeImportSelection(
+    val subscriptions: Boolean = true,
+    val history: Boolean = true,
+    val playlists: Boolean = true,
+    val likedVideos: Boolean = true,
+)
+
+data class YoutubeImportUiState(
+    val isRunning: Boolean = false,
+    val stage: YoutubeImportStageUi? = null,
+    val completed: Int = 0,
+    val total: Int? = null,
+    val resultMessage: String? = null,
+    val warningMessage: String? = null,
+    val errorMessage: String? = null,
 )
 
 enum class ExternalNavigationKind { Video, Channel, Playlist }

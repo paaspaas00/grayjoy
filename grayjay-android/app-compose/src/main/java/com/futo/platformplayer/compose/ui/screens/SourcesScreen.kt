@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Refresh
@@ -29,12 +30,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -51,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -61,6 +65,9 @@ import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.SourceAvailability
 import com.futo.platformplayer.compose.ui.SourceUiModel
+import com.futo.platformplayer.compose.ui.YoutubeImportSelection
+import com.futo.platformplayer.compose.ui.YoutubeImportStageUi
+import com.futo.platformplayer.compose.ui.YoutubeImportUiState
 import java.util.Locale
 
 internal fun visibleSourcesForQuery(
@@ -92,10 +99,14 @@ fun SourcesScreen(
     onRemoveSource: (String) -> Unit,
     onLoginSource: (SourceUiModel) -> Unit,
     onLogoutSource: (String) -> Unit,
+    youtubeImport: YoutubeImportUiState,
+    onImportYoutube: (String, YoutubeImportSelection) -> Unit,
+    onDismissYoutubeImport: () -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var selectedSourceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var youtubeImportSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedSource = sources.firstOrNull { it.id == selectedSourceId }
     val visibleSources = visibleSourcesForQuery(sources, query)
 
@@ -257,9 +268,26 @@ fun SourcesScreen(
             onClearCache = { onClearSourceCache(source.id) },
             onLogin = { onLoginSource(source) },
             onLogout = { onLogoutSource(source.id) },
+            onImportYoutube = {
+                selectedSourceId = null
+                youtubeImportSourceId = source.id
+            },
             onRemove = {
                 selectedSourceId = null
                 onRemoveSource(source.id)
+            },
+        )
+    }
+
+    youtubeImportSourceId?.let { sourceId ->
+        YoutubeImportSheet(
+            state = youtubeImport,
+            onStart = { selection -> onImportYoutube(sourceId, selection) },
+            onDismiss = {
+                if (!youtubeImport.isRunning) {
+                    onDismissYoutubeImport()
+                    youtubeImportSourceId = null
+                }
             },
         )
     }
@@ -402,6 +430,7 @@ private fun SourceOptionsSheet(
     onClearCache: () -> Unit,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
+    onImportYoutube: () -> Unit,
     onRemove: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -460,6 +489,21 @@ private fun SourceOptionsSheet(
                 enabled = source.pluginConfigUrl.isNotBlank() && !isBusy,
                 onClick = if (source.isAuthenticated) onLogout else onLogin,
             )
+            if (source.isYoutubeAccountImportSource()) {
+                SourceOption(
+                    title = stringResource(R.string.import_from_youtube),
+                    body = stringResource(
+                        if (source.isAuthenticated) {
+                            R.string.import_from_youtube_description
+                        } else {
+                            R.string.youtube_import_login_required
+                        },
+                    ),
+                    icon = { Icon(Icons.Outlined.Download, contentDescription = null) },
+                    enabled = source.isAuthenticated && !isBusy,
+                    onClick = onImportYoutube,
+                )
+            }
             SourceOption(
                 title = stringResource(R.string.update_or_reinstall),
                 body = stringResource(R.string.update_source_description),
@@ -525,7 +569,195 @@ private fun SourceOption(
         leadingContent = icon,
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(if (enabled) 1f else 0.38f)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 4.dp),
     )
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun YoutubeImportSheet(
+    state: YoutubeImportUiState,
+    onStart: (YoutubeImportSelection) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var subscriptions by rememberSaveable { mutableStateOf(true) }
+    var history by rememberSaveable { mutableStateOf(true) }
+    var playlists by rememberSaveable { mutableStateOf(true) }
+    var likedVideos by rememberSaveable { mutableStateOf(true) }
+    val hasSelection = subscriptions || history || playlists || likedVideos
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                stringResource(R.string.import_from_youtube),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                stringResource(R.string.youtube_import_sheet_description),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            if (state.resultMessage == null && state.errorMessage == null) {
+                YoutubeImportChoice(
+                    title = stringResource(R.string.subscriptions),
+                    checked = subscriptions,
+                    enabled = !state.isRunning,
+                    onCheckedChange = { subscriptions = it },
+                )
+                YoutubeImportChoice(
+                    title = stringResource(R.string.watch_history),
+                    checked = history,
+                    enabled = !state.isRunning,
+                    onCheckedChange = { history = it },
+                )
+                YoutubeImportChoice(
+                    title = stringResource(R.string.playlists),
+                    checked = playlists,
+                    enabled = !state.isRunning,
+                    onCheckedChange = { playlists = it },
+                )
+                YoutubeImportChoice(
+                    title = stringResource(R.string.liked_videos),
+                    checked = likedVideos,
+                    enabled = !state.isRunning,
+                    onCheckedChange = { likedVideos = it },
+                )
+            }
+
+            if (state.isRunning) {
+                val progressLabel = when (state.stage) {
+                    YoutubeImportStageUi.Connecting, null ->
+                        stringResource(R.string.youtube_import_connecting)
+                    YoutubeImportStageUi.Subscriptions ->
+                        stringResource(R.string.youtube_importing_subscriptions)
+                    YoutubeImportStageUi.History ->
+                        stringResource(R.string.youtube_importing_history)
+                    YoutubeImportStageUi.Playlists ->
+                        stringResource(R.string.youtube_importing_playlists)
+                }
+                Text(
+                    if (state.total != null) {
+                        stringResource(
+                            R.string.youtube_import_progress_count,
+                            progressLabel,
+                            state.completed,
+                            state.total,
+                        )
+                    } else if (state.completed > 0) {
+                        stringResource(
+                            R.string.youtube_import_progress_open,
+                            progressLabel,
+                            state.completed,
+                        )
+                    } else {
+                        progressLabel
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (state.total != null && state.total > 0) {
+                    LinearProgressIndicator(
+                        progress = {
+                            state.completed.toFloat().div(state.total.toFloat()).coerceIn(0f, 1f)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
+
+            state.resultMessage?.let {
+                Text(it, style = MaterialTheme.typography.titleMedium)
+            }
+            state.warningMessage?.let {
+                Text(
+                    stringResource(R.string.youtube_import_warnings, it),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            state.errorMessage?.let {
+                Text(it, color = MaterialTheme.colorScheme.error)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = onDismiss,
+                    enabled = !state.isRunning,
+                ) {
+                    Text(
+                        stringResource(
+                            if (state.resultMessage != null || state.errorMessage != null) {
+                                R.string.close
+                            } else {
+                                R.string.cancel
+                            },
+                        ),
+                    )
+                }
+                if (state.resultMessage == null && state.errorMessage == null) {
+                    Button(
+                        onClick = {
+                            onStart(
+                                YoutubeImportSelection(
+                                    subscriptions = subscriptions,
+                                    history = history,
+                                    playlists = playlists,
+                                    likedVideos = likedVideos,
+                                ),
+                            )
+                        },
+                        enabled = hasSelection && !state.isRunning,
+                        modifier = Modifier.testTag("import-youtube-account"),
+                    ) {
+                        Text(stringResource(R.string.import_action))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun YoutubeImportChoice(
+    title: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+        )
+        Text(title, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+internal fun SourceUiModel.isYoutubeAccountImportSource(): Boolean =
+    id.equals("youtube", ignoreCase = true) ||
+        name.equals("youtube", ignoreCase = true) ||
+        engineId == "35ae969a-a7db-11ed-afa1-0242ac120002"

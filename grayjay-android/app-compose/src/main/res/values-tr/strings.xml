@@ -504,4 +504,14 @@
     <string name="update_available_description">%1$s sürümü GitHub üzerinde mevcut.</string>
     <string name="open_release_page">Sürüm sayfasını aç</string>
     <string name="version_information">Sürüm %1$s • derleme %2$d</string>
+    <string name="enqueue">Sıraya ekle</string>
+    <string name="played_on_date">%1$s tarihinde oynatıldı</string>
+    <string name="per_channel_playback_speed">Kanal başına oynatma hızı</string>
+    <string name="per_channel_playback_speed_description">Her kanal için tercih edilen hızı hatırlar. Tek bir video için seçilen hız önceliklidir.</string>
+    <string name="channel_playback_speed">Kanal oynatma hızı</string>
+    <string name="channel_playback_speed_description">Bu kanalın videolarına otomatik uygulanacak hızı seçin.</string>
+    <string name="default_speed_label">Uygulama varsayılanı</string>
+    <string name="app_default_speed">Uygulama varsayılanı (%1$s)</string>
+    <string name="use_channel_speed">Kanal hızını kullan</string>
+    <string name="use_default_speed">Uygulama varsayılanını kullan</string>
 </resources>

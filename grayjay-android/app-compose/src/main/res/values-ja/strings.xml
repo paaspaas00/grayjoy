@@ -504,4 +504,14 @@
     <string name="update_available_description">バージョン %1$s が GitHub で公開されています。</string>
     <string name="open_release_page">リリースページを開く</string>
     <string name="version_information">バージョン %1$s • ビルド %2$d</string>
+    <string name="enqueue">キューに追加</string>
+    <string name="played_on_date">%1$s に再生</string>
+    <string name="per_channel_playback_speed">チャンネルごとの再生速度</string>
+    <string name="per_channel_playback_speed_description">チャンネルごとの再生速度を記憶します。個別の動画で選んだ速度が優先されます。</string>
+    <string name="channel_playback_speed">チャンネルの再生速度</string>
+    <string name="channel_playback_speed_description">このチャンネルの動画に自動適用する速度を選択します。</string>
+    <string name="default_speed_label">アプリの既定値</string>
+    <string name="app_default_speed">アプリの既定値（%1$s）</string>
+    <string name="use_channel_speed">チャンネル速度を使用</string>
+    <string name="use_default_speed">アプリの既定値を使用</string>
 </resources>

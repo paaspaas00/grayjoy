@@ -504,4 +504,14 @@
     <string name="update_available_description">버전 %1$s을 GitHub에서 사용할 수 있습니다.</string>
     <string name="open_release_page">릴리스 페이지 열기</string>
     <string name="version_information">버전 %1$s • 빌드 %2$d</string>
+    <string name="enqueue">대기열에 추가</string>
+    <string name="played_on_date">%1$s에 재생됨</string>
+    <string name="per_channel_playback_speed">채널별 재생 속도</string>
+    <string name="per_channel_playback_speed_description">채널마다 선호 속도를 기억합니다. 개별 동영상에서 선택한 속도가 우선합니다.</string>
+    <string name="channel_playback_speed">채널 재생 속도</string>
+    <string name="channel_playback_speed_description">이 채널의 동영상에 자동으로 적용할 속도를 선택하세요.</string>
+    <string name="default_speed_label">앱 기본값</string>
+    <string name="app_default_speed">앱 기본값(%1$s)</string>
+    <string name="use_channel_speed">채널 속도 사용</string>
+    <string name="use_default_speed">앱 기본값 사용</string>
 </resources>

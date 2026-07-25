@@ -86,13 +86,22 @@ fun PlaylistDetailScreen(
     var confirmRemoval by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var selectionMode by rememberSaveable(playlist.id) { mutableStateOf(false) }
     val selectedVideoIds = remember(playlist.id) { mutableStateListOf<String>() }
-    val playlistVideos = playlist.videoIds.mapNotNull { id -> videos.firstOrNull { it.id == id } }
-    val downloadableIds = playlistVideos.filterNot(VideoUiModel::isLive).map(VideoUiModel::id)
-    val audioDownloadCount = downloadableIds.count {
-        downloads[it]?.isComplete(DownloadMediaType.Audio) == true
+    val videosById = remember(videos) { videos.associateBy(VideoUiModel::id) }
+    val playlistVideos = remember(playlist.videoIds, videosById) {
+        playlist.videoIds.mapNotNull(videosById::get)
     }
-    val videoDownloadCount = downloadableIds.count {
-        downloads[it]?.isComplete(DownloadMediaType.Video) == true
+    val downloadableIds = remember(playlistVideos) {
+        playlistVideos.filterNot(VideoUiModel::isLive).map(VideoUiModel::id)
+    }
+    val audioDownloadCount = remember(downloadableIds, downloads) {
+        downloadableIds.count {
+            downloads[it]?.isComplete(DownloadMediaType.Audio) == true
+        }
+    }
+    val videoDownloadCount = remember(downloadableIds, downloads) {
+        downloadableIds.count {
+            downloads[it]?.isComplete(DownloadMediaType.Video) == true
+        }
     }
     val audioBatchActive = DownloadMediaType.Audio in activeDownloadMediaTypes
     val videoBatchActive = DownloadMediaType.Video in activeDownloadMediaTypes

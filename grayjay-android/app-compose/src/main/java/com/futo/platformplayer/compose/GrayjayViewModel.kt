@@ -28,10 +28,13 @@ import com.futo.platformplayer.compose.data.SourceRepository
 import com.futo.platformplayer.compose.data.visibleContentForSources
 import com.futo.platformplayer.compose.data.withLibraryState
 import com.futo.platformplayer.compose.data.buildImportLibrary
+import com.futo.platformplayer.compose.data.playlistTitleExists
 import com.futo.platformplayer.compose.data.uniqueRemotePlaylistTitle
 import com.futo.platformplayer.compose.casting.ChromecastManager
 import com.futo.platformplayer.compose.engine.AndroidGrayjayEngine
 import com.futo.platformplayer.compose.engine.EnginePlaybackState
+import com.futo.platformplayer.compose.engine.EngineUserImportSelection
+import com.futo.platformplayer.compose.engine.EngineUserImportStage
 import com.futo.platformplayer.compose.engine.EngineUrlKind
 import com.futo.platformplayer.compose.engine.GrayjayEngine
 import com.futo.platformplayer.compose.engine.SearchCorpus
@@ -72,6 +75,9 @@ import com.futo.platformplayer.compose.ui.SourceAvailability
 import com.futo.platformplayer.compose.ui.SourceUiModel
 import com.futo.platformplayer.compose.ui.SourceTrustRequestUiModel
 import com.futo.platformplayer.compose.ui.ThemeMode
+import com.futo.platformplayer.compose.ui.YoutubeImportSelection
+import com.futo.platformplayer.compose.ui.YoutubeImportStageUi
+import com.futo.platformplayer.compose.ui.YoutubeImportUiState
 import com.futo.platformplayer.backend.GrayjaySignatureMismatchException
 import com.futo.platformplayer.engine.exceptions.ScriptLoginRequiredException
 import com.futo.platformplayer.compose.ui.VideoUiModel
@@ -91,6 +97,8 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.text.DateFormat
+import java.util.Date
 
 /**
  * Keeps a successfully loaded Home feed for the lifetime of the app process. Activity recreation
@@ -169,6 +177,28 @@ internal fun preparedQueueItemsAhead(
     val currentIndex = queueVideoIds.indexOf(currentVideoId)
     return if (currentIndex < 0) 0 else queueVideoIds.lastIndex - currentIndex
 }
+
+internal fun unqueuedVideoIds(
+    requestedVideoIds: List<String>,
+    activeQueueVideoIds: Collection<String>,
+    knownQueueVideoIds: Collection<String>,
+): List<String> {
+    val existing = activeQueueVideoIds.toSet() + knownQueueVideoIds
+    return requestedVideoIds.distinct().filterNot(existing::contains)
+}
+
+internal fun resolvedPlaybackSpeed(
+    videoId: String?,
+    channelId: String?,
+    defaultSpeed: Float,
+    perChannelEnabled: Boolean,
+    videoSpeeds: Map<String, Float>,
+    channelSpeeds: Map<String, Float>,
+): Float = videoId?.let(videoSpeeds::get)
+    ?: channelId
+        ?.takeIf { perChannelEnabled }
+        ?.let(channelSpeeds::get)
+    ?: defaultSpeed
 
 private data class PlaybackQueueSession(
     val generation: Long,
@@ -371,6 +401,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             themeMode = preferences.themeMode,
             privateSessionEnabled = preferences.privateSessionEnabled,
             defaultPlaybackSpeed = preferences.defaultPlaybackSpeed,
+            perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
+            channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
+            videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             preferredVideoQuality = preferences.preferredVideoQuality,
             preferredAudioBitrate = preferences.preferredAudioBitrate,
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
@@ -425,6 +458,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                             )
                         }
                         scheduleResumePromptDismiss(currentVideo.id, currentVideo.resumePositionFraction())
+                        applyPlaybackSpeed(currentVideo)
                         detailsJob = viewModelScope.launch { loadExtras(currentVideo) }
                     }
                 } else if (
@@ -474,6 +508,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             var progressTicks = 0
             while (isActive) {
                 progressTicks += 1
+                // Media3 does not emit a callback as currentPosition advances. Publish a clock
+                // tick explicitly so every compact presentation, especially the mini-player,
+                // follows playback instead of only moving after a state/track event.
+                engine.refreshProgress()
                 if (progressTicks % 5 == 0) persistCurrentPlaybackProgress()
                 syncDownloadState()
                 delay(1_000)
@@ -512,7 +550,15 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun setDefaultPlaybackSpeed(speed: Float) {
         preferences.defaultPlaybackSpeed = speed
         _uiState.update { it.copy(defaultPlaybackSpeed = preferences.defaultPlaybackSpeed) }
-        engine.setPlaybackSpeed(preferences.defaultPlaybackSpeed)
+        applyPlaybackSpeed(_uiState.value.nowPlaying.video)
+    }
+
+    fun setPerChannelPlaybackSpeedEnabled(enabled: Boolean) {
+        preferences.perChannelPlaybackSpeedEnabled = enabled
+        _uiState.update {
+            it.copy(perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled)
+        }
+        applyPlaybackSpeed(_uiState.value.nowPlaying.video)
     }
 
     fun setPreferredVideoQuality(height: Int) {
@@ -922,6 +968,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             themeMode = preferences.themeMode,
             privateSessionEnabled = preferences.privateSessionEnabled,
             defaultPlaybackSpeed = preferences.defaultPlaybackSpeed,
+            perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
+            channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
+            videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             preferredVideoQuality = preferences.preferredVideoQuality,
             preferredAudioBitrate = preferences.preferredAudioBitrate,
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
@@ -1103,6 +1152,130 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun importYoutubeAccount(sourceId: String, selection: YoutubeImportSelection) {
+        if (_uiState.value.youtubeImport.isRunning) return
+        val source = _uiState.value.sources.firstOrNull { it.id == sourceId } ?: return
+        if (!source.isAuthenticated) {
+            _uiState.update {
+                it.copy(
+                    youtubeImport = YoutubeImportUiState(
+                        errorMessage = text(R.string.youtube_import_login_required),
+                    ),
+                )
+            }
+            return
+        }
+        if (
+            !selection.subscriptions &&
+            !selection.history &&
+            !selection.playlists &&
+            !selection.likedVideos
+        ) {
+            return
+        }
+
+        val profileAtStart = activeProfileId
+        val libraryAtStart = libraryRepository
+        val preferencesAtStart = preferences
+        _uiState.update {
+            it.copy(
+                youtubeImport = YoutubeImportUiState(
+                    isRunning = true,
+                    stage = YoutubeImportStageUi.Connecting,
+                ),
+            )
+        }
+        viewModelScope.launch {
+            try {
+                val result = engine.importUserData(
+                    sourceId = sourceId,
+                    selection = EngineUserImportSelection(
+                        subscriptions = selection.subscriptions,
+                        history = selection.history,
+                        playlists = selection.playlists,
+                        likedVideos = selection.likedVideos,
+                    ),
+                ) { progress ->
+                    _uiState.update { state ->
+                        state.copy(
+                            youtubeImport = state.youtubeImport.copy(
+                                stage = when (progress.stage) {
+                                    EngineUserImportStage.Connecting ->
+                                        YoutubeImportStageUi.Connecting
+                                    EngineUserImportStage.Subscriptions ->
+                                        YoutubeImportStageUi.Subscriptions
+                                    EngineUserImportStage.History ->
+                                        YoutubeImportStageUi.History
+                                    EngineUserImportStage.Playlists ->
+                                        YoutubeImportStageUi.Playlists
+                                },
+                                completed = progress.completed,
+                                total = progress.total,
+                            ),
+                        )
+                    }
+                }
+                if (profileAtStart != activeProfileId) {
+                    error(text(R.string.profile_changed_during_import))
+                }
+                withContext(Dispatchers.IO) {
+                    libraryAtStart.mergeImportedData(
+                        videos = result.videos,
+                        playlists = result.playlists,
+                        repairSyntheticHistoryDates = selection.history,
+                    )
+                    preferencesAtStart.mergeImportedSubscriptions(result.subscriptions)
+                }
+                result.subscriptions.forEach { remoteChannels[it.id] = it }
+                result.videos.forEach { video ->
+                    remoteVideos[video.id] = video
+                    registerRemoteChannel(video)
+                }
+                followedCreatorIds = preferencesAtStart.followedCreatorIds()
+                reloadLibrary()
+                HomeSessionCache.removeFeed(activeProfileId, HomeFeedType.Subscriptions)
+                homeFeedCache.remove(HomeFeedType.Subscriptions)
+                homeContinuationCache.remove(HomeFeedType.Subscriptions)
+                homeHasMoreCache.remove(HomeFeedType.Subscriptions)
+                _uiState.update { state ->
+                    state.copy(
+                        channels = visibleKnownChannels(),
+                        followedCreatorIds = followedCreatorIds,
+                        youtubeImport = YoutubeImportUiState(
+                            resultMessage = text(
+                                R.string.youtube_import_summary,
+                                result.subscriptions.size,
+                                result.historyCount,
+                                result.playlists.size,
+                            ),
+                            warningMessage = result.warnings
+                                .take(3)
+                                .joinToString("\n")
+                                .takeIf(String::isNotBlank),
+                        ),
+                    )
+                }
+                if (selection.subscriptions) refreshHome()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        youtubeImport = YoutubeImportUiState(
+                            errorMessage = error.localizedMessage
+                                ?: text(R.string.youtube_import_failed),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissYoutubeImport() {
+        if (_uiState.value.youtubeImport.isRunning) return
+        _uiState.update { it.copy(youtubeImport = YoutubeImportUiState()) }
+    }
+
     fun openVideo(videoId: String) {
         val video = findVideo(videoId) ?: return
         val resumePositionFraction = video.resumePositionFraction()
@@ -1207,6 +1380,74 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun playQueue(videoIds: List<String>) {
         activePlaylistId = null
         startQueue(videoIds)
+    }
+
+    fun enqueueVideos(videoIds: List<String>) {
+        val requested = videoIds.distinct().mapNotNull(::findVideo)
+        if (requested.isEmpty()) return
+
+        val currentPlayback = engine.playback.value
+        val currentSession = playbackQueueSession
+        val additionIds = unqueuedVideoIds(
+            requestedVideoIds = requested.map(VideoUiModel::id),
+            activeQueueVideoIds = currentPlayback.queueVideoIds,
+            knownQueueVideoIds = currentSession?.knownVideoIds.orEmpty(),
+        ).toSet()
+        val additions = requested.filter { it.id in additionIds }
+        if (additions.isEmpty()) return
+
+        val currentVideoId = currentPlayback.currentVideoId
+            ?: _uiState.value.nowPlaying.video?.id
+        if (currentVideoId == null || engine.player.mediaItemCount == 0) {
+            val created = libraryRepository.createPlaylist(playedOnPlaylistTitle(), requested)
+                ?: return
+            reloadLibrary()
+            activePlaylistId = created.id
+            startQueue(created.videoIds)
+            return
+        }
+
+        var queueSession = currentSession
+        if (activePlaylistId == null) {
+            val snapshotIds = buildList {
+                addAll(currentPlayback.queueVideoIds)
+                currentSession?.pendingVideos?.mapTo(this, VideoUiModel::id)
+                addAll(additions.map(VideoUiModel::id))
+            }.distinct()
+            val snapshotVideos = snapshotIds.mapNotNull(::findVideo)
+            val created = libraryRepository.createPlaylist(
+                playedOnPlaylistTitle(),
+                snapshotVideos,
+            ) ?: return
+            reloadLibrary()
+            activePlaylistId = created.id
+            queueSession = if (currentSession == null) {
+                PlaybackQueueSession(
+                    generation = playbackGeneration,
+                    profileId = activeProfileId,
+                    playlistId = created.id,
+                    pendingVideos = mutableListOf(),
+                    knownVideoIds = currentPlayback.queueVideoIds.toMutableSet(),
+                )
+            } else {
+                currentSession.copy(playlistId = created.id)
+            }
+            playbackQueueSession = queueSession
+        } else if (queueSession == null) {
+            queueSession = PlaybackQueueSession(
+                generation = playbackGeneration,
+                profileId = activeProfileId,
+                playlistId = activePlaylistId,
+                pendingVideos = mutableListOf(),
+                knownVideoIds = currentPlayback.queueVideoIds.toMutableSet(),
+            )
+            playbackQueueSession = queueSession
+        }
+
+        additions.forEach { video ->
+            if (queueSession.knownVideoIds.add(video.id)) queueSession.pendingVideos += video
+        }
+        prepareQueueLookAhead()
     }
 
     fun playPlaylist(playlistId: String) {
@@ -1440,8 +1681,28 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setPlaybackSpeed(speed: Float) {
+        _uiState.value.nowPlaying.video?.let { video ->
+            preferences.setVideoPlaybackSpeed(video.id, speed)
+            _uiState.update { it.copy(videoPlaybackSpeeds = preferences.videoPlaybackSpeeds()) }
+        }
         if (chromecastManager.state.value.isConnected) chromecastManager.setPlaybackSpeed(speed)
         else engine.setPlaybackSpeed(speed)
+    }
+
+    fun useChannelPlaybackSpeedForCurrentVideo() {
+        val video = _uiState.value.nowPlaying.video ?: return
+        preferences.setVideoPlaybackSpeed(video.id, null)
+        _uiState.update { it.copy(videoPlaybackSpeeds = preferences.videoPlaybackSpeeds()) }
+        applyPlaybackSpeed(video)
+    }
+
+    fun setChannelPlaybackSpeed(channelId: String, speed: Float?) {
+        preferences.setChannelPlaybackSpeed(channelId, speed)
+        _uiState.update { it.copy(channelPlaybackSpeeds = preferences.channelPlaybackSpeeds()) }
+        val current = _uiState.value.nowPlaying.video
+        if (current?.creatorKey() == channelId && current.id !in preferences.videoPlaybackSpeeds()) {
+            applyPlaybackSpeed(current)
+        }
     }
 
     fun setVideoQuality(height: Int?) {
@@ -2803,7 +3064,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                                     delay(100L)
                                 }
                             }
-                            while (downloadStore.hasActiveTransfer(profileAtStart)) {
+                            // A process restart leaves the same deterministic Media3 request in
+                            // the index while its plugin transport is rebuilt. Waiting for every
+                            // active request used to include that very request, permanently
+                            // leaving it shown as Paused. Serialize against other transfers only.
+                            while (
+                                downloadStore.hasActiveTransfer(
+                                    profileId = profileAtStart,
+                                    excludingVideoId = videoId,
+                                    excludingMediaType = mediaType,
+                                )
+                            ) {
                                 delay(250L)
                             }
                             if (profileAtStart != activeProfileId) return@launch
@@ -2939,6 +3210,19 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (videos.isEmpty()) return
         libraryRepository.createPlaylist(title, videos)
         reloadLibrary()
+    }
+
+    private fun playedOnPlaylistTitle(): String {
+        val formattedDate = DateFormat.getDateTimeInstance(
+            DateFormat.MEDIUM,
+            DateFormat.SHORT,
+        ).format(Date())
+        val base = text(R.string.played_on_date, formattedDate)
+        val existing = libraryRepository.loadPlaylists().map(PlaylistUiModel::title)
+        if (!playlistTitleExists(base, existing)) return base
+        var suffix = 2
+        while (playlistTitleExists("$base ($suffix)", existing)) suffix += 1
+        return "$base ($suffix)"
     }
 
     fun renamePlaylist(playlistId: String, title: String) {
@@ -4249,7 +4533,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun applyPlaybackPreferences() {
-        engine.setPlaybackSpeed(preferences.defaultPlaybackSpeed)
+        applyPlaybackSpeed(_uiState.value.nowPlaying.video)
         engine.setOtherAudioDucking(
             preferences.otherAudioDuckingEnabled,
             preferences.otherAudioDuckVolumePercent,
@@ -4260,6 +4544,19 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             if (language == null) engine.setCaptionsEnabled(true)
             else engine.setSubtitleLanguage(language)
         }
+    }
+
+    private fun applyPlaybackSpeed(video: VideoUiModel?) {
+        val speed = resolvedPlaybackSpeed(
+            videoId = video?.id,
+            channelId = video?.creatorKey(),
+            defaultSpeed = preferences.defaultPlaybackSpeed,
+            perChannelEnabled = preferences.perChannelPlaybackSpeedEnabled,
+            videoSpeeds = preferences.videoPlaybackSpeeds(),
+            channelSpeeds = preferences.channelPlaybackSpeeds(),
+        )
+        if (chromecastManager.state.value.isConnected) chromecastManager.setPlaybackSpeed(speed)
+        else engine.setPlaybackSpeed(speed)
     }
 
     private fun findVideo(videoId: String): VideoUiModel? {

@@ -55,12 +55,33 @@ class LibraryRepositoryTest {
         )
     }
 
-    private fun video(id: String, isDownloaded: Boolean = false) = VideoUiModel(
+    @Test
+    fun syntheticImportFallbackRunIsDetectedWithoutTouchingRealHistoryDates() {
+        val videos = listOf(
+            video("real-new", lastWatchedAt = 20_000L),
+            video("fallback-1", lastWatchedAt = 10_000L),
+            video("fallback-2", lastWatchedAt = 9_999L),
+            video("fallback-3", lastWatchedAt = 9_998L),
+            video("real-old", lastWatchedAt = 5_000L),
+        )
+
+        assertEquals(
+            setOf("fallback-1", "fallback-2", "fallback-3"),
+            syntheticHistoryFallbackIds(videos),
+        )
+    }
+
+    private fun video(
+        id: String,
+        isDownloaded: Boolean = false,
+        lastWatchedAt: Long = 0L,
+    ) = VideoUiModel(
         id = id,
         title = id,
         creator = "Creator",
         metadata = "Now",
         duration = "1:00",
         isDownloaded = isDownloaded,
+        lastWatchedAt = lastWatchedAt,
     )
 }

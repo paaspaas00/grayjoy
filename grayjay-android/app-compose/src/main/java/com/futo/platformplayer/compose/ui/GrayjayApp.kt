@@ -191,6 +191,8 @@ private data class PlaybackPresentation(
     val onPrevious: () -> Unit,
     val onSeekBy: (Long) -> Unit,
     val onSpeedChange: (Float) -> Unit,
+    val onUseChannelSpeed: () -> Unit,
+    val onChannelSpeedChange: (String, Float?) -> Unit,
     val onQualityChange: (Int?) -> Unit,
     val onCaptionsEnabledChange: (Boolean) -> Unit,
     val onSubtitleLanguageChange: (String?) -> Unit,
@@ -213,6 +215,7 @@ private data class PlaybackPresentation(
     val onLoadMoreComments: () -> Unit,
     val onClose: () -> Unit,
     val onPlayQueue: (List<String>) -> Unit,
+    val onQueueVideos: (List<String>) -> Unit,
     val onPlayPlaylist: (String) -> Unit,
     val onPlayPlaylistFrom: (String, String) -> Unit,
     val onToggleWatchLater: (String) -> Unit,
@@ -237,6 +240,9 @@ private data class PlaybackPresentation(
     val libraryVideos: List<VideoUiModel>,
     val onOpenProfiles: () -> Unit,
     val defaultPlaybackSpeed: Float,
+    val perChannelPlaybackSpeedEnabled: Boolean,
+    val channelPlaybackSpeeds: Map<String, Float>,
+    val videoPlaybackSpeeds: Map<String, Float>,
     val preferredVideoQuality: Int,
     val preferredAudioBitrate: Int,
     val stickyCaptionsEnabled: Boolean,
@@ -251,6 +257,7 @@ private data class PlaybackPresentation(
     val isDarkTheme: Boolean,
     val onDarkThemeChange: (Boolean) -> Unit,
     val onDefaultPlaybackSpeedChange: (Float) -> Unit,
+    val onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
     val onPreferredVideoQualityChange: (Int) -> Unit,
     val onPreferredAudioBitrateChange: (Int) -> Unit,
     val onStickyCaptionsChange: (Boolean) -> Unit,
@@ -281,6 +288,9 @@ private data class SourcePresentation(
     val onRemove: (String) -> Unit,
     val onLogin: (SourceUiModel) -> Unit,
     val onLogout: (String) -> Unit,
+    val youtubeImport: YoutubeImportUiState,
+    val onImportYoutube: (String, YoutubeImportSelection) -> Unit,
+    val onDismissYoutubeImport: () -> Unit,
     val search: SearchUiState,
     val onSearchQueryChange: (String) -> Unit,
     val onSearchSubmit: (String, SearchContentType, Set<String>) -> Unit,
@@ -303,6 +313,7 @@ fun GrayjayApp(
     onRefreshHome: () -> Unit,
     onLoadMoreHome: () -> Unit = {},
     onPlayQueue: (List<String>) -> Unit,
+    onQueueVideos: (List<String>) -> Unit,
     onPlayPlaylist: (String) -> Unit,
     onPlayPlaylistFrom: (String, String) -> Unit,
     onTogglePlayback: () -> Unit,
@@ -310,6 +321,8 @@ fun GrayjayApp(
     onSkipToPrevious: () -> Unit,
     onSeekPlaybackBy: (Long) -> Unit,
     onPlaybackSpeedChange: (Float) -> Unit,
+    onUseChannelPlaybackSpeed: () -> Unit,
+    onChannelPlaybackSpeedChange: (String, Float?) -> Unit,
     onVideoQualityChange: (Int?) -> Unit,
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
@@ -341,6 +354,8 @@ fun GrayjayApp(
     onRemoveSource: (String) -> Unit,
     onLoginSource: (SourceUiModel) -> Unit,
     onLogoutSource: (String) -> Unit,
+    onImportYoutube: (String, YoutubeImportSelection) -> Unit,
+    onDismissYoutubeImport: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onSearchSubmit: (String, SearchContentType, Set<String>) -> Unit,
     onLoadMoreSearch: () -> Unit = {},
@@ -368,6 +383,7 @@ fun GrayjayApp(
     onCreateProfile: (String, String) -> Unit,
     onVerifyProfilePin: (String, String) -> Boolean,
     onDefaultPlaybackSpeedChange: (Float) -> Unit,
+    onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
     onPreferredVideoQualityChange: (Int) -> Unit,
     onPreferredAudioBitrateChange: (Int) -> Unit,
     onStickyCaptionsChange: (Boolean) -> Unit,
@@ -401,13 +417,40 @@ fun GrayjayApp(
     var profileDialogVisible by rememberSaveable { mutableStateOf(false) }
     var chromecastSheetVisible by rememberSaveable { mutableStateOf(false) }
     val selected = GrayjayDestination.valueOf(destinationName)
-    val availableVideos = uiState.videos + uiState.subscriptionVideos +
-        uiState.libraryVideos + uiState.search.videos + uiState.home.videos +
-        uiState.channelDetail.videos + uiState.channelDetail.shorts +
-        uiState.remotePlaylistDetail.videos +
-        listOfNotNull(uiState.nowPlaying.video) + uiState.nowPlaying.recommendations
+    // Player-transition progress changes every frame. Building a combined list and linearly
+    // searching it for every item in a large imported playlist made collapsing an 800-item queue
+    // perform millions of comparisons per frame. Memoize one first-match index instead.
+    val availableVideosById = remember(
+        uiState.videos,
+        uiState.subscriptionVideos,
+        uiState.libraryVideos,
+        uiState.search.videos,
+        uiState.home.videos,
+        uiState.channelDetail.videos,
+        uiState.channelDetail.shorts,
+        uiState.remotePlaylistDetail.videos,
+        uiState.nowPlaying.video,
+        uiState.nowPlaying.recommendations,
+    ) {
+        buildMap {
+            sequenceOf(
+                uiState.videos,
+                uiState.subscriptionVideos,
+                uiState.libraryVideos,
+                uiState.search.videos,
+                uiState.home.videos,
+                uiState.channelDetail.videos,
+                uiState.channelDetail.shorts,
+                uiState.remotePlaylistDetail.videos,
+                listOfNotNull(uiState.nowPlaying.video),
+                uiState.nowPlaying.recommendations,
+            ).forEach { videos ->
+                videos.forEach { video -> putIfAbsent(video.id, video) }
+            }
+        }
+    }
     val selectedVideo = uiState.nowPlaying.video?.takeIf { it.id == selectedVideoId }
-        ?: availableVideos.firstOrNull { it.id == selectedVideoId }
+        ?: selectedVideoId?.let(availableVideosById::get)
     val selectedChannel = uiState.channels.firstOrNull { it.id == selectedChannelId }
     val selectedPlaylist = uiState.playlists.firstOrNull { it.id == selectedPlaylistId }
         ?: uiState.remotePlaylistDetail.playlist?.takeIf { it.id == selectedPlaylistId }
@@ -419,7 +462,7 @@ fun GrayjayApp(
     // artwork with an empty video surface.
     val playbackVideo = uiState.nowPlaying.video?.takeIf {
         it.id == uiState.playback.currentVideoId
-    } ?: availableVideos.firstOrNull { it.id == uiState.playback.currentVideoId }
+    } ?: availableVideosById[uiState.playback.currentVideoId]
     var playerTransitionProgress by rememberSaveable { mutableFloatStateOf(1f) }
     var navigationBackProgress by remember { mutableFloatStateOf(0f) }
     val playerTransitionScope = rememberCoroutineScope()
@@ -445,8 +488,8 @@ fun GrayjayApp(
             }
         }
     }
-    val queueVideos = uiState.playback.queueVideoIds.mapNotNull { id ->
-        availableVideos.firstOrNull { it.id == id }
+    val queueVideos = remember(uiState.playback.queueVideoIds, availableVideosById) {
+        uiState.playback.queueVideoIds.mapNotNull(availableVideosById::get)
     }
     val onSelect: (GrayjayDestination) -> Unit = {
         destinationName = it.name
@@ -567,6 +610,8 @@ fun GrayjayApp(
         onPrevious = onSkipToPrevious,
         onSeekBy = onSeekPlaybackBy,
         onSpeedChange = onPlaybackSpeedChange,
+        onUseChannelSpeed = onUseChannelPlaybackSpeed,
+        onChannelSpeedChange = onChannelPlaybackSpeedChange,
         onQualityChange = onVideoQualityChange,
         onCaptionsEnabledChange = onCaptionsEnabledChange,
         onSubtitleLanguageChange = onSubtitleLanguageChange,
@@ -613,6 +658,7 @@ fun GrayjayApp(
                 settlePlayer(0f, queueIds.first())
             }
         },
+        onQueueVideos = onQueueVideos,
         onPlayPlaylist = { playlistId ->
             val playlist = uiState.playlists.firstOrNull { it.id == playlistId }
             if (playlist != null && playlist.videoIds.isNotEmpty()) {
@@ -649,6 +695,9 @@ fun GrayjayApp(
         libraryVideos = uiState.libraryVideos,
         onOpenProfiles = { profileDialogVisible = true },
         defaultPlaybackSpeed = uiState.defaultPlaybackSpeed,
+        perChannelPlaybackSpeedEnabled = uiState.perChannelPlaybackSpeedEnabled,
+        channelPlaybackSpeeds = uiState.channelPlaybackSpeeds,
+        videoPlaybackSpeeds = uiState.videoPlaybackSpeeds,
         preferredVideoQuality = uiState.preferredVideoQuality,
         preferredAudioBitrate = uiState.preferredAudioBitrate,
         stickyCaptionsEnabled = uiState.stickyCaptionsEnabled,
@@ -663,6 +712,7 @@ fun GrayjayApp(
         isDarkTheme = isDarkTheme,
         onDarkThemeChange = onDarkThemeChange,
         onDefaultPlaybackSpeedChange = onDefaultPlaybackSpeedChange,
+        onPerChannelPlaybackSpeedChange = onPerChannelPlaybackSpeedChange,
         onPreferredVideoQualityChange = onPreferredVideoQualityChange,
         onPreferredAudioBitrateChange = onPreferredAudioBitrateChange,
         onStickyCaptionsChange = onStickyCaptionsChange,
@@ -745,6 +795,9 @@ fun GrayjayApp(
         onRemove = onRemoveSource,
         onLogin = onLoginSource,
         onLogout = onLogoutSource,
+        youtubeImport = uiState.youtubeImport,
+        onImportYoutube = onImportYoutube,
+        onDismissYoutubeImport = onDismissYoutubeImport,
         search = uiState.search,
         onSearchQueryChange = onSearchQueryChange,
         onSearchSubmit = onSearchSubmit,
@@ -831,6 +884,14 @@ fun GrayjayApp(
             onSeekBy = playback.onSeekBy,
             onSeek = playback.onSeek,
             onSpeedChange = playback.onSpeedChange,
+            perChannelPlaybackSpeedEnabled = playback.perChannelPlaybackSpeedEnabled,
+            videoPlaybackSpeedOverride = playback.videoPlaybackSpeeds[fullscreenVideo.id],
+            channelPlaybackSpeed = playback.channelPlaybackSpeeds[fullscreenVideo.playbackChannelKey()],
+            defaultPlaybackSpeed = playback.defaultPlaybackSpeed,
+            onUseChannelSpeed = playback.onUseChannelSpeed,
+            onChannelSpeedChange = { speed ->
+                playback.onChannelSpeedChange(fullscreenVideo.playbackChannelKey(), speed)
+            },
             onQualityChange = playback.onQualityChange,
             onCaptionsEnabledChange = playback.onCaptionsEnabledChange,
             onSubtitleLanguageChange = playback.onSubtitleLanguageChange,
@@ -943,7 +1004,7 @@ fun GrayjayApp(
         }
     }
 
-    availableVideos.firstOrNull { it.id == actionVideoId }?.let { video ->
+    actionVideoId?.let(availableVideosById::get)?.let { video ->
         VideoActionsSheet(
             video = video,
             download = uiState.downloads[video.id],
@@ -1497,6 +1558,12 @@ private fun GrayjayScaffold(
                     },
                     onVideoClick = onVideoClick,
                     onVideoLongClick = playback.onVideoLongClick,
+                    perChannelPlaybackSpeedEnabled = playback.perChannelPlaybackSpeedEnabled,
+                    channelPlaybackSpeed = playback.channelPlaybackSpeeds[animatedChannel.id],
+                    defaultPlaybackSpeed = playback.defaultPlaybackSpeed,
+                    onPlaybackSpeedChange = { speed ->
+                        playback.onChannelSpeedChange(animatedChannel.id, speed)
+                    },
                 )
                 } else if (animatedPlaylist != null) {
                 if (animatedPlaylist.sourceId.isBlank()) PlaylistDetailScreen(
@@ -1573,6 +1640,7 @@ private fun GrayjayScaffold(
                         onFollowedChange = playback.onCreatorFollowedChange,
                         onVideoClick = onVideoClick,
                         onVideoLongClick = playback.onVideoLongClick,
+                        onQueueSelection = playback.onQueueVideos,
                         onChannelClick = onChannelClick,
                     )
                     GrayjayDestination.Search -> SearchScreen(
@@ -1594,6 +1662,7 @@ private fun GrayjayScaffold(
                         onVideoLongClick = playback.onVideoLongClick,
                         onPlaylistClick = onPlaylistClick,
                         onAddSelectionToPlaylist = playback.onAddSelectionToPlaylist,
+                        onQueueSelection = playback.onQueueVideos,
                         onRemoveSelectionFromHistory = playback.onRemoveSelectionFromHistory,
                         onRemoveDownloads = playback.onRemoveDownloads,
                         onRemovePlaylists = playback.onRemovePlaylists,
@@ -1615,6 +1684,8 @@ private fun GrayjayScaffold(
                         },
                         defaultPlaybackSpeed = playback.defaultPlaybackSpeed,
                         onDefaultPlaybackSpeedChange = playback.onDefaultPlaybackSpeedChange,
+                        perChannelPlaybackSpeedEnabled = playback.perChannelPlaybackSpeedEnabled,
+                        onPerChannelPlaybackSpeedChange = playback.onPerChannelPlaybackSpeedChange,
                         preferredVideoQuality = playback.preferredVideoQuality,
                         onPreferredVideoQualityChange = playback.onPreferredVideoQualityChange,
                         preferredAudioBitrate = playback.preferredAudioBitrate,
@@ -1649,6 +1720,9 @@ private fun GrayjayScaffold(
                         onRemoveSource = sourcePresentation.onRemove,
                         onLoginSource = sourcePresentation.onLogin,
                         onLogoutSource = sourcePresentation.onLogout,
+                        youtubeImport = sourcePresentation.youtubeImport,
+                        onImportYoutube = sourcePresentation.onImportYoutube,
+                        onDismissYoutubeImport = sourcePresentation.onDismissYoutubeImport,
                     )
                     }
                 }
@@ -1780,6 +1854,20 @@ private fun GrayjayScaffold(
                                 onToggleFollowing = playback.onToggleFollowing,
                                 onSeek = playback.onSeek,
                                 onSpeedChange = playback.onSpeedChange,
+                                perChannelPlaybackSpeedEnabled = playback.perChannelPlaybackSpeedEnabled,
+                                videoPlaybackSpeedOverride =
+                                    playback.videoPlaybackSpeeds[transitionVideo.id],
+                                channelPlaybackSpeed = playback.channelPlaybackSpeeds[
+                                    transitionVideo.playbackChannelKey()
+                                ],
+                                defaultPlaybackSpeed = playback.defaultPlaybackSpeed,
+                                onUseChannelSpeed = playback.onUseChannelSpeed,
+                                onChannelSpeedChange = { speed ->
+                                    playback.onChannelSpeedChange(
+                                        transitionVideo.playbackChannelKey(),
+                                        speed,
+                                    )
+                                },
                                 onQualityChange = playback.onQualityChange,
                                 onCaptionsEnabledChange = playback.onCaptionsEnabledChange,
                                 onSubtitleLanguageChange = playback.onSubtitleLanguageChange,
@@ -1867,6 +1955,15 @@ private fun GrayjayScaffold(
                 onSeekBy = playback.onSeekBy,
                 onSeek = playback.onSeek,
                 onSpeedChange = playback.onSpeedChange,
+                perChannelPlaybackSpeedEnabled = playback.perChannelPlaybackSpeedEnabled,
+                videoPlaybackSpeedOverride = playback.videoPlaybackSpeeds[transitionVideo.id],
+                channelPlaybackSpeed =
+                    playback.channelPlaybackSpeeds[transitionVideo.playbackChannelKey()],
+                defaultPlaybackSpeed = playback.defaultPlaybackSpeed,
+                onUseChannelSpeed = playback.onUseChannelSpeed,
+                onChannelSpeedChange = { speed ->
+                    playback.onChannelSpeedChange(transitionVideo.playbackChannelKey(), speed)
+                },
                 onQualityChange = playback.onQualityChange,
                 onCaptionsEnabledChange = playback.onCaptionsEnabledChange,
                 onSubtitleLanguageChange = playback.onSubtitleLanguageChange,
@@ -1893,6 +1990,10 @@ private fun GrayjayScaffold(
 
 private fun lerp(start: Float, end: Float, progress: Float): Float =
     start + (end - start) * progress
+
+private fun VideoUiModel.playbackChannelKey(): String = authorUrl.ifBlank {
+    channelId.ifBlank { "$sourceId:$creator" }
+}
 
 @Composable
 private fun TransitionViewport(

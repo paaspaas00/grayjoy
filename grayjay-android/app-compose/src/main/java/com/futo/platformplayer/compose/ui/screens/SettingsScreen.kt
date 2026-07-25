@@ -68,6 +68,8 @@ fun SettingsScreen(
     activeSourceCount: Int,
     defaultPlaybackSpeed: Float,
     onDefaultPlaybackSpeedChange: (Float) -> Unit,
+    perChannelPlaybackSpeedEnabled: Boolean,
+    onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
     preferredVideoQuality: Int,
     onPreferredVideoQualityChange: (Int) -> Unit,
     preferredAudioBitrate: Int,
@@ -188,6 +190,15 @@ fun SettingsScreen(
                     icon = Icons.Outlined.Speed,
                     onClick = { showSpeedDialog = true },
                     testTag = "default-playback-speed",
+                )
+                HorizontalDivider()
+                ToggleSetting(
+                    title = stringResource(R.string.per_channel_playback_speed),
+                    description = stringResource(R.string.per_channel_playback_speed_description),
+                    icon = Icons.Outlined.Speed,
+                    checked = perChannelPlaybackSpeedEnabled,
+                    onCheckedChange = onPerChannelPlaybackSpeedChange,
+                    testTag = "per-channel-playback-speed",
                 )
                 HorizontalDivider()
                 LinkSetting(

@@ -112,6 +112,7 @@ internal fun VideoCard(
     video: VideoUiModel,
     index: Int,
     download: DownloadUiModel? = null,
+    metadataText: String = video.metadata,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     selected: Boolean = false,
@@ -121,6 +122,7 @@ internal fun VideoCard(
         video = video,
         index = index,
         download = download,
+        metadataText = metadataText,
         onClick = onClick,
         onLongClick = onLongClick,
         selected = selected,
@@ -134,6 +136,7 @@ internal fun CompactVideoCard(
     video: VideoUiModel,
     index: Int,
     download: DownloadUiModel? = null,
+    metadataText: String = video.metadata,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     selected: Boolean = false,
@@ -198,7 +201,7 @@ internal fun CompactVideoCard(
                     )
                 }
                 Text(
-                    text = video.metadata,
+                    text = metadataText,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 2,

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -25,8 +26,11 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +50,7 @@ import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChannelDetailScreen(
     channel: ChannelUiModel,
@@ -57,8 +62,13 @@ fun ChannelDetailScreen(
     onLoadMore: () -> Unit,
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
+    perChannelPlaybackSpeedEnabled: Boolean = true,
+    channelPlaybackSpeed: Float? = null,
+    defaultPlaybackSpeed: Float = 1f,
+    onPlaybackSpeedChange: (Float?) -> Unit = {},
 ) {
     var query by rememberSaveable(channel.id, detail.selectedTab) { mutableStateOf("") }
+    var showSpeedSheet by rememberSaveable(channel.id) { mutableStateOf(false) }
     val listState = rememberLazyListState()
     RequestNextPageEffect(
         listState = listState,
@@ -134,11 +144,25 @@ fun ChannelDetailScreen(
                             }
                         }
                     }
-                    Button(
-                        onClick = { onFollowingChange(!isFollowing) },
-                        modifier = Modifier.testTag("channel-follow"),
-                    ) {
-                        Text(stringResource(if (isFollowing) R.string.following else R.string.follow))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { onFollowingChange(!isFollowing) },
+                            modifier = Modifier.testTag("channel-follow"),
+                        ) {
+                            Text(stringResource(if (isFollowing) R.string.following else R.string.follow))
+                        }
+                        if (perChannelPlaybackSpeedEnabled) {
+                            Button(
+                                onClick = { showSpeedSheet = true },
+                                modifier = Modifier.testTag("channel-playback-speed"),
+                            ) {
+                                Icon(Icons.Outlined.Speed, contentDescription = null)
+                                Text(
+                                    channelPlaybackSpeed?.let(::formatChannelSpeed)
+                                        ?: stringResource(R.string.default_speed_label),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -253,7 +277,70 @@ fun ChannelDetailScreen(
             }
         }
     }
+
+    if (showSpeedSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSpeedSheet = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    stringResource(R.string.channel_playback_speed),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    stringResource(R.string.channel_playback_speed_description),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = channelPlaybackSpeed == null,
+                        onClick = {
+                            onPlaybackSpeedChange(null)
+                            showSpeedSheet = false
+                        },
+                        label = {
+                            Text(
+                                stringResource(
+                                    R.string.app_default_speed,
+                                    formatChannelSpeed(defaultPlaybackSpeed),
+                                ),
+                            )
+                        },
+                    )
+                    playbackSpeedChoices.forEach { speed ->
+                        FilterChip(
+                            selected = channelPlaybackSpeed == speed,
+                            onClick = {
+                                onPlaybackSpeedChange(speed)
+                                showSpeedSheet = false
+                            },
+                            label = { Text(formatChannelSpeed(speed)) },
+                        )
+                    }
+                }
+                TextButton(
+                    onClick = { showSpeedSheet = false },
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        }
+    }
 }
+
+private val playbackSpeedChoices =
+    listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+
+private fun formatChannelSpeed(speed: Float): String =
+    if (speed % 1f == 0f) "${speed.toInt()}x" else "${speed}x"
 
 internal fun channelTabsFor(detail: ChannelDetailUiState): List<ChannelContentTab> = buildList {
     add(ChannelContentTab.Videos)

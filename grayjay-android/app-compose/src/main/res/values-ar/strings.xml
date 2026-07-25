@@ -504,4 +504,14 @@
     <string name="update_available_description">الإصدار %1$s متوفر على GitHub.</string>
     <string name="open_release_page">فتح صفحة الإصدار</string>
     <string name="version_information">الإصدار %1$s • البناء %2$d</string>
+    <string name="enqueue">إضافة إلى قائمة الانتظار</string>
+    <string name="played_on_date">تم التشغيل في %1$s</string>
+    <string name="per_channel_playback_speed">سرعة تشغيل لكل قناة</string>
+    <string name="per_channel_playback_speed_description">يتذكر السرعة المفضلة لكل قناة. السرعة المحددة لفيديو واحد لها الأولوية.</string>
+    <string name="channel_playback_speed">سرعة تشغيل القناة</string>
+    <string name="channel_playback_speed_description">اختر السرعة التي تُطبق تلقائيًا على فيديوهات هذه القناة.</string>
+    <string name="default_speed_label">إعداد التطبيق الافتراضي</string>
+    <string name="app_default_speed">إعداد التطبيق الافتراضي (%1$s)</string>
+    <string name="use_channel_speed">استخدام سرعة القناة</string>
+    <string name="use_default_speed">استخدام إعداد التطبيق الافتراضي</string>
 </resources>

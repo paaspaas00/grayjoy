@@ -34,8 +34,9 @@ android {
         applicationId 'com.futo.platformplayer.compose'
         minSdk 28
         targetSdk 36
-        versionCode 909
-        versionName '0.9.9'
+        versionCode 910
+        versionName '0.9.10'
+        manifestPlaceholders = [grayjoyAppLabel: '@string/app_name']
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
@@ -56,6 +57,7 @@ android {
             minifyEnabled false
             if (debugApplicationIdSuffix != null && !debugApplicationIdSuffix.trim().isEmpty()) {
                 applicationIdSuffix debugApplicationIdSuffix
+                manifestPlaceholders.grayjoyAppLabel = 'grayTEST'
             }
             // GitHub Actions is ephemeral, so its default ~/.android/debug.keystore changes on
             // every run and makes one tagged debug APK unable to update another. CI already

@@ -1,6 +1,7 @@
 package com.futo.platformplayer.compose.ui.screens
 
 import android.net.Uri
+import android.text.format.DateUtils
 import androidx.annotation.StringRes
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -119,6 +120,7 @@ fun LibraryScreen(
     onVideoLongClick: (VideoUiModel) -> Unit,
     onPlaylistClick: (PlaylistUiModel) -> Unit,
     onAddSelectionToPlaylist: (List<String>) -> Unit,
+    onQueueSelection: (List<String>) -> Unit,
     onRemoveSelectionFromHistory: (List<String>) -> Unit,
     onRemoveDownloads: (List<String>) -> Unit = {},
     onRemovePlaylists: (List<String>) -> Unit = {},
@@ -229,7 +231,14 @@ fun LibraryScreen(
                 key = { filters[it].name },
             ) { page ->
                 val pageFilter = filters[page]
-                val pageVideos = videosForLibraryFilter(videos, pageFilter, downloads)
+                val relevantDownloads = if (pageFilter == LibraryFilter.Downloads) {
+                    downloads
+                } else {
+                    emptyMap()
+                }
+                val pageVideos = remember(videos, pageFilter, relevantDownloads) {
+                    videosForLibraryFilter(videos, pageFilter, relevantDownloads)
+                }
                 val isSelectedPage = pageFilter == selectedFilter
                 val listState = rememberLazyListState()
                 LazyColumn(
@@ -328,10 +337,26 @@ fun LibraryScreen(
                 items = pageVideos,
                 key = { _, video -> video.id },
             ) { index, video ->
+                val watchedMetadata = if (
+                    pageFilter == LibraryFilter.History && video.lastWatchedAt > 0L
+                ) {
+                    val relativeTime = remember(video.lastWatchedAt) {
+                        DateUtils.getRelativeTimeSpanString(
+                            video.lastWatchedAt,
+                            System.currentTimeMillis(),
+                            DateUtils.MINUTE_IN_MILLIS,
+                            DateUtils.FORMAT_ABBREV_RELATIVE,
+                        ).toString()
+                    }
+                    stringResource(R.string.watched_relative, relativeTime)
+                } else {
+                    video.metadata
+                }
                 VideoCard(
                     video = video,
                     index = index,
                     download = downloads[video.id],
+                    metadataText = watchedMetadata,
                     selected = pageFilter in setOf(
                         LibraryFilter.History,
                         LibraryFilter.Downloads,
@@ -418,6 +443,19 @@ fun LibraryScreen(
                             style = MaterialTheme.typography.titleMedium,
                         )
                         if (selectedFilter == LibraryFilter.History) {
+                            IconButton(
+                                onClick = {
+                                    onQueueSelection(selectedVideoIds.toList())
+                                    leaveSelectionMode()
+                                },
+                                enabled = selectedVideoIds.isNotEmpty(),
+                                modifier = Modifier.testTag("history-enqueue"),
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.PlaylistPlay,
+                                    contentDescription = stringResource(R.string.enqueue),
+                                )
+                            }
                             IconButton(
                                 onClick = { onAddSelectionToPlaylist(selectedVideoIds.toList()) },
                                 enabled = selectedVideoIds.isNotEmpty(),
