@@ -148,6 +148,9 @@ jobs:
           echo "checksum_path=${checksum_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload workflow artifact
+        # Release assets are published by the next step. Do not block a tagged release when the
+        # separate, short-lived Actions artifact quota is temporarily full.
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: Grayjoy-APKs-${{ github.run_number }}
