@@ -66,6 +66,7 @@ data class YoutubeImportUiState(
     val stage: YoutubeImportStageUi? = null,
     val completed: Int = 0,
     val total: Int? = null,
+    val currentItemCompleted: Int? = null,
     val resultMessage: String? = null,
     val warningMessage: String? = null,
     val errorMessage: String? = null,

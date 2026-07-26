@@ -195,6 +195,7 @@ data class EngineUserImportProgress(
     val stage: EngineUserImportStage,
     val completed: Int = 0,
     val total: Int? = null,
+    val currentItemCompleted: Int? = null,
 )
 
 data class EngineUserImportResult(
@@ -1685,6 +1686,7 @@ private fun GrayjayUserImportProgress.toEngineProgress() = EngineUserImportProgr
     },
     completed = completed,
     total = total,
+    currentItemCompleted = currentItemCompleted,
 )
 
 private fun String.youtubePlaylistId(): String? = runCatching {

@@ -557,6 +557,7 @@
     <string name="youtube_importing_playlists">Importazione playlist</string>
     <string name="youtube_import_progress_count">%1$s · %2$d/%3$d</string>
     <string name="youtube_import_progress_open">%1$s · %2$d importati</string>
+    <string name="youtube_import_playlist_video_count">%1$d video caricati</string>
     <string name="youtube_import_summary">Importate %1$d iscrizioni, %2$d video dalla cronologia e %3$d playlist.</string>
     <string name="youtube_import_warnings">Non è stato possibile importare alcuni elementi:\n%1$s</string>
     <string name="youtube_import_failed">Importazione da YouTube non riuscita.</string>

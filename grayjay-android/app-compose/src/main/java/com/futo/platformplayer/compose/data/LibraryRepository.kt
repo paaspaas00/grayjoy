@@ -396,11 +396,16 @@ internal class SharedPreferencesLibraryRepository(
 
     private fun synchronizePlaylistNames() {
         val playlists = readPlaylists()
+        val playlistNamesByVideoId = buildMap<String, MutableList<String>> {
+            playlists.forEach { playlist ->
+                playlist.videoIds.distinct().forEach { videoId ->
+                    getOrPut(videoId) { mutableListOf() }.add(playlist.title)
+                }
+            }
+        }
         val videos = readVideos().map { video ->
             video.copy(
-                playlistNames = playlists
-                    .filter { video.id in it.videoIds }
-                    .map(PlaylistUiModel::title),
+                playlistNames = playlistNamesByVideoId[video.id].orEmpty(),
             )
         }
         writeVideos(videos)

@@ -43,8 +43,11 @@ import com.futo.platformplayer.states.StatePlugins
 import com.futo.platformplayer.views.video.datasources.JSHttpDataSource
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -60,6 +63,8 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+
+private const val MAX_USER_IMPORT_EMPTY_PAGES = 2
 
 data class GrayjaySearchItem(
     val id: String,
@@ -136,6 +141,7 @@ data class GrayjayUserImportProgress(
     val stage: GrayjayUserImportStage,
     val completed: Int = 0,
     val total: Int? = null,
+    val currentItemCompleted: Int? = null,
 )
 
 data class GrayjayUserImportResult(
@@ -367,6 +373,13 @@ class GrayjayPluginBackend(context: Context) {
         "Compose main",
         MAIN_CLIENT_CONCURRENCY,
     )
+    // Account imports can spend a long time traversing a plugin-owned pager. Keep them off the
+    // primary client so a bad continuation cannot block playback, search, or normal navigation.
+    // A second slot lets a new import start after a cancelled V8 call that ignored interruption.
+    private val accountImportClientPool = PlatformMultiClientPool(
+        "Compose account import",
+        ACCOUNT_IMPORT_CLIENT_CONCURRENCY,
+    )
     private val storyboardCache = ConcurrentHashMap<String, CachedStoryboard>()
     private val storyboardFailures = ConcurrentHashMap<String, Long>()
     private val loadMutex = Mutex()
@@ -574,6 +587,7 @@ class GrayjayPluginBackend(context: Context) {
         private const val MAX_USER_IMPORT_PAGES = 2_000
         private const val SUBSCRIPTION_CONCURRENCY = 6
         private const val MAIN_CLIENT_CONCURRENCY = 2
+        private const val ACCOUNT_IMPORT_CLIENT_CONCURRENCY = 2
         const val CHANNEL_PLAYLISTS_TYPE = "PLAYLISTS"
         private const val STORYBOARD_CACHE_TTL_MS = 30L * 60L * 1_000L
         private const val STORYBOARD_FAILURE_TTL_MS = 2L * 60L * 1_000L
@@ -842,14 +856,17 @@ class GrayjayPluginBackend(context: Context) {
             "Sign in to this source before importing account data."
         }
         onProgress(GrayjayUserImportProgress(GrayjayUserImportStage.Connecting))
-        val plugin = getOrLoad(sourceId, endpoint)
+        val plugin = accountImportClientPool.getClientPooled(
+            getOrLoad(sourceId, endpoint),
+            ACCOUNT_IMPORT_CLIENT_CONCURRENCY,
+        )
         val warnings = mutableListOf<String>()
 
         val subscriptions = if (
             selection.subscriptions &&
             plugin.capabilities.hasGetUserSubscriptions
         ) {
-            val urls = runCatching {
+            val urls = runUserImportCatching {
                 plugin.getUserSubscriptions()
                     .asSequence()
                     .map(String::trim)
@@ -870,7 +887,8 @@ class GrayjayPluginBackend(context: Context) {
             )
             buildList {
                 urls.forEachIndexed { index, url ->
-                    runCatching { plugin.getChannel(url) }
+                    currentCoroutineContext().ensureActive()
+                    runUserImportCatching { plugin.getChannel(url) }
                         .onSuccess { channel ->
                             add(
                                 GrayjaySearchChannel(
@@ -905,7 +923,7 @@ class GrayjayPluginBackend(context: Context) {
         }
 
         val history = if (selection.history && plugin.capabilities.hasGetUserHistory) {
-            runCatching { plugin.getUserHistory() }
+            runUserImportCatching { plugin.getUserHistory() }
                 .onFailure { error ->
                     Log.w(TAG, "Could not open account watch history.", error)
                     warnings += "Watch history: ${error.userImportMessage()}"
@@ -943,7 +961,7 @@ class GrayjayPluginBackend(context: Context) {
             plugin.capabilities.hasGetUserPlaylists &&
             plugin.capabilities.hasGetPlaylist
         ) {
-            runCatching {
+            runUserImportCatching {
                 plugin.getUserPlaylists()
                     .asSequence()
                     .map(String::trim)
@@ -979,12 +997,23 @@ class GrayjayPluginBackend(context: Context) {
         )
         val playlists = buildList {
             playlistUrls.distinct().forEachIndexed { index, url ->
-                runCatching {
+                currentCoroutineContext().ensureActive()
+                runUserImportCatching {
                     val playlist = plugin.getPlaylist(url)
                     val videos = drainVideoPager(
                         pager = playlist.contents,
                         maxItems = MAX_USER_IMPORT_PLAYLIST_VIDEOS,
                         maxPages = MAX_USER_IMPORT_PAGES,
+                        onProgress = { videoCount ->
+                            onProgress(
+                                GrayjayUserImportProgress(
+                                    GrayjayUserImportStage.Playlists,
+                                    completed = index,
+                                    total = playlistUrls.size,
+                                    currentItemCompleted = videoCount,
+                                ),
+                            )
+                        },
                         onFailure = { error ->
                             Log.w(TAG, "Playlist $url stopped after a partial page.", error)
                             warnings += "Playlist $url: ${error.userImportMessage()}"
@@ -2202,35 +2231,78 @@ private fun String.youtubePlaylistId(): String? = runCatching {
 private fun Throwable.userImportMessage(): String =
     localizedMessage?.takeIf(String::isNotBlank) ?: javaClass.simpleName
 
-private fun GrayjayPluginBackend.drainVideoPager(
+private inline fun <T> runUserImportCatching(block: () -> T): Result<T> = try {
+    Result.success(block())
+} catch (error: CancellationException) {
+    throw error
+} catch (error: Throwable) {
+    Result.failure(error)
+}
+
+internal suspend fun <T> drainUniquePager(
+    pager: IPager<*>,
+    maxItems: Int,
+    maxPages: Int,
+    maxConsecutiveEmptyPages: Int,
+    itemOf: (Any?) -> T?,
+    keyOf: (T) -> String,
+    onProgress: (Int) -> Unit = {},
+    onFailure: (Throwable) -> Unit = {},
+): List<T> {
+    val items = linkedMapOf<String, T>()
+    var pages = 0
+    var consecutiveEmptyPages = 0
+    while (pages < maxPages && items.size < maxItems) {
+        currentCoroutineContext().ensureActive()
+        val results = runUserImportCatching { pager.getResults() }
+            .onFailure(onFailure)
+            .getOrNull()
+            ?: break
+        val sizeBeforePage = items.size
+        results
+            .mapNotNull(itemOf)
+            .forEach { item ->
+                val key = keyOf(item)
+                if (key.isNotBlank() && key !in items) items[key] = item
+            }
+        pages += 1
+        onProgress(items.size)
+        consecutiveEmptyPages = if (items.size == sizeBeforePage) {
+            consecutiveEmptyPages + 1
+        } else {
+            0
+        }
+        if (
+            items.size >= maxItems ||
+            consecutiveEmptyPages >= maxConsecutiveEmptyPages.coerceAtLeast(1)
+        ) {
+            break
+        }
+        currentCoroutineContext().ensureActive()
+        val hasMore = runUserImportCatching { pager.hasMorePages() }
+            .onFailure(onFailure)
+            .getOrNull()
+            ?: break
+        if (!hasMore) break
+        currentCoroutineContext().ensureActive()
+        if (runUserImportCatching { pager.nextPage() }.onFailure(onFailure).isFailure) break
+    }
+    return items.values.take(maxItems)
+}
+
+private suspend fun GrayjayPluginBackend.drainVideoPager(
     pager: IPager<*>,
     maxItems: Int,
     maxPages: Int,
     onProgress: (Int) -> Unit = {},
     onFailure: (Throwable) -> Unit = {},
-): List<IPlatformVideo> {
-    val videos = linkedMapOf<String, IPlatformVideo>()
-    var pages = 0
-    while (pages < maxPages && videos.size < maxItems) {
-        val results = runCatching { pager.getResults() }
-            .onFailure(onFailure)
-            .getOrNull()
-            ?: break
-        results
-            .filterIsInstance<IPlatformVideo>()
-            .forEach { video ->
-                val key = video.url.ifBlank { video.id.value.orEmpty() }
-                if (key.isNotBlank() && key !in videos) videos[key] = video
-            }
-        pages += 1
-        onProgress(videos.size)
-        if (videos.size >= maxItems) break
-        val hasMore = runCatching { pager.hasMorePages() }
-            .onFailure(onFailure)
-            .getOrNull()
-            ?: break
-        if (!hasMore) break
-        if (runCatching { pager.nextPage() }.onFailure(onFailure).isFailure) break
-    }
-    return videos.values.take(maxItems)
-}
+): List<IPlatformVideo> = drainUniquePager(
+    pager = pager,
+    maxItems = maxItems,
+    maxPages = maxPages,
+    maxConsecutiveEmptyPages = MAX_USER_IMPORT_EMPTY_PAGES,
+    itemOf = { item -> item as? IPlatformVideo },
+    keyOf = { video -> video.url.ifBlank { video.id.value.orEmpty() } },
+    onProgress = onProgress,
+    onFailure = onFailure,
+)

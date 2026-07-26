@@ -356,9 +356,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var watchProgressWriteJob: Job? = null
     private var externalUrlJob: Job? = null
     private var releaseCheckJob: Job? = null
+    private var youtubeImportJob: Job? = null
     private val historyWriteJobs = mutableMapOf<String, Job>()
     private var homeLoadGeneration = 0L
     private var playbackGeneration = 0L
+    private var youtubeImportGeneration = 0L
     private var playbackQueueSession: PlaybackQueueSession? = null
     private var pendingPlaybackVideoId: String? = null
     private var activePlaylistId: String? = null
@@ -905,6 +907,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         searchPagingJob?.cancel()
         suggestionJob?.cancel()
         externalUrlJob?.cancel()
+        dismissYoutubeImport()
         downloadJobs.cancelAndClearJobs()
         downloadQueueRestoreJob?.cancel()
         offlinePlaylistSyncJob?.cancel()
@@ -1177,6 +1180,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val profileAtStart = activeProfileId
         val libraryAtStart = libraryRepository
         val preferencesAtStart = preferences
+        val importGeneration = ++youtubeImportGeneration
         _uiState.update {
             it.copy(
                 youtubeImport = YoutubeImportUiState(
@@ -1185,7 +1189,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 ),
             )
         }
-        viewModelScope.launch {
+        youtubeImportJob = viewModelScope.launch {
             try {
                 val result = engine.importUserData(
                     sourceId = sourceId,
@@ -1196,6 +1200,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         likedVideos = selection.likedVideos,
                     ),
                 ) { progress ->
+                    if (importGeneration != youtubeImportGeneration) return@importUserData
                     _uiState.update { state ->
                         state.copy(
                             youtubeImport = state.youtubeImport.copy(
@@ -1211,20 +1216,28 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                                 },
                                 completed = progress.completed,
                                 total = progress.total,
+                                currentItemCompleted = progress.currentItemCompleted,
                             ),
                         )
                     }
                 }
+                if (!isActive || importGeneration != youtubeImportGeneration) {
+                    throw CancellationException()
+                }
                 if (profileAtStart != activeProfileId) {
                     error(text(R.string.profile_changed_during_import))
                 }
-                withContext(Dispatchers.IO) {
+                val importedSnapshot = withContext(Dispatchers.IO) {
                     libraryAtStart.mergeImportedData(
                         videos = result.videos,
                         playlists = result.playlists,
                         repairSyntheticHistoryDates = selection.history,
                     )
                     preferencesAtStart.mergeImportedSubscriptions(result.subscriptions)
+                    libraryAtStart.loadSavedVideos() to libraryAtStart.loadPlaylists()
+                }
+                if (!isActive || importGeneration != youtubeImportGeneration) {
+                    throw CancellationException()
                 }
                 result.subscriptions.forEach { remoteChannels[it.id] = it }
                 result.videos.forEach { video ->
@@ -1232,7 +1245,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     registerRemoteChannel(video)
                 }
                 followedCreatorIds = preferencesAtStart.followedCreatorIds()
-                reloadLibrary()
+                applyLibrarySnapshot(
+                    savedVideos = importedSnapshot.first,
+                    playlists = importedSnapshot.second,
+                )
                 HomeSessionCache.removeFeed(activeProfileId, HomeFeedType.Subscriptions)
                 homeFeedCache.remove(HomeFeedType.Subscriptions)
                 homeContinuationCache.remove(HomeFeedType.Subscriptions)
@@ -1257,22 +1273,35 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 }
                 if (selection.subscriptions) refreshHome()
             } catch (error: CancellationException) {
+                if (importGeneration == youtubeImportGeneration) {
+                    _uiState.update {
+                        it.copy(youtubeImport = YoutubeImportUiState())
+                    }
+                }
                 throw error
             } catch (error: Throwable) {
-                _uiState.update {
-                    it.copy(
-                        youtubeImport = YoutubeImportUiState(
-                            errorMessage = error.localizedMessage
-                                ?: text(R.string.youtube_import_failed),
-                        ),
-                    )
+                if (importGeneration == youtubeImportGeneration) {
+                    _uiState.update {
+                        it.copy(
+                            youtubeImport = YoutubeImportUiState(
+                                errorMessage = error.localizedMessage
+                                    ?: text(R.string.youtube_import_failed),
+                            ),
+                        )
+                    }
+                }
+            } finally {
+                if (importGeneration == youtubeImportGeneration) {
+                    youtubeImportJob = null
                 }
             }
         }
     }
 
     fun dismissYoutubeImport() {
-        if (_uiState.value.youtubeImport.isRunning) return
+        youtubeImportGeneration += 1
+        youtubeImportJob?.cancel()
+        youtubeImportJob = null
         _uiState.update { it.copy(youtubeImport = YoutubeImportUiState()) }
     }
 

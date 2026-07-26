@@ -284,10 +284,8 @@ fun SourcesScreen(
             state = youtubeImport,
             onStart = { selection -> onImportYoutube(sourceId, selection) },
             onDismiss = {
-                if (!youtubeImport.isRunning) {
-                    onDismissYoutubeImport()
-                    youtubeImportSourceId = null
-                }
+                onDismissYoutubeImport()
+                youtubeImportSourceId = null
             },
         )
     }
@@ -646,23 +644,31 @@ private fun YoutubeImportSheet(
                     YoutubeImportStageUi.Playlists ->
                         stringResource(R.string.youtube_importing_playlists)
                 }
+                val overallProgress = if (state.total != null) {
+                    stringResource(
+                        R.string.youtube_import_progress_count,
+                        progressLabel,
+                        state.completed,
+                        state.total,
+                    )
+                } else if (state.completed > 0) {
+                    stringResource(
+                        R.string.youtube_import_progress_open,
+                        progressLabel,
+                        state.completed,
+                    )
+                } else {
+                    progressLabel
+                }
                 Text(
-                    if (state.total != null) {
-                        stringResource(
-                            R.string.youtube_import_progress_count,
-                            progressLabel,
-                            state.completed,
-                            state.total,
-                        )
-                    } else if (state.completed > 0) {
-                        stringResource(
-                            R.string.youtube_import_progress_open,
-                            progressLabel,
-                            state.completed,
-                        )
-                    } else {
-                        progressLabel
-                    },
+                    state.currentItemCompleted?.let { videoCount ->
+                        "$overallProgress · ${
+                            stringResource(
+                                R.string.youtube_import_playlist_video_count,
+                                videoCount,
+                            )
+                        }"
+                    } ?: overallProgress,
                     style = MaterialTheme.typography.titleMedium,
                 )
                 if (state.total != null && state.total > 0) {
@@ -698,7 +704,6 @@ private fun YoutubeImportSheet(
             ) {
                 TextButton(
                     onClick = onDismiss,
-                    enabled = !state.isRunning,
                 ) {
                     Text(
                         stringResource(
