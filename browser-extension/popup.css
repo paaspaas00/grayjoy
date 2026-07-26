@@ -1,0 +1,165 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --accent: #9c4f2f;
+  --surface: color-mix(in srgb, Canvas 94%, var(--accent) 6%);
+  --outline: color-mix(in srgb, CanvasText 18%, transparent);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  width: 370px;
+  min-height: 520px;
+  background: Canvas;
+  color: CanvasText;
+}
+
+main {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  font-weight: 800;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+header p {
+  margin: 2px 0 0;
+  opacity: .72;
+}
+
+.card {
+  padding: 14px;
+  border: 1px solid var(--outline);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.card.compact { padding: 12px 14px; }
+
+label, .eyebrow {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.inline {
+  display: flex;
+  gap: 8px;
+}
+
+input {
+  min-width: 0;
+  flex: 1;
+  padding: 9px 11px;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  background: Canvas;
+  color: CanvasText;
+}
+
+button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+button.secondary {
+  border: 1px solid var(--outline);
+  background: transparent;
+  color: CanvasText;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
+.hint {
+  margin: 10px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: .72;
+}
+
+#qr {
+  display: grid;
+  place-items: center;
+  margin: 10px auto 14px;
+  padding: 10px;
+  width: 224px;
+  min-height: 224px;
+  border-radius: 16px;
+  background: white;
+}
+
+#qr svg {
+  width: 204px;
+  height: 204px;
+}
+
+#discover, #send-now { width: 100%; }
+
+.phone-address {
+  margin: 10px 0;
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+#current-card {
+  display: grid;
+  gap: 10px;
+}
+
+#current-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#error {
+  min-height: 18px;
+  margin: 0;
+  color: #ba1a1a;
+  font-size: 12px;
+}
+
+footer {
+  text-align: center;
+  font-size: 11px;
+  opacity: .55;
+}
+
+.hidden { display: none !important; }

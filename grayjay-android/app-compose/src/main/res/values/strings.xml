@@ -562,4 +562,26 @@
     <string name="youtube_import_warnings">Some items could not be imported:\n%1$s</string>
     <string name="youtube_import_failed">YouTube import failed.</string>
     <string name="profile_changed_during_import">The active profile changed before the import completed. Nothing was imported.</string>
+    <string name="settings_connections">Connections</string>
+    <string name="paired_computers">Paired computers</string>
+    <string name="paired_computers_count">%1$d registered</string>
+    <string name="paired_computers_description">Pair the Grayjoy browser extension to transfer YouTube playback and control the computer from your phone. Both devices must be on the same network.</string>
+    <string name="scan_pairing_qr">Scan pairing QR</string>
+    <string name="scan_pc_pairing_qr">Scan the QR shown by the Grayjoy browser extension</string>
+    <string name="computer_paired">Computer paired</string>
+    <string name="invalid_pc_pairing_qr">This is not a valid Grayjoy computer pairing QR.</string>
+    <string name="phone_lan_address">Phone address for manual connection</string>
+    <string name="connect_phone_to_wifi">Connect the phone to Wi-Fi to make it reachable.</string>
+    <string name="no_paired_computers">No computers are paired yet.</string>
+    <string name="remove_paired_computer">Remove %1$s</string>
+    <string name="connected">Connected</string>
+    <string name="not_connected">Not connected</string>
+    <string name="on_pc">On PC</string>
+    <string name="on_pc_with_name">On PC · %1$s</string>
+    <string name="play_here">Play here</string>
+    <string name="pc_link_notification_channel">Computer playback</string>
+    <string name="pc_link_notification_channel_description">Status and remote controls for paired computers</string>
+    <string name="pc_link_ready">Grayjoy PC link ready</string>
+    <string name="pc_link_waiting">Waiting for a paired computer</string>
+    <string name="pc_transfer_failed">Could not open the computer playback with the active sources.</string>
 </resources>

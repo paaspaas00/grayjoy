@@ -562,4 +562,26 @@
     <string name="youtube_import_warnings">Non è stato possibile importare alcuni elementi:\n%1$s</string>
     <string name="youtube_import_failed">Importazione da YouTube non riuscita.</string>
     <string name="profile_changed_during_import">Il profilo attivo è cambiato prima della fine. Non è stato importato nulla.</string>
+    <string name="settings_connections">Connessioni</string>
+    <string name="paired_computers">PC associati</string>
+    <string name="paired_computers_count">%1$d registrati</string>
+    <string name="paired_computers_description">Associa l’estensione browser di Grayjoy per trasferire la riproduzione di YouTube e controllare il PC dal telefono. Entrambi i dispositivi devono trovarsi sulla stessa rete.</string>
+    <string name="scan_pairing_qr">Scansiona QR di associazione</string>
+    <string name="scan_pc_pairing_qr">Scansiona il QR mostrato dall’estensione browser di Grayjoy</string>
+    <string name="computer_paired">PC associato</string>
+    <string name="invalid_pc_pairing_qr">Questo non è un QR valido per associare un PC a Grayjoy.</string>
+    <string name="phone_lan_address">Indirizzo del telefono per connessione manuale</string>
+    <string name="connect_phone_to_wifi">Connetti il telefono al Wi-Fi per renderlo raggiungibile.</string>
+    <string name="no_paired_computers">Nessun PC associato.</string>
+    <string name="remove_paired_computer">Rimuovi %1$s</string>
+    <string name="connected">Connesso</string>
+    <string name="not_connected">Non connesso</string>
+    <string name="on_pc">Sul PC</string>
+    <string name="on_pc_with_name">Sul PC · %1$s</string>
+    <string name="play_here">Riproduci qui</string>
+    <string name="pc_link_notification_channel">Riproduzione sul PC</string>
+    <string name="pc_link_notification_channel_description">Stato e controlli remoti dei PC associati</string>
+    <string name="pc_link_ready">Collegamento PC Grayjoy pronto</string>
+    <string name="pc_link_waiting">In attesa di un PC associato</string>
+    <string name="pc_transfer_failed">Impossibile aprire la riproduzione del PC con le sorgenti attive.</string>
 </resources>

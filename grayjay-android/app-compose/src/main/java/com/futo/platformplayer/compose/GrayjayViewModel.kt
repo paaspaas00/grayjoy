@@ -46,6 +46,13 @@ import com.futo.platformplayer.compose.downloads.OfflinePlaylistDownload
 import com.futo.platformplayer.compose.downloads.QueuedDownload
 import com.futo.platformplayer.compose.downloads.NetworkMonitor
 import com.futo.platformplayer.compose.downloads.isRecoverableConnectivityFailure
+import com.futo.platformplayer.compose.pclink.PcLinkManager
+import com.futo.platformplayer.compose.pclink.PcLinkProtocol
+import com.futo.platformplayer.compose.pclink.PcLinkService
+import com.futo.platformplayer.compose.pclink.PcLinkSnapshot
+import com.futo.platformplayer.compose.pclink.PcMediaKind
+import com.futo.platformplayer.compose.pclink.PcPlaybackState
+import com.futo.platformplayer.compose.pclink.PcRemoteCommandType
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
@@ -69,6 +76,9 @@ import com.futo.platformplayer.compose.ui.PlaylistDownloadBatchUiModel
 import com.futo.platformplayer.compose.ui.RemotePlaylistDetailUiState
 import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
 import com.futo.platformplayer.compose.ui.PlaybackUiState
+import com.futo.platformplayer.compose.ui.PairedComputerUiModel
+import com.futo.platformplayer.compose.ui.PcLinkUiState
+import com.futo.platformplayer.compose.ui.PcPlaybackUiModel
 import com.futo.platformplayer.compose.ui.SearchUiState
 import com.futo.platformplayer.compose.ui.SearchContentType
 import com.futo.platformplayer.compose.ui.SourceAvailability
@@ -321,6 +331,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val networkMonitor = NetworkMonitor(application)
     private val offlinePlaylistStore = GrayjoyOfflinePlaylistStore(application)
     private val releaseChecker = GitHubReleaseChecker()
+    private val pcLinkManager = PcLinkManager.get(application)
     private val baseEngineSources = engine.sources(content.sources)
     private var engineSources = (
         baseEngineSources + sourceRepository.loadCustomSources()
@@ -357,12 +368,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var externalUrlJob: Job? = null
     private var releaseCheckJob: Job? = null
     private var youtubeImportJob: Job? = null
+    private var pcHandoffJob: Job? = null
     private val historyWriteJobs = mutableMapOf<String, Job>()
     private var homeLoadGeneration = 0L
     private var playbackGeneration = 0L
     private var youtubeImportGeneration = 0L
     private var playbackQueueSession: PlaybackQueueSession? = null
     private var pendingPlaybackVideoId: String? = null
+    private var pendingPcHandoffSeek: Pair<String, Long>? = null
     private var activePlaylistId: String? = null
     private var appIsForeground = false
     private var externalNavigationRequestId = 0L
@@ -476,8 +489,23 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update { it.copy(nowPlaying = NowPlayingUiState()) }
                 }
                 if (!awaitingPendingSelection) prepareQueueLookAhead(playback)
+                pendingPcHandoffSeek
+                    ?.takeIf { (videoId, _) -> videoId == playback.currentVideoId }
+                    ?.let { (_, positionMs) ->
+                        pendingPcHandoffSeek = null
+                        engine.player.seekTo(positionMs.coerceAtLeast(0L))
+                        engine.player.play()
+                    }
             }
         }
+        viewModelScope.launch {
+            pcLinkManager.snapshot.collect { snapshot ->
+                _uiState.update {
+                    it.copy(pcLink = snapshot.toUiState())
+                }
+            }
+        }
+        PcLinkService.ensureRunning(application)
         viewModelScope.launch {
             var previous = chromecastManager.state.value
             chromecastManager.state.collect { cast ->
@@ -628,6 +656,148 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             preferences.otherAudioDuckingEnabled,
             preferences.otherAudioDuckVolumePercent,
         )
+    }
+
+    fun pairComputerFromQr(payload: String): Boolean {
+        val paired = pcLinkManager.pair(payload)
+        if (paired) PcLinkService.ensureRunning(getApplication())
+        return paired
+    }
+
+    fun removePairedComputer(computerId: String) {
+        pcLinkManager.remove(computerId)
+        if (pcLinkManager.snapshot.value.pairedComputers.isEmpty()) {
+            PcLinkService.stop(getApplication())
+        }
+    }
+
+    fun playFromComputer(computerId: String) {
+        val playback = pcLinkManager.snapshot.value.activePlayback
+            ?.takeIf { it.computerId == computerId }
+            ?: return
+        pcHandoffJob?.cancel()
+        pcHandoffJob = viewModelScope.launch {
+            try {
+                val playlistTransferred = if (
+                    playback.kind == PcMediaKind.Playlist &&
+                    playback.playlistUrl.isNotBlank()
+                ) {
+                    runCatching { handoffPcPlaylist(playback) }.getOrElse { error ->
+                        Log.w("GrayjayViewModel", "PC playlist handoff failed; using current video.", error)
+                        false
+                    }
+                } else {
+                    false
+                }
+                val transferred = playlistTransferred || handoffPcVideo(playback)
+                if (transferred) {
+                    pcLinkManager.enqueueCommand(playback.computerId, PcRemoteCommandType.Pause)
+                } else {
+                    Toast.makeText(
+                        getApplication(),
+                        R.string.pc_transfer_failed,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.e("GrayjayViewModel", "PC playback handoff failed.", error)
+                Toast.makeText(
+                    getApplication(),
+                    R.string.pc_transfer_failed,
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+
+    private suspend fun handoffPcPlaylist(playback: PcPlaybackState): Boolean {
+        val route = engine.routeUrl(playback.playlistUrl, enabledSourceIds)
+            ?.takeIf { it.kind == EngineUrlKind.Playlist }
+            ?: return false
+        val playlist = PlaylistUiModel(
+            id = route.url,
+            title = playback.title.ifBlank { externalContentLabel(route.url) },
+            description = "",
+            videoIds = emptyList(),
+            sourceId = route.sourceId,
+        )
+        val details = engine.loadPlaylist(playlist)
+        val videos = details.videos.map { it.withPersistedLibraryState() }.toMutableList()
+        var continuationId = details.continuationId
+        var hasMore = details.hasMore
+        var pagesWithoutNewVideos = 0
+        while (hasMore && continuationId != null && pagesWithoutNewVideos < 2) {
+            val page = engine.loadMoreChannel(continuationId)
+            val known = videos.mapTo(mutableSetOf(), VideoUiModel::id)
+            val additions = page.videos
+                .map { it.withPersistedLibraryState() }
+                .filterNot { it.id in known }
+            if (additions.isEmpty()) pagesWithoutNewVideos += 1 else pagesWithoutNewVideos = 0
+            videos += additions
+            continuationId = page.continuationId
+            hasMore = page.hasMore
+        }
+        if (videos.isEmpty()) return false
+        videos.forEach { video ->
+            remoteVideos[video.id] = video
+            registerRemoteChannel(video)
+        }
+        val current = videos.firstOrNull { video ->
+            sameYoutubeVideo(video.contentUrl, playback.videoUrl) ||
+                sameYoutubeVideo(video.shareUrl, playback.videoUrl) ||
+                sameYoutubeVideo(video.id, playback.videoUrl)
+        } ?: videos.first()
+        val queueIds = playlistQueueFrom(videos.map(VideoUiModel::id), current.id)
+        if (queueIds.isEmpty()) return false
+        _uiState.update { state ->
+            state.copy(
+                channels = visibleKnownChannels(),
+                remotePlaylistDetail = RemotePlaylistDetailUiState(
+                    playlist = details.playlist.copy(videoIds = videos.map(VideoUiModel::id)),
+                    videos = videos,
+                    continuationId = continuationId,
+                    hasMore = hasMore,
+                ),
+            )
+        }
+        pendingPcHandoffSeek = current.id to playback.positionMs
+        activePlaylistId = null
+        startQueue(queueIds)
+        publishExternalNavigation(ExternalNavigationKind.Video, current.id)
+        return true
+    }
+
+    private suspend fun handoffPcVideo(playback: PcPlaybackState): Boolean {
+        val normalizedUrl = playback.videoUrl.trim()
+        if (!normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
+            return false
+        }
+        val route = engine.routeUrl(normalizedUrl, enabledSourceIds)
+            ?.takeIf { it.kind == EngineUrlKind.Video }
+            ?: return false
+        val source = _uiState.value.sources.firstOrNull { it.id == route.sourceId }
+        val sourceName = source?.name ?: route.sourceId.replaceFirstChar(Char::uppercase)
+        val video = VideoUiModel(
+            id = route.url,
+            title = playback.videoTitle.ifBlank {
+                playback.title.ifBlank { externalContentLabel(route.url) }
+            },
+            creator = sourceName,
+            metadata = "",
+            duration = "",
+            sourceId = route.sourceId,
+            contentUrl = route.url,
+            shareUrl = route.url,
+            sourceName = sourceName,
+            sourceIconUrl = source?.iconUrl.orEmpty(),
+        )
+        remoteVideos[video.id] = video
+        pendingPcHandoffSeek = video.id to playback.positionMs
+        openVideo(video.id)
+        publishExternalNavigation(ExternalNavigationKind.Video, video.id)
+        return true
     }
 
     private fun restoreHomeFromSession(): Boolean {
@@ -907,6 +1077,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         searchPagingJob?.cancel()
         suggestionJob?.cancel()
         externalUrlJob?.cancel()
+        pcHandoffJob?.cancel()
+        pcHandoffJob = null
+        pendingPcHandoffSeek = null
         dismissYoutubeImport()
         downloadJobs.cancelAndClearJobs()
         downloadQueueRestoreJob?.cancel()
@@ -4604,6 +4777,56 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             ?: state.nowPlaying.recommendations.firstOrNull { it.id == videoId }
     }
 }
+
+private fun PcLinkSnapshot.toUiState(): PcLinkUiState {
+    val now = System.currentTimeMillis()
+    return PcLinkUiState(
+        pairedComputers = pairedComputers.map { computer ->
+            PairedComputerUiModel(
+                id = computer.id,
+                name = computer.name,
+                lastSeenAtMs = computer.lastSeenAtMs,
+                isConnected = now - computer.lastSeenAtMs <= PcLinkProtocol.STATE_STALE_AFTER_MS,
+            )
+        },
+        activePlayback = activePlayback?.let { playback ->
+            PcPlaybackUiModel(
+                computerId = playback.computerId,
+                computerName = playback.computerName,
+                isPlaylist = playback.kind == PcMediaKind.Playlist,
+                title = playback.title,
+                videoTitle = playback.videoTitle,
+                isPlaying = playback.isPlaying,
+                positionMs = playback.positionMs,
+                durationMs = playback.durationMs,
+            )
+        },
+        serverAddresses = serverAddresses,
+    )
+}
+
+private fun sameYoutubeVideo(first: String, second: String): Boolean {
+    if (first.isBlank() || second.isBlank()) return false
+    val firstId = youtubeVideoId(first)
+    val secondId = youtubeVideoId(second)
+    return if (firstId != null && secondId != null) firstId == secondId
+    else first.trimEnd('/') == second.trimEnd('/')
+}
+
+private fun youtubeVideoId(value: String): String? = runCatching {
+    val uri = Uri.parse(value)
+    val host = uri.host.orEmpty().lowercase()
+    when {
+        host == "youtu.be" || host.endsWith(".youtu.be") ->
+            uri.pathSegments.firstOrNull()
+        host == "youtube.com" || host.endsWith(".youtube.com") -> when {
+            uri.pathSegments.firstOrNull() in setOf("shorts", "live", "embed") ->
+                uri.pathSegments.getOrNull(1)
+            else -> uri.getQueryParameter("v")
+        }
+        else -> null
+    }?.takeIf(String::isNotBlank)
+}.getOrNull()
 
 internal fun VideoUiModel.resumePositionFraction(): Float? = watchProgress
     .takeIf { progress -> !isLive && progress >= 0.002f && progress < 0.95f }

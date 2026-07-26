@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.HomeFeedType
 import com.futo.platformplayer.compose.ui.HomeUiState
+import com.futo.platformplayer.compose.ui.PcPlaybackUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -48,6 +49,8 @@ fun HomeScreen(
     onLoadMore: () -> Unit,
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
+    pcPlayback: PcPlaybackUiModel? = null,
+    onPlayFromComputer: (String) -> Unit = {},
 ) {
     val feeds = HomeFeedType.entries
     val pagerState = rememberPagerState(
@@ -77,6 +80,12 @@ fun HomeScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
+        pcPlayback?.let { playback ->
+            PcPlaybackBanner(
+                playback = playback,
+                onPlayHere = { onPlayFromComputer(playback.computerId) },
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()

@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeDown
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.FileUpload
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.BuildConfig
 import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
+import com.futo.platformplayer.compose.ui.PcLinkUiState
 import com.futo.platformplayer.compose.ui.ThemeMode
 
 @Composable
@@ -88,6 +90,9 @@ fun SettingsScreen(
     onOtherAudioDuckingChange: (Boolean) -> Unit,
     otherAudioDuckVolumePercent: Int,
     onOtherAudioDuckVolumeChange: (Int) -> Unit,
+    pcLink: PcLinkUiState = PcLinkUiState(),
+    onScanPcPairingQr: () -> Unit = {},
+    onRemovePairedComputer: (String) -> Unit = {},
     availableUpdate: ReleaseUpdateUiModel? = null,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -96,6 +101,7 @@ fun SettingsScreen(
     var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
+    var showPairedComputers by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier.testTag("settings-list"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -332,6 +338,20 @@ fun SettingsScreen(
             }
         }
         item {
+            SettingsSection(stringResource(R.string.settings_connections)) {
+                LinkSetting(
+                    title = stringResource(R.string.paired_computers),
+                    description = stringResource(
+                        R.string.paired_computers_count,
+                        pcLink.pairedComputers.size,
+                    ),
+                    icon = Icons.Outlined.Computer,
+                    onClick = { showPairedComputers = true },
+                    testTag = "paired-computers",
+                )
+            }
+        }
+        item {
             SettingsSection(stringResource(R.string.settings_data)) {
                 LinkSetting(
                     title = stringResource(R.string.import_grayjay_database),
@@ -444,6 +464,14 @@ fun SettingsScreen(
                 onOtherAudioDuckVolumeChange(it)
                 showDuckVolumeDialog = false
             },
+        )
+    }
+    if (showPairedComputers) {
+        PairedComputersDialog(
+            pcLink = pcLink,
+            onScanQr = onScanPcPairingQr,
+            onRemove = onRemovePairedComputer,
+            onDismiss = { showPairedComputers = false },
         )
     }
 }

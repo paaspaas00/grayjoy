@@ -267,6 +267,10 @@ private data class PlaybackPresentation(
     val onPictureInPictureChange: (Boolean) -> Unit,
     val onOtherAudioDuckingChange: (Boolean) -> Unit,
     val onOtherAudioDuckVolumeChange: (Int) -> Unit,
+    val pcLink: PcLinkUiState,
+    val onScanPcPairingQr: () -> Unit,
+    val onRemovePairedComputer: (String) -> Unit,
+    val onPlayFromComputer: (String) -> Unit,
     val onThemeModeChange: (ThemeMode) -> Unit,
     val chromecast: ChromecastUiState,
     val onOpenChromecast: () -> Unit,
@@ -396,6 +400,9 @@ fun GrayjayApp(
     onDisconnectChromecast: () -> Unit = {},
     onOtherAudioDuckingChange: (Boolean) -> Unit = {},
     onOtherAudioDuckVolumeChange: (Int) -> Unit = {},
+    onScanPcPairingQr: () -> Unit = {},
+    onRemovePairedComputer: (String) -> Unit = {},
+    onPlayFromComputer: (String) -> Unit = {},
     onExternalNavigationHandled: (Long) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
     deviceIsLandscape: Boolean = false,
@@ -722,6 +729,10 @@ fun GrayjayApp(
         onPictureInPictureChange = onPictureInPictureChange,
         onOtherAudioDuckingChange = onOtherAudioDuckingChange,
         onOtherAudioDuckVolumeChange = onOtherAudioDuckVolumeChange,
+        pcLink = uiState.pcLink,
+        onScanPcPairingQr = onScanPcPairingQr,
+        onRemovePairedComputer = onRemovePairedComputer,
+        onPlayFromComputer = onPlayFromComputer,
         onThemeModeChange = onThemeModeChange,
         chromecast = uiState.chromecast,
         onOpenChromecast = {
@@ -1629,6 +1640,8 @@ private fun GrayjayScaffold(
                         onLoadMore = sourcePresentation.onLoadMoreHome,
                         onVideoClick = onVideoClick,
                         onVideoLongClick = playback.onVideoLongClick,
+                        pcPlayback = playback.pcLink.activePlayback,
+                        onPlayFromComputer = playback.onPlayFromComputer,
                     )
                     GrayjayDestination.Subscriptions -> SubscriptionsScreen(
                         channels = channels,
@@ -1704,6 +1717,9 @@ private fun GrayjayScaffold(
                         onOtherAudioDuckingChange = playback.onOtherAudioDuckingChange,
                         otherAudioDuckVolumePercent = playback.otherAudioDuckVolumePercent,
                         onOtherAudioDuckVolumeChange = playback.onOtherAudioDuckVolumeChange,
+                        pcLink = playback.pcLink,
+                        onScanPcPairingQr = playback.onScanPcPairingQr,
+                        onRemovePairedComputer = playback.onRemovePairedComputer,
                         availableUpdate = playback.availableUpdate.takeIf {
                             RELEASE_UPDATE_CHECK_ENABLED
                         },

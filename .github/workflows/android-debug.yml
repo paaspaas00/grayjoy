@@ -32,6 +32,15 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Test Grayjoy Link extension
+        working-directory: browser-extension
+        run: npm test
+
       - name: Make the Gradle wrapper executable
         working-directory: grayjay-android
         run: chmod +x gradlew
@@ -139,10 +148,27 @@ jobs:
             cp "${release_source}" "${release_target}"
           done
 
+          extension_target="release/Grayjoy-Link-${version}.zip"
+          (
+            cd browser-extension
+            zip -q "../${extension_target}" \
+              manifest.json \
+              background.js \
+              content.js \
+              discovery.js \
+              popup.css \
+              popup.html \
+              popup.js \
+              protocol.js \
+              README.md \
+              vendor/qrcode.js \
+              vendor/qrcode-generator-LICENSE.txt
+          )
+
           checksum_path="release/Grayjoy-${version}-SHA256SUMS.txt"
           (
             cd release
-            sha256sum Grayjoy-*.apk > "$(basename "${checksum_path}")"
+            sha256sum Grayjoy-*.apk Grayjoy-Link-*.zip > "$(basename "${checksum_path}")"
           )
 
           echo "checksum_path=${checksum_path}" >> "${GITHUB_OUTPUT}"
@@ -174,6 +200,7 @@ jobs:
               assets+=("release/Grayjoy-${GITHUB_REF_NAME}-${variant}-debug.apk#Grayjoy ${GITHUB_REF_NAME} ${variant} debug APK")
               assets+=("release/Grayjoy-${GITHUB_REF_NAME}-${variant}-release.apk#Grayjoy ${GITHUB_REF_NAME} ${variant} signed release APK")
             done
+            assets+=("release/Grayjoy-Link-${GITHUB_REF_NAME}.zip#Grayjoy Link ${GITHUB_REF_NAME} Chromium extension")
             assets+=("${CHECKSUM_PATH}#SHA-256 checksums")
 
             gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \

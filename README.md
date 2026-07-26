@@ -6,6 +6,9 @@ behavior derived from the original Grayjay project while shipping as a separate
 Android application.
 
 The complete Android project is in [`grayjay-android/`](grayjay-android/).
+The unpacked Chromium extension for local YouTube handoff is in
+[`browser-extension/`](browser-extension/); see its
+[`README.md`](browser-extension/README.md) for installation and pairing.
 
 ## Build
 
@@ -37,6 +40,9 @@ it can be installed alongside the official Grayjay application.
   plugins for stable and unstable builds.
 - `grayjay-android/dep/` — vendored Polycentric and FUTO Pay dependencies.
 - `grayjay-android/docs/compose-rewrite.md` — rewrite architecture and notes.
+
+- `browser-extension/` — Manifest V3 YouTube handoff and PC remote-control
+  extension. It communicates directly with Grayjoy over the local network.
 
 The snapshot vendors the external source and dependency repositories directly.
 It does not require Git submodule initialization, and the bundled AAR files are

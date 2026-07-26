@@ -52,6 +52,7 @@ class MainActivity : FragmentActivity() {
     private var pendingSourceUrl by mutableStateOf<String?>(null)
     private var pendingDatabaseImportUri by mutableStateOf<Uri?>(null)
     private var pendingExternalContentUrl by mutableStateOf<String?>(null)
+    private var pendingPcPairingUrl by mutableStateOf<String?>(null)
     private var deviceIsLandscape by mutableStateOf(false)
     private var pictureInPictureMode by mutableStateOf(false)
     private var pictureInPictureEntryPending = false
@@ -75,6 +76,7 @@ class MainActivity : FragmentActivity() {
         pendingSourceUrl = intent.pluginSourceUrlOrNull()
         pendingDatabaseImportUri = intent.databaseImportUriOrNull()
         pendingExternalContentUrl = intent.externalContentUrlOrNull()
+        pendingPcPairingUrl = intent.pcPairingUrlOrNull()
         enableEdgeToEdge()
         setContent {
             val viewModel = grayjayViewModel
@@ -101,6 +103,18 @@ class MainActivity : FragmentActivity() {
                 ScanContract(),
             ) { result ->
                 result.contents?.let(viewModel::installSourceFromQr)
+            }
+            val pcQrLauncher = rememberLauncherForActivityResult(
+                ScanContract(),
+            ) { result ->
+                result.contents?.let { payload ->
+                    val message = if (viewModel.pairComputerFromQr(payload)) {
+                        R.string.computer_paired
+                    } else {
+                        R.string.invalid_pc_pairing_qr
+                    }
+                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                }
             }
             val notificationPermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission(),
@@ -143,6 +157,17 @@ class MainActivity : FragmentActivity() {
                 pendingExternalContentUrl?.let(viewModel::openExternalUrl)
                 pendingExternalContentUrl = null
             }
+            LaunchedEffect(pendingPcPairingUrl) {
+                pendingPcPairingUrl?.let { payload ->
+                    val message = if (viewModel.pairComputerFromQr(payload)) {
+                        R.string.computer_paired
+                    } else {
+                        R.string.invalid_pc_pairing_qr
+                    }
+                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                }
+                pendingPcPairingUrl = null
+            }
             val hasActiveDownloads = uiState.downloads.values.any { it.isActive }
             var pendingDownloadCompletionKeys by remember(uiState.activeProfileId) {
                 mutableStateOf(emptySet<DownloadCompletionKey>())
@@ -161,9 +186,17 @@ class MainActivity : FragmentActivity() {
                     ).show()
                 }
             }
-            LaunchedEffect(uiState.nowPlaying.video?.id, hasActiveDownloads) {
+            LaunchedEffect(
+                uiState.nowPlaying.video?.id,
+                hasActiveDownloads,
+                uiState.pcLink.pairedComputers.size,
+            ) {
                 if (
-                    (uiState.nowPlaying.video != null || hasActiveDownloads) &&
+                    (
+                        uiState.nowPlaying.video != null ||
+                            hasActiveDownloads ||
+                            uiState.pcLink.pairedComputers.isNotEmpty()
+                        ) &&
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     ContextCompat.checkSelfPermission(
                         this@MainActivity,
@@ -321,6 +354,19 @@ class MainActivity : FragmentActivity() {
                     onDisconnectChromecast = viewModel::disconnectChromecast,
                     onOtherAudioDuckingChange = viewModel::setOtherAudioDuckingEnabled,
                     onOtherAudioDuckVolumeChange = viewModel::setOtherAudioDuckVolumePercent,
+                    onScanPcPairingQr = {
+                        ScanOptions().apply {
+                            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                            setPrompt(getString(R.string.scan_pc_pairing_qr))
+                            setOrientationLocked(true)
+                            setCameraId(0)
+                            setBeepEnabled(false)
+                            setBarcodeImageEnabled(false)
+                            setCaptureActivity(QRCaptureActivity::class.java)
+                        }.let(pcQrLauncher::launch)
+                    },
+                    onRemovePairedComputer = viewModel::removePairedComputer,
+                    onPlayFromComputer = viewModel::playFromComputer,
                     onExternalNavigationHandled = viewModel::consumeExternalNavigation,
                     onCheckForUpdates = viewModel::checkForUpdates,
                     pictureInPictureMode = pictureInPictureMode,
@@ -399,6 +445,7 @@ class MainActivity : FragmentActivity() {
         pendingSourceUrl = intent.pluginSourceUrlOrNull()
         pendingDatabaseImportUri = intent.databaseImportUriOrNull()
         pendingExternalContentUrl = intent.externalContentUrlOrNull()
+        pendingPcPairingUrl = intent.pcPairingUrlOrNull()
     }
 
     private val notificationPermissionPreferences by lazy {
@@ -611,6 +658,10 @@ internal fun updateDownloadCompletionBatch(
 private fun Intent.pluginSourceUrlOrNull(): String? = dataString?.takeIf { value ->
     value.startsWith("grayjay://plugin/", ignoreCase = true) ||
         value.startsWith("vfuto://", ignoreCase = true)
+}
+
+private fun Intent.pcPairingUrlOrNull(): String? = dataString?.takeIf { value ->
+    value.startsWith("grayjoy://pc-pair", ignoreCase = true)
 }
 
 private fun Intent.externalContentUrlOrNull(): String? = externalContentUrl(

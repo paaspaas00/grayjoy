@@ -43,8 +43,33 @@ data class GrayjayUiState(
     val remotePlaylistDetail: RemotePlaylistDetailUiState = RemotePlaylistDetailUiState(),
     val nowPlaying: NowPlayingUiState = NowPlayingUiState(),
     val chromecast: ChromecastUiState = ChromecastUiState(),
+    val pcLink: PcLinkUiState = PcLinkUiState(),
     val externalNavigation: ExternalNavigationUiModel? = null,
     val availableUpdate: ReleaseUpdateUiModel? = null,
+)
+
+data class PcLinkUiState(
+    val pairedComputers: List<PairedComputerUiModel> = emptyList(),
+    val activePlayback: PcPlaybackUiModel? = null,
+    val serverAddresses: List<String> = emptyList(),
+)
+
+data class PairedComputerUiModel(
+    val id: String,
+    val name: String,
+    val lastSeenAtMs: Long,
+    val isConnected: Boolean,
+)
+
+data class PcPlaybackUiModel(
+    val computerId: String,
+    val computerName: String,
+    val isPlaylist: Boolean,
+    val title: String,
+    val videoTitle: String,
+    val isPlaying: Boolean,
+    val positionMs: Long,
+    val durationMs: Long,
 )
 
 enum class YoutubeImportStageUi {

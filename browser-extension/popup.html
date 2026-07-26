@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grayjoy Link</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="mark">G</div>
+      <div>
+        <h1>Grayjoy Link</h1>
+        <p id="status">Not connected</p>
+      </div>
+    </header>
+
+    <section class="card">
+      <label for="computer-name">This computer</label>
+      <div class="inline">
+        <input id="computer-name" maxlength="80">
+        <button id="rename" class="secondary">Save</button>
+      </div>
+      <p class="hint">Open Grayjoy → Prefs → Paired computers and scan this QR.</p>
+      <div id="qr" aria-label="Pairing QR code"></div>
+      <p class="hint">Then enter the Wi-Fi address shown by Grayjoy. It is remembered, and nearby DHCP changes are checked without scanning whole networks.</p>
+      <div class="inline phone-address">
+        <input id="phone-host" placeholder="192.168.178.128">
+        <button id="connect-manual" class="secondary">Connect</button>
+      </div>
+      <button id="discover">I scanned it — connect nearby</button>
+    </section>
+
+    <section id="current-card" class="card compact hidden">
+      <span class="eyebrow">ON YOUTUBE</span>
+      <strong id="current-title"></strong>
+      <button id="send-now" class="secondary">Send current state</button>
+    </section>
+
+    <p id="error" role="alert"></p>
+    <footer>Local network only · authenticated commands</footer>
+  </main>
+  <script src="vendor/qrcode.js"></script>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
