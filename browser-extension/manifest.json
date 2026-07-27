@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Grayjoy Link",
   "description": "Transfer YouTube playback between Chrome and Grayjoy on your local network.",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "minimum_chrome_version": "109",
   "permissions": [
     "storage",

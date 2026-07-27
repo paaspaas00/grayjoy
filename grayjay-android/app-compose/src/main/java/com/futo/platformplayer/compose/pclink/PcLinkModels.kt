@@ -36,12 +36,20 @@ enum class PcRemoteCommandType(val wireName: String) {
     Toggle("toggle"),
     Previous("previous"),
     Next("next"),
+    Seek("seek"),
 }
 
 data class PcRemoteCommand(
     val sequence: Long,
     val type: PcRemoteCommandType,
+    val positionMs: Long? = null,
 )
+
+internal fun PcRemoteCommand.wirePayload(): Map<String, Any> = buildMap {
+    put("sequence", sequence)
+    put("type", type.wireName)
+    positionMs?.let { put("positionMs", it) }
+}
 
 data class PcLinkSnapshot(
     val pairedComputers: List<PairedComputer> = emptyList(),

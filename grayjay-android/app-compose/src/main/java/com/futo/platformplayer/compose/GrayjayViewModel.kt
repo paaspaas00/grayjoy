@@ -671,6 +671,37 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun toggleComputerPlayback(computerId: String) {
+        val playback = pcLinkManager.snapshot.value.activePlayback
+            ?.takeIf { it.computerId == computerId }
+            ?: return
+        pcLinkManager.enqueueCommand(
+            computerId,
+            if (playback.isPlaying) PcRemoteCommandType.Pause else PcRemoteCommandType.Play,
+        )
+    }
+
+    fun skipComputerPlaybackPrevious(computerId: String) {
+        pcLinkManager.enqueueCommand(computerId, PcRemoteCommandType.Previous)
+    }
+
+    fun skipComputerPlaybackNext(computerId: String) {
+        pcLinkManager.enqueueCommand(computerId, PcRemoteCommandType.Next)
+    }
+
+    fun seekComputerPlayback(computerId: String, positionMs: Long) {
+        val durationMs = pcLinkManager.snapshot.value.activePlayback
+            ?.takeIf { it.computerId == computerId }
+            ?.durationMs
+            ?: return
+        if (durationMs <= 0L) return
+        pcLinkManager.enqueueCommand(
+            computerId,
+            PcRemoteCommandType.Seek,
+            positionMs.coerceIn(0L, durationMs),
+        )
+    }
+
     fun playFromComputer(computerId: String) {
         val playback = pcLinkManager.snapshot.value.activePlayback
             ?.takeIf { it.computerId == computerId }
@@ -4799,6 +4830,7 @@ private fun PcLinkSnapshot.toUiState(): PcLinkUiState {
                 isPlaying = playback.isPlaying,
                 positionMs = playback.positionMs,
                 durationMs = playback.durationMs,
+                receivedAtMs = playback.receivedAtMs,
             )
         },
         serverAddresses = serverAddresses,

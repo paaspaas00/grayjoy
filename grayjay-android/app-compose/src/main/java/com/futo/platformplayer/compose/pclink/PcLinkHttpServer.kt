@@ -141,11 +141,7 @@ internal class PcLinkHttpServer(
                 val acknowledgedSequence = json.optLong("lastCommandSequence", 0L)
                 val commandArray = JSONArray()
                 manager.commandsAfter(computerId, acknowledgedSequence).forEach { command ->
-                    commandArray.put(
-                        JSONObject()
-                            .put("sequence", command.sequence)
-                            .put("type", command.type.wireName),
-                    )
+                    commandArray.put(JSONObject(command.wirePayload()))
                 }
                 output.writeJson(
                     200,

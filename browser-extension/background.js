@@ -6,7 +6,7 @@ import {
 } from "./protocol.js";
 
 const tabStates = new Map();
-const CONTENT_SCRIPT_VERSION = 2;
+const CONTENT_SCRIPT_VERSION = 3;
 const CONTENT_RUNTIME_STORAGE_KEY = "contentRuntimeExtensionVersion";
 const CONTENT_RUNTIME_EXTENSION_VERSION = chrome.runtime.getManifest().version;
 let sending = false;

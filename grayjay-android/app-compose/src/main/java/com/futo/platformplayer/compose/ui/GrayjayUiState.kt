@@ -70,6 +70,7 @@ data class PcPlaybackUiModel(
     val isPlaying: Boolean,
     val positionMs: Long,
     val durationMs: Long,
+    val receivedAtMs: Long,
 )
 
 enum class YoutubeImportStageUi {

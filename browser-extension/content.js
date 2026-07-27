@@ -1,5 +1,5 @@
 (() => {
-  const CONTENT_SCRIPT_VERSION = 2;
+  const CONTENT_SCRIPT_VERSION = 3;
   const STATE_INTERVAL_MS = 1200;
   const INSTANCE_ATTRIBUTE = "data-grayjoy-link-instance";
   const instanceToken = crypto.randomUUID();
@@ -134,7 +134,8 @@
 
   const onRuntimeMessage = (message, _sender, sendResponse) => {
     if (message?.type === "GRAYJOY_COMMAND") {
-      executeCommand(message.command).finally(() => {
+      executeCommand(message.command).catch(() => {}).finally(() => {
+        publish();
         try {
           sendResponse({ ok: true });
         } catch {

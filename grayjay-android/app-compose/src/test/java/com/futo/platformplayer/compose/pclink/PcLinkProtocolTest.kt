@@ -89,4 +89,28 @@ class PcLinkProtocolTest {
             ),
         )
     }
+
+    @Test
+    fun seekCommandCarriesTheRequestedPosition() {
+        val payload = PcRemoteCommand(
+            sequence = 42L,
+            type = PcRemoteCommandType.Seek,
+            positionMs = 91_250L,
+        ).wirePayload()
+
+        assertEquals(42L, payload["sequence"])
+        assertEquals("seek", payload["type"])
+        assertEquals(91_250L, payload["positionMs"])
+    }
+
+    @Test
+    fun transportCommandsDoNotEmitASeekPosition() {
+        val payload = PcRemoteCommand(
+            sequence = 43L,
+            type = PcRemoteCommandType.Next,
+        ).wirePayload()
+
+        assertEquals("next", payload["type"])
+        assertFalse(payload.containsKey("positionMs"))
+    }
 }

@@ -51,6 +51,10 @@ fun HomeScreen(
     onVideoLongClick: (VideoUiModel) -> Unit,
     pcPlayback: PcPlaybackUiModel? = null,
     onPlayFromComputer: (String) -> Unit = {},
+    onToggleComputerPlayback: (String) -> Unit = {},
+    onPreviousComputerPlayback: (String) -> Unit = {},
+    onNextComputerPlayback: (String) -> Unit = {},
+    onSeekComputerPlayback: (String, Long) -> Unit = { _, _ -> },
 ) {
     val feeds = HomeFeedType.entries
     val pagerState = rememberPagerState(
@@ -84,6 +88,12 @@ fun HomeScreen(
             PcPlaybackBanner(
                 playback = playback,
                 onPlayHere = { onPlayFromComputer(playback.computerId) },
+                onTogglePlayback = { onToggleComputerPlayback(playback.computerId) },
+                onPrevious = { onPreviousComputerPlayback(playback.computerId) },
+                onNext = { onNextComputerPlayback(playback.computerId) },
+                onSeek = { positionMs ->
+                    onSeekComputerPlayback(playback.computerId, positionMs)
+                },
             )
         }
         Row(

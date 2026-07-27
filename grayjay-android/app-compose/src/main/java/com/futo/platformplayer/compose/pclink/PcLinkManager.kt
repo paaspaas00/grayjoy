@@ -152,11 +152,27 @@ class PcLinkManager private constructor(context: Context) {
         if (changed) publish()
     }
 
-    fun enqueueCommand(computerId: String, type: PcRemoteCommandType): Boolean {
+    fun enqueueCommand(
+        computerId: String,
+        type: PcRemoteCommandType,
+        positionMs: Long? = null,
+    ): Boolean {
         if (pairedComputer(computerId) == null) return false
+        val normalizedPosition = when (type) {
+            PcRemoteCommandType.Seek -> positionMs?.coerceAtLeast(0L) ?: return false
+            else -> null
+        }
         val queue = commands.getOrPut(computerId) { mutableListOf() }
         synchronized(queue) {
-            queue += PcRemoteCommand(commandSequence.incrementAndGet(), type)
+            if (type == PcRemoteCommandType.Seek) {
+                // A later scrub supersedes any seek that has not reached the browser yet.
+                queue.removeAll { it.type == PcRemoteCommandType.Seek }
+            }
+            queue += PcRemoteCommand(
+                sequence = commandSequence.incrementAndGet(),
+                type = type,
+                positionMs = normalizedPosition,
+            )
             if (queue.size > MAX_PENDING_COMMANDS) {
                 queue.subList(0, queue.size - MAX_PENDING_COMMANDS).clear()
             }
