@@ -37,8 +37,12 @@ internal class GrayjoyDownloadQueue(context: Context) {
         .sortedBy(QueuedDownload::createdAtMs)
 
     @Synchronized
-    fun put(record: QueuedDownload) {
-        records[record.key()] = record
+    fun put(record: QueuedDownload) = putAll(listOf(record))
+
+    @Synchronized
+    fun putAll(newRecords: Collection<QueuedDownload>) {
+        if (newRecords.isEmpty()) return
+        newRecords.forEach { record -> records[record.key()] = record }
         save()
     }
 

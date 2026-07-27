@@ -72,6 +72,7 @@ interface LibraryRepository {
     fun loadSavedVideos(): List<VideoUiModel>
     fun loadPlaylists(): List<PlaylistUiModel>
     fun saveVideo(video: VideoUiModel)
+    fun saveVideos(videos: Collection<VideoUiModel>)
     fun saveDownloadDescriptor(video: VideoUiModel)
     fun clearDownloadDescriptor(videoId: String)
     fun recordHistory(video: VideoUiModel, progress: Float = video.watchProgress)
@@ -129,19 +130,24 @@ internal class SharedPreferencesLibraryRepository(
     @Synchronized
     override fun loadPlaylists(): List<PlaylistUiModel> = readPlaylists()
 
+    override fun saveVideo(video: VideoUiModel) = saveVideos(listOf(video))
+
     @Synchronized
-    override fun saveVideo(video: VideoUiModel) {
-        val videos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
-        val existing = videos[video.id]
-        videos[video.id] = video.copy(
-            isWatchLater = existing?.isWatchLater ?: video.isWatchLater,
-            isDownloaded = existing?.isDownloaded ?: video.isDownloaded,
-            isLiked = existing?.isLiked ?: video.isLiked,
-            watchProgress = existing?.watchProgress ?: video.watchProgress,
-            lastWatchedAt = existing?.lastWatchedAt ?: video.lastWatchedAt,
-            playlistNames = existing?.playlistNames ?: video.playlistNames,
-        ).preservingStoredPlayback(existing)
-        writeVideos(videos.values.toList())
+    override fun saveVideos(videos: Collection<VideoUiModel>) {
+        if (videos.isEmpty()) return
+        val savedVideos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
+        videos.forEach { video ->
+            val existing = savedVideos[video.id]
+            savedVideos[video.id] = video.copy(
+                isWatchLater = existing?.isWatchLater ?: video.isWatchLater,
+                isDownloaded = existing?.isDownloaded ?: video.isDownloaded,
+                isLiked = existing?.isLiked ?: video.isLiked,
+                watchProgress = existing?.watchProgress ?: video.watchProgress,
+                lastWatchedAt = existing?.lastWatchedAt ?: video.lastWatchedAt,
+                playlistNames = existing?.playlistNames ?: video.playlistNames,
+            ).preservingStoredPlayback(existing)
+        }
+        writeVideos(savedVideos.values.toList())
     }
 
     @Synchronized

@@ -93,8 +93,10 @@ import com.futo.platformplayer.engine.exceptions.ScriptLoginRequiredException
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.update.GitHubReleaseChecker
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -3012,16 +3014,56 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     )
 
     fun downloadVideos(videoIds: List<String>, mediaType: DownloadMediaType) {
-        videoIds.distinct().filter { findVideo(it)?.isLive == false }.forEach { videoId ->
+        val profileAtStart = activeProfileId
+        val repositoryAtStart = libraryRepository
+        val candidates = videoIds.distinct().mapNotNull { videoId ->
+            val video = findVideo(videoId)?.takeUnless(VideoUiModel::isLive) ?: return@mapNotNull null
             val existing = _uiState.value.downloads[videoId]
-            if (existing?.isComplete(mediaType) != true && existing?.isActive(mediaType) != true) {
-                startDownload(
-                    videoId = videoId,
-                    mediaType = mediaType,
-                    replaceExisting = mediaType in existing?.failedMediaTypes.orEmpty(),
-                )
+            if (existing?.isComplete(mediaType) == true || existing?.isActive(mediaType) == true) {
+                null
+            } else {
+                video to (mediaType in existing?.failedMediaTypes.orEmpty())
             }
         }
+        if (candidates.isEmpty()) return
+
+        val batchCreatedAtMs = System.currentTimeMillis()
+        val queuedDownloads = candidates.mapIndexed { index, (video, _) ->
+            QueuedDownload(
+                profileId = profileAtStart,
+                videoId = video.id,
+                mediaType = mediaType,
+                status = DownloadStatus.Queued,
+                createdAtMs = batchCreatedAtMs + index,
+                targetVideoHeight = preferences.preferredVideoQuality.takeIf {
+                    mediaType == DownloadMediaType.Video && it > 0
+                },
+                targetAudioBitrate = preferences.preferredAudioBitrate.takeIf {
+                    mediaType == DownloadMediaType.Audio
+                },
+            )
+        }
+
+        // Persist the compact queue once up front so cancellation cannot race a late bulk write.
+        downloadQueue.putAll(queuedDownloads)
+        val videoPersistence = viewModelScope.async(Dispatchers.IO) {
+            // A playlist can contain hundreds of videos. Serialize its library metadata once,
+            // off the UI thread, instead of rewriting the complete library once per item.
+            repositoryAtStart.saveVideos(candidates.map { it.first })
+        }
+        candidates.zip(queuedDownloads).forEach { (candidate, queued) ->
+            val (video, replaceExisting) = candidate
+            startDownload(
+                videoId = video.id,
+                mediaType = mediaType,
+                replaceExisting = replaceExisting,
+                restored = queued,
+                initialVideoPersistence = videoPersistence,
+            )
+        }
+        // Publish the whole batch in one StateFlow update. Repeating this for every playlist
+        // item was the remaining source of "Grayjoy isn't responding" dialogs.
+        syncDownloadState()
     }
 
     fun downloadPlaylist(playlistId: String, mediaType: DownloadMediaType) {
@@ -3153,7 +3195,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     activeMediaTypes = setOf(queued.mediaType),
                     failedMediaTypes = candidate.failedMediaTypes - queued.mediaType,
                 )
-                syncDownloadState()
                 startDownload(
                     videoId = video.id,
                     mediaType = queued.mediaType,
@@ -3188,7 +3229,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     targetVideoHeight = queued.targetVideoHeight,
                     targetAudioBitrate = queued.targetAudioBitrate,
                 )
-                syncDownloadState()
                 startDownload(
                     videoId = video.id,
                     mediaType = queued.mediaType,
@@ -3196,6 +3236,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     restored = queued,
                 )
             }
+            // Restoring many unfinished transfers used to refresh and persist the complete
+            // library once per item. A large imported library could therefore monopolize the
+            // main thread for several seconds and trigger an ANR during app startup.
+            syncDownloadState()
         }
     }
 
@@ -3206,9 +3250,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         restored: QueuedDownload? = null,
         targetVideoHeight: Int? = null,
         targetAudioBitrate: Int? = null,
+        initialVideoPersistence: Deferred<Unit>? = null,
     ) {
         val video = findVideo(videoId) ?: return
         val profileAtStart = activeProfileId
+        val repositoryAtStart = libraryRepository
+        val isRestoredDownload = restored != null
         val jobKey = downloadJobKey(profileAtStart, videoId, mediaType)
         if (downloadJobs[jobKey]?.isActive == true) return
         val createdAtMs = restored?.createdAtMs ?: System.currentTimeMillis()
@@ -3233,19 +3280,20 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
-        libraryRepository.saveVideo(video)
         downloadJobs.remove(jobKey)?.cancel()
-        downloadQueue.put(
-            QueuedDownload(
-                profileId = activeProfileId,
-                videoId = videoId,
-                mediaType = mediaType,
-                status = DownloadStatus.Queued,
-                createdAtMs = createdAtMs,
-                targetVideoHeight = selectedVideoHeight,
-                targetAudioBitrate = selectedAudioBitrate,
-            ),
-        )
+        if (!isRestoredDownload) {
+            downloadQueue.put(
+                QueuedDownload(
+                    profileId = activeProfileId,
+                    videoId = videoId,
+                    mediaType = mediaType,
+                    status = DownloadStatus.Queued,
+                    createdAtMs = createdAtMs,
+                    targetVideoHeight = selectedVideoHeight,
+                    targetAudioBitrate = selectedAudioBitrate,
+                ),
+            )
+        }
         downloadPreparationStates[jobKey] = DownloadUiModel(
             profileId = activeProfileId,
             videoId = videoId,
@@ -3255,7 +3303,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             targetVideoHeight = selectedVideoHeight,
             targetAudioBitrate = selectedAudioBitrate,
         )
-        syncDownloadState()
+        if (!isRestoredDownload) syncDownloadState()
         downloadJobs[jobKey] = viewModelScope.launch {
             fun markWaitingForNetwork() {
                 downloadPreparationStates[jobKey] = DownloadUiModel(
@@ -3282,6 +3330,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }
 
             try {
+                initialVideoPersistence?.await()
+                if (profileAtStart != activeProfileId) return@launch
+                if (!isRestoredDownload) {
+                    // Saving a video serializes the complete SharedPreferences-backed library.
+                    // Keep that work away from Compose's main thread, especially after imports.
+                    withContext(Dispatchers.IO) {
+                        repositoryAtStart.saveVideo(video)
+                    }
+                    if (profileAtStart != activeProfileId) return@launch
+                }
                 var connectivityRetry = 0
                 while (true) {
                     if (!networkMonitor.isAvailable()) {
