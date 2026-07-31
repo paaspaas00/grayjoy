@@ -10,6 +10,7 @@ class GitHubReleaseCheckerTest {
         assertTrue(isNewerVersion("v0.9.9", "0.9.8"))
         assertTrue(isNewerVersion("0.10.0", "0.9.99"))
         assertTrue(isNewerVersion("1.0.0-beta", "0.9.8"))
+        assertTrue(isNewerVersion("v1.0.0", "v0.9.14"))
     }
 
     @Test

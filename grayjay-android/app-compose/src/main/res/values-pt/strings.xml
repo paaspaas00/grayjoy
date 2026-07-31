@@ -560,4 +560,11 @@
     <string name="pc_link_ready">Grayjoy Link para PC pronto</string>
     <string name="pc_link_waiting">Esperando por um computador emparelhado</string>
     <string name="pc_transfer_failed">Não foi possível abrir a reprodução do computador com as fontes ativas.</string>
+    <string name="primary_audio_language">Idioma de áudio principal</string>
+    <string name="prefer_original_audio">Preferir áudio original</string>
+    <string name="prefer_original_audio_description">Usa a faixa de áudio original do vídeo quando disponível e depois o idioma principal.</string>
+    <string name="audio_language">Idioma do áudio</string>
+    <string name="automatic_with_value">Automático · %1$s</string>
+    <string name="original_audio">Áudio original</string>
+    <string name="audio_language_change_failed">Não foi possível alterar o idioma do áudio.</string>
 </resources>

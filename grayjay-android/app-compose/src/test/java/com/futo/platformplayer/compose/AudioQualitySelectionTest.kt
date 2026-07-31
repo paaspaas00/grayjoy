@@ -41,4 +41,32 @@ class AudioQualitySelectionTest {
             ),
         )
     }
+
+    @Test
+    fun selectedAudioLanguageIsKeptAcrossBitrateChoices() {
+        val multilingual = listOf(
+            AudioQualityUiModel(
+                bitrate = 192_000,
+                name = "Italian dubbed",
+                playbackUrl = "https://media.example/it",
+                language = "it-IT",
+            ),
+            AudioQualityUiModel(
+                bitrate = 128_000,
+                name = "English original",
+                playbackUrl = "https://media.example/en",
+                language = "en-US",
+                isOriginal = true,
+            ),
+        )
+
+        assertEquals(
+            "https://media.example/en",
+            selectAudioQualityVariant(
+                multilingual,
+                preferredBitrate = Int.MAX_VALUE,
+                preferredLanguage = "en",
+            )?.playbackUrl,
+        )
+    }
 }

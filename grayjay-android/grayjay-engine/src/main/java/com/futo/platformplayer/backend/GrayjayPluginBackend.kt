@@ -222,6 +222,9 @@ data class GrayjayPlaybackSource(
     val dataSourceFactory: HttpDataSource.Factory? = null,
     val videoVariants: List<GrayjayVideoVariant> = emptyList(),
     val audioVariants: List<GrayjayAudioVariant> = emptyList(),
+    val audioLanguages: List<GrayjayAudioLanguage> = emptyList(),
+    val selectedAudioLanguage: String? = null,
+    val selectedAudioIsOriginal: Boolean = false,
     val storyboard: GrayjayStoryboard? = null,
     val isDrmProtected: Boolean = false,
     val isLive: Boolean = false,
@@ -246,10 +249,68 @@ data class GrayjayAudioVariant(
     val name: String,
     val audioUrl: String,
     val streamType: GrayjayStreamType,
+    val language: String? = null,
+    val isOriginal: Boolean = false,
+    val isPriority: Boolean = false,
     val requestHeaders: Map<String, String> = emptyMap(),
     val rawDashManifest: String? = null,
     val dataSourceFactory: HttpDataSource.Factory? = null,
 )
+
+data class GrayjayAudioLanguage(
+    val language: String,
+    val name: String,
+    val isOriginal: Boolean,
+)
+
+internal data class AudioSourcePreference(
+    val language: String?,
+    val isOriginal: Boolean,
+    val isPriority: Boolean,
+    val bitrate: Int,
+)
+
+internal fun selectPreferredAudioSourceIndex(
+    sources: List<AudioSourcePreference>,
+    preferredLanguage: String?,
+    preferOriginal: Boolean,
+): Int? {
+    if (sources.isEmpty()) return null
+    var candidates = sources.indices.toList()
+    if (candidates.any { sources[it].isPriority }) {
+        candidates = candidates.filter { sources[it].isPriority }
+    }
+    if (preferOriginal && candidates.any { sources[it].isOriginal }) {
+        candidates = candidates.filter { sources[it].isOriginal }
+    }
+    val requestedLanguage = preferredLanguage
+        ?.takeIf(String::isNotBlank)
+        ?.lowercase(Locale.ROOT)
+    val selectedLanguage = when {
+        requestedLanguage != null && candidates.any {
+            sources[it].language.matchesAudioLanguage(requestedLanguage)
+        } -> requestedLanguage
+        candidates.any { sources[it].language.matchesAudioLanguage("en") } -> "en"
+        else -> null
+    }
+    if (selectedLanguage != null) {
+        candidates = candidates.filter {
+            sources[it].language.matchesAudioLanguage(selectedLanguage)
+        }
+    }
+    return candidates.maxWithOrNull(
+        compareBy<Int> { if (sources[it].isPriority) 1 else 0 }
+            .thenBy { if (sources[it].isOriginal) 1 else 0 }
+            .thenBy { sources[it].bitrate },
+    )
+}
+
+private fun String?.matchesAudioLanguage(requestedLanguage: String): Boolean {
+    val actual = this?.trim()?.replace('_', '-')?.lowercase(Locale.ROOT).orEmpty()
+    val requested = requestedLanguage.trim().replace('_', '-').lowercase(Locale.ROOT)
+    return actual == requested ||
+        actual.substringBefore('-') == requested.substringBefore('-')
+}
 
 data class GrayjaySubtitleTrack(
     val name: String,
@@ -1085,6 +1146,8 @@ class GrayjayPluginBackend(context: Context) {
         sourceId: String,
         contentUrl: String,
         endpoint: PluginEndpoint,
+        preferredAudioLanguage: String? = "en",
+        preferOriginalAudio: Boolean = true,
     ): GrayjayPlaybackSource = withContext(Dispatchers.IO) {
         if (endpoint.pluginId == YOUTUBE_PLUGIN_ID && !isAuthenticated(endpoint.pluginId)) {
             val settings = loadPluginSettings(endpoint.pluginId)
@@ -1162,13 +1225,20 @@ class GrayjayPluginBackend(context: Context) {
             emptyList()
         }
         val rawVideoSource = rawVideoSources.bestSource()
-        val rawAudioSource = unMuxedDescriptor
+        val supportedAudioSources = unMuxedDescriptor
             ?.audioSources
-            ?.filterIsInstance<JSDashManifestRawAudioSource>()
-            ?.maxWithOrNull(
-                compareBy<JSDashManifestRawAudioSource> { it.priority }
-                    .thenBy { it.bitrate },
-            )
+            .orEmpty()
+            .filterNot { it is IWidevineSource }
+            .filter {
+                it is JSDashManifestRawAudioSource ||
+                    it is IAudioUrlSource ||
+                    it is IHLSManifestAudioSource
+            }
+        val selectedAudioSource = supportedAudioSources.selectPreferredAudioSource(
+            preferredLanguage = preferredAudioLanguage,
+            preferOriginal = preferOriginalAudio,
+        )
+        val rawAudioSource = selectedAudioSource as? JSDashManifestRawAudioSource
         val rawDashSource = if (rawVideoSource != null && rawAudioSource != null) {
             rawVideoSource.getUnderlyingPlugin()?.busy {
                 JSDashManifestMergingRawSource(rawVideoSource, rawAudioSource)
@@ -1185,17 +1255,9 @@ class GrayjayPluginBackend(context: Context) {
         } else {
             null
         }
-        val audioUrlSource = unMuxedDescriptor
-            ?.audioSources
-            ?.filterIsInstance<IAudioUrlSource>()
-            ?.filterNot { it is IWidevineSource }
-            ?.maxWithOrNull(compareBy<IAudioUrlSource> { it.priority }.thenBy { it.bitrate })
-        val hlsAudioSource = unMuxedDescriptor
-            ?.audioSources
-            ?.filterIsInstance<IHLSManifestAudioSource>()
-            ?.filterNot { it is IWidevineSource }
-            ?.filter { it.url.isNotBlank() }
-            ?.maxWithOrNull(compareBy<IHLSManifestAudioSource> { it.priority }.thenBy { it.bitrate })
+        val audioUrlSource = selectedAudioSource as? IAudioUrlSource
+        val hlsAudioSource = (selectedAudioSource as? IHLSManifestAudioSource)
+            ?.takeIf { it.url.isNotBlank() }
         val playbackAudioSource: IAudioSource? = audioUrlSource ?: hlsAudioSource
         val audioDataSourceFactory = playbackAudioSource?.dataSourceFactoryOrNull()
         val audioRequestUrl = when (playbackAudioSource) {
@@ -1319,16 +1381,8 @@ class GrayjayPluginBackend(context: Context) {
         // Preserve the plugin's distinct audio renditions just like video renditions. Old
         // Grayjay selects the source nearest the requested target bitrate; collapsing this list
         // here made an audio-quality picker impossible in the Compose UI.
-        val audioVariants = unMuxedDescriptor
-            ?.audioSources
-            .orEmpty()
-            .filterNot { it is IWidevineSource }
-            .filter {
-                it is JSDashManifestRawAudioSource ||
-                    it is IAudioUrlSource ||
-                    it is IHLSManifestAudioSource
-            }
-            .groupBy { it.bitrate }
+        val audioVariants = supportedAudioSources
+            .groupBy { source -> source.language.orEmpty().lowercase(Locale.ROOT) to source.bitrate }
             .values
             .mapNotNull { sameBitrate ->
                 sameBitrate.maxWithOrNull(
@@ -1346,6 +1400,9 @@ class GrayjayPluginBackend(context: Context) {
                         GrayjayAudioVariant(
                             bitrate = source.bitrate,
                             name = source.name,
+                            language = source.language,
+                            isOriginal = source.original,
+                            isPriority = source.priority,
                             audioUrl = source.url?.takeIf(String::isNotBlank) ?: contentUrl,
                             streamType = GrayjayStreamType.Dash,
                             rawDashManifest = manifest,
@@ -1362,6 +1419,9 @@ class GrayjayPluginBackend(context: Context) {
                         GrayjayAudioVariant(
                             bitrate = source.bitrate,
                             name = source.name,
+                            language = source.language,
+                            isOriginal = source.original,
+                            isPriority = source.priority,
                             audioUrl = request.url,
                             streamType = inferStreamType(request.url),
                             requestHeaders = request.headers,
@@ -1378,6 +1438,9 @@ class GrayjayPluginBackend(context: Context) {
                         GrayjayAudioVariant(
                             bitrate = source.bitrate,
                             name = source.name,
+                            language = source.language,
+                            isOriginal = source.original,
+                            isPriority = source.priority,
                             audioUrl = request.url,
                             streamType = GrayjayStreamType.Hls,
                             requestHeaders = request.headers,
@@ -1388,8 +1451,32 @@ class GrayjayPluginBackend(context: Context) {
                 }
             }
             .filter { it.audioUrl.isNotBlank() }
-            .distinctBy(GrayjayAudioVariant::bitrate)
-            .sortedByDescending(GrayjayAudioVariant::bitrate)
+            .distinctBy { it.language.orEmpty().lowercase(Locale.ROOT) to it.bitrate }
+            .sortedWith(
+                compareByDescending<GrayjayAudioVariant> { it.isOriginal }
+                    .thenByDescending { it.isPriority }
+                    .thenBy { it.language.orEmpty() }
+                    .thenByDescending { it.bitrate },
+            )
+        val audioLanguages = supportedAudioSources
+            .filter { !it.language.isNullOrBlank() }
+            .groupBy { requireNotNull(it.language).lowercase(Locale.ROOT) }
+            .map { (language, sources) ->
+                val representative = sources.maxWithOrNull(
+                    compareBy<IAudioSource> { if (it.original) 1 else 0 }
+                        .thenBy { if (it.priority) 1 else 0 }
+                        .thenBy(IAudioSource::bitrate),
+                )
+                GrayjayAudioLanguage(
+                    language = language,
+                    name = representative?.name.orEmpty().ifBlank { language.uppercase(Locale.ROOT) },
+                    isOriginal = sources.any(IAudioSource::original),
+                )
+            }
+            .sortedWith(
+                compareByDescending<GrayjayAudioLanguage>(GrayjayAudioLanguage::isOriginal)
+                    .thenBy(GrayjayAudioLanguage::language),
+            )
 
         val selectedVideoSource: IVideoSource? =
             hlsSource ?: dashSource ?: liveSource ?: rawDashSource ?: video
@@ -1464,6 +1551,9 @@ class GrayjayPluginBackend(context: Context) {
             dataSourceFactory = selectedDataSourceFactory,
             videoVariants = videoVariants,
             audioVariants = audioVariants,
+            audioLanguages = audioLanguages,
+            selectedAudioLanguage = selectedAudioSource?.language,
+            selectedAudioIsOriginal = selectedAudioSource?.original == true,
             storyboard = storyboardDeferred?.await(),
             isDrmProtected = selectedVideoSource is IWidevineSource && videoVariants.isEmpty(),
             isLive = details.isLive,
@@ -2031,6 +2121,28 @@ class GrayjayPluginBackend(context: Context) {
                 .thenBy { it.height }
                 .thenBy { it.bitrate ?: 0 },
         )
+
+    /**
+     * Mirrors legacy Grayjay's audio-source hierarchy: priority sources, original audio when
+     * requested, the configured primary language when present, English, then the best remaining
+     * rendition. Keeping language in this decision prevents same-bitrate dubbed tracks from
+     * replacing the original merely because the plugin returned them later.
+     */
+    private fun List<IAudioSource>.selectPreferredAudioSource(
+        preferredLanguage: String?,
+        preferOriginal: Boolean,
+    ): IAudioSource? = selectPreferredAudioSourceIndex(
+        sources = map { source ->
+            AudioSourcePreference(
+                language = source.language,
+                isOriginal = source.original,
+                isPriority = source.priority,
+                bitrate = source.bitrate,
+            )
+        },
+        preferredLanguage = preferredLanguage,
+        preferOriginal = preferOriginal,
+    )?.let(::get)
 
     private data class ResolvedRequest(
         val url: String,

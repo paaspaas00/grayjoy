@@ -129,7 +129,7 @@ internal fun shouldCoverAppChromeDuringOrientationHandoff(windowOrientation: Int
 
 // Private GitHub repositories do not expose release metadata to unauthenticated app clients.
 // Keep the complete banner/check path dormant until the repository is made public.
-internal const val RELEASE_UPDATE_CHECK_ENABLED = false
+internal const val RELEASE_UPDATE_CHECK_ENABLED = true
 
 internal fun hasNowPlayingDownload(download: DownloadUiModel?): Boolean {
     if (download == null) return false
@@ -194,6 +194,7 @@ private data class PlaybackPresentation(
     val onUseChannelSpeed: () -> Unit,
     val onChannelSpeedChange: (String, Float?) -> Unit,
     val onQualityChange: (Int?) -> Unit,
+    val onAudioLanguageChange: (String?) -> Unit,
     val onCaptionsEnabledChange: (Boolean) -> Unit,
     val onSubtitleLanguageChange: (String?) -> Unit,
     val onEnterFullscreen: () -> Unit,
@@ -245,6 +246,8 @@ private data class PlaybackPresentation(
     val videoPlaybackSpeeds: Map<String, Float>,
     val preferredVideoQuality: Int,
     val preferredAudioBitrate: Int,
+    val preferredAudioLanguage: String,
+    val preferOriginalAudio: Boolean,
     val stickyCaptionsEnabled: Boolean,
     val showRecommendations: Boolean,
     val searchHistoryEnabled: Boolean,
@@ -260,6 +263,8 @@ private data class PlaybackPresentation(
     val onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
     val onPreferredVideoQualityChange: (Int) -> Unit,
     val onPreferredAudioBitrateChange: (Int) -> Unit,
+    val onPreferredAudioLanguageChange: (String) -> Unit,
+    val onPreferOriginalAudioChange: (Boolean) -> Unit,
     val onStickyCaptionsChange: (Boolean) -> Unit,
     val onShowRecommendationsChange: (Boolean) -> Unit,
     val onSearchHistoryChange: (Boolean) -> Unit,
@@ -332,6 +337,7 @@ fun GrayjayApp(
     onUseChannelPlaybackSpeed: () -> Unit,
     onChannelPlaybackSpeedChange: (String, Float?) -> Unit,
     onVideoQualityChange: (Int?) -> Unit,
+    onAudioLanguageChange: (String?) -> Unit,
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
     onRetryPlayback: () -> Unit,
@@ -394,6 +400,8 @@ fun GrayjayApp(
     onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
     onPreferredVideoQualityChange: (Int) -> Unit,
     onPreferredAudioBitrateChange: (Int) -> Unit,
+    onPreferredAudioLanguageChange: (String) -> Unit,
+    onPreferOriginalAudioChange: (Boolean) -> Unit,
     onStickyCaptionsChange: (Boolean) -> Unit,
     onShowRecommendationsChange: (Boolean) -> Unit,
     onSearchHistoryChange: (Boolean) -> Unit,
@@ -628,6 +636,7 @@ fun GrayjayApp(
         onUseChannelSpeed = onUseChannelPlaybackSpeed,
         onChannelSpeedChange = onChannelPlaybackSpeedChange,
         onQualityChange = onVideoQualityChange,
+        onAudioLanguageChange = onAudioLanguageChange,
         onCaptionsEnabledChange = onCaptionsEnabledChange,
         onSubtitleLanguageChange = onSubtitleLanguageChange,
         onEnterFullscreen = {
@@ -715,6 +724,8 @@ fun GrayjayApp(
         videoPlaybackSpeeds = uiState.videoPlaybackSpeeds,
         preferredVideoQuality = uiState.preferredVideoQuality,
         preferredAudioBitrate = uiState.preferredAudioBitrate,
+        preferredAudioLanguage = uiState.preferredAudioLanguage,
+        preferOriginalAudio = uiState.preferOriginalAudio,
         stickyCaptionsEnabled = uiState.stickyCaptionsEnabled,
         showRecommendations = uiState.showRecommendations,
         searchHistoryEnabled = uiState.searchHistoryEnabled,
@@ -730,6 +741,8 @@ fun GrayjayApp(
         onPerChannelPlaybackSpeedChange = onPerChannelPlaybackSpeedChange,
         onPreferredVideoQualityChange = onPreferredVideoQualityChange,
         onPreferredAudioBitrateChange = onPreferredAudioBitrateChange,
+        onPreferredAudioLanguageChange = onPreferredAudioLanguageChange,
+        onPreferOriginalAudioChange = onPreferOriginalAudioChange,
         onStickyCaptionsChange = onStickyCaptionsChange,
         onShowRecommendationsChange = onShowRecommendationsChange,
         onSearchHistoryChange = onSearchHistoryChange,
@@ -911,11 +924,14 @@ fun GrayjayApp(
             videoPlaybackSpeedOverride = playback.videoPlaybackSpeeds[fullscreenVideo.id],
             channelPlaybackSpeed = playback.channelPlaybackSpeeds[fullscreenVideo.playbackChannelKey()],
             defaultPlaybackSpeed = playback.defaultPlaybackSpeed,
+            preferredAudioLanguage = playback.preferredAudioLanguage,
+            preferOriginalAudio = playback.preferOriginalAudio,
             onUseChannelSpeed = playback.onUseChannelSpeed,
             onChannelSpeedChange = { speed ->
                 playback.onChannelSpeedChange(fullscreenVideo.playbackChannelKey(), speed)
             },
             onQualityChange = playback.onQualityChange,
+            onAudioLanguageChange = playback.onAudioLanguageChange,
             onCaptionsEnabledChange = playback.onCaptionsEnabledChange,
             onSubtitleLanguageChange = playback.onSubtitleLanguageChange,
             onRetryPlayback = playback.onRetry,
@@ -1719,6 +1735,10 @@ private fun GrayjayScaffold(
                         onPreferredVideoQualityChange = playback.onPreferredVideoQualityChange,
                         preferredAudioBitrate = playback.preferredAudioBitrate,
                         onPreferredAudioBitrateChange = playback.onPreferredAudioBitrateChange,
+                        preferredAudioLanguage = playback.preferredAudioLanguage,
+                        onPreferredAudioLanguageChange = playback.onPreferredAudioLanguageChange,
+                        preferOriginalAudio = playback.preferOriginalAudio,
+                        onPreferOriginalAudioChange = playback.onPreferOriginalAudioChange,
                         stickyCaptionsEnabled = playback.stickyCaptionsEnabled,
                         onStickyCaptionsChange = playback.onStickyCaptionsChange,
                         showRecommendations = playback.showRecommendations,
@@ -1901,6 +1921,9 @@ private fun GrayjayScaffold(
                                     )
                                 },
                                 onQualityChange = playback.onQualityChange,
+                                preferredAudioLanguage = playback.preferredAudioLanguage,
+                                preferOriginalAudio = playback.preferOriginalAudio,
+                                onAudioLanguageChange = playback.onAudioLanguageChange,
                                 onCaptionsEnabledChange = playback.onCaptionsEnabledChange,
                                 onSubtitleLanguageChange = playback.onSubtitleLanguageChange,
                                 onRetryPlayback = playback.onRetry,

@@ -52,6 +52,9 @@ data class VideoUiModel(
     val subtitleTracks: List<SubtitleUiModel> = emptyList(),
     val qualityVariants: List<VideoQualityUiModel> = emptyList(),
     val audioQualityVariants: List<AudioQualityUiModel> = emptyList(),
+    val audioLanguages: List<AudioLanguageUiModel> = emptyList(),
+    val resolvedAudioLanguage: String? = null,
+    val resolvedAudioIsOriginal: Boolean = false,
     val storyboard: StoryboardUiModel? = null,
     /** True only when the active offline descriptor contains audio and no video track. */
     val playbackAudioOnly: Boolean = false,
@@ -84,10 +87,19 @@ data class AudioQualityUiModel(
     val bitrate: Int,
     val name: String,
     val playbackUrl: String,
+    val language: String? = null,
+    val isOriginal: Boolean = false,
+    val isPriority: Boolean = false,
     val playbackMimeType: String = "",
     val playbackRequestHeaders: Map<String, String> = emptyMap(),
     val playbackManifest: String = "",
     val playbackDataSourceFactory: HttpDataSource.Factory? = null,
+)
+
+data class AudioLanguageUiModel(
+    val language: String,
+    val name: String,
+    val isOriginal: Boolean = false,
 )
 
 data class SubtitleUiModel(

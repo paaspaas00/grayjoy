@@ -111,6 +111,7 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 
 /**
  * Keeps a successfully loaded Home feed for the lifetime of the app process. Activity recreation
@@ -223,17 +224,33 @@ private data class PlaybackQueueSession(
 internal fun selectAudioQualityVariant(
     variants: List<AudioQualityUiModel>,
     preferredBitrate: Int?,
+    preferredLanguage: String? = null,
 ): AudioQualityUiModel? {
     val usable = variants.filter { it.bitrate > 0 }
+    val languageVariants = preferredLanguage
+        ?.takeIf(String::isNotBlank)
+        ?.let { language ->
+            usable.filter { variant ->
+                variant.language.equalsAudioLanguage(language)
+            }
+        }
+        .orEmpty()
+    val candidates = languageVariants.ifEmpty { usable }
     return when {
-        usable.isEmpty() -> null
+        candidates.isEmpty() -> null
         preferredBitrate == null || preferredBitrate == Int.MAX_VALUE ->
-            usable.maxByOrNull { it.bitrate }
-        else -> usable
+            candidates.maxByOrNull { it.bitrate }
+        else -> candidates
             .filter { it.bitrate <= preferredBitrate }
             .maxByOrNull { it.bitrate }
-            ?: usable.minByOrNull { it.bitrate }
+            ?: candidates.minByOrNull { it.bitrate }
     }
+}
+
+private fun String?.equalsAudioLanguage(other: String): Boolean {
+    val first = this?.trim()?.replace('_', '-')?.lowercase(Locale.ROOT).orEmpty()
+    val second = other.trim().replace('_', '-').lowercase(Locale.ROOT)
+    return first == second || first.substringBefore('-') == second.substringBefore('-')
 }
 
 /**
@@ -246,7 +263,11 @@ internal fun selectAudioQualityVariant(
 internal fun VideoUiModel.asAudioDownloadDescriptor(
     preferredBitrate: Int?,
 ): VideoUiModel {
-    val variant = selectAudioQualityVariant(audioQualityVariants, preferredBitrate)
+    val variant = selectAudioQualityVariant(
+        variants = audioQualityVariants,
+        preferredBitrate = preferredBitrate,
+        preferredLanguage = resolvedAudioLanguage,
+    )
     val audioPlaybackUrl = variant?.playbackUrl.orEmpty().ifBlank {
         audioDownloadUrl
     }.ifBlank { audioUrl }.ifBlank {
@@ -354,6 +375,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var suggestionJob: Job? = null
     private var profileSwitchJob: Job? = null
     private var detailsJob: Job? = null
+    private var audioLanguageJob: Job? = null
     private var channelJob: Job? = null
     private var homeJob: Job? = null
     private var searchPagingJob: Job? = null
@@ -423,6 +445,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             preferredVideoQuality = preferences.preferredVideoQuality,
             preferredAudioBitrate = preferences.preferredAudioBitrate,
+            preferredAudioLanguage = preferences.preferredAudioLanguage,
+            preferOriginalAudio = preferences.preferOriginalAudio,
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
@@ -602,6 +626,20 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun setPreferredAudioBitrate(bitrate: Int) {
         preferences.preferredAudioBitrate = bitrate
         _uiState.update { it.copy(preferredAudioBitrate = preferences.preferredAudioBitrate) }
+    }
+
+    fun setPreferredAudioLanguage(language: String) {
+        preferences.preferredAudioLanguage = language
+        _uiState.update {
+            it.copy(preferredAudioLanguage = preferences.preferredAudioLanguage)
+        }
+        setAudioLanguage(null)
+    }
+
+    fun setPreferOriginalAudio(enabled: Boolean) {
+        preferences.preferOriginalAudio = enabled
+        _uiState.update { it.copy(preferOriginalAudio = enabled) }
+        setAudioLanguage(null)
     }
 
     fun setStickyCaptionsEnabled(enabled: Boolean) {
@@ -1098,6 +1136,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         watchProgressWriteJob?.join()
         invalidatePlaybackQueue()
         detailsJob?.cancel()
+        audioLanguageJob?.cancel()
         extrasPagingJob?.cancel()
         channelJob?.cancel()
         channelPagingJob?.cancel()
@@ -1182,6 +1221,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             preferredVideoQuality = preferences.preferredVideoQuality,
             preferredAudioBitrate = preferences.preferredAudioBitrate,
+            preferredAudioLanguage = preferences.preferredAudioLanguage,
+            preferOriginalAudio = preferences.preferOriginalAudio,
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
@@ -1964,7 +2005,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val playback = _uiState.value.playback
         viewModelScope.launch {
             val castVideo = try {
-                if (video.playbackFromDownload) engine.resolve(video.onlinePlaybackInput()) else video
+                if (video.playbackFromDownload) resolveWithAudioPreferences(video.onlinePlaybackInput()) else video
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -2037,6 +2078,66 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (preferences.stickyCaptionsEnabled) {
             preferences.captionsEnabled = language != null
             preferences.subtitleLanguage = selectedTrack?.value?.language ?: language
+        }
+    }
+
+    fun setAudioLanguage(language: String?) {
+        val video = _uiState.value.nowPlaying.video ?: return
+        if (video.playbackFromDownload || video.contentUrl.isBlank()) {
+            engine.setAudioLanguage(language)
+            return
+        }
+        audioLanguageJob?.cancel()
+        val profileAtStart = activeProfileId
+        val currentVideoId = video.id
+        val playback = _uiState.value.playback
+        audioLanguageJob = viewModelScope.launch {
+            try {
+                val resolved = resolveWithAudioPreferences(
+                    video = video.onlinePlaybackInput(),
+                    audioLanguageOverride = language,
+                ).withPersistedLibraryState()
+                if (
+                    profileAtStart != activeProfileId ||
+                    _uiState.value.nowPlaying.video?.id != currentVideoId
+                ) {
+                    return@launch
+                }
+                remoteVideos[resolved.id] = resolved
+                registerRemoteChannel(resolved)
+                _uiState.update { state ->
+                    if (state.nowPlaying.video?.id != currentVideoId) state else state.copy(
+                        nowPlaying = state.nowPlaying.copy(video = resolved),
+                    )
+                }
+                if (chromecastManager.state.value.isConnected) {
+                    chromecastManager.cast(
+                        resolved,
+                        playback.copy(
+                            currentVideoId = resolved.id,
+                            positionMs = playback.positionMs,
+                            isPlaying = playback.isPlaying,
+                            errorMessage = null,
+                        ),
+                    )
+                } else {
+                    engine.replaceCurrent(
+                        video = resolved,
+                        positionMs = playback.positionMs,
+                        playWhenReady = playback.isPlaying,
+                    )
+                    engine.setAudioLanguage(language)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.e("GrayjayViewModel", "Could not change audio language.", error)
+                Toast.makeText(
+                    getApplication(),
+                    error.localizedMessage ?: text(R.string.audio_language_change_failed),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
         }
     }
 
@@ -2920,7 +3021,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             val resumePlaying = state.playback.isPlaying
             viewModelScope.launch {
                 try {
-                    val online = engine.resolve(playingVideo.onlinePlaybackInput())
+                    val online = resolveWithAudioPreferences(playingVideo.onlinePlaybackInput())
                     if (
                         profileAtStart == activeProfileId &&
                         _uiState.value.playback.currentVideoId == videoId
@@ -3403,7 +3504,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                                 qualityVariants = emptyList(),
                                 audioQualityVariants = emptyList(),
                             )
-                            val resolved = engine.resolve(freshVideo)
+                            val resolved = resolveWithAudioPreferences(freshVideo)
                             if (profileAtStart != activeProfileId) return@launch
                             val storedDescriptor = if (mediaType == DownloadMediaType.Audio) {
                                 resolved.asAudioDownloadDescriptor(selectedAudioBitrate)
@@ -4269,6 +4370,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         currentVideoHeight = currentVideoHeight,
         selectedSubtitleLanguage = selectedSubtitleLanguage,
         selectedSubtitleTrackIndex = selectedSubtitleTrackIndex,
+        availableAudioLanguages = availableAudioLanguages,
+        selectedAudioLanguage = selectedAudioLanguage,
+        audioLanguageAutomatic = audioLanguageAutomatic,
         errorMessage = errorMessage,
         audioSpectrum = audioSpectrum,
     )
@@ -4462,9 +4566,18 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         } else {
             video
         }
-        val resolved = engine.resolve(resolveInput).withPersistedLibraryState()
+        val resolved = resolveWithAudioPreferences(resolveInput).withPersistedLibraryState()
         return downloadStore.playbackDescriptorFor(profileId, resolved) ?: resolved
     }
+
+    private suspend fun resolveWithAudioPreferences(
+        video: VideoUiModel,
+        audioLanguageOverride: String? = null,
+    ): VideoUiModel = engine.resolve(
+        video = video,
+        preferredAudioLanguage = audioLanguageOverride ?: preferences.preferredAudioLanguage,
+        preferOriginalAudio = audioLanguageOverride == null && preferences.preferOriginalAudio,
+    )
 
     private fun VideoUiModel.downloadDescriptor(preferredHeight: Int?): VideoUiModel {
         require(!isDrmProtected) { "DRM-protected streams cannot be downloaded." }

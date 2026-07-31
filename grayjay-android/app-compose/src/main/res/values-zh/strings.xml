@@ -560,4 +560,11 @@
     <string name="pc_link_ready">Grayjoy PC 链接就绪</string>
     <string name="pc_link_waiting">等待配对的计算机</string>
     <string name="pc_transfer_failed">无法打开活动源的计算机播放。</string>
+    <string name="primary_audio_language">主要音频语言</string>
+    <string name="prefer_original_audio">优先使用原始音频</string>
+    <string name="prefer_original_audio_description">可用时使用视频的原始音轨，否则使用主要语言。</string>
+    <string name="audio_language">音频语言</string>
+    <string name="automatic_with_value">自动 · %1$s</string>
+    <string name="original_audio">原始音频</string>
+    <string name="audio_language_change_failed">无法更改音频语言。</string>
 </resources>

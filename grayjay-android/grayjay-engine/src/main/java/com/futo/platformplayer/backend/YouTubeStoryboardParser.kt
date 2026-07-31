@@ -20,11 +20,16 @@ data class GrayjayStoryboardLevel(
 /** Parses YouTube's watch-page storyboard spec without coupling it to plugin models. */
 internal object YouTubeStoryboardParser {
     fun parseWatchHtml(html: String, durationSeconds: Long): GrayjayStoryboard? {
-        val spec = extractJsonString(
-            source = html,
-            objectMarker = "\"playerStoryboardSpecRenderer\"",
-            propertyName = "spec",
-        ) ?: return null
+        val spec = sequenceOf(
+            "\"playerStoryboardSpecRenderer\"",
+            "\"playerLiveStoryboardSpecRenderer\"",
+        ).firstNotNullOfOrNull { marker ->
+            extractJsonObjectString(
+                source = html,
+                objectMarker = marker,
+                propertyName = "spec",
+            )
+        } ?: return null
         return parseSpec(spec, durationSeconds)
     }
 
@@ -85,23 +90,58 @@ internal object YouTubeStoryboardParser {
         return levels.takeIf(List<GrayjayStoryboardLevel>::isNotEmpty)?.let(::GrayjayStoryboard)
     }
 
-    private fun extractJsonString(
+    /**
+     * Finds a string property inside an actual renderer object.
+     *
+     * Current watch pages list renderer names before the player response. Treating that list
+     * entry as the object made the old parser consume an unrelated `spec` property and disabled
+     * seek previews even though YouTube returned a valid storyboard.
+     */
+    private fun extractJsonObjectString(
         source: String,
         objectMarker: String,
         propertyName: String,
     ): String? {
-        val objectStart = source.indexOf(objectMarker)
-        if (objectStart < 0) return null
-        val propertyStart = source.indexOf("\"$propertyName\"", objectStart)
-        if (propertyStart < 0) return null
+        var markerStart = source.indexOf(objectMarker)
+        while (markerStart >= 0) {
+            var objectStart = markerStart + objectMarker.length
+            while (objectStart < source.length && source[objectStart].isWhitespace()) objectStart += 1
+            if (source.getOrNull(objectStart) != ':') {
+                markerStart = source.indexOf(objectMarker, markerStart + objectMarker.length)
+                continue
+            }
+            objectStart += 1
+            while (objectStart < source.length && source[objectStart].isWhitespace()) objectStart += 1
+            if (source.getOrNull(objectStart) != '{') {
+                markerStart = source.indexOf(objectMarker, markerStart + objectMarker.length)
+                continue
+            }
+
+            val objectEnd = findJsonObjectEnd(source, objectStart) ?: return null
+            val propertyStart = source.indexOf("\"$propertyName\"", objectStart)
+                .takeIf { it in (objectStart + 1) until objectEnd }
+            if (propertyStart != null) {
+                return extractJsonStringAtProperty(source, propertyStart, propertyName, objectEnd)
+            }
+            markerStart = source.indexOf(objectMarker, objectEnd + 1)
+        }
+        return null
+    }
+
+    private fun extractJsonStringAtProperty(
+        source: String,
+        propertyStart: Int,
+        propertyName: String,
+        objectEnd: Int,
+    ): String? {
         val colon = source.indexOf(':', propertyStart + propertyName.length + 2)
-        if (colon < 0) return null
+        if (colon !in (propertyStart + 1) until objectEnd) return null
         val quoteStart = source.indexOf('"', colon + 1)
-        if (quoteStart < 0) return null
+        if (quoteStart !in (colon + 1) until objectEnd) return null
 
         var escaped = false
         var index = quoteStart + 1
-        while (index < source.length) {
+        while (index < objectEnd) {
             val character = source[index]
             if (escaped) {
                 escaped = false
@@ -112,6 +152,30 @@ internal object YouTubeStoryboardParser {
                 return decodeJsonStringLiteral(literal)
             }
             index += 1
+        }
+        return null
+    }
+
+    private fun findJsonObjectEnd(source: String, objectStart: Int): Int? {
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (index in objectStart until source.length) {
+            val character = source[index]
+            if (inString) {
+                if (escaped) escaped = false
+                else if (character == '\\') escaped = true
+                else if (character == '"') inString = false
+                continue
+            }
+            when (character) {
+                '"' -> inString = true
+                '{' -> depth += 1
+                '}' -> {
+                    depth -= 1
+                    if (depth == 0) return index
+                }
+            }
         }
         return null
     }

@@ -560,4 +560,11 @@
     <string name="pc_link_ready">Grayjoy Соединение с ПК готово</string>
     <string name="pc_link_waiting">Ожидание сопряженного компьютера</string>
     <string name="pc_transfer_failed">Не удалось открыть воспроизведение на компьютере с активными источниками.</string>
+    <string name="primary_audio_language">Основной язык аудио</string>
+    <string name="prefer_original_audio">Предпочитать оригинальную дорожку</string>
+    <string name="prefer_original_audio_description">Использовать оригинальную аудиодорожку видео, если она доступна, затем основной язык.</string>
+    <string name="audio_language">Язык аудио</string>
+    <string name="automatic_with_value">Автоматически · %1$s</string>
+    <string name="original_audio">Оригинальная дорожка</string>
+    <string name="audio_language_change_failed">Не удалось изменить язык аудио.</string>
 </resources>

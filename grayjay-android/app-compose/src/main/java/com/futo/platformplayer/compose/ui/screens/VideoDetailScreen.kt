@@ -48,6 +48,7 @@ import androidx.compose.material.icons.outlined.DownloadDone
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Forward10
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.MusicNote
@@ -140,12 +141,13 @@ import com.futo.platformplayer.compose.ui.NowPlayingUiState
 import com.futo.platformplayer.compose.ui.PlaybackUiState
 import com.futo.platformplayer.compose.ui.VideoCommentUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.ui.audioLanguageDisplayName
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
 
 private enum class DetailSection { UpNext, Comments }
-private enum class PlayerSettingsPage { Main, Quality, Speed, ChannelSpeed, Subtitles }
+private enum class PlayerSettingsPage { Main, Quality, Speed, ChannelSpeed, AudioLanguage, Subtitles }
 
 @Composable
 fun VideoDetailScreen(
@@ -174,9 +176,12 @@ fun VideoDetailScreen(
     videoPlaybackSpeedOverride: Float? = null,
     channelPlaybackSpeed: Float? = null,
     defaultPlaybackSpeed: Float = 1f,
+    preferredAudioLanguage: String = "en",
+    preferOriginalAudio: Boolean = true,
     onUseChannelSpeed: () -> Unit = {},
     onChannelSpeedChange: (Float?) -> Unit = {},
     onQualityChange: (Int?) -> Unit,
+    onAudioLanguageChange: (String?) -> Unit = {},
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
     onRetryPlayback: () -> Unit,
@@ -267,6 +272,8 @@ fun VideoDetailScreen(
             videoPlaybackSpeedOverride = videoPlaybackSpeedOverride,
             channelPlaybackSpeed = channelPlaybackSpeed,
             defaultPlaybackSpeed = defaultPlaybackSpeed,
+            preferredAudioLanguage = preferredAudioLanguage,
+            preferOriginalAudio = preferOriginalAudio,
             onUseChannelSpeed = onUseChannelSpeed,
             onChannelSpeedChange = onChannelSpeedChange,
             onQualityChange = onQualityChange,
@@ -438,9 +445,12 @@ fun FullscreenPlayerScreen(
     videoPlaybackSpeedOverride: Float? = null,
     channelPlaybackSpeed: Float? = null,
     defaultPlaybackSpeed: Float = 1f,
+    preferredAudioLanguage: String = "en",
+    preferOriginalAudio: Boolean = true,
     onUseChannelSpeed: () -> Unit = {},
     onChannelSpeedChange: (Float?) -> Unit = {},
     onQualityChange: (Int?) -> Unit,
+    onAudioLanguageChange: (String?) -> Unit = {},
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
     onRetryPlayback: () -> Unit,
@@ -486,9 +496,12 @@ fun FullscreenPlayerScreen(
                 videoPlaybackSpeedOverride = videoPlaybackSpeedOverride,
                 channelPlaybackSpeed = channelPlaybackSpeed,
                 defaultPlaybackSpeed = defaultPlaybackSpeed,
+                preferredAudioLanguage = preferredAudioLanguage,
+                preferOriginalAudio = preferOriginalAudio,
                 onUseChannelSpeed = onUseChannelSpeed,
                 onChannelSpeedChange = onChannelSpeedChange,
                 onQualityChange = onQualityChange,
+                onAudioLanguageChange = onAudioLanguageChange,
                 onCaptionsEnabledChange = onCaptionsEnabledChange,
                 onSubtitleLanguageChange = onSubtitleLanguageChange,
                 onRetryPlayback = onRetryPlayback,
@@ -527,9 +540,12 @@ internal fun PlayerSurface(
     videoPlaybackSpeedOverride: Float? = null,
     channelPlaybackSpeed: Float? = null,
     defaultPlaybackSpeed: Float = 1f,
+    preferredAudioLanguage: String = "en",
+    preferOriginalAudio: Boolean = true,
     onUseChannelSpeed: () -> Unit = {},
     onChannelSpeedChange: (Float?) -> Unit = {},
     onQualityChange: (Int?) -> Unit,
+    onAudioLanguageChange: (String?) -> Unit = {},
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
     onRetryPlayback: () -> Unit,
@@ -935,6 +951,8 @@ internal fun PlayerSurface(
             videoPlaybackSpeedOverride = videoPlaybackSpeedOverride,
             channelPlaybackSpeed = channelPlaybackSpeed,
             defaultPlaybackSpeed = defaultPlaybackSpeed,
+            preferredAudioLanguage = preferredAudioLanguage,
+            preferOriginalAudio = preferOriginalAudio,
             onPageChange = { settingsPageName = it.name },
             onDismiss = { showSettings = false },
             onQualityChange = {
@@ -951,6 +969,10 @@ internal fun PlayerSurface(
             },
             onChannelSpeedChange = {
                 onChannelSpeedChange(it)
+                showSettings = false
+            },
+            onAudioLanguageChange = {
+                onAudioLanguageChange(it)
                 showSettings = false
             },
             onCaptionsEnabledChange = {
@@ -1351,12 +1373,15 @@ private fun PlayerSettingsSheet(
     videoPlaybackSpeedOverride: Float?,
     channelPlaybackSpeed: Float?,
     defaultPlaybackSpeed: Float,
+    preferredAudioLanguage: String,
+    preferOriginalAudio: Boolean,
     onPageChange: (PlayerSettingsPage) -> Unit,
     onDismiss: () -> Unit,
     onQualityChange: (Int?) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onUseChannelSpeed: () -> Unit,
     onChannelSpeedChange: (Float?) -> Unit,
+    onAudioLanguageChange: (String?) -> Unit,
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
     onLockControls: () -> Unit,
@@ -1383,6 +1408,16 @@ private fun PlayerSettingsSheet(
         else -> video.subtitleTracks.firstOrNull()?.name
             ?.ifBlank { stringResource(R.string.on) }
             ?: stringResource(R.string.on)
+    }
+    val resolvedAudioLanguage = playback.selectedAudioLanguage
+        ?: video.resolvedAudioLanguage
+    val resolvedAudioLanguageName = resolvedAudioLanguage?.let(::audioLanguageDisplayName)
+    val audioLanguageDescription = when {
+        playback.audioLanguageAutomatic && resolvedAudioLanguageName != null ->
+            stringResource(R.string.automatic_with_value, resolvedAudioLanguageName)
+        playback.audioLanguageAutomatic -> stringResource(R.string.automatic)
+        resolvedAudioLanguageName != null -> resolvedAudioLanguageName
+        else -> stringResource(R.string.not_available)
     }
 
     ModalBottomSheet(
@@ -1436,6 +1471,7 @@ private fun PlayerSettingsSheet(
                         PlayerSettingsPage.Quality -> stringResource(R.string.quality)
                         PlayerSettingsPage.Speed -> stringResource(R.string.playback_speed)
                         PlayerSettingsPage.ChannelSpeed -> stringResource(R.string.channel_playback_speed)
+                        PlayerSettingsPage.AudioLanguage -> stringResource(R.string.audio_language)
                         PlayerSettingsPage.Subtitles -> stringResource(R.string.subtitles)
                     },
                     style = MaterialTheme.typography.titleLarge,
@@ -1468,6 +1504,15 @@ private fun PlayerSettingsSheet(
                             onClick = { onPageChange(PlayerSettingsPage.ChannelSpeed) },
                         )
                     }
+                    PlayerSettingRow(
+                        icon = Icons.Outlined.Language,
+                        title = stringResource(R.string.audio_language),
+                        value = audioLanguageDescription,
+                        enabled = video.audioLanguages.isNotEmpty() ||
+                            playback.availableAudioLanguages.isNotEmpty(),
+                        testTag = "player-settings-audio-language",
+                        onClick = { onPageChange(PlayerSettingsPage.AudioLanguage) },
+                    )
                     PlayerSettingRow(
                         icon = Icons.Outlined.ClosedCaption,
                         title = stringResource(R.string.subtitles),
@@ -1582,6 +1627,46 @@ private fun PlayerSettingsSheet(
                         options = channelOptions,
                         horizontal = isFullscreen,
                     )
+                }
+
+                PlayerSettingsPage.AudioLanguage -> {
+                    val availableLanguages = buildList {
+                        video.audioLanguages.forEach { audioLanguage ->
+                            add(
+                                Triple(
+                                    audioLanguage.language,
+                                    audioLanguage.name.ifBlank {
+                                        audioLanguageDisplayName(audioLanguage.language)
+                                    },
+                                    audioLanguage.isOriginal,
+                                ),
+                            )
+                        }
+                        playback.availableAudioLanguages.forEach { language ->
+                            if (none { it.first.equals(language, ignoreCase = true) }) {
+                                add(Triple(language, audioLanguageDisplayName(language), false))
+                            }
+                        }
+                    }
+                    val automaticDetail = when {
+                        preferOriginalAudio -> stringResource(R.string.prefer_original_audio)
+                        else -> audioLanguageDisplayName(preferredAudioLanguage)
+                    }
+                    PlayerSelectionRow(
+                        title = stringResource(R.string.automatic),
+                        detail = automaticDetail,
+                        selected = playback.audioLanguageAutomatic,
+                        onClick = { onAudioLanguageChange(null) },
+                    )
+                    availableLanguages.forEach { (language, name, isOriginal) ->
+                        PlayerSelectionRow(
+                            title = name,
+                            detail = stringResource(R.string.original_audio).takeIf { isOriginal },
+                            selected = !playback.audioLanguageAutomatic &&
+                                playback.selectedAudioLanguage.equals(language, ignoreCase = true),
+                            onClick = { onAudioLanguageChange(language) },
+                        )
+                    }
                 }
 
                 PlayerSettingsPage.Subtitles -> {

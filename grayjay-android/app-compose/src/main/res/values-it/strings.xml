@@ -584,4 +584,11 @@
     <string name="pc_link_ready">Collegamento PC Grayjoy pronto</string>
     <string name="pc_link_waiting">In attesa di un PC associato</string>
     <string name="pc_transfer_failed">Impossibile aprire la riproduzione del PC con le sorgenti attive.</string>
+    <string name="primary_audio_language">Lingua audio principale</string>
+    <string name="prefer_original_audio">Preferisci audio originale</string>
+    <string name="prefer_original_audio_description">Usa la traccia audio originale del video quando disponibile, poi passa alla lingua principale.</string>
+    <string name="audio_language">Lingua audio</string>
+    <string name="automatic_with_value">Automatica · %1$s</string>
+    <string name="original_audio">Audio originale</string>
+    <string name="audio_language_change_failed">Impossibile cambiare la lingua audio.</string>
 </resources>

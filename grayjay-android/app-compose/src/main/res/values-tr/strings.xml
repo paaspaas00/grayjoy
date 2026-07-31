@@ -560,4 +560,11 @@
     <string name="pc_link_ready">Grayjoy PC bağlantısı hazır</string>
     <string name="pc_link_waiting">Eşleştirilmiş bir bilgisayar bekleniyor</string>
     <string name="pc_transfer_failed">Etkin kaynaklarla bilgisayar oynatma işlemi açılamadı.</string>
+    <string name="primary_audio_language">Birincil ses dili</string>
+    <string name="prefer_original_audio">Orijinal sesi tercih et</string>
+    <string name="prefer_original_audio_description">Varsa videonun orijinal ses parçasını, yoksa birincil dili kullanır.</string>
+    <string name="audio_language">Ses dili</string>
+    <string name="automatic_with_value">Otomatik · %1$s</string>
+    <string name="original_audio">Orijinal ses</string>
+    <string name="audio_language_change_failed">Ses dili değiştirilemedi.</string>
 </resources>

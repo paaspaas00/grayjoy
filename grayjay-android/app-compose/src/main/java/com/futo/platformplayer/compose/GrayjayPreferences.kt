@@ -6,6 +6,7 @@ import com.futo.platformplayer.compose.ui.ThemeMode
 import com.futo.platformplayer.compose.engine.OtherAudioDuckingController
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 internal class GrayjayPreferences(context: Context, profileId: String = "main") {
     private val appContext = context.applicationContext
@@ -79,6 +80,23 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
                 KEY_PREFERRED_AUDIO_BITRATE,
                 value.takeIf { it > 0 } ?: Int.MAX_VALUE,
             ).apply()
+        }
+
+    /** Legacy Grayjay's primary audio language. */
+    var preferredAudioLanguage: String
+        get() = preferences.getString(KEY_PREFERRED_AUDIO_LANGUAGE, "en")
+            ?.takeIf(String::isNotBlank)
+            ?: "en"
+        set(value) {
+            preferences.edit()
+                .putString(KEY_PREFERRED_AUDIO_LANGUAGE, value.lowercase(Locale.ROOT))
+                .apply()
+        }
+
+    var preferOriginalAudio: Boolean
+        get() = preferences.getBoolean(KEY_PREFER_ORIGINAL_AUDIO, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_PREFER_ORIGINAL_AUDIO, value).apply()
         }
 
     var stickyCaptionsEnabled: Boolean
@@ -273,6 +291,8 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         private const val KEY_VIDEO_PLAYBACK_SPEEDS = "video_playback_speeds"
         private const val KEY_PREFERRED_VIDEO_QUALITY = "preferred_video_quality"
         private const val KEY_PREFERRED_AUDIO_BITRATE = "preferred_audio_bitrate"
+        private const val KEY_PREFERRED_AUDIO_LANGUAGE = "preferred_audio_language"
+        private const val KEY_PREFER_ORIGINAL_AUDIO = "prefer_original_audio"
         private const val KEY_STICKY_CAPTIONS = "sticky_captions"
         private const val KEY_CAPTIONS_ENABLED = "captions_enabled"
         private const val KEY_SUBTITLE_LANGUAGE = "subtitle_language"

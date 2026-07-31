@@ -18,6 +18,8 @@ data class GrayjayUiState(
     val videoPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val preferredVideoQuality: Int = 0,
     val preferredAudioBitrate: Int = Int.MAX_VALUE,
+    val preferredAudioLanguage: String = "en",
+    val preferOriginalAudio: Boolean = true,
     val stickyCaptionsEnabled: Boolean = true,
     val showRecommendations: Boolean = true,
     val searchHistoryEnabled: Boolean = true,
@@ -319,6 +321,9 @@ data class PlaybackUiState(
     val currentVideoHeight: Int? = null,
     val selectedSubtitleLanguage: String? = null,
     val selectedSubtitleTrackIndex: Int? = null,
+    val availableAudioLanguages: List<String> = emptyList(),
+    val selectedAudioLanguage: String? = null,
+    val audioLanguageAutomatic: Boolean = true,
     val errorMessage: String? = null,
     val audioSpectrum: List<Float> = emptyList(),
 )

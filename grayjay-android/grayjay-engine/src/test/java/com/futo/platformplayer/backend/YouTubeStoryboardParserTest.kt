@@ -39,6 +39,18 @@ class YouTubeStoryboardParserTest {
     }
 
     @Test
+    fun ignoresRendererNameInSupportedRenderersList() {
+        val escapedSpec = spec.replace("&", "\\u0026")
+        val html = """
+            {"supportedRenderers":["buttonRenderer","playerStoryboardSpecRenderer"],
+             "unrelated":{"spec":"not-a-storyboard"},
+             "storyboards":{"playerStoryboardSpecRenderer":{"spec":"$escapedSpec"}}}
+        """.trimIndent()
+
+        assertEquals(4, YouTubeStoryboardParser.parseWatchHtml(html, 1_910)?.levels?.size)
+    }
+
+    @Test
     fun malformedOrAbsentSpecsUseFallback() {
         assertNull(YouTubeStoryboardParser.parseWatchHtml("no player data", 100))
         assertNull(YouTubeStoryboardParser.parseSpec("https://example.com/base", 100))

@@ -76,6 +76,7 @@ import com.futo.platformplayer.compose.ui.StoryboardUiModel
 import com.futo.platformplayer.compose.ui.VideoCommentUiModel
 import com.futo.platformplayer.compose.ui.VideoQualityUiModel
 import com.futo.platformplayer.compose.ui.AudioQualityUiModel
+import com.futo.platformplayer.compose.ui.AudioLanguageUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.playback.PlaybackNotificationService
 import com.futo.platformplayer.compose.playback.AudioSpectrumAnalyzer
@@ -125,6 +126,9 @@ data class EnginePlaybackState(
     val currentVideoHeight: Int? = null,
     val selectedSubtitleLanguage: String? = null,
     val selectedSubtitleTrackIndex: Int? = null,
+    val availableAudioLanguages: List<String> = emptyList(),
+    val selectedAudioLanguage: String? = null,
+    val audioLanguageAutomatic: Boolean = true,
     val errorMessage: String? = null,
     val audioSpectrum: List<Float> = emptyList(),
 )
@@ -262,11 +266,16 @@ interface GrayjayEngine {
     suspend fun loadMoreChannel(continuationId: String): EngineChannelPage
     suspend fun loadPlaylist(playlist: PlaylistUiModel): EnginePlaylistDetails
     suspend fun routeUrl(url: String, enabledSourceIds: Set<String>): EngineUrlRoute?
-    suspend fun resolve(video: VideoUiModel): VideoUiModel
+    suspend fun resolve(
+        video: VideoUiModel,
+        preferredAudioLanguage: String? = "en",
+        preferOriginalAudio: Boolean = true,
+    ): VideoUiModel
     suspend fun loadExtras(video: VideoUiModel): EngineVideoExtras
     suspend fun loadMoreRecommendations(continuationId: String): EngineVideoPage
     suspend fun loadMoreComments(continuationId: String): EngineCommentPage
     fun open(videos: List<VideoUiModel>, currentVideoId: String, playWhenReady: Boolean)
+    fun replaceCurrent(video: VideoUiModel, positionMs: Long, playWhenReady: Boolean)
     fun appendToQueue(videos: List<VideoUiModel>)
     fun togglePlayback()
     fun pausePlayback()
@@ -277,6 +286,7 @@ interface GrayjayEngine {
     fun setPlaybackSpeed(speed: Float)
     fun setOtherAudioDucking(enabled: Boolean, volumePercent: Int)
     fun setVideoQuality(height: Int?)
+    fun setAudioLanguage(language: String?)
     fun setCaptionsEnabled(enabled: Boolean)
     fun setSubtitleLanguage(language: String?)
     fun setSubtitleTrack(index: Int?)
@@ -425,6 +435,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private var selectedVideoQuality: Int? = null
     private var selectedSubtitleLanguage: String? = null
     private var selectedSubtitleTrackIndex: Int? = null
+    private var selectedAudioLanguage: String? = null
+    private var audioLanguageAutomatic = true
     private var activePluginDataSources: Set<JSHttpDataSource.Factory> = emptySet()
     private var openedVideos: List<VideoUiModel> = emptyList()
     private var activeQualityVariantHeight: Int? = null
@@ -443,6 +455,13 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     updateAudioSpectrumAnalysis(mediaItem?.mediaId)
+                    val video = openedVideos.firstOrNull { it.id == mediaItem?.mediaId }
+                    audioLanguageAutomatic = true
+                    selectedAudioLanguage = video?.resolvedAudioLanguage
+                    applyAudioLanguageTrackPreference(
+                        language = selectedAudioLanguage,
+                        explicitOverride = false,
+                    )
                     syncPlayback()
                     PlaybackNotificationService.refresh(appContext)
                 }
@@ -841,12 +860,22 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         hasMore = hasMore,
     )
 
-    override suspend fun resolve(video: VideoUiModel): VideoUiModel {
+    override suspend fun resolve(
+        video: VideoUiModel,
+        preferredAudioLanguage: String?,
+        preferOriginalAudio: Boolean,
+    ): VideoUiModel {
         if (video.playbackUrl.isNotBlank()) return video
         val endpoint = pluginEndpoints[video.sourceId]
             ?: error(appContext.getString(R.string.source_plugin_unavailable, video.sourceId))
         val contentUrl = video.contentUrl.ifBlank { video.id }
-        val source = pluginBackend.resolve(video.sourceId, contentUrl, endpoint)
+        val source = pluginBackend.resolve(
+            sourceId = video.sourceId,
+            contentUrl = contentUrl,
+            endpoint = endpoint,
+            preferredAudioLanguage = preferredAudioLanguage,
+            preferOriginalAudio = preferOriginalAudio,
+        )
         return video.copy(
             title = source.title.ifBlank { video.title },
             creator = source.author.ifBlank { video.creator },
@@ -926,6 +955,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 AudioQualityUiModel(
                     bitrate = variant.bitrate,
                     name = variant.name,
+                    language = variant.language,
+                    isOriginal = variant.isOriginal,
+                    isPriority = variant.isPriority,
                     playbackUrl = variant.audioUrl,
                     playbackMimeType = when (variant.streamType) {
                         GrayjayStreamType.Hls -> MimeTypes.APPLICATION_M3U8
@@ -937,6 +969,15 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     playbackDataSourceFactory = variant.dataSourceFactory,
                 )
             },
+            audioLanguages = source.audioLanguages.map { language ->
+                AudioLanguageUiModel(
+                    language = language.language,
+                    name = language.name,
+                    isOriginal = language.isOriginal,
+                )
+            },
+            resolvedAudioLanguage = source.selectedAudioLanguage,
+            resolvedAudioIsOriginal = source.selectedAudioIsOriginal,
             storyboard = source.storyboard?.let { storyboard ->
                 StoryboardUiModel(
                     levels = storyboard.levels.map { level ->
@@ -1049,12 +1090,21 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         captionsEnabled = false
         selectedSubtitleLanguage = null
         selectedSubtitleTrackIndex = null
+        audioLanguageAutomatic = true
+        selectedAudioLanguage = playableVideos[currentIndex].resolvedAudioLanguage
         selectedVideoQuality = null
-        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+        val trackParameters = exoPlayer.trackSelectionParameters
             .buildUpon()
             .clearVideoSizeConstraints()
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-            .build()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+        if (selectedAudioLanguage.isNullOrBlank()) {
+            trackParameters.setPreferredAudioLanguages()
+        } else {
+            trackParameters.setPreferredAudioLanguages(requireNotNull(selectedAudioLanguage))
+        }
+        exoPlayer.trackSelectionParameters = trackParameters.build()
         exoPlayer.setMediaSources(mediaSources, currentIndex, 0L)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = playWhenReady
@@ -1065,6 +1115,34 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             closePlayback = ::closePlayback,
         )
         syncPlayback(currentVideoId)
+    }
+
+    override fun replaceCurrent(video: VideoUiModel, positionMs: Long, playWhenReady: Boolean) {
+        val currentIndex = exoPlayer.currentMediaItemIndex.takeIf { it >= 0 }
+            ?: openedVideos.indexOfFirst { it.id == video.id }.takeIf { it >= 0 }
+            ?: return
+        if (openedVideos.getOrNull(currentIndex)?.id != video.id) return
+
+        val updated = openedVideos.toMutableList().apply { this[currentIndex] = video }
+        val nextPluginDataSources = updated.pluginDataSourceFactories()
+        activePluginDataSources
+            .filterNot(nextPluginDataSources::contains)
+            .forEach(JSHttpDataSource.Factory::closeExecutors)
+        openedVideos = updated
+        activePluginDataSources = nextPluginDataSources
+        selectedAudioLanguage = video.resolvedAudioLanguage
+        val targetHeight = selectedVideoQuality ?: AUTOMATIC_VIDEO_HEIGHT
+        exoPlayer.setMediaSources(
+            updated.map { queuedVideo ->
+                queuedVideo.buildMediaSource(queuedVideo.nearestQualityVariantHeight(targetHeight))
+            },
+            currentIndex,
+            positionMs.coerceAtLeast(0L),
+        )
+        exoPlayer.prepare()
+        exoPlayer.playWhenReady = playWhenReady
+        PlaybackNotificationService.refresh(appContext)
+        syncPlayback(video.id)
     }
 
     @UnstableApi
@@ -1105,6 +1183,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             mapNotNull { it.audioDownloadDataSourceFactory as? JSHttpDataSource.Factory } +
             flatMap { video ->
                 video.qualityVariants.mapNotNull {
+                    it.playbackDataSourceFactory as? JSHttpDataSource.Factory
+                }
+            } +
+            flatMap { video ->
+                video.audioQualityVariants.mapNotNull {
                     it.playbackDataSourceFactory as? JSHttpDataSource.Factory
                 }
             }
@@ -1385,6 +1468,49 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         syncPlayback()
     }
 
+    override fun setAudioLanguage(language: String?) {
+        audioLanguageAutomatic = language == null
+        val currentVideo = openedVideos.firstOrNull {
+            it.id == exoPlayer.currentMediaItem?.mediaId
+        }
+        selectedAudioLanguage = language ?: currentVideo?.resolvedAudioLanguage
+        applyAudioLanguageTrackPreference(
+            language = selectedAudioLanguage,
+            explicitOverride = language != null,
+        )
+        syncPlayback()
+    }
+
+    private fun applyAudioLanguageTrackPreference(
+        language: String?,
+        explicitOverride: Boolean,
+    ) {
+        val parameters = exoPlayer.trackSelectionParameters
+            .buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+        if (language.isNullOrBlank()) {
+            parameters.setPreferredAudioLanguages()
+        } else {
+            parameters.setPreferredAudioLanguages(language)
+            if (explicitOverride) exoPlayer.currentTracks.groups
+                .asSequence()
+                .filter { it.type == C.TRACK_TYPE_AUDIO }
+                .flatMap { group ->
+                    (0 until group.length).asSequence().map { trackIndex -> group to trackIndex }
+                }
+                .firstOrNull { (group, trackIndex) ->
+                    group.getTrackFormat(trackIndex).language.equals(language, ignoreCase = true)
+                }
+                ?.let { (group, trackIndex) ->
+                    parameters.setOverrideForType(
+                        TrackSelectionOverride(group.mediaTrackGroup, trackIndex),
+                    )
+                }
+        }
+        exoPlayer.trackSelectionParameters = parameters.build()
+    }
+
     override fun setCaptionsEnabled(enabled: Boolean) {
         if (enabled) {
             val preferredIndex = selectedSubtitleTrackIndex ?: 0
@@ -1476,6 +1602,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         captionsEnabled = false
         selectedSubtitleLanguage = null
         selectedSubtitleTrackIndex = null
+        selectedAudioLanguage = null
+        audioLanguageAutomatic = true
         selectedVideoQuality = null
         latestAudioSpectrum = emptyList()
         _playback.value = EnginePlaybackState()
@@ -1512,6 +1640,26 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             .filter { (height, _) -> height > 0 }
             .toList()
         val currentVideoId = exoPlayer.currentMediaItem?.mediaId ?: fallbackVideoId
+        val currentVideo = openedVideos.firstOrNull { it.id == currentVideoId }
+        val mediaTrackLanguages = exoPlayer.currentTracks.groups
+            .asSequence()
+            .filter { it.type == C.TRACK_TYPE_AUDIO }
+            .flatMap { group ->
+                (0 until group.length).asSequence().map { index ->
+                    group.getTrackFormat(index).language to group.isTrackSelected(index)
+                }
+            }
+            .filter { (language, _) -> !language.isNullOrBlank() }
+            .toList()
+        val availableAudioLanguages = (
+            currentVideo?.audioLanguages.orEmpty().map(AudioLanguageUiModel::language) +
+                mediaTrackLanguages.mapNotNull { it.first }
+            )
+            .distinctBy { it.lowercase() }
+        val activeTrackLanguage = mediaTrackLanguages.firstOrNull { it.second }?.first
+        if (audioLanguageAutomatic) {
+            selectedAudioLanguage = currentVideo?.resolvedAudioLanguage ?: activeTrackLanguage
+        }
         val pluginQualities = openedVideos
             .firstOrNull { it.id == currentVideoId }
             ?.qualityVariants
@@ -1547,6 +1695,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             currentVideoHeight = currentVideoHeight ?: currentHeight,
             selectedSubtitleLanguage = selectedSubtitleLanguage,
             selectedSubtitleTrackIndex = selectedSubtitleTrackIndex,
+            availableAudioLanguages = availableAudioLanguages,
+            selectedAudioLanguage = selectedAudioLanguage,
+            audioLanguageAutomatic = audioLanguageAutomatic,
             errorMessage = lastError,
             audioSpectrum = latestAudioSpectrum,
         )

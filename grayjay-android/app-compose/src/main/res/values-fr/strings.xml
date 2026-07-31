@@ -560,4 +560,11 @@
     <string name="pc_link_ready">Grayjoy Liaison PC prête</string>
     <string name="pc_link_waiting">En attente d\'un ordinateur couplé</string>
     <string name="pc_transfer_failed">Impossible d\'ouvrir la lecture sur ordinateur avec les sources actives.</string>
+    <string name="primary_audio_language">Langue audio principale</string>
+    <string name="prefer_original_audio">Préférer l’audio d’origine</string>
+    <string name="prefer_original_audio_description">Utilise la piste audio d’origine de la vidéo lorsqu’elle est disponible, puis la langue principale.</string>
+    <string name="audio_language">Langue audio</string>
+    <string name="automatic_with_value">Automatique · %1$s</string>
+    <string name="original_audio">Audio d’origine</string>
+    <string name="audio_language_change_failed">Impossible de changer la langue audio.</string>
 </resources>

@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeDown
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -18,6 +20,7 @@ import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.ClosedCaption
 import androidx.compose.material.icons.outlined.HighQuality
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.PictureInPicture
@@ -55,6 +58,8 @@ import com.futo.platformplayer.compose.BuildConfig
 import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
 import com.futo.platformplayer.compose.ui.PcLinkUiState
 import com.futo.platformplayer.compose.ui.ThemeMode
+import com.futo.platformplayer.compose.ui.audioLanguageDisplayName
+import com.futo.platformplayer.compose.ui.supportedAudioLanguageCodes
 
 @Composable
 fun SettingsScreen(
@@ -76,6 +81,10 @@ fun SettingsScreen(
     onPreferredVideoQualityChange: (Int) -> Unit,
     preferredAudioBitrate: Int,
     onPreferredAudioBitrateChange: (Int) -> Unit,
+    preferredAudioLanguage: String,
+    onPreferredAudioLanguageChange: (String) -> Unit,
+    preferOriginalAudio: Boolean,
+    onPreferOriginalAudioChange: (Boolean) -> Unit,
     stickyCaptionsEnabled: Boolean,
     onStickyCaptionsChange: (Boolean) -> Unit,
     showRecommendations: Boolean,
@@ -99,6 +108,7 @@ fun SettingsScreen(
     var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
     var showQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
+    var showAudioLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     var showPairedComputers by rememberSaveable { mutableStateOf(false) }
@@ -231,6 +241,23 @@ fun SettingsScreen(
                     icon = Icons.Outlined.MusicNote,
                     onClick = { showAudioQualityDialog = true },
                     testTag = "preferred-audio-quality",
+                )
+                HorizontalDivider()
+                LinkSetting(
+                    title = stringResource(R.string.primary_audio_language),
+                    description = audioLanguageDisplayName(preferredAudioLanguage),
+                    icon = Icons.Outlined.Language,
+                    onClick = { showAudioLanguageDialog = true },
+                    testTag = "preferred-audio-language",
+                )
+                HorizontalDivider()
+                ToggleSetting(
+                    title = stringResource(R.string.prefer_original_audio),
+                    description = stringResource(R.string.prefer_original_audio_description),
+                    icon = Icons.Outlined.Language,
+                    checked = preferOriginalAudio,
+                    onCheckedChange = onPreferOriginalAudioChange,
+                    testTag = "prefer-original-audio",
                 )
                 HorizontalDivider()
                 ToggleSetting(
@@ -452,6 +479,20 @@ fun SettingsScreen(
             },
         )
     }
+    if (showAudioLanguageDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.primary_audio_language),
+            choices = supportedAudioLanguageCodes.map { language ->
+                language to audioLanguageDisplayName(language)
+            },
+            selected = preferredAudioLanguage,
+            onDismiss = { showAudioLanguageDialog = false },
+            onChoose = {
+                onPreferredAudioLanguageChange(it)
+                showAudioLanguageDialog = false
+            },
+        )
+    }
     if (showDuckVolumeDialog) {
         ChoiceDialog(
             title = stringResource(R.string.reduced_playback_volume),
@@ -488,8 +529,9 @@ private fun <T> ChoiceDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column {
-                choices.forEach { (value, label) ->
+            LazyColumn(Modifier.heightIn(max = 520.dp)) {
+                items(choices.size) { index ->
+                    val (value, label) = choices[index]
                     ListItem(
                         modifier = Modifier.clickable { onChoose(value) },
                         headlineContent = { Text(label) },

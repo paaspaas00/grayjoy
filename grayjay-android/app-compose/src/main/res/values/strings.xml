@@ -584,4 +584,11 @@
     <string name="pc_link_ready">Grayjoy PC link ready</string>
     <string name="pc_link_waiting">Waiting for a paired computer</string>
     <string name="pc_transfer_failed">Could not open the computer playback with the active sources.</string>
+    <string name="primary_audio_language">Primary audio language</string>
+    <string name="prefer_original_audio">Prefer original audio</string>
+    <string name="prefer_original_audio_description">Use the video’s original audio track when available, then fall back to the primary language.</string>
+    <string name="audio_language">Audio language</string>
+    <string name="automatic_with_value">Automatic · %1$s</string>
+    <string name="original_audio">Original audio</string>
+    <string name="audio_language_change_failed">Could not change the audio language.</string>
 </resources>

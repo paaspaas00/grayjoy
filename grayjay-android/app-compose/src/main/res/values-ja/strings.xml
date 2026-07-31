@@ -560,4 +560,11 @@
     <string name="pc_link_ready">Grayjoy PCリンク準備完了</string>
     <string name="pc_link_waiting">ペアリングされたコンピューターを待っています</string>
     <string name="pc_transfer_failed">アクティブなソースを使用してコンピュータ再生を開くことができませんでした。</string>
+    <string name="primary_audio_language">優先音声言語</string>
+    <string name="prefer_original_audio">オリジナル音声を優先</string>
+    <string name="prefer_original_audio_description">利用可能な場合は動画のオリジナル音声を使用し、その後に優先言語を使用します。</string>
+    <string name="audio_language">音声言語</string>
+    <string name="automatic_with_value">自動 · %1$s</string>
+    <string name="original_audio">オリジナル音声</string>
+    <string name="audio_language_change_failed">音声言語を変更できませんでした。</string>
 </resources>
