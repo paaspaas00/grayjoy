@@ -1,5 +1,9 @@
 # Grayjoy
 
+<p align="center">
+  <img src="branding/grayjoy-logo-blue.png" alt="Grayjoy logo" width="180">
+</p>
+
 Grayjoy is a Jetpack Compose and Material 3 rewrite of the Grayjay Android user
 interface. It keeps the JavaScript source/plugin machinery and other backend
 behavior derived from the original Grayjay project while shipping as a separate

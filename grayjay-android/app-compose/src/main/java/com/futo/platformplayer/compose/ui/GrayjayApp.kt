@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -88,6 +89,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
@@ -1227,7 +1229,7 @@ private fun RailNavigationLayout(
     Row(Modifier.fillMaxSize()) {
         NavigationRail(
             header = {
-                GrayjayMark(Modifier.padding(vertical = 16.dp))
+                GrayjoyMark(Modifier.padding(vertical = 16.dp))
             },
         ) {
             Spacer(Modifier.weight(1f))
@@ -1307,7 +1309,7 @@ private fun DrawerNavigationLayout(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    GrayjayMark()
+                    GrayjoyMark()
                     Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
                 }
                 GrayjayDestination.entries.forEach { destination ->
@@ -1458,7 +1460,7 @@ private fun GrayjayScaffold(
                                         tint = MaterialTheme.colorScheme.primary,
                                     )
                                 } else {
-                                    GrayjayMark(Modifier.size(28.dp))
+                                    GrayjoyMark(Modifier.size(28.dp))
                                 }
                                 Text(stringResource(R.string.app_name))
                             }
@@ -2075,7 +2077,7 @@ private fun TransitionViewport(
 }
 
 @Composable
-private fun GrayjayMark(modifier: Modifier = Modifier) {
+private fun GrayjoyMark(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .size(32.dp)
@@ -2087,11 +2089,12 @@ private fun GrayjayMark(modifier: Modifier = Modifier) {
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = "G",
-            color = Color.White,
-            fontSize = 15.sp,
-            style = MaterialTheme.typography.titleMedium,
+        Image(
+            painter = painterResource(R.drawable.grayjoy_logo_foreground),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(2.dp),
         )
     }
 }

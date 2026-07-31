@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Grayjoy Link",
   "description": "Transfer YouTube playback between Chrome and Grayjoy on your local network.",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "minimum_chrome_version": "109",
   "permissions": [
     "storage",
@@ -17,8 +17,20 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "icons": {
+    "16": "icons/grayjoy-16.png",
+    "32": "icons/grayjoy-32.png",
+    "48": "icons/grayjoy-48.png",
+    "128": "icons/grayjoy-128.png"
+  },
   "action": {
     "default_title": "Grayjoy Link",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/grayjoy-16.png",
+      "32": "icons/grayjoy-32.png",
+      "48": "icons/grayjoy-48.png",
+      "128": "icons/grayjoy-128.png"
+    }
   }
 }
