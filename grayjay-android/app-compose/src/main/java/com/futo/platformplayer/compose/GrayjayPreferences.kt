@@ -52,6 +52,12 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
             preferences.edit().putBoolean(KEY_PER_CHANNEL_PLAYBACK_SPEED, value).apply()
         }
 
+    var holdToSpeedEnabled: Boolean
+        get() = preferences.getBoolean(KEY_HOLD_TO_SPEED, false)
+        set(value) {
+            preferences.edit().putBoolean(KEY_HOLD_TO_SPEED, value).apply()
+        }
+
     fun channelPlaybackSpeeds(): Map<String, Float> =
         playbackSpeedMap(KEY_CHANNEL_PLAYBACK_SPEEDS)
 
@@ -287,6 +293,7 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         private const val KEY_IMPORTED_CHANNELS = "imported_channels"
         private const val KEY_DEFAULT_PLAYBACK_SPEED = "default_playback_speed"
         private const val KEY_PER_CHANNEL_PLAYBACK_SPEED = "per_channel_playback_speed_enabled"
+        private const val KEY_HOLD_TO_SPEED = "hold_to_speed_enabled"
         private const val KEY_CHANNEL_PLAYBACK_SPEEDS = "channel_playback_speeds"
         private const val KEY_VIDEO_PLAYBACK_SPEEDS = "video_playback_speeds"
         private const val KEY_PREFERRED_VIDEO_QUALITY = "preferred_video_quality"

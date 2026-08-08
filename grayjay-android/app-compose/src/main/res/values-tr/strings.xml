@@ -299,7 +299,7 @@
     <string name="settings_appearance">Dış görünüş</string>
     <string name="use_wallpaper_colors">Duvar kağıdı renklerini kullanın</string>
     <string name="material_you_dynamic_color">Material You dinamik renk</string>
-    <string name="settings_playback">Playback</string>
+    <string name="settings_playback">Oynatma</string>
     <string name="default_playback_speed">Varsayılan Oynatma Hızı</string>
     <string name="preferred_quality">Tercih Edilen Kalite</string>
     <string name="quality_maximum">%1$dp maksimum</string>
@@ -498,7 +498,7 @@
     <string name="select_youtube_channel_to_finish">Oturum açmayı tamamlamak için bir YouTube kanalı seçin</string>
     <string name="youtube_channel_choice_description">Kullanılacak kanalı/profili seçin. Seçiminizin ardından oturum açma işlemi tamamlanır.</string>
     <string name="continue_action">Devam etmek</string>
-    <string name="playback_notification_channel">Playback</string>
+    <string name="playback_notification_channel">Oynatma</string>
     <string name="playback_notification_channel_description">Video oynatma kontrolleri</string>
     <string name="preparing_playback">Oynatmayı hazırlama</string>
     <string name="close_playback">Oynatmayı kapat</string>
@@ -567,4 +567,9 @@
     <string name="automatic_with_value">Otomatik · %1$s</string>
     <string name="original_audio">Orijinal ses</string>
     <string name="audio_language_change_failed">Ses dili değiştirilemedi.</string>
+    <string name="app_language">Uygulama dili</string>
+    <string name="system_default_language">Android sistem varsayılanı</string>
+    <string name="app_language_description">%1$s · Dil değiştirildiğinde Grayjoy yeniden başlatılır.</string>
+    <string name="hold_to_speed">2× hız için basılı tut</string>
+    <string name="hold_to_speed_description">2× hızda oynatmak için oynatıcıya basılı tutun; önceki hıza dönmek için bırakın.</string>
 </resources>

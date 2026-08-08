@@ -221,6 +221,12 @@ private data class PlaybackQueueSession(
     val knownVideoIds: MutableSet<String>,
 )
 
+private data class SpeedHoldSnapshot(
+    val speed: Float,
+    val wasPlaying: Boolean,
+    val wasCasting: Boolean,
+)
+
 internal fun selectAudioQualityVariant(
     variants: List<AudioQualityUiModel>,
     preferredBitrate: Int?,
@@ -405,6 +411,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var externalNavigationRequestId = 0L
     private var suppressChromecastHandoff = false
     private var resumeLocalAfterFailedCast = false
+    private var speedHoldSnapshot: SpeedHoldSnapshot? = null
     private val downloadJobs = mutableMapOf<String, Job>()
     // Old Grayjay prepares the next queued video immediately before transferring it. Keeping
     // this single-file queue prevents signed plugin URLs for later playlist items expiring.
@@ -441,6 +448,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             privateSessionEnabled = preferences.privateSessionEnabled,
             defaultPlaybackSpeed = preferences.defaultPlaybackSpeed,
             perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
+            holdToSpeedEnabled = preferences.holdToSpeedEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             preferredVideoQuality = preferences.preferredVideoQuality,
@@ -615,6 +623,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             it.copy(perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled)
         }
         applyPlaybackSpeed(_uiState.value.nowPlaying.video)
+    }
+
+    fun setHoldToSpeedEnabled(enabled: Boolean) {
+        preferences.holdToSpeedEnabled = enabled
+        _uiState.update { it.copy(holdToSpeedEnabled = preferences.holdToSpeedEnabled) }
+        if (!enabled) endSpeedHold()
     }
 
     fun setPreferredVideoQuality(height: Int) {
@@ -1125,6 +1139,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private suspend fun switchProfileInternal(profileId: String) {
         if (profileId == activeProfileId) return
+        endSpeedHold()
         suppressChromecastHandoff = chromecastManager.state.value.isConnected
         chromecastManager.disconnect(stopRemotePlayback = true)
         // Make sure a newly opened item exists before storing its final playback fraction.
@@ -1217,6 +1232,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             privateSessionEnabled = preferences.privateSessionEnabled,
             defaultPlaybackSpeed = preferences.defaultPlaybackSpeed,
             perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
+            holdToSpeedEnabled = preferences.holdToSpeedEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             preferredVideoQuality = preferences.preferredVideoQuality,
@@ -1965,6 +1981,41 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         else engine.setPlaybackSpeed(speed)
     }
 
+    /**
+     * Mirrors legacy Grayjay's hold gesture: temporarily play at 2x, then restore both the
+     * previous speed and whether playback had been paused when the finger is released.
+     */
+    fun startSpeedHold() {
+        if (!preferences.holdToSpeedEnabled || speedHoldSnapshot != null) return
+        if (_uiState.value.playback.currentVideoId == null) return
+        val cast = chromecastManager.state.value
+        speedHoldSnapshot = SpeedHoldSnapshot(
+            speed = _uiState.value.playback.playbackSpeed.coerceIn(0.25f, 3f),
+            wasPlaying = if (cast.isConnected) cast.isPlaying else engine.player.isPlaying,
+            wasCasting = cast.isConnected,
+        )
+        if (cast.isConnected) {
+            chromecastManager.setPlaybackSpeed(2f)
+            if (!cast.isPlaying) chromecastManager.togglePlayback()
+        } else {
+            engine.setPlaybackSpeed(2f)
+            if (!engine.player.isPlaying) engine.player.play()
+        }
+    }
+
+    fun endSpeedHold() {
+        val snapshot = speedHoldSnapshot ?: return
+        speedHoldSnapshot = null
+        val cast = chromecastManager.state.value
+        if (snapshot.wasCasting && cast.isConnected) {
+            chromecastManager.setPlaybackSpeed(snapshot.speed)
+            if (!snapshot.wasPlaying && cast.isPlaying) chromecastManager.togglePlayback()
+        } else {
+            engine.setPlaybackSpeed(snapshot.speed)
+            if (snapshot.wasPlaying) engine.player.play() else engine.pausePlayback()
+        }
+    }
+
     fun useChannelPlaybackSpeedForCurrentVideo() {
         val video = _uiState.value.nowPlaying.video ?: return
         preferences.setVideoPlaybackSpeed(video.id, null)
@@ -2694,6 +2745,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun closePlayback() {
+        endSpeedHold()
         suppressChromecastHandoff = chromecastManager.state.value.isConnected
         chromecastManager.disconnect(stopRemotePlayback = true)
         resumePromptJob?.cancel()

@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose
 import android.Manifest
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
+import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -68,6 +69,10 @@ class MainActivity : FragmentActivity() {
                 )?.let { deviceIsLandscape = it }
             }
         }
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLanguageManager.localizedContext(newBase))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -233,6 +238,13 @@ class MainActivity : FragmentActivity() {
                 GrayjayApp(
                     uiState = uiState,
                     player = viewModel.player,
+                    uiLanguageTag = AppLanguageManager.selectedLanguageTag(this@MainActivity),
+                    onUiLanguageChange = { languageTag ->
+                        if (languageTag != AppLanguageManager.selectedLanguageTag(this@MainActivity)) {
+                            AppLanguageManager.setSelectedLanguageTag(this@MainActivity, languageTag)
+                            window.decorView.post { recreate() }
+                        }
+                    },
                     isDarkTheme = darkTheme,
                     onDarkThemeChange = viewModel::setDarkThemeEnabled,
                     onThemeModeChange = viewModel::setThemeMode,
@@ -255,6 +267,8 @@ class MainActivity : FragmentActivity() {
                     onSkipToPrevious = viewModel::skipToPrevious,
                     onSeekPlaybackBy = viewModel::seekPlaybackBy,
                     onPlaybackSpeedChange = viewModel::setPlaybackSpeed,
+                    onSpeedHoldStart = viewModel::startSpeedHold,
+                    onSpeedHoldEnd = viewModel::endSpeedHold,
                     onUseChannelPlaybackSpeed = viewModel::useChannelPlaybackSpeedForCurrentVideo,
                     onChannelPlaybackSpeedChange = viewModel::setChannelPlaybackSpeed,
                     onVideoQualityChange = viewModel::setVideoQuality,
@@ -343,6 +357,7 @@ class MainActivity : FragmentActivity() {
                     onVerifyProfilePin = viewModel::verifyProfilePin,
                     onDefaultPlaybackSpeedChange = viewModel::setDefaultPlaybackSpeed,
                     onPerChannelPlaybackSpeedChange = viewModel::setPerChannelPlaybackSpeedEnabled,
+                    onHoldToSpeedChange = viewModel::setHoldToSpeedEnabled,
                     onPreferredVideoQualityChange = viewModel::setPreferredVideoQuality,
                     onPreferredAudioBitrateChange = viewModel::setPreferredAudioBitrate,
                     onPreferredAudioLanguageChange = viewModel::setPreferredAudioLanguage,

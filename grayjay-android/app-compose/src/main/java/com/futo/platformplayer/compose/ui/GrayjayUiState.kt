@@ -14,6 +14,7 @@ data class GrayjayUiState(
     val privateSessionEnabled: Boolean = false,
     val defaultPlaybackSpeed: Float = 1f,
     val perChannelPlaybackSpeedEnabled: Boolean = true,
+    val holdToSpeedEnabled: Boolean = false,
     val channelPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val videoPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val preferredVideoQuality: Int = 0,

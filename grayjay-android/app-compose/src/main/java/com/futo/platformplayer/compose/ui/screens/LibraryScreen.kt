@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -112,7 +113,7 @@ internal fun downloadExportAvailability(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun LibraryScreen(
+internal fun LibraryScreen(
     videos: List<VideoUiModel>,
     playlists: List<PlaylistUiModel>,
     downloads: Map<String, DownloadUiModel> = emptyMap(),
@@ -126,8 +127,10 @@ fun LibraryScreen(
     onRemovePlaylists: (List<String>) -> Unit = {},
     onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit = { _, _, _ -> },
     onRenamePlaylist: (String, String) -> Unit = { _, _ -> },
+    selectedFilter: LibraryFilter = LibraryFilter.History,
+    onSelectedFilterChange: (LibraryFilter) -> Unit = {},
+    playlistListState: LazyListState = rememberLazyListState(),
 ) {
-    var selectedFilterName by rememberSaveable { mutableStateOf(LibraryFilter.History.name) }
     var selectionMode by rememberSaveable { mutableStateOf(false) }
     var confirmRemoval by rememberSaveable { mutableStateOf(false) }
     var showExportSheet by rememberSaveable { mutableStateOf(false) }
@@ -136,14 +139,13 @@ fun LibraryScreen(
     val selectedVideoIds = remember { mutableStateListOf<String>() }
     val selectedPlaylistIds = remember { mutableStateListOf<String>() }
     val filters = LibraryFilter.entries
-    val selectedFilter = LibraryFilter.valueOf(selectedFilterName)
     val pagerState = rememberPagerState(
         initialPage = filters.indexOf(selectedFilter).coerceAtLeast(0),
         pageCount = { filters.size },
     )
     val filterListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    val activeFilterName by rememberUpdatedState(selectedFilterName)
+    val activeFilter by rememberUpdatedState(selectedFilter)
 
     fun leaveSelectionMode() {
         selectionMode = false
@@ -167,15 +169,15 @@ fun LibraryScreen(
             .distinctUntilChanged()
             .collect { page ->
                 filters.getOrNull(page)?.let { filter ->
-                    if (filter.name != activeFilterName) {
-                        selectedFilterName = filter.name
+                    if (filter != activeFilter) {
+                        onSelectedFilterChange(filter)
                         leaveSelectionMode()
                     }
                 }
             }
     }
-    LaunchedEffect(selectedFilterName) {
-        val page = filters.indexOfFirst { it.name == selectedFilterName }
+    LaunchedEffect(selectedFilter) {
+        val page = filters.indexOf(selectedFilter)
         if (page >= 0) filterListState.animateScrollToItem(page)
         if (page >= 0 && page != pagerState.currentPage && !pagerState.isScrollInProgress) {
             pagerState.animateScrollToPage(page)
@@ -210,7 +212,7 @@ fun LibraryScreen(
                 FilterChip(
                     selected = selectedFilter == filter,
                     onClick = {
-                        selectedFilterName = filter.name
+                        onSelectedFilterChange(filter)
                         leaveSelectionMode()
                         coroutineScope.launch { pagerState.animateScrollToPage(page) }
                     },
@@ -240,7 +242,12 @@ fun LibraryScreen(
                     videosForLibraryFilter(videos, pageFilter, relevantDownloads)
                 }
                 val isSelectedPage = pageFilter == selectedFilter
-                val listState = rememberLazyListState()
+                val pageListState = rememberLazyListState()
+                val listState = if (pageFilter == LibraryFilter.Playlists) {
+                    playlistListState
+                } else {
+                    pageListState
+                }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier

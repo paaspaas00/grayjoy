@@ -296,7 +296,7 @@
     <string name="confirm_pin">确认PIN</string>
     <string name="settings_tagline">让 Grayjoy 成为你的</string>
     <string name="settings_description">尊重隐私的默认设置以及易于理解的控件。</string>
-    <string name="settings_appearance">外貌</string>
+    <string name="settings_appearance">外观</string>
     <string name="use_wallpaper_colors">使用壁纸颜色</string>
     <string name="material_you_dynamic_color">Material You动态色彩</string>
     <string name="settings_playback">回放</string>
@@ -567,4 +567,9 @@
     <string name="automatic_with_value">自动 · %1$s</string>
     <string name="original_audio">原始音频</string>
     <string name="audio_language_change_failed">无法更改音频语言。</string>
+    <string name="app_language">应用语言</string>
+    <string name="system_default_language">Android 系统默认语言</string>
+    <string name="app_language_description">%1$s · 更改语言后 Grayjoy 将重新启动。</string>
+    <string name="hold_to_speed">长按以 2 倍速播放</string>
+    <string name="hold_to_speed_description">长按播放器时以 2 倍速播放，松开后恢复之前的速度。</string>
 </resources>

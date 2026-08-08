@@ -591,4 +591,9 @@
     <string name="automatic_with_value">Automatic · %1$s</string>
     <string name="original_audio">Original audio</string>
     <string name="audio_language_change_failed">Could not change the audio language.</string>
+    <string name="app_language">App language</string>
+    <string name="system_default_language">Android system default</string>
+    <string name="app_language_description">%1$s · Grayjoy restarts when the language changes.</string>
+    <string name="hold_to_speed">Hold for 2× speed</string>
+    <string name="hold_to_speed_description">Touch and hold the player to play at 2×, then release to restore the previous speed.</string>
 </resources>

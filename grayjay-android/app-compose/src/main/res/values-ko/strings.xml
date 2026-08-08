@@ -567,4 +567,9 @@
     <string name="automatic_with_value">자동 · %1$s</string>
     <string name="original_audio">원본 오디오</string>
     <string name="audio_language_change_failed">오디오 언어를 변경할 수 없습니다.</string>
+    <string name="app_language">앱 언어</string>
+    <string name="system_default_language">Android 시스템 기본값</string>
+    <string name="app_language_description">%1$s · 언어를 변경하면 Grayjoy가 다시 시작됩니다.</string>
+    <string name="hold_to_speed">길게 눌러 2배속</string>
+    <string name="hold_to_speed_description">플레이어를 길게 누르는 동안 2배속으로 재생하고, 손을 떼면 이전 속도로 돌아갑니다.</string>
 </resources>

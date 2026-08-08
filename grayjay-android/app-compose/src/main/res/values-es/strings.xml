@@ -567,4 +567,9 @@
     <string name="automatic_with_value">Automático · %1$s</string>
     <string name="original_audio">Audio original</string>
     <string name="audio_language_change_failed">No se pudo cambiar el idioma de audio.</string>
+    <string name="app_language">Idioma de la aplicación</string>
+    <string name="system_default_language">Predeterminado del sistema Android</string>
+    <string name="app_language_description">%1$s · Grayjoy se reinicia al cambiar el idioma.</string>
+    <string name="hold_to_speed">Mantener pulsado para velocidad 2×</string>
+    <string name="hold_to_speed_description">Mantén pulsado el reproductor para reproducir a 2× y suelta para restaurar la velocidad anterior.</string>
 </resources>

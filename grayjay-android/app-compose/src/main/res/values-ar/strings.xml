@@ -567,4 +567,9 @@
     <string name="automatic_with_value">تلقائي · %1$s</string>
     <string name="original_audio">الصوت الأصلي</string>
     <string name="audio_language_change_failed">تعذر تغيير لغة الصوت.</string>
+    <string name="app_language">لغة التطبيق</string>
+    <string name="system_default_language">الإعداد الافتراضي لنظام Android</string>
+    <string name="app_language_description">%1$s · تتم إعادة تشغيل Grayjoy عند تغيير اللغة.</string>
+    <string name="hold_to_speed">الضغط المطوّل لسرعة 2×</string>
+    <string name="hold_to_speed_description">المس المشغّل مطولًا للتشغيل بسرعة 2×، ثم ارفع إصبعك لاستعادة السرعة السابقة.</string>
 </resources>

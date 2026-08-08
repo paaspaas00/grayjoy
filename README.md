@@ -9,6 +9,14 @@ interface. It keeps the JavaScript source/plugin machinery and other backend
 behavior derived from the original Grayjay project while shipping as a separate
 Android application.
 
+## Screenshots
+
+<p align="center">
+  <img src="grayjay-android/docs/screenshots/search.png" alt="Federated video search" width="30%">
+  <img src="grayjay-android/docs/screenshots/now-playing.png" alt="Now Playing" width="30%">
+  <img src="grayjay-android/docs/screenshots/settings.png" alt="Grayjoy preferences" width="30%">
+</p>
+
 The complete Android project is in [`grayjay-android/`](grayjay-android/).
 The unpacked Chromium extension for local YouTube handoff is in
 [`browser-extension/`](browser-extension/); see its

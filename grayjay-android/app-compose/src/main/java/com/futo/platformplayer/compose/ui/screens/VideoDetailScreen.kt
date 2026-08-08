@@ -47,6 +47,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.DownloadDone
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
+import androidx.compose.material.icons.outlined.FastForward
 import androidx.compose.material.icons.outlined.Forward10
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Lock
@@ -172,6 +173,9 @@ fun VideoDetailScreen(
     onToggleFollowing: () -> Unit,
     onSeek: (Float) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    holdToSpeedEnabled: Boolean = false,
+    onSpeedHoldStart: () -> Unit = {},
+    onSpeedHoldEnd: () -> Unit = {},
     perChannelPlaybackSpeedEnabled: Boolean = true,
     videoPlaybackSpeedOverride: Float? = null,
     channelPlaybackSpeed: Float? = null,
@@ -268,6 +272,9 @@ fun VideoDetailScreen(
             onSeekBy = onSeekBy,
             onSeek = onSeek,
             onSpeedChange = onSpeedChange,
+            holdToSpeedEnabled = holdToSpeedEnabled,
+            onSpeedHoldStart = onSpeedHoldStart,
+            onSpeedHoldEnd = onSpeedHoldEnd,
             perChannelPlaybackSpeedEnabled = perChannelPlaybackSpeedEnabled,
             videoPlaybackSpeedOverride = videoPlaybackSpeedOverride,
             channelPlaybackSpeed = channelPlaybackSpeed,
@@ -441,6 +448,9 @@ fun FullscreenPlayerScreen(
     onSeekBy: (Long) -> Unit,
     onSeek: (Float) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    holdToSpeedEnabled: Boolean = false,
+    onSpeedHoldStart: () -> Unit = {},
+    onSpeedHoldEnd: () -> Unit = {},
     perChannelPlaybackSpeedEnabled: Boolean = true,
     videoPlaybackSpeedOverride: Float? = null,
     channelPlaybackSpeed: Float? = null,
@@ -492,6 +502,9 @@ fun FullscreenPlayerScreen(
                 onSeekBy = onSeekBy,
                 onSeek = onSeek,
                 onSpeedChange = onSpeedChange,
+                holdToSpeedEnabled = holdToSpeedEnabled,
+                onSpeedHoldStart = onSpeedHoldStart,
+                onSpeedHoldEnd = onSpeedHoldEnd,
                 perChannelPlaybackSpeedEnabled = perChannelPlaybackSpeedEnabled,
                 videoPlaybackSpeedOverride = videoPlaybackSpeedOverride,
                 channelPlaybackSpeed = channelPlaybackSpeed,
@@ -536,6 +549,9 @@ internal fun PlayerSurface(
     onSeekBy: (Long) -> Unit,
     onSeek: (Float) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    holdToSpeedEnabled: Boolean = false,
+    onSpeedHoldStart: () -> Unit = {},
+    onSpeedHoldEnd: () -> Unit = {},
     perChannelPlaybackSpeedEnabled: Boolean = true,
     videoPlaybackSpeedOverride: Float? = null,
     channelPlaybackSpeed: Float? = null,
@@ -556,6 +572,7 @@ internal fun PlayerSurface(
     onResumeFromHistory: () -> Unit = {},
 ) {
     var isTimelineSeeking by remember(video.id) { mutableStateOf(false) }
+    var speedHolding by remember(video.id, isFullscreen) { mutableStateOf(false) }
     var controlsVisible by remember(video.id, isFullscreen) { mutableStateOf(true) }
     var isPointerDown by remember(video.id, isFullscreen) { mutableStateOf(false) }
     var interactionSequence by remember(video.id, isFullscreen) { mutableStateOf(0) }
@@ -595,6 +612,17 @@ internal fun PlayerSurface(
     }
     LaunchedEffect(controlsAlpha) {
         if (controlsAlpha < 0.9f) showSettings = false
+    }
+    LaunchedEffect(isPointerDown, speedHolding, holdToSpeedEnabled) {
+        if (speedHolding && (!isPointerDown || !holdToSpeedEnabled)) {
+            speedHolding = false
+            onSpeedHoldEnd()
+        }
+    }
+    DisposableEffect(video.id, isFullscreen) {
+        onDispose {
+            if (speedHolding) onSpeedHoldEnd()
+        }
     }
 
     Box(
@@ -656,9 +684,19 @@ internal fun PlayerSurface(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(video.id, controlsLocked) {
+                .pointerInput(video.id, controlsLocked, holdToSpeedEnabled) {
                     detectTapGestures(
                         onTap = { controlsVisible = !controlsVisible },
+                        onLongPress = {
+                            if (
+                                holdToSpeedEnabled && !controlsLocked &&
+                                playback.errorMessage == null && !speedHolding
+                            ) {
+                                speedHolding = true
+                                controlsVisible = true
+                                onSpeedHoldStart()
+                            }
+                        },
                         onDoubleTap = { tap ->
                             if (!controlsLocked) {
                                 seekFeedbackForward = tap.x >= size.width / 2f
@@ -892,6 +930,39 @@ internal fun PlayerSurface(
                         onClick = onRetryPlayback,
                         modifier = Modifier.testTag("player-retry"),
                     ) { Text(stringResource(R.string.retry)) }
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = speedHolding,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .then(
+                    if (isFullscreen && isPortraitFullscreen) Modifier.statusBarsPadding()
+                    else Modifier,
+                )
+                .padding(top = 20.dp)
+                .testTag("hold-speed-indicator"),
+            enter = fadeIn(tween(140)),
+            exit = fadeOut(tween(140)),
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = Color.Black.copy(alpha = 0.78f),
+                contentColor = Color.White,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("2×", style = MaterialTheme.typography.labelLarge)
+                    Icon(
+                        Icons.Outlined.FastForward,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
         }

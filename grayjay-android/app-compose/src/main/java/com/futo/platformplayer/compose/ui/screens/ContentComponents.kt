@@ -69,6 +69,59 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.delay
 
+private data class RemoteImageRequestKey(
+    val url: String,
+    val fallbackUrl: String?,
+    val placeholderColor: Int,
+    val circleCrop: Boolean,
+)
+
+/** Avoid restarting an in-flight Glide request whenever the playback clock recomposes the UI. */
+private fun ImageView.loadRemoteImage(
+    url: String,
+    placeholderColor: Int,
+    fallbackUrl: String? = null,
+    circleCrop: Boolean = false,
+) {
+    val key = RemoteImageRequestKey(url, fallbackUrl, placeholderColor, circleCrop)
+    if (getTag(R.id.remote_image_request_key) == key) return
+    setTag(R.id.remote_image_request_key, key)
+    val manager = Glide.with(this)
+    val fallback = fallbackUrl?.let { candidate ->
+        manager.load(candidate)
+            .placeholder(ColorDrawable(placeholderColor))
+            .error(ColorDrawable(placeholderColor))
+            .let { if (circleCrop) it.circleCrop() else it.centerCrop() }
+    }
+    manager.load(url)
+        .placeholder(ColorDrawable(placeholderColor))
+        .let { request ->
+            when {
+                fallback != null -> request.error(fallback)
+                else -> request.error(ColorDrawable(placeholderColor))
+            }
+        }
+        .let { if (circleCrop) it.circleCrop() else it.centerCrop() }
+        .into(this)
+}
+
+internal fun youtubeThumbnailFallbackUrl(
+    sourceId: String,
+    videoId: String,
+    thumbnailUrl: String,
+): String? {
+    if (!sourceId.equals("youtube", ignoreCase = true)) return null
+    val youtubeId = Regex("/vi(?:_webp)?/([^/?&]+)", RegexOption.IGNORE_CASE)
+        .find(thumbnailUrl)?.groupValues?.getOrNull(1)
+        ?: Regex("[?&]v=([^&#]+)", RegexOption.IGNORE_CASE)
+            .find(videoId)?.groupValues?.getOrNull(1)
+        ?: Regex("(?:youtu\\.be/|/shorts/)([^/?&#]+)", RegexOption.IGNORE_CASE)
+            .find(videoId)?.groupValues?.getOrNull(1)
+        ?: return null
+    return "https://i.ytimg.com/vi/$youtubeId/hqdefault.jpg"
+        .takeUnless { it == thumbnailUrl }
+}
+
 @Composable
 internal fun RequestNextPageEffect(
     listState: LazyListState,
@@ -313,12 +366,15 @@ private fun CompactVideoThumbnail(
                     }
                 },
                 update = { imageView ->
-                    Glide.with(imageView)
-                        .load(video.thumbnailUrl)
-                        .placeholder(ColorDrawable(placeholderColor))
-                        .error(ColorDrawable(placeholderColor))
-                        .centerCrop()
-                        .into(imageView)
+                    imageView.loadRemoteImage(
+                        url = video.thumbnailUrl,
+                        placeholderColor = placeholderColor,
+                        fallbackUrl = youtubeThumbnailFallbackUrl(
+                            sourceId = video.sourceId,
+                            videoId = video.id,
+                            thumbnailUrl = video.thumbnailUrl,
+                        ),
+                    )
                 },
                 modifier = Modifier.matchParentSize(),
             )
@@ -407,12 +463,7 @@ internal fun SourceIconImage(
                     ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
                 },
                 update = { imageView ->
-                    Glide.with(imageView)
-                        .load(iconUrl)
-                        .placeholder(ColorDrawable(placeholderColor))
-                        .error(ColorDrawable(placeholderColor))
-                        .centerCrop()
-                        .into(imageView)
+                    imageView.loadRemoteImage(iconUrl, placeholderColor)
                 },
                 modifier = Modifier.matchParentSize(),
             )
@@ -486,12 +537,11 @@ internal fun ChannelAvatarImage(
                     ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
                 },
                 update = { imageView ->
-                    Glide.with(imageView)
-                        .load(thumbnailUrl)
-                        .placeholder(ColorDrawable(placeholderColor))
-                        .error(ColorDrawable(placeholderColor))
-                        .circleCrop()
-                        .into(imageView)
+                    imageView.loadRemoteImage(
+                        url = thumbnailUrl,
+                        placeholderColor = placeholderColor,
+                        circleCrop = true,
+                    )
                 },
                 modifier = Modifier.matchParentSize(),
             )
@@ -536,12 +586,7 @@ internal fun PlaylistRow(
                         ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
                     },
                     update = { imageView ->
-                        Glide.with(imageView)
-                            .load(playlist.thumbnailUrl)
-                            .placeholder(ColorDrawable(placeholderColor))
-                            .error(ColorDrawable(placeholderColor))
-                            .centerCrop()
-                            .into(imageView)
+                        imageView.loadRemoteImage(playlist.thumbnailUrl, placeholderColor)
                     },
                     modifier = Modifier
                         .width(112.dp)

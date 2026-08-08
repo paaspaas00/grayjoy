@@ -55,6 +55,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.BuildConfig
+import com.futo.platformplayer.compose.AppLanguageManager
 import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
 import com.futo.platformplayer.compose.ui.PcLinkUiState
 import com.futo.platformplayer.compose.ui.ThemeMode
@@ -63,6 +64,8 @@ import com.futo.platformplayer.compose.ui.supportedAudioLanguageCodes
 
 @Composable
 fun SettingsScreen(
+    uiLanguageTag: String,
+    onUiLanguageChange: (String) -> Unit,
     dynamicColorsEnabled: Boolean,
     onDynamicColorsChange: (Boolean) -> Unit,
     themeMode: ThemeMode,
@@ -77,6 +80,8 @@ fun SettingsScreen(
     onDefaultPlaybackSpeedChange: (Float) -> Unit,
     perChannelPlaybackSpeedEnabled: Boolean,
     onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
+    holdToSpeedEnabled: Boolean,
+    onHoldToSpeedChange: (Boolean) -> Unit,
     preferredVideoQuality: Int,
     onPreferredVideoQualityChange: (Int) -> Unit,
     preferredAudioBitrate: Int,
@@ -106,6 +111,7 @@ fun SettingsScreen(
 ) {
     val uriHandler = LocalUriHandler.current
     var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
+    var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioLanguageDialog by rememberSaveable { mutableStateOf(false) }
@@ -174,6 +180,18 @@ fun SettingsScreen(
         }
         item {
             SettingsSection(stringResource(R.string.settings_appearance)) {
+                val systemLanguageLabel = stringResource(R.string.system_default_language)
+                LinkSetting(
+                    title = stringResource(R.string.app_language),
+                    description = stringResource(
+                        R.string.app_language_description,
+                        AppLanguageManager.displayName(uiLanguageTag, systemLanguageLabel),
+                    ),
+                    icon = Icons.Outlined.Language,
+                    onClick = { showLanguageDialog = true },
+                    testTag = "app-language",
+                )
+                HorizontalDivider()
                 LinkSetting(
                     title = stringResource(R.string.settings_appearance),
                     description = stringResource(
@@ -215,6 +233,15 @@ fun SettingsScreen(
                     checked = perChannelPlaybackSpeedEnabled,
                     onCheckedChange = onPerChannelPlaybackSpeedChange,
                     testTag = "per-channel-playback-speed",
+                )
+                HorizontalDivider()
+                ToggleSetting(
+                    title = stringResource(R.string.hold_to_speed),
+                    description = stringResource(R.string.hold_to_speed_description),
+                    icon = Icons.Outlined.Speed,
+                    checked = holdToSpeedEnabled,
+                    onCheckedChange = onHoldToSpeedChange,
+                    testTag = "hold-to-speed",
                 )
                 HorizontalDivider()
                 LinkSetting(
@@ -436,6 +463,22 @@ fun SettingsScreen(
             onChoose = {
                 onThemeModeChange(it)
                 showThemeDialog = false
+            },
+        )
+    }
+
+    if (showLanguageDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.app_language),
+            choices = listOf(
+                AppLanguageManager.SYSTEM_LANGUAGE_TAG to
+                    stringResource(R.string.system_default_language),
+            ) + AppLanguageManager.supportedLanguages.map { it.tag to it.nativeName },
+            selected = uiLanguageTag,
+            onDismiss = { showLanguageDialog = false },
+            onChoose = {
+                showLanguageDialog = false
+                onUiLanguageChange(it)
             },
         )
     }

@@ -296,7 +296,7 @@
     <string name="confirm_pin">Подтвердите PIN</string>
     <string name="settings_tagline">Сделайте Grayjoy своим</string>
     <string name="settings_description">Настройки по умолчанию, соблюдающие конфиденциальность, и элементы управления, которые остаются понятными.</string>
-    <string name="settings_appearance">Появление</string>
+    <string name="settings_appearance">Оформление</string>
     <string name="use_wallpaper_colors">Используйте цвета обоев</string>
     <string name="material_you_dynamic_color">Material You динамический цвет</string>
     <string name="settings_playback">Воспроизведение</string>
@@ -567,4 +567,9 @@
     <string name="automatic_with_value">Автоматически · %1$s</string>
     <string name="original_audio">Оригинальная дорожка</string>
     <string name="audio_language_change_failed">Не удалось изменить язык аудио.</string>
+    <string name="app_language">Язык приложения</string>
+    <string name="system_default_language">Системный язык Android</string>
+    <string name="app_language_description">%1$s · После смены языка Grayjoy перезапустится.</string>
+    <string name="hold_to_speed">Удерживать для скорости 2×</string>
+    <string name="hold_to_speed_description">Нажмите и удерживайте проигрыватель для скорости 2×, затем отпустите, чтобы вернуть прежнюю скорость.</string>
 </resources>
