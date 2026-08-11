@@ -49,12 +49,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
+import java.io.StringReader
 import java.security.MessageDigest
 import java.time.OffsetDateTime
 import java.time.Duration
@@ -401,8 +404,19 @@ private data class PagerBatch(
     val hasMore: Boolean = false,
 )
 
+private data class SubscriptionLoadOutcome(
+    val sourcePager: SourcePagerSession? = null,
+    val directVideos: List<GrayjaySearchItem> = emptyList(),
+)
+
 private data class CachedStoryboard(
     val storyboard: GrayjayStoryboard,
+    val cachedAtMs: Long,
+)
+
+private data class CachedVideoDetails(
+    val plugin: JSClient,
+    val details: IPlatformVideoDetails,
     val cachedAtMs: Long,
 )
 
@@ -443,9 +457,15 @@ class GrayjayPluginBackend(context: Context) {
     )
     private val storyboardCache = ConcurrentHashMap<String, CachedStoryboard>()
     private val storyboardFailures = ConcurrentHashMap<String, Long>()
+    private val storyboardDurations = ConcurrentHashMap<String, Long>()
+    private val resolvedVideoDetails = ConcurrentHashMap<String, CachedVideoDetails>()
     private val loadMutex = Mutex()
     @Volatile
     private var profileId: String = "main"
+    @Volatile
+    private var preferOriginalVideoTitles: Boolean = true
+    @Volatile
+    private var videoTitleLanguageTag: String = "en-US"
     private val pluginDirectory = File(appContext.filesDir, "grayjay-js-plugins").apply { mkdirs() }
     private val pluginSettings = appContext.getSharedPreferences(
         "grayjay-js-plugin-settings",
@@ -458,6 +478,22 @@ class GrayjayPluginBackend(context: Context) {
 
     init {
         StateApp.instance.attach(appContext)
+    }
+
+    fun configureVideoTitleLanguage(preferOriginal: Boolean, languageTag: String) {
+        val normalized = languageTag.ifBlank { "en-US" }
+        val changed = preferOriginalVideoTitles != preferOriginal ||
+            videoTitleLanguageTag != normalized
+        preferOriginalVideoTitles = preferOriginal
+        videoTitleLanguageTag = normalized
+        if (!changed) return
+
+        // Runtime localization is injected when the YouTube script is registered. Drop only
+        // that parent client so the next request gets the new language without touching other
+        // sources or the active Media3 playback item.
+        sourceAliases.remove(YOUTUBE_PLUGIN_ID)?.let { alias ->
+            runCatching { clients.remove(alias)?.disable() }
+        }
     }
 
     suspend fun search(
@@ -647,15 +683,18 @@ class GrayjayPluginBackend(context: Context) {
         private const val MAX_USER_IMPORT_HISTORY = 20_000
         private const val MAX_USER_IMPORT_PAGES = 2_000
         private const val SUBSCRIPTION_CONCURRENCY = 6
+        private const val SUBSCRIPTION_NETWORK_CONCURRENCY = 8
         private const val MAIN_CLIENT_CONCURRENCY = 2
         private const val ACCOUNT_IMPORT_CLIENT_CONCURRENCY = 2
         const val CHANNEL_PLAYLISTS_TYPE = "PLAYLISTS"
         private const val STORYBOARD_CACHE_TTL_MS = 30L * 60L * 1_000L
         private const val STORYBOARD_FAILURE_TTL_MS = 2L * 60L * 1_000L
+        private const val VIDEO_DETAILS_CACHE_TTL_MS = 2L * 60L * 1_000L
         private const val STORYBOARD_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
                 "Chrome/130.0.0.0 Mobile Safari/537.36"
         private val YOUTUBE_VIDEO_ID_REGEX = Regex("[A-Za-z0-9_-]{6,32}")
+        private val YOUTUBE_CHANNEL_ID_REGEX = Regex("UC[A-Za-z0-9_-]{20,32}")
     }
 
     suspend fun suggestions(
@@ -713,35 +752,45 @@ class GrayjayPluginBackend(context: Context) {
         val requests = channels
             .filter { it.url.isNotBlank() && it.sourceId in enabledSources }
             .distinctBy { "${it.sourceId}:${it.url}" }
-        val requestOrdinals = requests
-            .groupBy(GrayjayChannelRequest::sourceId)
-            .values
-            .flatMap { sourceRequests ->
-                sourceRequests.mapIndexed { index, request ->
-                    "${request.sourceId}:${request.url}" to index
-                }
-            }
-            .toMap()
+        val startedAtNs = System.nanoTime()
         val completedRequests = AtomicInteger(0)
         val fullRequests = AtomicInteger(0)
         val peekRequests = AtomicInteger(0)
+        val directRequests = AtomicInteger(0)
+        val networkSlots = Semaphore(SUBSCRIPTION_NETWORK_CONCURRENCY)
         onProgress(0, requests.size)
         val outcomes = coroutineScope {
             requests.map { request ->
                 async {
-                    val outcome = runCatching {
+                    val outcome = networkSlots.withPermit { runCatching {
                         val endpoint = requireNotNull(enabledSources[request.sourceId])
+                        if (
+                            endpoint.pluginId == YOUTUBE_PLUGIN_ID &&
+                            preferOriginalVideoTitles
+                        ) {
+                            loadYouTubeSubscriptionFeed(request, endpoint)
+                                .takeIf(List<GrayjaySearchItem>::isNotEmpty)
+                                ?.let { videos ->
+                                    directRequests.incrementAndGet()
+                                    return@runCatching SubscriptionLoadOutcome(directVideos = videos)
+                                }
+                        }
                         val basePlugin = getOrLoad(request.sourceId, endpoint)
                         val plugin = subscriptionClientPool.getClientPooled(
                             basePlugin,
                             SUBSCRIPTION_CONCURRENCY,
                         )
-                        val ordinal = requestOrdinals["${request.sourceId}:${request.url}"] ?: 0
-                        val rateLimit = basePlugin.getSubscriptionRateLimit()
-                            ?.takeIf { it > 0 }
-                            ?: Int.MAX_VALUE
+                        // Prefer the plugin's dedicated lightweight feed for every channel.
+                        // The previous threshold made all normal-sized YouTube subscription
+                        // lists parse full channel HTML. This mirrors NewPipe's dedicated feed
+                        // extractor while preserving a full-page fallback for plugins/URLs that
+                        // cannot peek. YouTube's Atom/peek feed deliberately carries creator-
+                        // supplied titles, so app-language mode uses the localized full response.
+                        val canUseOriginalTitleFeed =
+                            endpoint.pluginId != YOUTUBE_PLUGIN_ID || preferOriginalVideoTitles
                         val peekType = if (
-                            ordinal >= rateLimit && basePlugin.capabilities.hasPeekChannelContents
+                            canUseOriginalTitleFeed &&
+                            basePlugin.capabilities.hasPeekChannelContents
                         ) {
                             basePlugin.getPeekChannelTypes().let { types ->
                                 when {
@@ -753,24 +802,31 @@ class GrayjayPluginBackend(context: Context) {
                                 }
                             }
                         } else null
-                        val pager = if (peekType != null) {
+                        val peekContents = peekType?.let { type ->
+                            runCatching { plugin.peekChannelContents(request.url, type) }
+                                .onFailure { error ->
+                                    Log.d(TAG, "Lightweight subscription feed unavailable for ${request.url}.", error)
+                                }
+                                .getOrNull()
+                                ?.takeIf { it.isNotEmpty() }
+                        }
+                        val pager = if (peekContents != null) {
                             peekRequests.incrementAndGet()
-                            PlatformContentPager(
-                                plugin.peekChannelContents(request.url, peekType),
-                                perChannelLimit.coerceAtLeast(1),
-                            )
+                            PlatformContentPager(peekContents, perChannelLimit.coerceAtLeast(1))
                         } else {
                             fullRequests.incrementAndGet()
                             plugin.getChannelContents(request.url)
                         }
-                        SourcePagerSession(
-                            request.sourceId,
-                            basePlugin.id,
-                            pager,
+                        SubscriptionLoadOutcome(
+                            sourcePager = SourcePagerSession(
+                                request.sourceId,
+                                basePlugin.id,
+                                pager,
+                            ),
                         )
                     }.onFailure { error ->
                         Log.e(TAG, "Subscription feed failed for ${request.url}.", error)
-                    }
+                    } }
                     onProgress(completedRequests.incrementAndGet(), requests.size)
                     outcome
                 }
@@ -779,19 +835,150 @@ class GrayjayPluginBackend(context: Context) {
         Log.i(
             TAG,
             "Subscription refresh completed with ${fullRequests.get()} full and " +
-                "${peekRequests.get()} lightweight peek requests.",
+                "${peekRequests.get()} plugin peek and ${directRequests.get()} direct feed requests in " +
+                "${(System.nanoTime() - startedAtNs) / 1_000_000L} ms.",
         )
         if (outcomes.isNotEmpty() && outcomes.all { it.isFailure }) {
             throw outcomes.firstNotNullOf { it.exceptionOrNull() }
         }
-        readNewSession(
-            PagerSession(
-                kind = PagerContentKind.Videos,
-                sources = outcomes.mapNotNull { it.getOrNull() },
-                newestFirst = true,
-            ),
-            minOf(perChannelLimit, resultLimit),
-        ).toVideoPage(limit = resultLimit)
+        val successful = outcomes.mapNotNull { it.getOrNull() }
+        val pluginSources = successful.mapNotNull(SubscriptionLoadOutcome::sourcePager)
+        val pluginPage = if (pluginSources.isEmpty()) {
+            GrayjayVideoPage()
+        } else {
+            readNewSession(
+                PagerSession(
+                    kind = PagerContentKind.Videos,
+                    sources = pluginSources,
+                    newestFirst = true,
+                ),
+                minOf(perChannelLimit, resultLimit),
+            ).toVideoPage(limit = resultLimit)
+        }
+        GrayjayVideoPage(
+            videos = (successful.flatMap(SubscriptionLoadOutcome::directVideos) + pluginPage.videos)
+                .distinctBy(GrayjaySearchItem::url)
+                .sortedByDescending { it.datetime }
+                .take(resultLimit),
+            continuationId = pluginPage.continuationId,
+            hasMore = pluginPage.hasMore,
+        )
+    }
+
+    private fun loadYouTubeSubscriptionFeed(
+        request: GrayjayChannelRequest,
+        endpoint: PluginEndpoint,
+    ): List<GrayjaySearchItem> {
+        val channelId = youtubeChannelId(request.url) ?: return emptyList()
+        val feedUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=$channelId"
+        val response = client.newCall(
+            Request.Builder()
+                .url(feedUrl)
+                .header("Accept-Language", "en-US,en;q=0.5")
+                .get()
+                .build(),
+        ).execute()
+        response.use {
+            if (!it.isSuccessful) return emptyList()
+            val xml = it.body.string()
+            val parser = org.xmlpull.v1.XmlPullParserFactory.newInstance()
+                .newPullParser()
+                .apply {
+                    setFeature(org.xmlpull.v1.XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
+                    setInput(StringReader(xml))
+                }
+            val videos = mutableListOf<GrayjaySearchItem>()
+            var inEntry = false
+            var inAuthor = false
+            var videoId = ""
+            var title = ""
+            var authorName = ""
+            var authorUrl = ""
+            var videoUrl = ""
+            var thumbnailUrl: String? = null
+            var published: OffsetDateTime? = null
+            var views = 0L
+            while (parser.eventType != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                when (parser.eventType) {
+                    org.xmlpull.v1.XmlPullParser.START_TAG -> when (parser.name) {
+                        "entry" -> {
+                            inEntry = true
+                            videoId = ""
+                            title = ""
+                            authorName = ""
+                            authorUrl = ""
+                            videoUrl = ""
+                            thumbnailUrl = null
+                            published = null
+                            views = 0L
+                        }
+                        "author" -> if (inEntry) inAuthor = true
+                        "videoId" -> if (inEntry) videoId = parser.nextText().trim()
+                        "title" -> if (inEntry) title = parser.nextText().trim()
+                        "name" -> if (inEntry && inAuthor) authorName = parser.nextText().trim()
+                        "uri" -> if (inEntry && inAuthor) authorUrl = parser.nextText().trim()
+                        "published" -> if (inEntry) {
+                            published = runCatching { OffsetDateTime.parse(parser.nextText().trim()) }
+                                .getOrNull()
+                        }
+                        "link" -> if (inEntry && parser.getAttributeValue(null, "rel") == "alternate") {
+                            videoUrl = parser.getAttributeValue(null, "href").orEmpty()
+                        }
+                        "thumbnail" -> if (inEntry) {
+                            thumbnailUrl = parser.getAttributeValue(null, "url")
+                        }
+                        "statistics" -> if (inEntry) {
+                            views = parser.getAttributeValue(null, "views")?.toLongOrNull() ?: 0L
+                        }
+                    }
+                    org.xmlpull.v1.XmlPullParser.END_TAG -> when (parser.name) {
+                        "author" -> inAuthor = false
+                        "entry" -> {
+                            inEntry = false
+                            val resolvedUrl = videoUrl.ifBlank {
+                                videoId.takeIf(String::isNotBlank)?.let {
+                                    "https://www.youtube.com/watch?v=$it"
+                                }.orEmpty()
+                            }
+                            if (resolvedUrl.isNotBlank() && title.isNotBlank()) {
+                                videos += GrayjaySearchItem(
+                                    id = resolvedUrl,
+                                    url = resolvedUrl,
+                                    sourceId = request.sourceId,
+                                    pluginId = endpoint.pluginId,
+                                    title = title,
+                                    authorName = authorName,
+                                    authorUrl = authorUrl.ifBlank {
+                                        "https://www.youtube.com/channel/$channelId"
+                                    },
+                                    authorThumbnailUrl = null,
+                                    thumbnailUrl = thumbnailUrl,
+                                    durationSeconds = 0L,
+                                    viewCount = views,
+                                    datetime = published,
+                                    isLive = false,
+                                )
+                            }
+                        }
+                    }
+                }
+                parser.next()
+            }
+            return videos
+        }
+    }
+
+    private fun youtubeChannelId(url: String): String? {
+        val parsed = runCatching { android.net.Uri.parse(url) }.getOrNull()
+        val candidate = when {
+            url.matches(YOUTUBE_CHANNEL_ID_REGEX) -> url
+            parsed == null -> null
+            else -> parsed.getQueryParameter("channel_id")
+                ?: parsed.pathSegments.zipWithNext().firstOrNull { (prefix, _) ->
+                    prefix == "channel"
+                }?.second
+        }
+        return candidate?.takeIf { it.matches(YOUTUBE_CHANNEL_ID_REGEX) }
     }
 
     suspend fun loadMoreVideos(
@@ -1189,15 +1376,15 @@ class GrayjayPluginBackend(context: Context) {
         }
         val details = rawDetails as? IPlatformVideoDetails
             ?: error("The source returned content that is not playable video.")
-        // This is deliberately independent of the plugin result model: current YouTube
-        // plugins do not expose storyboard metadata. Run the watch-page lookup alongside
-        // stream normalization so it does not add a second serial network wait.
-        val storyboardDeferred = if (
-            endpoint.pluginId == YOUTUBE_PLUGIN_ID && details.duration > 0L
-        ) {
-            async { loadYouTubeStoryboard(contentUrl, details.duration) }
-        } else {
-            null
+        resolvedVideoDetails[
+            videoDetailsCacheKey(sourceId, details.url.ifBlank { contentUrl })
+        ] = CachedVideoDetails(
+            plugin = plugin,
+            details = details,
+            cachedAtMs = System.currentTimeMillis(),
+        )
+        if (endpoint.pluginId == YOUTUBE_PLUGIN_ID && details.duration > 0L) {
+            storyboardDurations[storyboardCacheKey(contentUrl)] = details.duration
         }
 
         val descriptorSources = details.video.videoSources
@@ -1554,7 +1741,10 @@ class GrayjayPluginBackend(context: Context) {
             audioLanguages = audioLanguages,
             selectedAudioLanguage = selectedAudioSource?.language,
             selectedAudioIsOriginal = selectedAudioSource?.original == true,
-            storyboard = storyboardDeferred?.await(),
+            // Seek previews are auxiliary UI. Never hold playback behind a second watch-page
+            // request; return a warm cache hit now and let Compose request a miss after Media3
+            // has started preparing the stream.
+            storyboard = cachedYouTubeStoryboard(contentUrl),
             isDrmProtected = selectedVideoSource is IWidevineSource && videoVariants.isEmpty(),
             isLive = details.isLive,
             isAudioOnly = isAudioOnly,
@@ -1569,11 +1759,15 @@ class GrayjayPluginBackend(context: Context) {
         recommendationLimit: Int = 20,
         commentLimit: Int = 40,
     ): GrayjayContentExtras = withContext(Dispatchers.IO) {
-        val plugin = mainClientPool.getClientPooled(
+        val now = System.currentTimeMillis()
+        val cached = resolvedVideoDetails.remove(videoDetailsCacheKey(sourceId, contentUrl))
+            ?.takeIf { now - it.cachedAtMs <= VIDEO_DETAILS_CACHE_TTL_MS }
+        val plugin = cached?.plugin ?: mainClientPool.getClientPooled(
             getOrLoad(sourceId, endpoint),
             MAIN_CLIENT_CONCURRENCY,
-        )
-        val details = plugin.getContentDetails(contentUrl) as? IPlatformVideoDetails
+        ) as JSClient
+        val details = cached?.details
+            ?: (plugin.getContentDetails(contentUrl) as? IPlatformVideoDetails)
             ?: return@withContext GrayjayContentExtras(emptyList(), emptyList(), false, false)
 
         var recommendationsAvailable = false
@@ -1849,6 +2043,8 @@ class GrayjayPluginBackend(context: Context) {
         sourceAliases.clear()
         storyboardCache.clear()
         storyboardFailures.clear()
+        storyboardDurations.clear()
+        resolvedVideoDetails.clear()
         this.profileId = profileId
     }
 
@@ -1881,6 +2077,18 @@ class GrayjayPluginBackend(context: Context) {
         pagerSessions.clear()
         storyboardCache.clear()
         storyboardFailures.clear()
+        storyboardDurations.clear()
+        resolvedVideoDetails.clear()
+    }
+
+    suspend fun loadStoryboard(
+        sourceId: String,
+        contentUrl: String,
+        endpoint: PluginEndpoint,
+    ): GrayjayStoryboard? = withContext(Dispatchers.IO) {
+        if (endpoint.pluginId != YOUTUBE_PLUGIN_ID) return@withContext null
+        val duration = storyboardDurations[storyboardCacheKey(contentUrl)] ?: 0L
+        loadYouTubeStoryboard(contentUrl, duration)
     }
 
     private fun loadYouTubeStoryboard(
@@ -1902,34 +2110,48 @@ class GrayjayPluginBackend(context: Context) {
             // Storyboard sprite URLs themselves are signed and are then cached by Glide.
             val descriptor = StatePlugins.instance.getPlugin(YOUTUBE_PLUGIN_ID)
             val auth = descriptor?.getAuth()
-            val http = JSHttpClient(
-                jsClient = null,
-                auth = auth,
-                captcha = null,
-                config = descriptor?.config,
-            ).apply {
-                user_agent = auth?.userAgent?.takeIf(String::isNotBlank)
-                    ?: STORYBOARD_USER_AGENT
-                rebuildClient { builder ->
-                    builder
-                        .connectTimeout(Duration.ofSeconds(3))
-                        .readTimeout(Duration.ofSeconds(4))
-                        .callTimeout(Duration.ofSeconds(5))
-                }
-            }
             val watchUrl = "https://www.youtube.com/watch?v=$videoId" +
                 "&hl=en&bpctr=9999999999&has_verified=1"
-            val response = http.get(
-                watchUrl,
-                hashMapOf(
-                    "Accept-Language" to "en-US,en;q=0.9",
-                    "Cookie" to "CONSENT=YES+cb",
-                ),
-            )
-            if (!response.isOk) return@runCatching null
-            response.body?.use { body ->
-                YouTubeStoryboardParser.parseWatchHtml(body.string(), durationSeconds)
+            val authenticatedHtml = auth?.let {
+                runCatching {
+                    val http = JSHttpClient(
+                        jsClient = null,
+                        auth = auth,
+                        captcha = null,
+                        config = descriptor.config,
+                    ).apply {
+                        user_agent = auth.userAgent?.takeIf { it.isNotBlank() }
+                            ?: STORYBOARD_USER_AGENT
+                        rebuildClient { builder ->
+                            builder
+                                .connectTimeout(Duration.ofSeconds(3))
+                                .readTimeout(Duration.ofSeconds(4))
+                                .callTimeout(Duration.ofSeconds(5))
+                        }
+                    }
+                    http.get(
+                        watchUrl,
+                        hashMapOf("Accept-Language" to "en-US,en;q=0.9"),
+                    ).takeIf { response -> response.isOk }
+                        ?.body
+                        ?.use { body -> body.string() }
+                }.onFailure { error ->
+                    Log.d(TAG, "Authenticated storyboard watch page unavailable; using public page.", error)
+                }.getOrNull()
             }
+            val html = authenticatedHtml ?: client.newCall(
+                Request.Builder()
+                    .url(watchUrl)
+                    .header("User-Agent", STORYBOARD_USER_AGENT)
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .header("Cookie", "CONSENT=YES+cb")
+                    .get()
+                    .build(),
+            ).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                response.body.string()
+            }
+            html?.let { YouTubeStoryboardParser.parseWatchHtml(it, durationSeconds) }
         }.onFailure { error ->
             Log.d(TAG, "Storyboard lookup failed for YouTube video $videoId.", error)
         }.getOrNull()
@@ -1941,6 +2163,20 @@ class GrayjayPluginBackend(context: Context) {
             storyboardCache[cacheKey] = CachedStoryboard(storyboard, now)
         }
         return storyboard
+    }
+
+    private fun storyboardCacheKey(contentUrl: String): String =
+        "$profileId:${youtubeVideoId(contentUrl).orEmpty()}"
+
+    private fun videoDetailsCacheKey(sourceId: String, contentUrl: String): String =
+        "$profileId:$sourceId:$contentUrl"
+
+    private fun cachedYouTubeStoryboard(contentUrl: String): GrayjayStoryboard? {
+        val cacheKey = storyboardCacheKey(contentUrl)
+        val now = System.currentTimeMillis()
+        return storyboardCache[cacheKey]
+            ?.takeIf { now - it.cachedAtMs < STORYBOARD_CACHE_TTL_MS }
+            ?.storyboard
     }
 
     private fun youtubeVideoId(url: String): String? {
@@ -2055,10 +2291,38 @@ class GrayjayPluginBackend(context: Context) {
 
     private fun String.withComposeCompatibility(pluginId: String): String {
         if (pluginId != YOUTUBE_PLUGIN_ID) return this
-        return replace(
+        var patched = replace(
             "true/*_settings?.use_session_client*/ && canBatchDummy",
             "!(_settings?.composeLegacyAgeFallback) && canBatchDummy",
         )
+        if (preferOriginalVideoTitles) return patched
+
+        val locale = Locale.forLanguageTag(videoTitleLanguageTag)
+        val language = locale.language.takeIf(String::isNotBlank) ?: "en"
+        val region = locale.country.takeIf(String::isNotBlank) ?: when (language) {
+            "it" -> "IT"
+            "de" -> "DE"
+            "es" -> "ES"
+            "fr" -> "FR"
+            "pt" -> "PT"
+            "ru" -> "RU"
+            "tr" -> "TR"
+            "ja" -> "JP"
+            "ko" -> "KR"
+            "zh" -> "CN"
+            else -> "US"
+        }
+        val displayRegion = "$language-$region"
+        patched = patched
+            .replace("var langDisplayRegion = \"en-US\";", "var langDisplayRegion = \"$displayRegion\";")
+            .replace("var langDisplay = \"en\";", "var langDisplay = \"$language\";")
+            .replace("var langRegion = \"US\";", "var langRegion = \"$region\";")
+            .replace("PREF=hl=en&gl=US", "PREF=hl=$language&gl=$region")
+            .replace("en-US, en;q=0.9", "$displayRegion, $language;q=0.9")
+            .replace("en-US,en;q=0.9", "$displayRegion,$language;q=0.9")
+            .replace("\"Accept-Language\": \"en-US\"", "\"Accept-Language\": \"$displayRegion\"")
+            .replace("[\"Accept-Language\"] = \"en-US\"", "[\"Accept-Language\"] = \"$displayRegion\"")
+        return patched
     }
 
     private fun IPlatformVideo.toSearchItem(alias: String, pluginId: String) = GrayjaySearchItem(

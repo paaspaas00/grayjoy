@@ -596,4 +596,7 @@
     <string name="app_language_description">%1$s · Grayjoy restarts when the language changes.</string>
     <string name="hold_to_speed">Hold for 2× speed</string>
     <string name="hold_to_speed_description">Touch and hold the player to play at 2×, then release to restore the previous speed.</string>
+    <string name="video_title_language">Video title language</string>
+    <string name="prefer_original_title">Prefer original title</string>
+    <string name="use_app_language_for_titles">Use app language</string>
 </resources>

@@ -59,6 +59,7 @@ import com.futo.platformplayer.compose.AppLanguageManager
 import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
 import com.futo.platformplayer.compose.ui.PcLinkUiState
 import com.futo.platformplayer.compose.ui.ThemeMode
+import com.futo.platformplayer.compose.ui.VideoTitleLanguageMode
 import com.futo.platformplayer.compose.ui.audioLanguageDisplayName
 import com.futo.platformplayer.compose.ui.supportedAudioLanguageCodes
 
@@ -90,6 +91,8 @@ fun SettingsScreen(
     onPreferredAudioLanguageChange: (String) -> Unit,
     preferOriginalAudio: Boolean,
     onPreferOriginalAudioChange: (Boolean) -> Unit,
+    videoTitleLanguageMode: VideoTitleLanguageMode,
+    onVideoTitleLanguageModeChange: (VideoTitleLanguageMode) -> Unit,
     stickyCaptionsEnabled: Boolean,
     onStickyCaptionsChange: (Boolean) -> Unit,
     showRecommendations: Boolean,
@@ -115,6 +118,7 @@ fun SettingsScreen(
     var showQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioLanguageDialog by rememberSaveable { mutableStateOf(false) }
+    var showTitleLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     var showPairedComputers by rememberSaveable { mutableStateOf(false) }
@@ -255,7 +259,10 @@ fun SettingsScreen(
                     onClick = { showQualityDialog = true },
                     testTag = "preferred-video-quality",
                 )
-                HorizontalDivider()
+            }
+        }
+        item {
+            SettingsCard {
                 LinkSetting(
                     title = stringResource(R.string.preferred_audio_quality),
                     description = stringResource(
@@ -287,6 +294,19 @@ fun SettingsScreen(
                     testTag = "prefer-original-audio",
                 )
                 HorizontalDivider()
+                LinkSetting(
+                    title = stringResource(R.string.video_title_language),
+                    description = stringResource(
+                        when (videoTitleLanguageMode) {
+                            VideoTitleLanguageMode.Original -> R.string.prefer_original_title
+                            VideoTitleLanguageMode.AppLanguage -> R.string.use_app_language_for_titles
+                        },
+                    ),
+                    icon = Icons.Outlined.Language,
+                    onClick = { showTitleLanguageDialog = true },
+                    testTag = "video-title-language",
+                )
+                HorizontalDivider()
                 ToggleSetting(
                     title = stringResource(R.string.remember_subtitles),
                     description = stringResource(R.string.remember_subtitles_description),
@@ -295,7 +315,10 @@ fun SettingsScreen(
                     onCheckedChange = onStickyCaptionsChange,
                     testTag = "sticky-captions",
                 )
-                HorizontalDivider()
+            }
+        }
+        item {
+            SettingsCard {
                 ToggleSetting(
                     title = stringResource(R.string.keep_screen_awake),
                     description = stringResource(R.string.keep_screen_awake_description),
@@ -536,6 +559,21 @@ fun SettingsScreen(
             },
         )
     }
+    if (showTitleLanguageDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.video_title_language),
+            choices = listOf(
+                VideoTitleLanguageMode.Original to stringResource(R.string.prefer_original_title),
+                VideoTitleLanguageMode.AppLanguage to stringResource(R.string.use_app_language_for_titles),
+            ),
+            selected = videoTitleLanguageMode,
+            onDismiss = { showTitleLanguageDialog = false },
+            onChoose = {
+                onVideoTitleLanguageModeChange(it)
+                showTitleLanguageDialog = false
+            },
+        )
+    }
     if (showDuckVolumeDialog) {
         ChoiceDialog(
             title = stringResource(R.string.reduced_playback_volume),
@@ -601,9 +639,14 @@ private fun SettingsSection(
             color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.titleMedium,
         )
-        Card(Modifier.fillMaxWidth()) {
-            Column(content = { content() })
-        }
+        SettingsCard(content)
+    }
+}
+
+@Composable
+private fun SettingsCard(content: @Composable () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(content = { content() })
     }
 }
 

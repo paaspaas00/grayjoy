@@ -242,6 +242,7 @@ class MainActivity : FragmentActivity() {
                     onUiLanguageChange = { languageTag ->
                         if (languageTag != AppLanguageManager.selectedLanguageTag(this@MainActivity)) {
                             AppLanguageManager.setSelectedLanguageTag(this@MainActivity, languageTag)
+                            viewModel.refreshVideoTitleLanguageConfiguration()
                             window.decorView.post { recreate() }
                         }
                     },
@@ -362,6 +363,7 @@ class MainActivity : FragmentActivity() {
                     onPreferredAudioBitrateChange = viewModel::setPreferredAudioBitrate,
                     onPreferredAudioLanguageChange = viewModel::setPreferredAudioLanguage,
                     onPreferOriginalAudioChange = viewModel::setPreferOriginalAudio,
+                    onVideoTitleLanguageModeChange = viewModel::setVideoTitleLanguageMode,
                     onStickyCaptionsChange = viewModel::setStickyCaptionsEnabled,
                     onShowRecommendationsChange = viewModel::setShowRecommendations,
                     onSearchHistoryChange = viewModel::setSearchHistoryEnabled,

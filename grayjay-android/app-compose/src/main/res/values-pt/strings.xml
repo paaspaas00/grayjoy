@@ -572,4 +572,7 @@
     <string name="app_language_description">%1$s · O Grayjoy reinicia quando o idioma é alterado.</string>
     <string name="hold_to_speed">Manter pressionado para velocidade 2×</string>
     <string name="hold_to_speed_description">Mantenha o player pressionado para reproduzir a 2× e solte para restaurar a velocidade anterior.</string>
+    <string name="video_title_language">Idioma dos títulos dos vídeos</string>
+    <string name="prefer_original_title">Preferir o título original</string>
+    <string name="use_app_language_for_titles">Usar o idioma da aplicação</string>
 </resources>

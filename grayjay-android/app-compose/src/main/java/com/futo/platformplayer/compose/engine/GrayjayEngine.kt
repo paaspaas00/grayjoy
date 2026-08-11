@@ -271,6 +271,8 @@ interface GrayjayEngine {
         preferredAudioLanguage: String? = "en",
         preferOriginalAudio: Boolean = true,
     ): VideoUiModel
+    fun configureVideoTitleLanguage(preferOriginal: Boolean, languageTag: String)
+    suspend fun loadStoryboard(video: VideoUiModel): StoryboardUiModel?
     suspend fun loadExtras(video: VideoUiModel): EngineVideoExtras
     suspend fun loadMoreRecommendations(continuationId: String): EngineVideoPage
     suspend fun loadMoreComments(continuationId: String): EngineCommentPage
@@ -978,22 +980,22 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             },
             resolvedAudioLanguage = source.selectedAudioLanguage,
             resolvedAudioIsOriginal = source.selectedAudioIsOriginal,
-            storyboard = source.storyboard?.let { storyboard ->
-                StoryboardUiModel(
-                    levels = storyboard.levels.map { level ->
-                        StoryboardLevelUiModel(
-                            width = level.width,
-                            height = level.height,
-                            frameCount = level.frameCount,
-                            columns = level.columns,
-                            rows = level.rows,
-                            intervalMs = level.intervalMs,
-                            sheetUrlTemplate = level.sheetUrlTemplate,
-                        )
-                    },
-                )
-            },
+            storyboard = source.storyboard?.toUiModel(),
         )
+    }
+
+    override fun configureVideoTitleLanguage(preferOriginal: Boolean, languageTag: String) {
+        pluginBackend.configureVideoTitleLanguage(preferOriginal, languageTag)
+    }
+
+    override suspend fun loadStoryboard(video: VideoUiModel): StoryboardUiModel? {
+        val endpoint = pluginEndpoints[video.sourceId] ?: return null
+        val contentUrl = video.pluginContentUrlOrNull() ?: return null
+        return pluginBackend.loadStoryboard(
+            sourceId = video.sourceId,
+            contentUrl = contentUrl,
+            endpoint = endpoint,
+        )?.toUiModel()
     }
 
     override suspend fun loadExtras(video: VideoUiModel): EngineVideoExtras {
@@ -1703,6 +1705,20 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         )
     }
 }
+
+private fun com.futo.platformplayer.backend.GrayjayStoryboard.toUiModel() = StoryboardUiModel(
+    levels = levels.map { level ->
+        StoryboardLevelUiModel(
+            width = level.width,
+            height = level.height,
+            frameCount = level.frameCount,
+            columns = level.columns,
+            rows = level.rows,
+            intervalMs = level.intervalMs,
+            sheetUrlTemplate = level.sheetUrlTemplate,
+        )
+    },
+)
 
 private fun GrayjaySearchItem.toVideoUiModel(endpoint: PluginEndpoint?, context: Context) = VideoUiModel(
     id = url,

@@ -91,6 +91,7 @@ import com.futo.platformplayer.compose.ui.YoutubeImportUiState
 import com.futo.platformplayer.backend.GrayjaySignatureMismatchException
 import com.futo.platformplayer.engine.exceptions.ScriptLoginRequiredException
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.ui.VideoTitleLanguageMode
 import com.futo.platformplayer.compose.update.GitHubReleaseChecker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
@@ -369,6 +370,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         content.channels.map(ChannelUiModel::id).toSet(),
     )
     private var allVideos = libraryRepository.loadSavedVideos()
+    private var savedVideosById = allVideos.associateBy(VideoUiModel::id)
     private val remoteVideos = linkedMapOf<String, VideoUiModel>()
     private val remoteChannels = linkedMapOf<String, ChannelUiModel>()
     private var enabledSourceIds: Set<String> = sourceRepository.loadEnabledSourceIds(engineSources)
@@ -381,11 +383,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var suggestionJob: Job? = null
     private var profileSwitchJob: Job? = null
     private var detailsJob: Job? = null
+    private var storyboardJob: Job? = null
     private var audioLanguageJob: Job? = null
     private var channelJob: Job? = null
     private var homeJob: Job? = null
     private var searchPagingJob: Job? = null
     private var homePagingJob: Job? = null
+    private var homeCacheWriteJob: Job? = null
     private var channelPagingJob: Job? = null
     private var remotePlaylistJob: Job? = null
     private var remotePlaylistPagingJob: Job? = null
@@ -455,6 +459,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             preferredAudioBitrate = preferences.preferredAudioBitrate,
             preferredAudioLanguage = preferences.preferredAudioLanguage,
             preferOriginalAudio = preferences.preferOriginalAudio,
+            videoTitleLanguageMode = preferences.videoTitleLanguageMode,
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
@@ -472,6 +477,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         engine.setProfile(activeProfileId)
+        configureVideoTitleLanguage()
         chromecastManager.onMediaEnded = {
             viewModelScope.launch(Dispatchers.Main.immediate) { skipToNext() }
         }
@@ -508,6 +514,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         }
                         scheduleResumePromptDismiss(currentVideo.id, currentVideo.resumePositionFraction())
                         applyPlaybackSpeed(currentVideo)
+                        requestStoryboard(currentVideo, playbackGeneration)
                         detailsJob = viewModelScope.launch { loadExtras(currentVideo) }
                     }
                 } else if (
@@ -655,6 +662,26 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(preferOriginalAudio = enabled) }
         setAudioLanguage(null)
     }
+
+    fun setVideoTitleLanguageMode(mode: VideoTitleLanguageMode) {
+        if (preferences.videoTitleLanguageMode == mode) return
+        preferences.videoTitleLanguageMode = mode
+        _uiState.update { it.copy(videoTitleLanguageMode = mode) }
+        configureVideoTitleLanguage()
+        // Existing cached titles reflect the old request locale. Keep the current screen stable,
+        // and make the next explicit feed/search/channel load use the selected policy.
+        HomeSessionCache.removeFeed(activeProfileId, HomeFeedType.Subscriptions)
+        homeFeedCache.remove(HomeFeedType.Subscriptions)
+    }
+
+    private fun configureVideoTitleLanguage() {
+        engine.configureVideoTitleLanguage(
+            preferOriginal = preferences.videoTitleLanguageMode == VideoTitleLanguageMode.Original,
+            languageTag = AppLanguageManager.effectiveLanguageTag(getApplication()),
+        )
+    }
+
+    fun refreshVideoTitleLanguageConfiguration() = configureVideoTitleLanguage()
 
     fun setStickyCaptionsEnabled(enabled: Boolean) {
         preferences.stickyCaptionsEnabled = enabled
@@ -899,7 +926,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         homeContinuationCache.clear()
         homeHasMoreCache.clear()
         snapshot.pages.forEach { (feed, page) ->
-            val videos = page.videos.map { it.withPersistedLibraryState() }
+            val videos = page.videos
+                .map { it.withPersistedLibraryState() }
+                .withKnownChannelPresentation()
             homeFeedCache[feed] = videos
             homeContinuationCache[feed] = page.continuationId
             homeHasMoreCache[feed] = page.hasMore
@@ -944,13 +973,19 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 },
         )
         HomeSessionCache.put(activeProfileId, snapshot)
-        homeCacheRepository.save(snapshot)
+        val repository = homeCacheRepository
+        homeCacheWriteJob?.cancel()
+        homeCacheWriteJob = viewModelScope.launch(Dispatchers.IO) {
+            repository.save(snapshot)
+        }
     }
 
     fun selectHomeFeed(feed: HomeFeedType) {
         if (_uiState.value.home.selectedFeed == feed && !_uiState.value.home.isLoading) return
         val cached = homeFeedCache[feed]
         if (cached != null) {
+            val presentedCache = cached.withKnownChannelPresentation()
+            homeFeedCache[feed] = presentedCache
             val cachedSubscriptionCount = if (feed == HomeFeedType.Subscriptions) {
                 visibleKnownChannels().count { channel ->
                     channel.id in followedCreatorIds && channel.sourceId in enabledSourceIds
@@ -962,7 +997,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 it.copy(
                     home = HomeUiState(
                         selectedFeed = feed,
-                        videos = cached,
+                        videos = presentedCache,
                         continuationId = homeContinuationCache[feed],
                         hasMore = homeHasMoreCache[feed] == true,
                         subscriptionsLoaded = cachedSubscriptionCount,
@@ -990,7 +1025,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val loadGeneration = ++homeLoadGeneration
         val cached = homeFeedCache[feed].orEmpty()
         val subscriptionTotal = if (feed == HomeFeedType.Subscriptions) {
-            followedCreatorIds.size
+            visibleKnownChannels().count { channel ->
+                channel.id in followedCreatorIds && channel.sourceId in enabledSourceIds
+            }
         } else {
             0
         }
@@ -1037,7 +1074,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         }
                     },
                 )
-                val videos = page.videos.map { it.withPersistedLibraryState() }
+                val previousById = cached.associateBy(VideoUiModel::id)
+                val videos = page.videos.map { fresh ->
+                    fresh.withPresentationFallback(previousById[fresh.id])
+                        .withPersistedLibraryState()
+                }.withKnownChannelPresentation(followedChannels)
                 videos.forEach { remoteVideos[it.id] = it }
                 videos.forEach(::registerRemoteChannel)
                 homeFeedCache[feed] = videos
@@ -1088,7 +1129,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         homePagingJob = viewModelScope.launch {
             try {
                 val page = engine.loadMoreHome(feed, continuationId)
-                val newVideos = page.videos.map { it.withPersistedLibraryState() }
+                val newVideos = page.videos
+                    .map { it.withPersistedLibraryState() }
+                    .withKnownChannelPresentation()
                 newVideos.forEach { remoteVideos[it.id] = it }
                 newVideos.forEach(::registerRemoteChannel)
                 _uiState.update { state ->
@@ -1151,6 +1194,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         watchProgressWriteJob?.join()
         invalidatePlaybackQueue()
         detailsJob?.cancel()
+        storyboardJob?.cancel()
         audioLanguageJob?.cancel()
         extrasPagingJob?.cancel()
         channelJob?.cancel()
@@ -1189,6 +1233,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         profileRepository.setActiveProfile(profileId)
         val application = getApplication<Application>()
         preferences = GrayjayPreferences(application, activeProfileId)
+        configureVideoTitleLanguage()
         libraryRepository = SharedPreferencesLibraryRepository(application, activeProfileId)
         homeCacheRepository = HomeCacheRepository(application, activeProfileId)
         sourceRepository = SharedPreferencesSourceRepository(application, activeProfileId)
@@ -1205,6 +1250,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             content.channels.map(ChannelUiModel::id).toSet(),
         )
         allVideos = libraryRepository.loadSavedVideos()
+        savedVideosById = allVideos.associateBy(VideoUiModel::id)
         remoteVideos.clear()
         remoteChannels.clear()
         homeFeedCache.clear()
@@ -1239,6 +1285,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             preferredAudioBitrate = preferences.preferredAudioBitrate,
             preferredAudioLanguage = preferences.preferredAudioLanguage,
             preferOriginalAudio = preferences.preferOriginalAudio,
+            videoTitleLanguageMode = preferences.videoTitleLanguageMode,
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
@@ -1577,6 +1624,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         recordHistory(video)
         pendingPlaybackVideoId = video.id
         detailsJob?.cancel()
+        storyboardJob?.cancel()
         extrasPagingJob?.cancel()
         // Interrupt the old item immediately, but keep its foreground playback service alive
         // while the replacement is resolved. Stopping and immediately restarting that service
@@ -1638,6 +1686,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 }
                 if (pendingPlaybackVideoId == video.id) pendingPlaybackVideoId = null
                 applyPlaybackPreferences()
+                requestStoryboard(resolved, generation)
                 loadExtras(resolved)
             } catch (error: CancellationException) {
                 throw error
@@ -1665,6 +1714,25 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         ),
                     )
                 }
+            }
+        }
+    }
+
+    private fun requestStoryboard(video: VideoUiModel, generation: Long) {
+        if (video.storyboard != null || video.isLive || video.playbackAudioOnly) return
+        storyboardJob?.cancel()
+        storyboardJob = viewModelScope.launch {
+            val storyboard = runCatching { engine.loadStoryboard(video) }.getOrNull() ?: return@launch
+            if (
+                generation != playbackGeneration ||
+                _uiState.value.nowPlaying.video?.id != video.id
+            ) return@launch
+            val updated = video.copy(storyboard = storyboard)
+            remoteVideos[updated.id] = updated
+            _uiState.update { state ->
+                if (state.nowPlaying.video?.id != video.id) state else state.copy(
+                    nowPlaying = state.nowPlaying.copy(video = updated),
+                )
             }
         }
     }
@@ -1775,6 +1843,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             knownVideoIds = queue.mapTo(linkedSetOf(), VideoUiModel::id),
         )
         detailsJob?.cancel()
+        storyboardJob?.cancel()
         extrasPagingJob?.cancel()
         engine.pausePlayback()
         _uiState.update {
@@ -1849,6 +1918,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }
             if (pendingPlaybackVideoId == first.id) pendingPlaybackVideoId = null
             applyPlaybackPreferences()
+            requestStoryboard(first, generation)
             prepareQueueLookAhead()
             loadExtras(first)
         }
@@ -2756,6 +2826,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         persistCurrentPlaybackProgress()
         engine.closePlayback()
         detailsJob?.cancel()
+        storyboardJob?.cancel()
         _uiState.update { it.copy(nowPlaying = NowPlayingUiState()) }
     }
 
@@ -4569,7 +4640,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         // called LibraryRepository.load() here, which reparsed the complete history JSON once per
         // search/home/channel result (80 full parses after a typical subscription refresh) and
         // twice while opening a video.
-        val saved = allVideos.firstOrNull { it.id == id } ?: return this
+        val saved = savedVideosById[id] ?: return this
         return copy(
             isWatchLater = saved.isWatchLater,
             isDownloaded = saved.isDownloaded,
@@ -4578,6 +4649,79 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             lastWatchedAt = saved.lastWatchedAt,
             playlistNames = saved.playlistNames,
         )
+    }
+
+    private fun VideoUiModel.withPresentationFallback(previous: VideoUiModel?): VideoUiModel {
+        if (previous == null) return this
+        return copy(
+            thumbnailUrl = thumbnailUrl.ifBlank { previous.thumbnailUrl },
+            authorThumbnailUrl = authorThumbnailUrl.ifBlank { previous.authorThumbnailUrl },
+            sourceIconUrl = sourceIconUrl.ifBlank { previous.sourceIconUrl },
+            duration = duration.ifBlank { previous.duration },
+            creator = creator.ifBlank { previous.creator },
+            metadata = metadata.ifBlank { previous.metadata },
+        )
+    }
+
+    /**
+     * YouTube's fast Atom subscription feed intentionally has no channel-avatar field. Reuse the
+     * already persisted subscription metadata instead of issuing another request per video.
+     */
+    private fun List<VideoUiModel>.withKnownChannelPresentation(
+        extraChannels: List<ChannelUiModel> = emptyList(),
+    ): List<VideoUiModel> {
+        if (isEmpty()) return this
+        val knownChannels = sequenceOf(
+            extraChannels.asSequence(),
+            content.channels.asSequence(),
+            remoteChannels.values.asSequence(),
+        ).flatten().distinctBy(ChannelUiModel::id).toList()
+        if (knownChannels.isEmpty()) return this
+
+        val byReference = HashMap<String, ChannelUiModel>(knownChannels.size * 2)
+        val byName = HashMap<String, ChannelUiModel>(knownChannels.size)
+        knownChannels.forEach { channel ->
+            creatorReferenceKey(channel.sourceId, channel.id)?.let { key ->
+                byReference.putIfAbsent(key, channel)
+            }
+            channel.name.trim().takeIf(String::isNotEmpty)?.let { name ->
+                byName.putIfAbsent(
+                    "${channel.sourceId.lowercase(Locale.ROOT)}|${name.lowercase(Locale.ROOT)}",
+                    channel,
+                )
+            }
+        }
+        return map { video ->
+            if (video.authorThumbnailUrl.isNotBlank()) return@map video
+            val channel = sequenceOf(video.authorUrl, video.channelId)
+                .mapNotNull { creatorReferenceKey(video.sourceId, it) }
+                .mapNotNull(byReference::get)
+                .firstOrNull()
+                ?: byName[
+                    "${video.sourceId.lowercase(Locale.ROOT)}|" +
+                        video.creator.trim().lowercase(Locale.ROOT)
+                ]
+            channel?.thumbnailUrl?.takeIf(String::isNotBlank)?.let { thumbnail ->
+                video.copy(authorThumbnailUrl = thumbnail)
+            } ?: video
+        }
+    }
+
+    private fun creatorReferenceKey(sourceId: String, rawReference: String): String? {
+        val reference = rawReference.trim().trimEnd('/').takeIf(String::isNotEmpty) ?: return null
+        val source = sourceId.lowercase(Locale.ROOT)
+        val parsed = runCatching { Uri.parse(reference) }.getOrNull()
+        val host = parsed?.host?.lowercase(Locale.ROOT)
+        if (!host.isNullOrBlank()) {
+            val path = parsed.path.orEmpty().trimEnd('/')
+            val segments = parsed.pathSegments
+            val channelIndex = segments.indexOf("channel")
+            if (channelIndex >= 0 && channelIndex < segments.lastIndex) {
+                return "$source|channel:${segments[channelIndex + 1]}"
+            }
+            return "$source|$host$path"
+        }
+        return "$source|$reference"
     }
 
     private suspend fun resolveForPlayback(
@@ -4831,6 +4975,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     ) {
         allVideos = savedVideos
         val saved = allVideos.associateBy(VideoUiModel::id)
+        savedVideosById = saved
         fun merge(video: VideoUiModel): VideoUiModel = saved[video.id]?.let { stored ->
             video.copy(
                 isWatchLater = stored.isWatchLater,
@@ -4872,6 +5017,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         transform: (VideoUiModel) -> VideoUiModel,
     ): GrayjayUiState {
         allVideos = allVideos.map { if (it.id == videoId) transform(it) else it }
+        savedVideosById = allVideos.associateBy(VideoUiModel::id)
         remoteVideos[videoId]?.let { remoteVideos[videoId] = transform(it) }
         homeFeedCache.replaceAll { _, videos ->
             videos.map { if (it.id == videoId) transform(it) else it }

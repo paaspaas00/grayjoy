@@ -105,6 +105,13 @@ private fun ImageView.loadRemoteImage(
         .into(this)
 }
 
+/** Enable AndroidView pooling in lazy lists and detach the previous Glide request on reuse. */
+private fun ImageView.resetRemoteImage() {
+    Glide.with(this).clear(this)
+    setTag(R.id.remote_image_request_key, null)
+    setImageDrawable(null)
+}
+
 internal fun youtubeThumbnailFallbackUrl(
     sourceId: String,
     videoId: String,
@@ -170,6 +177,7 @@ internal fun VideoCard(
     onLongClick: () -> Unit = {},
     selected: Boolean = false,
     showProgress: Boolean = false,
+    animateEntrance: Boolean = true,
 ) {
     CompactVideoCard(
         video = video,
@@ -180,6 +188,7 @@ internal fun VideoCard(
         onLongClick = onLongClick,
         selected = selected,
         showProgress = showProgress,
+        animateEntrance = animateEntrance,
     )
 }
 
@@ -194,8 +203,13 @@ internal fun CompactVideoCard(
     onLongClick: () -> Unit = {},
     selected: Boolean = false,
     showProgress: Boolean = false,
+    animateEntrance: Boolean = true,
 ) {
-    val entranceModifier = staggeredVideoEntrance(index = index, videoId = video.id)
+    val entranceModifier = staggeredVideoEntrance(
+        index = index,
+        videoId = video.id,
+        enabled = animateEntrance,
+    )
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -315,29 +329,29 @@ internal fun CompactVideoCard(
  * replaying the animation merely because it scrolled off screen and came back.
  */
 @Composable
-private fun staggeredVideoEntrance(index: Int, videoId: String): Modifier {
+private fun staggeredVideoEntrance(
+    index: Int,
+    videoId: String,
+    enabled: Boolean,
+): Modifier {
+    if (!enabled) return Modifier
     var entered by rememberSaveable(videoId) { mutableStateOf(false) }
-    val alpha by animateFloatAsState(
+    val progress by animateFloatAsState(
         targetValue = if (entered) 1f else 0f,
-        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-        label = "video-card-alpha",
+        animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing),
+        label = "video-card-entrance",
     )
-    val translation by animateFloatAsState(
-        targetValue = if (entered) 0f else 1f,
-        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
-        label = "video-card-translation",
-    )
-    val entranceDistancePx = with(LocalDensity.current) { 18.dp.toPx() }
+    val entranceDistancePx = with(LocalDensity.current) { 12.dp.toPx() }
 
     LaunchedEffect(videoId) {
         if (!entered) {
-            delay((index % 10) * 38L)
+            delay((index % 6) * 24L)
             entered = true
         }
     }
     return Modifier.graphicsLayer {
-        this.alpha = alpha
-        translationY = entranceDistancePx * translation
+        alpha = progress
+        translationY = entranceDistancePx * (1f - progress)
     }
 }
 
@@ -376,6 +390,7 @@ private fun CompactVideoThumbnail(
                         ),
                     )
                 },
+                onReset = { imageView -> imageView.resetRemoteImage() },
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -465,6 +480,7 @@ internal fun SourceIconImage(
                 update = { imageView ->
                     imageView.loadRemoteImage(iconUrl, placeholderColor)
                 },
+                onReset = { imageView -> imageView.resetRemoteImage() },
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -543,6 +559,7 @@ internal fun ChannelAvatarImage(
                         circleCrop = true,
                     )
                 },
+                onReset = { imageView -> imageView.resetRemoteImage() },
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -588,6 +605,7 @@ internal fun PlaylistRow(
                     update = { imageView ->
                         imageView.loadRemoteImage(playlist.thumbnailUrl, placeholderColor)
                     },
+                    onReset = { imageView -> imageView.resetRemoteImage() },
                     modifier = Modifier
                         .width(112.dp)
                         .height(64.dp)

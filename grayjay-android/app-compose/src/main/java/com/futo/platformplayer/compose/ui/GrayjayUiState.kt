@@ -21,6 +21,7 @@ data class GrayjayUiState(
     val preferredAudioBitrate: Int = Int.MAX_VALUE,
     val preferredAudioLanguage: String = "en",
     val preferOriginalAudio: Boolean = true,
+    val videoTitleLanguageMode: VideoTitleLanguageMode = VideoTitleLanguageMode.Original,
     val stickyCaptionsEnabled: Boolean = true,
     val showRecommendations: Boolean = true,
     val searchHistoryEnabled: Boolean = true,
@@ -50,6 +51,11 @@ data class GrayjayUiState(
     val externalNavigation: ExternalNavigationUiModel? = null,
     val availableUpdate: ReleaseUpdateUiModel? = null,
 )
+
+enum class VideoTitleLanguageMode {
+    Original,
+    AppLanguage,
+}
 
 data class PcLinkUiState(
     val pairedComputers: List<PairedComputerUiModel> = emptyList(),

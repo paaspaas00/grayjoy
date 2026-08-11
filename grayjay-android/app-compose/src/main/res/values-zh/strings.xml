@@ -572,4 +572,7 @@
     <string name="app_language_description">%1$s · 更改语言后 Grayjoy 将重新启动。</string>
     <string name="hold_to_speed">长按以 2 倍速播放</string>
     <string name="hold_to_speed_description">长按播放器时以 2 倍速播放，松开后恢复之前的速度。</string>
+    <string name="video_title_language">视频标题语言</string>
+    <string name="prefer_original_title">优先使用原标题</string>
+    <string name="use_app_language_for_titles">使用应用语言</string>
 </resources>

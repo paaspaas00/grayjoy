@@ -24,6 +24,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -128,6 +129,7 @@ fun HomeScreen(
             val feed = feeds[page]
             val isSelectedPage = home.selectedFeed == feed
             val listState = rememberLazyListState()
+            val presentedVideoIds = remember(feed) { mutableSetOf<String>() }
             RequestNextPageEffect(
                 listState = listState,
                 canLoadMore = isSelectedPage && home.hasMore &&
@@ -206,10 +208,14 @@ fun HomeScreen(
 
                     if (isSelectedPage) {
                         itemsIndexed(home.videos, key = { _, video -> video.id }) { index, video ->
+                            val animateEntrance = remember(video.id) {
+                                presentedVideoIds.add(video.id) && !listState.isScrollInProgress
+                            }
                             VideoCard(
                                 video = video,
                                 index = index,
                                 showProgress = feed == HomeFeedType.Subscriptions,
+                                animateEntrance = animateEntrance,
                                 onClick = { onVideoClick(video) },
                                 onLongClick = { onVideoLongClick(video) },
                             )

@@ -69,6 +69,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -79,13 +81,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
@@ -95,7 +97,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -193,7 +194,7 @@ private data class PlaybackPresentation(
     val activePlaylistDownloads: Set<PlaylistDownloadBatchUiModel>,
     val isPlaying: Boolean,
     val queueSize: Int,
-    val transitionProgress: Float,
+    val transition: PlayerTransitionState,
     val navigationBackProgress: Float,
     val onExpand: () -> Unit,
     val onCollapse: () -> Unit,
@@ -268,6 +269,7 @@ private data class PlaybackPresentation(
     val preferredAudioBitrate: Int,
     val preferredAudioLanguage: String,
     val preferOriginalAudio: Boolean,
+    val videoTitleLanguageMode: VideoTitleLanguageMode,
     val stickyCaptionsEnabled: Boolean,
     val showRecommendations: Boolean,
     val searchHistoryEnabled: Boolean,
@@ -286,6 +288,7 @@ private data class PlaybackPresentation(
     val onPreferredAudioBitrateChange: (Int) -> Unit,
     val onPreferredAudioLanguageChange: (String) -> Unit,
     val onPreferOriginalAudioChange: (Boolean) -> Unit,
+    val onVideoTitleLanguageModeChange: (VideoTitleLanguageMode) -> Unit,
     val onStickyCaptionsChange: (Boolean) -> Unit,
     val onShowRecommendationsChange: (Boolean) -> Unit,
     val onSearchHistoryChange: (Boolean) -> Unit,
@@ -305,6 +308,26 @@ private data class PlaybackPresentation(
     val chromecast: ChromecastUiState,
     val onOpenChromecast: () -> Unit,
 )
+
+/**
+ * Keeps frame-by-frame player morph state out of [GrayjayApp]'s restart scope. Reading a plain
+ * Float here used to rebuild the complete navigation tree, the active lazy list and Now Playing
+ * on every animation frame. Consumers that actually draw the morph observe this stable holder in
+ * their own small restart scopes instead.
+ */
+@Stable
+private class PlayerTransitionState(initialProgress: Float) {
+    var progress by mutableFloatStateOf(initialProgress)
+    var target by mutableFloatStateOf(initialProgress)
+    var isSettling by mutableStateOf(false)
+
+    fun snapTo(value: Float) {
+        val normalized = value.coerceIn(0f, 1f)
+        progress = normalized
+        target = normalized
+        isSettling = false
+    }
+}
 
 private data class SourcePresentation(
     val sources: List<SourceUiModel>,
@@ -428,6 +451,7 @@ fun GrayjayApp(
     onPreferredAudioBitrateChange: (Int) -> Unit,
     onPreferredAudioLanguageChange: (String) -> Unit,
     onPreferOriginalAudioChange: (Boolean) -> Unit,
+    onVideoTitleLanguageModeChange: (VideoTitleLanguageMode) -> Unit,
     onStickyCaptionsChange: (Boolean) -> Unit,
     onShowRecommendationsChange: (Boolean) -> Unit,
     onSearchHistoryChange: (Boolean) -> Unit,
@@ -514,7 +538,7 @@ fun GrayjayApp(
     val playbackVideo = uiState.nowPlaying.video?.takeIf {
         it.id == uiState.playback.currentVideoId
     } ?: availableVideosById[uiState.playback.currentVideoId]
-    var playerTransitionProgress by rememberSaveable { mutableFloatStateOf(1f) }
+    val playerTransition = remember { PlayerTransitionState(1f) }
     var navigationBackProgress by remember { mutableFloatStateOf(0f) }
     val playerTransitionScope = rememberCoroutineScope()
     var playerTransitionJob by remember { mutableStateOf<Job?>(null) }
@@ -523,13 +547,16 @@ fun GrayjayApp(
         if (target == 0f) {
             selectedVideoId = videoId ?: playbackVideo?.id
         }
+        playerTransition.target = target
+        playerTransition.isSettling = true
         playerTransitionJob = playerTransitionScope.launch {
             animate(
-                initialValue = playerTransitionProgress,
+                initialValue = playerTransition.progress,
                 targetValue = target,
-                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
-            ) { value, _ -> playerTransitionProgress = value }
-            playerTransitionProgress = target
+                animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+            ) { value, _ -> playerTransition.progress = value }
+            playerTransition.progress = target
+            playerTransition.isSettling = false
             if (target == 1f) {
                 selectedVideoId = null
                 isFullscreen = false
@@ -545,7 +572,7 @@ fun GrayjayApp(
     val onSelect: (GrayjayDestination) -> Unit = {
         destinationName = it.name
         selectedVideoId = null
-        playerTransitionProgress = 1f
+        playerTransition.snapTo(1f)
         selectedChannelId = null
         selectedPlaylistId = null
         nestedBackDestinationName = null
@@ -563,7 +590,7 @@ fun GrayjayApp(
         selectedChannelId = it.id
         selectedPlaylistId = null
         selectedVideoId = null
-        playerTransitionProgress = 1f
+        playerTransition.snapTo(1f)
     }
     val onPlaylistClick: (PlaylistUiModel) -> Unit = {
         if (it.sourceId.isNotBlank()) onLoadRemotePlaylist(it)
@@ -575,7 +602,7 @@ fun GrayjayApp(
         selectedPlaylistId = it.id
         selectedChannelId = null
         selectedVideoId = null
-        playerTransitionProgress = 1f
+        playerTransition.snapTo(1f)
     }
     LaunchedEffect(uiState.externalNavigation?.requestId) {
         val request = uiState.externalNavigation ?: return@LaunchedEffect
@@ -590,13 +617,13 @@ fun GrayjayApp(
                 selectedChannelId = request.contentId
                 selectedVideoId = null
                 selectedPlaylistId = null
-                playerTransitionProgress = 1f
+                playerTransition.snapTo(1f)
             }
             ExternalNavigationKind.Playlist -> {
                 selectedPlaylistId = request.contentId
                 selectedVideoId = null
                 selectedChannelId = null
-                playerTransitionProgress = 1f
+                playerTransition.snapTo(1f)
             }
         }
         onExternalNavigationHandled(request.requestId)
@@ -636,7 +663,7 @@ fun GrayjayApp(
         nestedBackDestinationName = selected.name
         destinationName = GrayjayDestination.Sources.name
         selectedVideoId = null
-        playerTransitionProgress = 1f
+        playerTransition.snapTo(1f)
         selectedChannelId = null
         selectedPlaylistId = null
     }
@@ -657,17 +684,19 @@ fun GrayjayApp(
         activePlaylistDownloads = uiState.activePlaylistDownloads,
         isPlaying = uiState.playback.isPlaying,
         queueSize = uiState.playback.queueVideoIds.size,
-        transitionProgress = playerTransitionProgress,
+        transition = playerTransition,
         navigationBackProgress = navigationBackProgress,
         onExpand = { settlePlayer(0f, playbackVideo?.id) },
         onCollapse = { settlePlayer(1f, selectedVideoId ?: playbackVideo?.id) },
         onTransitionDragStart = {
             playerTransitionJob?.cancel()
+            playerTransition.isSettling = false
             selectedVideoId = selectedVideoId ?: playbackVideo?.id
         },
         onTransitionProgressChange = {
             playerTransitionJob?.cancel()
-            playerTransitionProgress = it.coerceIn(0f, 1f)
+            playerTransition.isSettling = false
+            playerTransition.progress = it.coerceIn(0f, 1f)
         },
         onTransitionRelease = { target ->
             settlePlayer(target, selectedVideoId ?: playbackVideo?.id)
@@ -718,7 +747,7 @@ fun GrayjayApp(
         onLoadMoreComments = onLoadMoreComments,
         onClose = {
             playerTransitionJob?.cancel()
-            playerTransitionProgress = 1f
+            playerTransition.snapTo(1f)
             selectedVideoId = null
             onClosePlayback()
         },
@@ -776,6 +805,7 @@ fun GrayjayApp(
         preferredAudioBitrate = uiState.preferredAudioBitrate,
         preferredAudioLanguage = uiState.preferredAudioLanguage,
         preferOriginalAudio = uiState.preferOriginalAudio,
+        videoTitleLanguageMode = uiState.videoTitleLanguageMode,
         stickyCaptionsEnabled = uiState.stickyCaptionsEnabled,
         showRecommendations = uiState.showRecommendations,
         searchHistoryEnabled = uiState.searchHistoryEnabled,
@@ -794,6 +824,7 @@ fun GrayjayApp(
         onPreferredAudioBitrateChange = onPreferredAudioBitrateChange,
         onPreferredAudioLanguageChange = onPreferredAudioLanguageChange,
         onPreferOriginalAudioChange = onPreferOriginalAudioChange,
+        onVideoTitleLanguageModeChange = onVideoTitleLanguageModeChange,
         onStickyCaptionsChange = onStickyCaptionsChange,
         onShowRecommendationsChange = onShowRecommendationsChange,
         onSearchHistoryChange = onSearchHistoryChange,
@@ -820,7 +851,7 @@ fun GrayjayApp(
     LaunchedEffect(uiState.playback.currentVideoId, uiState.nowPlaying.video?.id) {
         if (uiState.playback.currentVideoId == null && uiState.nowPlaying.video == null) {
             playerTransitionJob?.cancel()
-            playerTransitionProgress = 1f
+            playerTransition.snapTo(1f)
             selectedVideoId = null
         }
         if (selectedVideoId != null) {
@@ -833,7 +864,7 @@ fun GrayjayApp(
             // Match legacy Grayjay: returning from PiP always expands the same player back into
             // Now Playing instead of revealing both the internal mini-player and the detail view.
             playerTransitionJob?.cancel()
-            playerTransitionProgress = 0f
+            playerTransition.snapTo(0f)
             selectedVideoId = playbackVideo.id
             fullscreenEnteredByRotation = false
             isFullscreen = false
@@ -904,8 +935,14 @@ fun GrayjayApp(
     LaunchedEffect(isFullscreen, portraitFullscreen) {
         onFullscreenPresentationChanged(isFullscreen, portraitFullscreen)
     }
-    LaunchedEffect(deviceIsLandscape, selectedVideo?.id, playerTransitionProgress) {
-        val expandedNowPlaying = selectedVideo != null && playerTransitionProgress < 0.01f
+    LaunchedEffect(
+        deviceIsLandscape,
+        selectedVideo?.id,
+        playerTransition.isSettling,
+        playerTransition.target,
+    ) {
+        val expandedNowPlaying = selectedVideo != null &&
+            !playerTransition.isSettling && playerTransition.target < 0.01f
         when {
             deviceIsLandscape && expandedNowPlaying && !isFullscreen && !portraitFullscreen -> {
                 fullscreenEnteredByRotation = true
@@ -920,14 +957,14 @@ fun GrayjayApp(
 
     PredictiveBackHandler(
         enabled = isFullscreen || (
-            selectedVideo != null || playerTransitionProgress < 0.999f ||
+            selectedVideo != null ||
                 selectedChannel != null ||
                 selectedPlaylist != null || nestedBackDestinationName != null
                     || topLevelBackDestination(selected) != null
             ),
     ) { backEvents ->
         val minimizesPlayer = !isFullscreen &&
-            (selectedVideo != null || playerTransitionProgress < 0.999f)
+            selectedVideo != null
         if (minimizesPlayer) {
             playback.onTransitionDragStart()
             try {
@@ -1438,10 +1475,7 @@ private fun GrayjayScaffold(
     var rootHeightPx by remember { mutableFloatStateOf(0f) }
     var isTransitionDragging by remember { mutableStateOf(false) }
     val transitionVideo = selectedVideo ?: playback.video
-    val transitionActive = transitionVideo != null &&
-        (selectedVideo != null || playback.transitionProgress < 0.999f)
-    val transitionMiniChromeAlpha =
-        ((playback.transitionProgress - 0.8f) / 0.2f).coerceIn(0f, 1f)
+    val transitionActive = transitionVideo != null && selectedVideo != null
     val predictiveBackTransform = Modifier.graphicsLayer {
         val progress = playback.navigationBackProgress.coerceIn(0f, 1f)
         transformOrigin = TransformOrigin(0f, 0.5f)
@@ -1458,7 +1492,7 @@ private fun GrayjayScaffold(
         } else {
             with(density) { 560.dp.toPx() }
         }
-        playback.onTransitionProgressChange(playback.transitionProgress + delta / travel)
+        playback.onTransitionProgressChange(playback.transition.progress + delta / travel)
     }
     val transitionDragModifier = Modifier.draggable(
         state = dragState,
@@ -1472,7 +1506,7 @@ private fun GrayjayScaffold(
             val target = when {
                 velocity > 1_200f -> 1f
                 velocity < -1_200f -> 0f
-                playback.transitionProgress >= 0.5f -> 1f
+                playback.transition.progress >= 0.5f -> 1f
                 else -> 0f
             }
             playback.onTransitionRelease(target)
@@ -1800,6 +1834,8 @@ private fun GrayjayScaffold(
                         onPreferredAudioLanguageChange = playback.onPreferredAudioLanguageChange,
                         preferOriginalAudio = playback.preferOriginalAudio,
                         onPreferOriginalAudioChange = playback.onPreferOriginalAudioChange,
+                        videoTitleLanguageMode = playback.videoTitleLanguageMode,
+                        onVideoTitleLanguageModeChange = playback.onVideoTitleLanguageModeChange,
                         stickyCaptionsEnabled = playback.stickyCaptionsEnabled,
                         onStickyCaptionsChange = playback.onStickyCaptionsChange,
                         showRecommendations = playback.showRecommendations,
@@ -1844,43 +1880,54 @@ private fun GrayjayScaffold(
         }
 
         if (transitionActive) {
-            val transitionProgress = playback.transitionProgress.coerceIn(0f, 1f)
-            val contentAlpha = ((0.7f - transitionProgress) / 0.7f).coerceIn(0f, 1f)
             val expanded = expandedPlayerBounds
             val minimized = miniPlayerBounds
-            val overlayTop = (minimized?.top ?: 0f) * transitionProgress
-            val overlayHeight = if (rootHeightPx > 0f && minimized != null) {
-                lerp(rootHeightPx, minimized.height, transitionProgress)
-            } else {
-                rootHeightPx.coerceAtLeast(1f)
-            }
-            val overlayContentOffsetY = -(expanded?.top ?: 0f) * transitionProgress
-            val overlayTransformY = overlayTop + overlayContentOffsetY
-            val transitionSurfaceColor = androidx.compose.ui.graphics.lerp(
-                MaterialTheme.colorScheme.surface,
-                MaterialTheme.colorScheme.surfaceContainerHigh,
-                transitionProgress,
-            )
-            TransitionViewport(
-                viewportHeightPx = overlayHeight,
-                contentHeightPx = rootHeightPx.coerceAtLeast(1f),
+            val expandedTop = expanded?.top ?: 0f
+            val minimizedTop = minimized?.top ?: 0f
+            val minimizedHeight = minimized?.height
+            val expandedSurfaceColor = MaterialTheme.colorScheme.surface
+            val minimizedSurfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            Box(
                 modifier = Modifier
-                    .offset { IntOffset(0, overlayTop.roundToInt()) }
-                    .fillMaxWidth()
-                    .background(transitionSurfaceColor)
-                    .clipToBounds()
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationY = minimizedTop * playback.transition.progress
+                    }
+                    .drawWithContent {
+                        val transitionProgress = playback.transition.progress.coerceIn(0f, 1f)
+                        val overlayHeight = if (rootHeightPx > 0f && minimizedHeight != null) {
+                            lerp(rootHeightPx, minimizedHeight, transitionProgress)
+                        } else {
+                            rootHeightPx.coerceAtLeast(1f)
+                        }
+                        clipRect(bottom = overlayHeight) {
+                            drawRect(
+                                androidx.compose.ui.graphics.lerp(
+                                    expandedSurfaceColor,
+                                    minimizedSurfaceColor,
+                                    transitionProgress,
+                                ),
+                            )
+                            this@drawWithContent.drawContent()
+                        }
+                    }
                     .zIndex(1f),
             ) {
                 Box(Modifier.fillMaxSize()) {
                     Scaffold(
                         modifier = Modifier
-                            .offset { IntOffset(0, overlayContentOffsetY.roundToInt()) }
-                            .fillMaxSize(),
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                translationY = -expandedTop * playback.transition.progress
+                            },
                         containerColor = Color.Transparent,
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         topBar = {
                             CenterAlignedTopAppBar(
-                                modifier = Modifier.graphicsLayer { alpha = contentAlpha },
+                                modifier = Modifier.graphicsLayer {
+                                    alpha = ((0.7f - playback.transition.progress) / 0.7f)
+                                        .coerceIn(0f, 1f)
+                                },
                                 title = {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
@@ -1931,7 +1978,10 @@ private fun GrayjayScaffold(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(contentPadding)
-                                .graphicsLayer { alpha = contentAlpha },
+                                .graphicsLayer {
+                                    alpha = ((0.7f - playback.transition.progress) / 0.7f)
+                                        .coerceIn(0f, 1f)
+                                },
                         ) {
                             VideoDetailScreen(
                                 video = transitionVideo,
@@ -2008,6 +2058,11 @@ private fun GrayjayScaffold(
                                 onResumeFromHistory = playback.onResumeFromHistory,
                                 renderPlayer = false,
                                 onPlayerBoundsChanged = { measuredBounds ->
+                                    val transitionProgress = playback.transition.progress
+                                        .coerceIn(0f, 1f)
+                                    val overlayTransformY =
+                                        minimizedTop * transitionProgress -
+                                            expandedTop * transitionProgress
                                     val normalizedBounds = Rect(
                                         left = measuredBounds.left,
                                         top = measuredBounds.top - overlayTransformY,
@@ -2025,24 +2080,10 @@ private fun GrayjayScaffold(
                             )
                         }
                     }
-                    if (minimized != null && transitionMiniChromeAlpha > 0.001f) {
-                        MiniPlayerChrome(
+                    if (minimized != null) {
+                        TransitionMiniPlayerChrome(
+                            playback = playback,
                             video = transitionVideo,
-                            isPlaying = playback.isPlaying,
-                            progress = if (playback.state.durationMs > 0) {
-                                playback.state.positionMs.toFloat() / playback.state.durationMs
-                            } else {
-                                0f
-                            },
-                            canSkip = playback.queueSize > 1,
-                            onTogglePlayback = playback.onToggle,
-                            onSkipToNext = playback.onNext,
-                            onClose = playback.onClose,
-                            applyTestTags = false,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .graphicsLayer { alpha = transitionMiniChromeAlpha }
-                                .clearAndSetSemantics { },
                         )
                     }
                 }
@@ -2054,13 +2095,8 @@ private fun GrayjayScaffold(
         if (transitionVideo != null && (expanded != null || minimized != null)) {
             val start = expanded ?: minimized!!
             val end = minimized ?: expanded!!
-            val progress = playback.transitionProgress.coerceIn(0f, 1f)
-            val left = lerp(start.left, end.left, progress)
-            val top = lerp(start.top, end.top, progress)
-            val width = lerp(start.width, end.width, progress).coerceAtLeast(1f)
-            val height = lerp(start.height, end.height, progress).coerceAtLeast(1f)
             val queueIndex = playback.state.queueVideoIds.indexOf(playback.state.currentVideoId)
-            if (!(transitionVideo.playbackAudioOnly && progress >= 0.999f)) PlayerSurface(
+            if (!transitionVideo.playbackAudioOnly || transitionActive) PlayerSurface(
                 video = transitionVideo,
                 player = playback.player,
                 playback = playback.state,
@@ -2091,23 +2127,83 @@ private fun GrayjayScaffold(
                 onSubtitleLanguageChange = playback.onSubtitleLanguageChange,
                 onRetryPlayback = playback.onRetry,
                 onFullscreen = playback.onEnterFullscreen,
-                controlsAlpha = if (!isTransitionDragging && progress <= 0.001f) 1f else 0f,
+                controlsAlpha = if (
+                    transitionActive && !isTransitionDragging &&
+                    !playback.transition.isSettling && playback.transition.target <= 0.001f
+                ) 1f else 0f,
                 resumePositionFraction = playback.nowPlaying.resumePositionFraction,
                 onResumeFromHistory = playback.onResumeFromHistory,
-                modifier = Modifier
-                    .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
-                    .size(
-                        width = with(density) { width.toDp() },
-                        height = with(density) { height.toDp() },
-                    )
+                modifier = (if (transitionActive && expanded != null) {
+                    Modifier
+                        .offset {
+                            val progress = playback.transition.progress.coerceIn(0f, 1f)
+                            IntOffset(
+                                lerp(start.left, end.left, progress).roundToInt(),
+                                lerp(start.top, end.top, progress).roundToInt(),
+                            )
+                        }
+                        .size(
+                            width = with(density) { start.width.toDp() },
+                            height = with(density) { start.height.toDp() },
+                        )
+                        .graphicsLayer {
+                            val progress = playback.transition.progress.coerceIn(0f, 1f)
+                            transformOrigin = TransformOrigin(0f, 0f)
+                            scaleX = lerp(start.width, end.width, progress) / start.width
+                            scaleY = lerp(start.height, end.height, progress) / start.height
+                            alpha = if (transitionVideo.playbackAudioOnly) {
+                                1f - progress
+                            } else {
+                                1f
+                            }
+                        }
+                } else {
+                    Modifier
+                        .offset {
+                            IntOffset(end.left.roundToInt(), end.top.roundToInt())
+                        }
+                        .size(
+                            width = with(density) { end.width.toDp() },
+                            height = with(density) { end.height.toDp() },
+                        )
+                })
                     .then(transitionDragModifier)
-                    .graphicsLayer {
-                        alpha = if (transitionVideo.playbackAudioOnly) 1f - progress else 1f
-                    }
                     .zIndex(2f),
             )
         }
     }
+}
+
+@Composable
+private fun TransitionMiniPlayerChrome(
+    playback: PlaybackPresentation,
+    video: VideoUiModel,
+) {
+    val visible by remember(playback.transition) {
+        derivedStateOf { playback.transition.progress > 0.8f }
+    }
+    if (!visible) return
+    MiniPlayerChrome(
+        video = video,
+        isPlaying = playback.isPlaying,
+        progress = if (playback.state.durationMs > 0) {
+            playback.state.positionMs.toFloat() / playback.state.durationMs
+        } else {
+            0f
+        },
+        canSkip = playback.queueSize > 1,
+        onTogglePlayback = playback.onToggle,
+        onSkipToNext = playback.onNext,
+        onClose = playback.onClose,
+        applyTestTags = false,
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                alpha = ((playback.transition.progress - 0.8f) / 0.2f)
+                    .coerceIn(0f, 1f)
+            }
+            .clearAndSetSemantics { },
+    )
 }
 
 private fun lerp(start: Float, end: Float, progress: Float): Float =
@@ -2115,30 +2211,6 @@ private fun lerp(start: Float, end: Float, progress: Float): Float =
 
 private fun VideoUiModel.playbackChannelKey(): String = authorUrl.ifBlank {
     channelId.ifBlank { "$sourceId:$creator" }
-}
-
-@Composable
-private fun TransitionViewport(
-    viewportHeightPx: Float,
-    contentHeightPx: Float,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    Layout(
-        modifier = modifier,
-        content = content,
-    ) { measurables, constraints ->
-        val width = constraints.maxWidth.coerceAtLeast(1)
-        val contentHeight = contentHeightPx.roundToInt().coerceAtLeast(1)
-        val viewportHeight = viewportHeightPx.roundToInt()
-            .coerceIn(1, constraints.maxHeight.coerceAtLeast(1))
-        val placeables = measurables.map { measurable ->
-            measurable.measure(Constraints.fixed(width, contentHeight))
-        }
-        layout(width, viewportHeight) {
-            placeables.forEach { it.place(0, 0) }
-        }
-    }
 }
 
 @Composable

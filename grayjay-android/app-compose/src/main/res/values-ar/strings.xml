@@ -572,4 +572,7 @@
     <string name="app_language_description">%1$s · تتم إعادة تشغيل Grayjoy عند تغيير اللغة.</string>
     <string name="hold_to_speed">الضغط المطوّل لسرعة 2×</string>
     <string name="hold_to_speed_description">المس المشغّل مطولًا للتشغيل بسرعة 2×، ثم ارفع إصبعك لاستعادة السرعة السابقة.</string>
+    <string name="video_title_language">لغة عناوين الفيديو</string>
+    <string name="prefer_original_title">تفضيل العنوان الأصلي</string>
+    <string name="use_app_language_for_titles">استخدام لغة التطبيق</string>
 </resources>

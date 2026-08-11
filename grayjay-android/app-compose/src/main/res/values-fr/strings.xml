@@ -572,4 +572,7 @@
     <string name="app_language_description">%1$s · Grayjoy redémarre après un changement de langue.</string>
     <string name="hold_to_speed">Maintenir pour la vitesse 2×</string>
     <string name="hold_to_speed_description">Maintenez le lecteur appuyé pour lire à 2×, puis relâchez pour rétablir la vitesse précédente.</string>
+    <string name="video_title_language">Langue des titres vidéo</string>
+    <string name="prefer_original_title">Préférer le titre original</string>
+    <string name="use_app_language_for_titles">Utiliser la langue de l’application</string>
 </resources>

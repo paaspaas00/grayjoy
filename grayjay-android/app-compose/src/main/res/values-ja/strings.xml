@@ -572,4 +572,7 @@
     <string name="app_language_description">%1$s · 言語を変更すると Grayjoy が再起動します。</string>
     <string name="hold_to_speed">長押しで2倍速</string>
     <string name="hold_to_speed_description">プレーヤーを長押ししている間は2倍速で再生し、離すと元の速度に戻ります。</string>
+    <string name="video_title_language">動画タイトルの言語</string>
+    <string name="prefer_original_title">元のタイトルを優先</string>
+    <string name="use_app_language_for_titles">アプリの言語を使用</string>
 </resources>

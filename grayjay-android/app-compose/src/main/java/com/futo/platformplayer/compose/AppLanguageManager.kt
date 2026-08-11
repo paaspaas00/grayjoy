@@ -58,6 +58,14 @@ internal object AppLanguageManager {
             ?.nativeName
             ?: systemDefaultLabel
 
+    fun effectiveLanguageTag(context: Context): String {
+        val selected = selectedLanguageTag(context)
+        if (selected.isNotBlank()) return selected
+        return context.resources.configuration.locales.get(0)?.toLanguageTag()
+            ?.takeIf(String::isNotBlank)
+            ?: Locale.getDefault().toLanguageTag()
+    }
+
     internal fun normalizeLanguageTag(languageTag: String?): String {
         val requested = languageTag.orEmpty().trim()
         if (requested.isEmpty()) return SYSTEM_LANGUAGE_TAG

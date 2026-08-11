@@ -572,4 +572,7 @@
     <string name="app_language_description">%1$s · После смены языка Grayjoy перезапустится.</string>
     <string name="hold_to_speed">Удерживать для скорости 2×</string>
     <string name="hold_to_speed_description">Нажмите и удерживайте проигрыватель для скорости 2×, затем отпустите, чтобы вернуть прежнюю скорость.</string>
+    <string name="video_title_language">Язык названий видео</string>
+    <string name="prefer_original_title">Предпочитать оригинальное название</string>
+    <string name="use_app_language_for_titles">Использовать язык приложения</string>
 </resources>

@@ -572,4 +572,7 @@
     <string name="app_language_description">%1$s · Grayjoy wird nach einem Sprachwechsel neu gestartet.</string>
     <string name="hold_to_speed">Für 2×-Geschwindigkeit gedrückt halten</string>
     <string name="hold_to_speed_description">Halte den Player gedrückt, um mit 2× abzuspielen. Beim Loslassen wird die vorherige Geschwindigkeit wiederhergestellt.</string>
+    <string name="video_title_language">Sprache der Videotitel</string>
+    <string name="prefer_original_title">Originaltitel bevorzugen</string>
+    <string name="use_app_language_for_titles">App-Sprache verwenden</string>
 </resources>
