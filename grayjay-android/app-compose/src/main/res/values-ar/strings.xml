@@ -186,6 +186,8 @@
     <string name="new_playlist">قائمة تشغيل جديدة</string>
     <string name="add_to_playlist">أضف إلى قائمة التشغيل</string>
     <string name="playlist_name">اسم قائمة التشغيل</string>
+    <string name="search_playlists">البحث في قوائم التشغيل</string>
+    <string name="no_playlists_found">لم يتم العثور على قوائم تشغيل</string>
     <string name="rename_playlist">إعادة تسمية قائمة التشغيل</string>
     <string name="save">حفظ</string>
     <string name="manage_subscriptions">إدارة الاشتراكات</string>

@@ -192,6 +192,8 @@
     <string name="new_playlist">Nuova playlist</string>
     <string name="add_to_playlist">Aggiungi alla playlist</string>
     <string name="playlist_name">Nome playlist</string>
+    <string name="search_playlists">Cerca playlist</string>
+    <string name="no_playlists_found">Nessuna playlist trovata</string>
     <string name="rename_playlist">Rinomina playlist</string>
     <string name="save">Salva</string>
 

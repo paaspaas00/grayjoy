@@ -398,6 +398,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var downloadQueueRestoreJob: Job? = null
     private var offlinePlaylistSyncJob: Job? = null
     private var queuePreparationJob: Job? = null
+    private var queueMutationJob: Job? = null
     private var watchProgressWriteJob: Job? = null
     private var externalUrlJob: Job? = null
     private var releaseCheckJob: Job? = null
@@ -1193,6 +1194,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         // intentionally off the main thread, but a profile switch is also a durability boundary.
         watchProgressWriteJob?.join()
         invalidatePlaybackQueue()
+        queueMutationJob?.cancel()
         detailsJob?.cancel()
         storyboardJob?.cancel()
         audioLanguageJob?.cancel()
@@ -1745,7 +1747,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun enqueueVideos(videoIds: List<String>) {
         val requested = videoIds.distinct().mapNotNull(::findVideo)
         if (requested.isEmpty()) return
+        queueMutationJob?.cancel()
+        queueMutationJob = viewModelScope.launch {
+            enqueueVideosWithoutBlockingUi(requested)
+        }
+    }
 
+    private suspend fun enqueueVideosWithoutBlockingUi(requested: List<VideoUiModel>) {
+        val profileAtStart = activeProfileId
+        val repositoryAtStart = libraryRepository
+        val generationAtStart = playbackGeneration
         val currentPlayback = engine.playback.value
         val currentSession = playbackQueueSession
         val additionIds = unqueuedVideoIds(
@@ -1759,11 +1770,25 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val currentVideoId = currentPlayback.currentVideoId
             ?: _uiState.value.nowPlaying.video?.id
         if (currentVideoId == null || engine.player.mediaItemCount == 0) {
-            val created = libraryRepository.createPlaylist(playedOnPlaylistTitle(), requested)
-                ?: return
-            reloadLibrary()
-            activePlaylistId = created.id
-            startQueue(created.videoIds)
+            val createdSnapshot = withContext(Dispatchers.IO) {
+                val created = repositoryAtStart.createPlaylist(
+                    playedOnPlaylistTitle(repositoryAtStart),
+                    requested,
+                ) ?: return@withContext null
+                Triple(
+                    created,
+                    repositoryAtStart.loadSavedVideos(),
+                    repositoryAtStart.loadPlaylists(),
+                )
+            } ?: return
+            if (
+                profileAtStart != activeProfileId ||
+                repositoryAtStart !== libraryRepository ||
+                generationAtStart != playbackGeneration
+            ) return
+            applyLibrarySnapshot(createdSnapshot.second, createdSnapshot.third)
+            activePlaylistId = createdSnapshot.first.id
+            startQueue(createdSnapshot.first.videoIds)
             return
         }
 
@@ -1775,28 +1800,40 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 addAll(additions.map(VideoUiModel::id))
             }.distinct()
             val snapshotVideos = snapshotIds.mapNotNull(::findVideo)
-            val created = libraryRepository.createPlaylist(
-                playedOnPlaylistTitle(),
-                snapshotVideos,
-            ) ?: return
-            reloadLibrary()
-            activePlaylistId = created.id
+            val createdSnapshot = withContext(Dispatchers.IO) {
+                val created = repositoryAtStart.createPlaylist(
+                    playedOnPlaylistTitle(repositoryAtStart),
+                    snapshotVideos,
+                ) ?: return@withContext null
+                Triple(
+                    created,
+                    repositoryAtStart.loadSavedVideos(),
+                    repositoryAtStart.loadPlaylists(),
+                )
+            } ?: return
+            if (
+                profileAtStart != activeProfileId ||
+                repositoryAtStart !== libraryRepository ||
+                generationAtStart != playbackGeneration
+            ) return
+            applyLibrarySnapshot(createdSnapshot.second, createdSnapshot.third)
+            activePlaylistId = createdSnapshot.first.id
             queueSession = if (currentSession == null) {
                 PlaybackQueueSession(
-                    generation = playbackGeneration,
-                    profileId = activeProfileId,
-                    playlistId = created.id,
+                    generation = generationAtStart,
+                    profileId = profileAtStart,
+                    playlistId = createdSnapshot.first.id,
                     pendingVideos = mutableListOf(),
                     knownVideoIds = currentPlayback.queueVideoIds.toMutableSet(),
                 )
             } else {
-                currentSession.copy(playlistId = created.id)
+                currentSession.copy(playlistId = createdSnapshot.first.id)
             }
             playbackQueueSession = queueSession
         } else if (queueSession == null) {
             queueSession = PlaybackQueueSession(
-                generation = playbackGeneration,
-                profileId = activeProfileId,
+                generation = generationAtStart,
+                profileId = profileAtStart,
                 playlistId = activePlaylistId,
                 pendingVideos = mutableListOf(),
                 knownVideoIds = currentPlayback.queueVideoIds.toMutableSet(),
@@ -3723,17 +3760,29 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun createPlaylist(title: String, videoIds: List<String>) {
         val videos = videoIds.distinct().mapNotNull(::findVideo)
         if (videos.isEmpty()) return
-        libraryRepository.createPlaylist(title, videos)
-        reloadLibrary()
+        val profileAtStart = activeProfileId
+        val repositoryAtStart = libraryRepository
+        viewModelScope.launch {
+            val snapshot = withContext(Dispatchers.IO) {
+                repositoryAtStart.createPlaylist(title, videos) ?: return@withContext null
+                repositoryAtStart.loadSavedVideos() to repositoryAtStart.loadPlaylists()
+            } ?: return@launch
+            if (
+                profileAtStart == activeProfileId &&
+                repositoryAtStart === libraryRepository
+            ) {
+                applyLibrarySnapshot(snapshot.first, snapshot.second)
+            }
+        }
     }
 
-    private fun playedOnPlaylistTitle(): String {
+    private fun playedOnPlaylistTitle(repository: LibraryRepository = libraryRepository): String {
         val formattedDate = DateFormat.getDateTimeInstance(
             DateFormat.MEDIUM,
             DateFormat.SHORT,
         ).format(Date())
         val base = text(R.string.played_on_date, formattedDate)
-        val existing = libraryRepository.loadPlaylists().map(PlaylistUiModel::title)
+        val existing = repository.loadPlaylists().map(PlaylistUiModel::title)
         if (!playlistTitleExists(base, existing)) return base
         var suffix = 2
         while (playlistTitleExists("$base ($suffix)", existing)) suffix += 1
@@ -3760,26 +3809,42 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun addVideosToPlaylist(playlistId: String, videoIds: List<String>) {
         val videos = videoIds.distinct().mapNotNull(::findVideo)
         if (videos.isEmpty()) return
-        val existingIds = libraryRepository.loadPlaylists()
-            .firstOrNull { it.id == playlistId }
-            ?.videoIds
-            ?.toSet()
-            ?: return
-        val addedVideos = videos.filterNot { it.id in existingIds }
-        libraryRepository.addVideosToPlaylist(playlistId, videos) ?: return
-        reloadLibrary()
-        scheduleOfflinePlaylistSync()
-        val session = playbackQueueSession
-        if (
-            playlistId == activePlaylistId &&
-            session?.playlistId == playlistId &&
-            session.generation == playbackGeneration &&
-            addedVideos.isNotEmpty()
-        ) {
-            addedVideos.forEach { video ->
-                if (session.knownVideoIds.add(video.id)) session.pendingVideos += video
+        val profileAtStart = activeProfileId
+        val repositoryAtStart = libraryRepository
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val existingIds = repositoryAtStart.loadPlaylists()
+                    .firstOrNull { it.id == playlistId }
+                    ?.videoIds
+                    ?.toSet()
+                    ?: return@withContext null
+                val addedVideos = videos.filterNot { it.id in existingIds }
+                repositoryAtStart.addVideosToPlaylist(playlistId, videos)
+                    ?: return@withContext null
+                Triple(
+                    addedVideos,
+                    repositoryAtStart.loadSavedVideos(),
+                    repositoryAtStart.loadPlaylists(),
+                )
+            } ?: return@launch
+            if (
+                profileAtStart != activeProfileId ||
+                repositoryAtStart !== libraryRepository
+            ) return@launch
+            applyLibrarySnapshot(result.second, result.third)
+            scheduleOfflinePlaylistSync()
+            val session = playbackQueueSession
+            if (
+                playlistId == activePlaylistId &&
+                session?.playlistId == playlistId &&
+                session.generation == playbackGeneration &&
+                result.first.isNotEmpty()
+            ) {
+                result.first.forEach { video ->
+                    if (session.knownVideoIds.add(video.id)) session.pendingVideos += video
+                }
+                prepareQueueLookAhead()
             }
-            prepareQueueLookAhead()
         }
     }
 
@@ -4328,6 +4393,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         suggestionJob?.cancel()
         detailsJob?.cancel()
         queuePreparationJob?.cancel()
+        queueMutationJob?.cancel()
         extrasPagingJob?.cancel()
         channelJob?.cancel()
         channelPagingJob?.cancel()

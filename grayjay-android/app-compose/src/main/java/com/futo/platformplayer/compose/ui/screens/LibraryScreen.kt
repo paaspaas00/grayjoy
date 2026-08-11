@@ -136,6 +136,7 @@ internal fun LibraryScreen(
     var showExportSheet by rememberSaveable { mutableStateOf(false) }
     var pendingExportMediaType by rememberSaveable { mutableStateOf<DownloadMediaType?>(null) }
     var renamingPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
+    var playlistQuery by rememberSaveable { mutableStateOf("") }
     val selectedVideoIds = remember { mutableStateListOf<String>() }
     val selectedPlaylistIds = remember { mutableStateListOf<String>() }
     val filters = LibraryFilter.entries
@@ -146,6 +147,9 @@ internal fun LibraryScreen(
     val filterListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val activeFilter by rememberUpdatedState(selectedFilter)
+    val matchingPlaylists = remember(playlists, playlistQuery) {
+        playlistsMatchingQuery(playlists, playlistQuery)
+    }
 
     fun leaveSelectionMode() {
         selectionMode = false
@@ -312,7 +316,13 @@ internal fun LibraryScreen(
             )
         }
         if (pageFilter == LibraryFilter.Playlists) {
-            items(playlists, key = PlaylistUiModel::id) { playlist ->
+            item(key = "playlist-search") {
+                PlaylistSearchField(
+                    query = playlistQuery,
+                    onQueryChange = { playlistQuery = it },
+                )
+            }
+            items(matchingPlaylists, key = PlaylistUiModel::id) { playlist ->
                 PlaylistRow(
                     playlist = playlist,
                     selected = playlist.id in selectedPlaylistIds,
@@ -400,6 +410,20 @@ internal fun LibraryScreen(
                 Text(
                     stringResource(R.string.nothing_here_yet),
                     modifier = Modifier.padding(vertical = 32.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        }
+        if (
+            pageFilter == LibraryFilter.Playlists &&
+            playlists.isNotEmpty() &&
+            matchingPlaylists.isEmpty()
+        ) {
+            item(key = "no-playlist-search-results") {
+                Text(
+                    stringResource(R.string.no_playlists_found),
+                    modifier = Modifier.padding(vertical = 24.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyLarge,
                 )

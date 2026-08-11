@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose.ui.screens
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadUiModel
+import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -40,6 +41,25 @@ class LibraryFilterTest {
         )
     }
 
+    @Test
+    fun playlistSearchIsCaseInsensitiveAndPreservesAllItemsForBlankQueries() {
+        val playlists = listOf(
+            playlist("one", "Road Trip"),
+            playlist("two", "Research"),
+            playlist("three", "Live sets"),
+        )
+
+        assertEquals(playlists, playlistsMatchingQuery(playlists, "  "))
+        assertEquals(
+            listOf("one"),
+            playlistsMatchingQuery(playlists, "ROAD").map(PlaylistUiModel::id),
+        )
+        assertEquals(
+            listOf("two"),
+            playlistsMatchingQuery(playlists, "search").map(PlaylistUiModel::id),
+        )
+    }
+
     private fun idsFor(filter: LibraryFilter) =
         videosForLibraryFilter(videos, filter).map(VideoUiModel::id)
 
@@ -59,5 +79,12 @@ class LibraryFilterTest {
         isDownloaded = isDownloaded,
         isWatchLater = isWatchLater,
         playlistNames = playlistNames,
+    )
+
+    private fun playlist(id: String, title: String) = PlaylistUiModel(
+        id = id,
+        title = title,
+        description = "Local",
+        videoIds = emptyList(),
     )
 }

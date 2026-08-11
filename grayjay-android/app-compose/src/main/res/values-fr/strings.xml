@@ -186,6 +186,8 @@
     <string name="new_playlist">Nouvelle liste de lecture</string>
     <string name="add_to_playlist">Ajouter à la playlist</string>
     <string name="playlist_name">Nom de la liste de lecture</string>
+    <string name="search_playlists">Rechercher des playlists</string>
+    <string name="no_playlists_found">Aucune playlist trouvée</string>
     <string name="rename_playlist">Renommer la liste de lecture</string>
     <string name="save">Enregistrer</string>
     <string name="manage_subscriptions">Gérer les abonnements</string>

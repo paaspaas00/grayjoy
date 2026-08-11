@@ -4,19 +4,24 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -42,6 +47,45 @@ import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+
+internal fun playlistsMatchingQuery(
+    playlists: List<PlaylistUiModel>,
+    query: String,
+): List<PlaylistUiModel> {
+    val normalizedQuery = query.trim()
+    if (normalizedQuery.isEmpty()) return playlists
+    return playlists.filter { playlist ->
+        playlist.title.contains(normalizedQuery, ignoreCase = true)
+    }
+}
+
+@Composable
+internal fun PlaylistSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = { onQueryChange(it.take(80)) },
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("playlist-search"),
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+        trailingIcon = if (query.isNotEmpty()) {
+            {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(
+                        Icons.Outlined.Close,
+                        contentDescription = stringResource(R.string.clear_search),
+                    )
+                }
+            }
+        } else null,
+        label = { Text(stringResource(R.string.search_playlists)) },
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -250,7 +294,9 @@ internal fun PlaylistPickerDialog(
 ) {
     var creatingNew by rememberSaveable { mutableStateOf(playlists.isEmpty()) }
     var title by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     val duplicateTitle = playlistTitleExists(title, playlists.map(PlaylistUiModel::title))
+    val matchingPlaylists = playlistsMatchingQuery(playlists, query)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -272,27 +318,49 @@ internal fun PlaylistPickerDialog(
                     } else null,
                 )
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    playlists.forEach { playlist ->
-                        ListItem(
-                            headlineContent = { Text(playlist.title) },
-                            supportingContent = {
-                                Text(
-                                    pluralStringResource(
-                                        R.plurals.video_count,
-                                        playlist.videoIds.size,
-                                        playlist.videoIds.size,
-                                    ),
-                                )
-                            },
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PlaylistSearchField(
+                        query = query,
+                        onQueryChange = { query = it },
+                    )
+                    if (matchingPlaylists.isEmpty()) {
+                        Text(
+                            stringResource(R.string.no_playlists_found),
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    onAdd(playlist.id, videoIds)
-                                    onDismiss()
-                                }
-                                .testTag("playlist-choice-${playlist.id}"),
-                        )
+                                .heightIn(max = 360.dp)
+                                .testTag("playlist-choice-list"),
+                        ) {
+                            items(
+                                items = matchingPlaylists,
+                                key = PlaylistUiModel::id,
+                            ) { playlist ->
+                                ListItem(
+                                    headlineContent = { Text(playlist.title) },
+                                    supportingContent = {
+                                        Text(
+                                            pluralStringResource(
+                                                R.plurals.video_count,
+                                                playlist.videoIds.size,
+                                                playlist.videoIds.size,
+                                            ),
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onAdd(playlist.id, videoIds)
+                                            onDismiss()
+                                        }
+                                        .testTag("playlist-choice-${playlist.id}"),
+                                )
+                            }
+                        }
                     }
                 }
             }

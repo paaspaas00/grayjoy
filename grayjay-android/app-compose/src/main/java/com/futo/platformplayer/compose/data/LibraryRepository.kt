@@ -136,17 +136,7 @@ internal class SharedPreferencesLibraryRepository(
     override fun saveVideos(videos: Collection<VideoUiModel>) {
         if (videos.isEmpty()) return
         val savedVideos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
-        videos.forEach { video ->
-            val existing = savedVideos[video.id]
-            savedVideos[video.id] = video.copy(
-                isWatchLater = existing?.isWatchLater ?: video.isWatchLater,
-                isDownloaded = existing?.isDownloaded ?: video.isDownloaded,
-                isLiked = existing?.isLiked ?: video.isLiked,
-                watchProgress = existing?.watchProgress ?: video.watchProgress,
-                lastWatchedAt = existing?.lastWatchedAt ?: video.lastWatchedAt,
-                playlistNames = existing?.playlistNames ?: video.playlistNames,
-            ).preservingStoredPlayback(existing)
-        }
+        mergeSavedVideos(savedVideos, videos)
         writeVideos(savedVideos.values.toList())
     }
 
@@ -261,9 +251,7 @@ internal class SharedPreferencesLibraryRepository(
             description = appContext.getString(R.string.local_playlist_description),
             videoIds = videos.map(VideoUiModel::id).distinct(),
         )
-        writePlaylists(playlists + playlist)
-        videos.forEach(::saveVideo)
-        synchronizePlaylistNames()
+        persistPlaylistMutation(playlists + playlist, videos)
         return playlist
     }
 
@@ -280,8 +268,7 @@ internal class SharedPreferencesLibraryRepository(
             )
         ) return null
         val renamed = existing.copy(title = normalizedTitle)
-        writePlaylists(playlists.map { if (it.id == playlistId) renamed else it })
-        synchronizePlaylistNames()
+        persistPlaylistMutation(playlists.map { if (it.id == playlistId) renamed else it })
         return renamed
     }
 
@@ -293,8 +280,7 @@ internal class SharedPreferencesLibraryRepository(
         val retained = playlists.filterNot { it.id in removedIds }
         val removedCount = playlists.size - retained.size
         if (removedCount == 0) return 0
-        writePlaylists(retained)
-        synchronizePlaylistNames()
+        persistPlaylistMutation(retained)
         return removedCount
     }
 
@@ -308,9 +294,10 @@ internal class SharedPreferencesLibraryRepository(
         val updated = existing.copy(
             videoIds = (existing.videoIds + videos.map(VideoUiModel::id)).distinct(),
         )
-        writePlaylists(playlists.map { if (it.id == playlistId) updated else it })
-        videos.forEach(::saveVideo)
-        synchronizePlaylistNames()
+        persistPlaylistMutation(
+            playlists = playlists.map { if (it.id == playlistId) updated else it },
+            incomingVideos = videos,
+        )
         return updated
     }
 
@@ -323,8 +310,7 @@ internal class SharedPreferencesLibraryRepository(
         val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
         val removedIds = videoIds.toSet()
         val updated = existing.copy(videoIds = existing.videoIds.filterNot(removedIds::contains))
-        writePlaylists(playlists.map { if (it.id == playlistId) updated else it })
-        synchronizePlaylistNames()
+        persistPlaylistMutation(playlists.map { if (it.id == playlistId) updated else it })
         return updated
     }
 
@@ -337,8 +323,7 @@ internal class SharedPreferencesLibraryRepository(
         val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
         val normalizedOrder = normalizePlaylistOrder(existing.videoIds, orderedVideoIds)
         val updated = existing.copy(videoIds = normalizedOrder)
-        writePlaylists(playlists.map { if (it.id == playlistId) updated else it })
-        synchronizePlaylistNames()
+        persistPlaylistMutation(playlists.map { if (it.id == playlistId) updated else it })
         return updated
     }
 
@@ -388,8 +373,7 @@ internal class SharedPreferencesLibraryRepository(
                 )
             }
         }
-        writePlaylists(mergedPlaylists)
-        synchronizePlaylistNames()
+        persistPlaylistMutation(mergedPlaylists)
     }
 
     @Synchronized
@@ -400,8 +384,11 @@ internal class SharedPreferencesLibraryRepository(
         writeVideos(videos.values.toList())
     }
 
-    private fun synchronizePlaylistNames() {
-        val playlists = readPlaylists()
+    private fun persistPlaylistMutation(
+        playlists: List<PlaylistUiModel>,
+        incomingVideos: Collection<VideoUiModel> = emptyList(),
+    ) {
+        writePlaylists(playlists)
         val playlistNamesByVideoId = buildMap<String, MutableList<String>> {
             playlists.forEach { playlist ->
                 playlist.videoIds.distinct().forEach { videoId ->
@@ -409,12 +396,31 @@ internal class SharedPreferencesLibraryRepository(
                 }
             }
         }
-        val videos = readVideos().map { video ->
+        val savedVideos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
+        mergeSavedVideos(savedVideos, incomingVideos)
+        val videos = savedVideos.values.map { video ->
             video.copy(
                 playlistNames = playlistNamesByVideoId[video.id].orEmpty(),
             )
         }
         writeVideos(videos)
+    }
+
+    private fun mergeSavedVideos(
+        savedVideos: MutableMap<String, VideoUiModel>,
+        incomingVideos: Collection<VideoUiModel>,
+    ) {
+        incomingVideos.forEach { video ->
+            val existing = savedVideos[video.id]
+            savedVideos[video.id] = video.copy(
+                isWatchLater = existing?.isWatchLater ?: video.isWatchLater,
+                isDownloaded = existing?.isDownloaded ?: video.isDownloaded,
+                isLiked = existing?.isLiked ?: video.isLiked,
+                watchProgress = existing?.watchProgress ?: video.watchProgress,
+                lastWatchedAt = existing?.lastWatchedAt ?: video.lastWatchedAt,
+                playlistNames = existing?.playlistNames ?: video.playlistNames,
+            ).preservingStoredPlayback(existing)
+        }
     }
 
     private fun readVideos(): List<VideoUiModel> {

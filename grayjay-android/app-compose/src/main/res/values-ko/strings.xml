@@ -186,6 +186,8 @@
     <string name="new_playlist">새 재생목록</string>
     <string name="add_to_playlist">재생목록에 추가</string>
     <string name="playlist_name">재생목록 이름</string>
+    <string name="search_playlists">재생목록 검색</string>
+    <string name="no_playlists_found">재생목록을 찾을 수 없습니다</string>
     <string name="rename_playlist">재생목록 이름 바꾸기</string>
     <string name="save">저장</string>
     <string name="manage_subscriptions">구독 관리</string>

@@ -186,6 +186,8 @@
     <string name="new_playlist">Neue Playlist</string>
     <string name="add_to_playlist">Zur Playlist hinzufügen</string>
     <string name="playlist_name">Name der Wiedergabeliste</string>
+    <string name="search_playlists">Wiedergabelisten durchsuchen</string>
+    <string name="no_playlists_found">Keine Wiedergabelisten gefunden</string>
     <string name="rename_playlist">Playlist umbenennen</string>
     <string name="save">Speichern</string>
     <string name="manage_subscriptions">Abonnements verwalten</string>

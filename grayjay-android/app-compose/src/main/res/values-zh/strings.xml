@@ -186,6 +186,8 @@
     <string name="new_playlist">新播放列表</string>
     <string name="add_to_playlist">添加到播放列表</string>
     <string name="playlist_name">播放列表名称</string>
+    <string name="search_playlists">搜索播放列表</string>
+    <string name="no_playlists_found">未找到播放列表</string>
     <string name="rename_playlist">重命名播放列表</string>
     <string name="save">保存</string>
     <string name="manage_subscriptions">管理订阅</string>

@@ -186,6 +186,8 @@
     <string name="new_playlist">Nueva lista de reproducción</string>
     <string name="add_to_playlist">Agregar a la lista de reproducción</string>
     <string name="playlist_name">Nombre de la lista de reproducción</string>
+    <string name="search_playlists">Buscar listas de reproducción</string>
+    <string name="no_playlists_found">No se encontraron listas de reproducción</string>
     <string name="rename_playlist">Cambiar nombre de lista de reproducción</string>
     <string name="save">Guardar</string>
     <string name="manage_subscriptions">Administrar suscripciones</string>

@@ -186,6 +186,8 @@
     <string name="new_playlist">Yeni oynatma listesi</string>
     <string name="add_to_playlist">Çalma listesine ekle</string>
     <string name="playlist_name">Oynatma listesi adı</string>
+    <string name="search_playlists">Oynatma listelerinde ara</string>
+    <string name="no_playlists_found">Oynatma listesi bulunamadı</string>
     <string name="rename_playlist">Çalma listesini yeniden adlandır</string>
     <string name="save">Kaydet</string>
     <string name="manage_subscriptions">Abonelikleri yönet</string>

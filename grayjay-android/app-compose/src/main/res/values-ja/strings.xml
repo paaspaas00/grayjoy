@@ -186,6 +186,8 @@
     <string name="new_playlist">新しいプレイリスト</string>
     <string name="add_to_playlist">プレイリストに追加</string>
     <string name="playlist_name">プレイリスト名</string>
+    <string name="search_playlists">再生リストを検索</string>
+    <string name="no_playlists_found">再生リストが見つかりません</string>
     <string name="rename_playlist">プレイリストの名前を変更する</string>
     <string name="save">保存</string>
     <string name="manage_subscriptions">サブスクリプションを管理する</string>
