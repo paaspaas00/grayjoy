@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -93,6 +94,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -153,6 +155,22 @@ internal fun hasNowPlayingDownload(download: DownloadUiModel?): Boolean {
     }
     return completedMediaTypes.isNotEmpty()
 }
+
+internal fun playerBoundsInsideScaffold(
+    boundsInRoot: Rect,
+    scaffoldLeftInRoot: Float,
+    scaffoldTopInRoot: Float,
+): Rect = Rect(
+    left = boundsInRoot.left - scaffoldLeftInRoot,
+    top = boundsInRoot.top - scaffoldTopInRoot,
+    right = boundsInRoot.right - scaffoldLeftInRoot,
+    bottom = boundsInRoot.bottom - scaffoldTopInRoot,
+)
+
+internal fun miniplayerNeedsNavigationBarPadding(
+    searchImeVisible: Boolean,
+    bottomNavigationProvidesInset: Boolean,
+): Boolean = !searchImeVisible && !bottomNavigationProvidesInset
 
 internal enum class GrayjayDestination(
     @param:StringRes val navigationLabelRes: Int,
@@ -1304,6 +1322,7 @@ private fun BottomNavigationLayout(
         videos = videos,
         channels = channels,
         playlists = playlists,
+        bottomNavigationProvidesInset = true,
         bottomBar = {
             NavigationBar {
                 GrayjayDestination.entries.filter { it.showInCompactNavigation }.forEach { destination ->
@@ -1502,6 +1521,7 @@ private fun GrayjayScaffold(
     channels: List<ChannelUiModel>,
     playlists: List<PlaylistUiModel>,
     modifier: Modifier = Modifier,
+    bottomNavigationProvidesInset: Boolean = false,
     bottomBar: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -1509,6 +1529,8 @@ private fun GrayjayScaffold(
     var expandedPlayerBounds by remember { mutableStateOf<Rect?>(null) }
     var miniPlayerBounds by remember { mutableStateOf<Rect?>(null) }
     var rootHeightPx by remember { mutableFloatStateOf(0f) }
+    var rootLeftPx by remember { mutableFloatStateOf(0f) }
+    var rootTopPx by remember { mutableFloatStateOf(0f) }
     var isTransitionDragging by remember { mutableStateOf(false) }
     val transitionVideo = selectedVideo ?: playback.video
     val transitionActive = transitionVideo != null && selectedVideo != null
@@ -1551,7 +1573,12 @@ private fun GrayjayScaffold(
     )
 
     Box(
-        modifier.onGloballyPositioned { rootHeightPx = it.size.height.toFloat() },
+        modifier.onGloballyPositioned { coordinates ->
+            val position = coordinates.positionInRoot()
+            rootLeftPx = position.x
+            rootTopPx = position.y
+            rootHeightPx = coordinates.size.height.toFloat()
+        },
     ) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -1644,7 +1671,21 @@ private fun GrayjayScaffold(
             },
             bottomBar = {
                 Column(
-                    Modifier.then(if (searchImeVisible) Modifier.imePadding() else Modifier),
+                    Modifier
+                        .then(if (searchImeVisible) Modifier.imePadding() else Modifier)
+                        .then(
+                            if (
+                                miniplayerNeedsNavigationBarPadding(
+                                    searchImeVisible = searchImeVisible,
+                                    bottomNavigationProvidesInset =
+                                        bottomNavigationProvidesInset,
+                                )
+                            ) {
+                                Modifier.navigationBarsPadding()
+                            } else {
+                                Modifier
+                            },
+                        ),
                 ) {
                     playback.video?.let { video ->
                         MiniPlayer(
@@ -1661,7 +1702,13 @@ private fun GrayjayScaffold(
                             onTogglePlayback = playback.onToggle,
                             onSkipToNext = playback.onNext,
                             onClose = playback.onClose,
-                            onVideoBoundsChanged = { miniPlayerBounds = it },
+                            onVideoBoundsChanged = { measuredBounds ->
+                                miniPlayerBounds = playerBoundsInsideScaffold(
+                                    boundsInRoot = measuredBounds,
+                                    scaffoldLeftInRoot = rootLeftPx,
+                                    scaffoldTopInRoot = rootTopPx,
+                                )
+                            },
                             modifier = transitionDragModifier,
                         )
                     }
@@ -2105,11 +2152,16 @@ private fun GrayjayScaffold(
                                     val overlayTransformY =
                                         minimizedTop * transitionProgress -
                                             expandedTop * transitionProgress
+                                    val localBounds = playerBoundsInsideScaffold(
+                                        boundsInRoot = measuredBounds,
+                                        scaffoldLeftInRoot = rootLeftPx,
+                                        scaffoldTopInRoot = rootTopPx,
+                                    )
                                     val normalizedBounds = Rect(
-                                        left = measuredBounds.left,
-                                        top = measuredBounds.top - overlayTransformY,
-                                        right = measuredBounds.right,
-                                        bottom = measuredBounds.bottom - overlayTransformY,
+                                        left = localBounds.left,
+                                        top = localBounds.top - overlayTransformY,
+                                        right = localBounds.right,
+                                        bottom = localBounds.bottom - overlayTransformY,
                                     )
                                     if (
                                         normalizedBounds.width > 1f &&
