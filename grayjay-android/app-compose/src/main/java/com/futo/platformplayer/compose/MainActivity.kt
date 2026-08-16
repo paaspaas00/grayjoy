@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -42,11 +43,15 @@ import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.ThemeMode
+import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
+import com.futo.platformplayer.compose.update.GrayjoyUpdateInstaller
 import com.futo.platformplayer.compose.ui.theme.GrayjayTheme
 import com.futo.platformplayer.compose.playback.PictureInPictureActionReceiver
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import androidx.media3.ui.PlayerView
+import java.io.File
+import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
     private val grayjayViewModel by viewModels<GrayjayViewModel>()
@@ -60,6 +65,13 @@ class MainActivity : FragmentActivity() {
     private var pictureInPictureSourceRect: Rect? = null
     private var playerFullscreen = false
     private var playerLandscapeFullscreen = false
+    private val updateInstaller by lazy { GrayjoyUpdateInstaller(this) }
+    private var pendingUpdateApk: File? = null
+    private val unknownSourcesLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        installPendingUpdateIfAllowed()
+    }
     private val deviceOrientationListener by lazy {
         object : OrientationEventListener(this) {
             override fun onOrientationChanged(orientation: Int) {
@@ -261,6 +273,7 @@ class MainActivity : FragmentActivity() {
                     onLoadMoreHome = viewModel::loadMoreHome,
                     onPlayQueue = viewModel::playQueue,
                     onQueueVideos = viewModel::enqueueVideos,
+                    onPlayNext = viewModel::playNext,
                     onPlayPlaylist = viewModel::playPlaylist,
                     onPlayPlaylistFrom = viewModel::playPlaylistFrom,
                     onTogglePlayback = viewModel::togglePlayback,
@@ -393,6 +406,8 @@ class MainActivity : FragmentActivity() {
                     onSeekComputerPlayback = viewModel::seekComputerPlayback,
                     onExternalNavigationHandled = viewModel::consumeExternalNavigation,
                     onCheckForUpdates = viewModel::checkForUpdates,
+                    onInstallUpdate = ::downloadAndInstallUpdate,
+                    onHydrateVideoMetadata = viewModel::hydrateVideoMetadata,
                     pictureInPictureMode = pictureInPictureMode,
                 )
             }
@@ -470,6 +485,42 @@ class MainActivity : FragmentActivity() {
         pendingDatabaseImportUri = intent.databaseImportUriOrNull()
         pendingExternalContentUrl = intent.externalContentUrlOrNull()
         pendingPcPairingUrl = intent.pcPairingUrlOrNull()
+    }
+
+    private fun downloadAndInstallUpdate(update: ReleaseUpdateUiModel) {
+        val url = update.debugApkUrl ?: return
+        Toast.makeText(this, R.string.update_download_started, Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            runCatching { updateInstaller.download(update.versionName, url) }
+                .onSuccess { apk ->
+                    pendingUpdateApk = apk
+                    installPendingUpdateIfAllowed()
+                }
+                .onFailure {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.update_download_failed),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+        }
+    }
+
+    private fun installPendingUpdateIfAllowed() {
+        val apk = pendingUpdateApk ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !packageManager.canRequestPackageInstalls()
+        ) {
+            unknownSourcesLauncher.launch(
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName"),
+                ),
+            )
+            return
+        }
+        startActivity(updateInstaller.installIntent(apk))
+        pendingUpdateApk = null
     }
 
     private val notificationPermissionPreferences by lazy {
@@ -594,7 +645,7 @@ internal fun normalizedPictureInPictureAspectRatio(width: Int, height: Int): Pai
 internal fun shouldEnterPictureInPicture(state: com.futo.platformplayer.compose.ui.GrayjayUiState): Boolean =
     shouldEnterPictureInPicture(
         enabled = state.pictureInPictureEnabled,
-        hasVideo = state.nowPlaying.video != null && state.playback.currentVideoId != null,
+        hasVideo = state.nowPlaying.video != null,
         audioOnly = state.nowPlaying.video?.playbackAudioOnly == true,
         isPlaying = state.playback.isPlaying,
         isBuffering = state.playback.isBuffering,
@@ -610,7 +661,7 @@ internal fun shouldEnterPictureInPicture(
     isBuffering: Boolean,
     isLoading: Boolean,
     isCasting: Boolean = false,
-): Boolean = enabled && hasVideo && !audioOnly && !isCasting && (isPlaying || isBuffering || isLoading)
+): Boolean = enabled && hasVideo && !audioOnly && !isCasting
 
 internal fun physicalLandscapeAt(orientation: Int): Boolean? = when {
     orientation == OrientationEventListener.ORIENTATION_UNKNOWN -> null

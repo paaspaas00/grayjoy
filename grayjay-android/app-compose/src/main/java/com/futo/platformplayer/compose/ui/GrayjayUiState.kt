@@ -118,6 +118,8 @@ data class ExternalNavigationUiModel(
 data class ReleaseUpdateUiModel(
     val versionName: String,
     val releaseUrl: String,
+    val changelog: String,
+    val debugApkUrl: String?,
 )
 
 data class ChromecastDeviceUiModel(
@@ -314,6 +316,7 @@ data class DatabaseImportSelection(
 data class PlaybackUiState(
     val currentVideoId: String? = null,
     val queueVideoIds: List<String> = emptyList(),
+    val fullQueueVideoIds: List<String> = emptyList(),
     val isCasting: Boolean = false,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,

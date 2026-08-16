@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -54,6 +55,9 @@ import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -234,6 +238,7 @@ private data class PlaybackPresentation(
     val onClose: () -> Unit,
     val onPlayQueue: (List<String>) -> Unit,
     val onQueueVideos: (List<String>) -> Unit,
+    val onPlayNext: (String) -> Unit,
     val onPlayPlaylist: (String) -> Unit,
     val onPlayPlaylistFrom: (String, String) -> Unit,
     val onToggleWatchLater: (String) -> Unit,
@@ -245,6 +250,7 @@ private data class PlaybackPresentation(
     val onDownloadPlaylist: (String, DownloadMediaType) -> Unit,
     val onCancelDownloadPlaylist: (String, DownloadMediaType) -> Unit,
     val onVideoLongClick: (VideoUiModel) -> Unit,
+    val onQueueVideoLongClick: (VideoUiModel) -> Unit,
     val onAddSelectionToPlaylist: (List<String>) -> Unit,
     val onRemoveSelectionFromHistory: (List<String>) -> Unit,
     val onRemoveDownloads: (List<String>) -> Unit,
@@ -304,6 +310,8 @@ private data class PlaybackPresentation(
     val onPreviousComputerPlayback: (String) -> Unit,
     val onNextComputerPlayback: (String) -> Unit,
     val onSeekComputerPlayback: (String, Long) -> Unit,
+    val onInstallUpdate: (ReleaseUpdateUiModel) -> Unit,
+    val onHydrateVideoMetadata: (String) -> Unit,
     val onThemeModeChange: (ThemeMode) -> Unit,
     val chromecast: ChromecastUiState,
     val onOpenChromecast: () -> Unit,
@@ -373,6 +381,7 @@ fun GrayjayApp(
     onLoadMoreHome: () -> Unit = {},
     onPlayQueue: (List<String>) -> Unit,
     onQueueVideos: (List<String>) -> Unit,
+    onPlayNext: (String) -> Unit = {},
     onPlayPlaylist: (String) -> Unit,
     onPlayPlaylistFrom: (String, String) -> Unit,
     onTogglePlayback: () -> Unit,
@@ -471,6 +480,8 @@ fun GrayjayApp(
     onSeekComputerPlayback: (String, Long) -> Unit = { _, _ -> },
     onExternalNavigationHandled: (Long) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
+    onInstallUpdate: (ReleaseUpdateUiModel) -> Unit = {},
+    onHydrateVideoMetadata: (String) -> Unit = {},
     deviceIsLandscape: Boolean = false,
     pictureInPictureMode: Boolean = false,
     onFullscreenPresentationChanged: (Boolean, Boolean) -> Unit = { _, _ -> },
@@ -488,6 +499,7 @@ fun GrayjayApp(
     var fullscreenEnteredByRotation by rememberSaveable { mutableStateOf(false) }
     var actionVideoId by rememberSaveable { mutableStateOf<String?>(null) }
     var actionIsRemotePlaylistVideo by rememberSaveable { mutableStateOf(false) }
+    var actionIsQueueVideo by rememberSaveable { mutableStateOf(false) }
     var playlistPickerVideoIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var profileDialogVisible by rememberSaveable { mutableStateOf(false) }
     var chromecastSheetVisible by rememberSaveable { mutableStateOf(false) }
@@ -536,7 +548,7 @@ fun GrayjayApp(
     // frame of the collapse swaps playbackAudioOnly back to false and covers the audio mini-player
     // artwork with an empty video surface.
     val playbackVideo = uiState.nowPlaying.video?.takeIf {
-        it.id == uiState.playback.currentVideoId
+        uiState.nowPlaying.isLoadingPlayback || it.id == uiState.playback.currentVideoId
     } ?: availableVideosById[uiState.playback.currentVideoId]
     val playerTransition = remember { PlayerTransitionState(1f) }
     var navigationBackProgress by remember { mutableFloatStateOf(0f) }
@@ -566,8 +578,14 @@ fun GrayjayApp(
             }
         }
     }
-    val queueVideos = remember(uiState.playback.queueVideoIds, availableVideosById) {
-        uiState.playback.queueVideoIds.mapNotNull(availableVideosById::get)
+    val queueVideos = remember(
+        uiState.playback.queueVideoIds,
+        uiState.playback.fullQueueVideoIds,
+        availableVideosById,
+    ) {
+        uiState.playback.fullQueueVideoIds
+            .ifEmpty { uiState.playback.queueVideoIds }
+            .mapNotNull(availableVideosById::get)
     }
     val onSelect: (GrayjayDestination) -> Unit = {
         destinationName = it.name
@@ -583,6 +601,7 @@ fun GrayjayApp(
     }
     val onVideoLongClick: (VideoUiModel) -> Unit = {
         actionIsRemotePlaylistVideo = false
+        actionIsQueueVideo = false
         actionVideoId = it.id
     }
     val onChannelClick: (ChannelUiModel) -> Unit = {
@@ -629,7 +648,7 @@ fun GrayjayApp(
         onExternalNavigationHandled(request.requestId)
     }
     LaunchedEffect(selected) {
-        if (RELEASE_UPDATE_CHECK_ENABLED && selected == GrayjayDestination.Settings) {
+        if (RELEASE_UPDATE_CHECK_ENABLED && selected == GrayjayDestination.Home) {
             onCheckForUpdates()
         }
     }
@@ -683,7 +702,9 @@ fun GrayjayApp(
         downloads = uiState.downloads,
         activePlaylistDownloads = uiState.activePlaylistDownloads,
         isPlaying = uiState.playback.isPlaying,
-        queueSize = uiState.playback.queueVideoIds.size,
+        queueSize = uiState.playback.fullQueueVideoIds
+            .ifEmpty { uiState.playback.queueVideoIds }
+            .size,
         transition = playerTransition,
         navigationBackProgress = navigationBackProgress,
         onExpand = { settlePlayer(0f, playbackVideo?.id) },
@@ -758,6 +779,7 @@ fun GrayjayApp(
             }
         },
         onQueueVideos = onQueueVideos,
+        onPlayNext = onPlayNext,
         onPlayPlaylist = { playlistId ->
             val playlist = uiState.playlists.firstOrNull { it.id == playlistId }
             if (playlist != null && playlist.videoIds.isNotEmpty()) {
@@ -781,6 +803,11 @@ fun GrayjayApp(
         onDownloadPlaylist = onDownloadPlaylist,
         onCancelDownloadPlaylist = onCancelDownloadPlaylist,
         onVideoLongClick = onVideoLongClick,
+        onQueueVideoLongClick = { queuedVideo ->
+            actionIsRemotePlaylistVideo = false
+            actionIsQueueVideo = true
+            actionVideoId = queuedVideo.id
+        },
         onAddSelectionToPlaylist = { playlistPickerVideoIds = it },
         onRemoveSelectionFromHistory = onRemoveVideosFromHistory,
         onRemoveDownloads = onRemoveDownloads,
@@ -840,6 +867,8 @@ fun GrayjayApp(
         onPreviousComputerPlayback = onPreviousComputerPlayback,
         onNextComputerPlayback = onNextComputerPlayback,
         onSeekComputerPlayback = onSeekComputerPlayback,
+        onInstallUpdate = onInstallUpdate,
+        onHydrateVideoMetadata = onHydrateVideoMetadata,
         onThemeModeChange = onThemeModeChange,
         chromecast = uiState.chromecast,
         onOpenChromecast = {
@@ -854,7 +883,7 @@ fun GrayjayApp(
             playerTransition.snapTo(1f)
             selectedVideoId = null
         }
-        if (selectedVideoId != null) {
+        if (selectedVideoId != null && !uiState.nowPlaying.isLoadingPlayback) {
             uiState.playback.currentVideoId?.let { selectedVideoId = it }
         }
     }
@@ -1060,6 +1089,7 @@ fun GrayjayApp(
                 onPlaylistClick = onPlaylistClick,
                 onRemotePlaylistVideoLongClick = { video ->
                     actionIsRemotePlaylistVideo = true
+                    actionIsQueueVideo = false
                     actionVideoId = video.id
                 },
                 onVideoBack = onNavigateBack,
@@ -1088,6 +1118,7 @@ fun GrayjayApp(
                 onPlaylistClick = onPlaylistClick,
                 onRemotePlaylistVideoLongClick = { video ->
                     actionIsRemotePlaylistVideo = true
+                    actionIsQueueVideo = false
                     actionVideoId = video.id
                 },
                 onVideoBack = onNavigateBack,
@@ -1116,6 +1147,7 @@ fun GrayjayApp(
                 onPlaylistClick = onPlaylistClick,
                 onRemotePlaylistVideoLongClick = { video ->
                     actionIsRemotePlaylistVideo = true
+                    actionIsQueueVideo = false
                     actionVideoId = video.id
                 },
                 onVideoBack = onNavigateBack,
@@ -1141,6 +1173,7 @@ fun GrayjayApp(
             onDismiss = {
                 actionVideoId = null
                 actionIsRemotePlaylistVideo = false
+                actionIsQueueVideo = false
             },
             onToggleDownload = { onToggleDownloaded(video.id) },
             onDownloadAudio = { onToggleAudioDownloaded(video.id) },
@@ -1158,6 +1191,9 @@ fun GrayjayApp(
                 )
             },
             onAddToPlaylist = { playlistPickerVideoIds = listOf(video.id) },
+            onPlayNext = if (actionIsQueueVideo) {
+                { playback.onPlayNext(video.id) }
+            } else null,
             onPlayFromHere = if (actionIsRemotePlaylistVideo) {
                 { playback.onPlayRemotePlaylistFrom(video.id) }
             } else null,
@@ -1440,7 +1476,7 @@ private fun DrawerNavigationLayout(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun GrayjayScaffold(
     selected: GrayjayDestination,
@@ -1476,6 +1512,7 @@ private fun GrayjayScaffold(
     var isTransitionDragging by remember { mutableStateOf(false) }
     val transitionVideo = selectedVideo ?: playback.video
     val transitionActive = transitionVideo != null && selectedVideo != null
+    val searchImeVisible = selected == GrayjayDestination.Search && WindowInsets.isImeVisible
     val predictiveBackTransform = Modifier.graphicsLayer {
         val progress = playback.navigationBackProgress.coerceIn(0f, 1f)
         transformOrigin = TransformOrigin(0f, 0.5f)
@@ -1606,7 +1643,9 @@ private fun GrayjayScaffold(
                 )
             },
             bottomBar = {
-                Column {
+                Column(
+                    Modifier.then(if (searchImeVisible) Modifier.imePadding() else Modifier),
+                ) {
                     playback.video?.let { video ->
                         MiniPlayer(
                             video = video,
@@ -1626,7 +1665,7 @@ private fun GrayjayScaffold(
                             modifier = transitionDragModifier,
                         )
                     }
-                    bottomBar()
+                    if (!searchImeVisible) bottomBar()
                 }
             },
         ) { contentPadding ->
@@ -1751,6 +1790,11 @@ private fun GrayjayScaffold(
                     when (animatedDestination) {
                     GrayjayDestination.Home -> HomeScreen(
                         home = sourcePresentation.home,
+                        availableUpdate = playback.availableUpdate.takeIf {
+                            RELEASE_UPDATE_CHECK_ENABLED
+                        },
+                        onInstallUpdate = playback.onInstallUpdate,
+                        onHydrateVideoMetadata = playback.onHydrateVideoMetadata,
                         onFeedSelected = sourcePresentation.onHomeFeedSelected,
                         onRefresh = sourcePresentation.onRefreshHome,
                         onLoadMore = sourcePresentation.onLoadMoreHome,
@@ -1853,9 +1897,6 @@ private fun GrayjayScaffold(
                         pcLink = playback.pcLink,
                         onScanPcPairingQr = playback.onScanPcPairingQr,
                         onRemovePairedComputer = playback.onRemovePairedComputer,
-                        availableUpdate = playback.availableUpdate.takeIf {
-                            RELEASE_UPDATE_CHECK_ENABLED
-                        },
                     )
                     GrayjayDestination.Sources -> SourcesScreen(
                         sources = sourcePresentation.sources,
@@ -2043,6 +2084,7 @@ private fun GrayjayScaffold(
                                 onRetryPlayback = playback.onRetry,
                                 onVideoClick = onVideoClick,
                                 onVideoLongClick = playback.onVideoLongClick,
+                                onQueueVideoLongClick = playback.onQueueVideoLongClick,
                                 creatorChannel = playback.channels.firstOrNull { channel ->
                                     channel.id == transitionVideo.authorUrl.ifBlank {
                                         transitionVideo.channelId.ifBlank {

@@ -2,12 +2,14 @@ package com.futo.platformplayer.compose.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -16,6 +18,10 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +33,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,7 +46,10 @@ import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.HomeFeedType
 import com.futo.platformplayer.compose.ui.HomeUiState
 import com.futo.platformplayer.compose.ui.PcPlaybackUiModel
+import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
@@ -50,6 +62,9 @@ fun HomeScreen(
     onLoadMore: () -> Unit,
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
+    availableUpdate: ReleaseUpdateUiModel? = null,
+    onInstallUpdate: (ReleaseUpdateUiModel) -> Unit = {},
+    onHydrateVideoMetadata: (String) -> Unit = {},
     pcPlayback: PcPlaybackUiModel? = null,
     onPlayFromComputer: (String) -> Unit = {},
     onToggleComputerPlayback: (String) -> Unit = {},
@@ -57,6 +72,7 @@ fun HomeScreen(
     onNextComputerPlayback: (String) -> Unit = {},
     onSeekComputerPlayback: (String, Long) -> Unit = { _, _ -> },
 ) {
+    var updateDetailsVisible by rememberSaveable { mutableStateOf(false) }
     val feeds = HomeFeedType.entries
     val pagerState = rememberPagerState(
         initialPage = feeds.indexOf(home.selectedFeed).coerceAtLeast(0),
@@ -85,6 +101,38 @@ fun HomeScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
+        availableUpdate?.let { update ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .testTag("update-available-banner"),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.update_available),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            stringResource(R.string.update_available_description, update.versionName),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    FilledTonalButton(onClick = { updateDetailsVisible = true }) {
+                        Text(stringResource(R.string.details))
+                    }
+                }
+            }
+        }
         pcPlayback?.let { playback ->
             PcPlaybackBanner(
                 playback = playback,
@@ -136,6 +184,22 @@ fun HomeScreen(
                     !home.isLoading && !home.isLoadingMore,
                 onLoadMore = onLoadMore,
             )
+            LaunchedEffect(listState, isSelectedPage, home.videos) {
+                if (!isSelectedPage) return@LaunchedEffect
+                snapshotFlow { listState.isScrollInProgress }
+                    .distinctUntilChanged()
+                    .collectLatest { isScrolling ->
+                        if (isScrolling) return@collectLatest
+                        delay(450L)
+                        val visibleVideoIds = listState.layoutInfo.visibleItemsInfo
+                            .mapNotNull { it.key as? String }
+                            .toSet()
+                        home.videos.asSequence()
+                            .filter { it.id in visibleVideoIds }
+                            .filter { it.duration.isBlank() && !it.isLive }
+                            .forEach { onHydrateVideoMetadata(it.id) }
+                    }
+            }
             PullToRefreshBox(
                 isRefreshing = isSelectedPage && home.isRefreshing,
                 onRefresh = {
@@ -238,6 +302,39 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    if (updateDetailsVisible && availableUpdate != null) {
+        AlertDialog(
+            onDismissRequest = { updateDetailsVisible = false },
+            title = {
+                Text(stringResource(R.string.update_available_description, availableUpdate.versionName))
+            },
+            text = {
+                Text(
+                    availableUpdate.changelog.ifBlank { stringResource(R.string.no_changelog) },
+                    modifier = Modifier
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState()),
+                )
+            },
+            dismissButton = {
+                FilledTonalButton(onClick = { updateDetailsVisible = false }) {
+                    Text(stringResource(R.string.dismiss))
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        updateDetailsVisible = false
+                        onInstallUpdate(availableUpdate)
+                    },
+                    enabled = availableUpdate.debugApkUrl != null,
+                ) {
+                    Text(stringResource(R.string.install))
+                }
+            },
+        )
     }
 }
 

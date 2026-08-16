@@ -53,7 +53,7 @@ class MainActivityOrientationTest {
                 isLoading = false,
             ),
         )
-        assertFalse(
+        assertTrue(
             shouldEnterPictureInPicture(
                 enabled = true,
                 hasVideo = true,

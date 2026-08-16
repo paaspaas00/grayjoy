@@ -9,6 +9,8 @@ data class VideoUiModel(
     val creator: String,
     val metadata: String,
     val duration: String,
+    val viewCount: Long = 0L,
+    val publishedAtMs: Long = 0L,
     val channelId: String = "",
     val sourceId: String = "youtube",
     val isLive: Boolean = false,

@@ -59,6 +59,23 @@ internal fun videosForFollowedCreators(
     ).any { it.isNotBlank() && it in followedCreatorIds }
 }
 
+internal fun newVideoCountsByCreator(
+    videos: List<VideoUiModel>,
+    channels: List<ChannelUiModel>,
+): Map<String, Int> = channels.associate { channel ->
+    channel.id to videos.asSequence()
+        .filter { it.lastWatchedAt <= 0L && it.watchProgress <= 0f }
+        .filter { video ->
+            sequenceOf(
+                video.authorUrl,
+                video.channelId,
+                "${video.sourceId}:${video.creator}",
+            ).any { it.isNotBlank() && it == channel.id }
+        }
+        .distinctBy(VideoUiModel::id)
+        .count()
+}
+
 @Composable
 fun SubscriptionsScreen(
     channels: List<ChannelUiModel>,
@@ -76,6 +93,9 @@ fun SubscriptionsScreen(
     val selectedVideoIds = remember { mutableStateListOf<String>() }
     val followedChannels = channels.filter { it.id in followedCreatorIds }
     val followedVideos = videosForFollowedCreators(videos, followedCreatorIds)
+    val newVideoCounts = remember(followedVideos, followedChannels) {
+        newVideoCountsByCreator(followedVideos, followedChannels)
+    }
     fun leaveVideoSelectionMode() {
         videoSelectionMode = false
         selectedVideoIds.clear()
@@ -172,7 +192,11 @@ fun SubscriptionsScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     followedChannels.forEach { channel ->
-                        ChannelAvatar(channel = channel, onClick = { onChannelClick(channel) })
+                        ChannelAvatar(
+                            channel = channel,
+                            newVideoCount = newVideoCounts[channel.id].orZero(),
+                            onClick = { onChannelClick(channel) },
+                        )
                     }
                 }
             }
@@ -308,6 +332,7 @@ private fun ChannelManagementRow(
 @Composable
 private fun ChannelAvatar(
     channel: ChannelUiModel,
+    newVideoCount: Int,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -333,8 +358,8 @@ private fun ChannelAvatar(
                         modifier = Modifier.matchParentSize(),
                     )
                 }
-                Badge(Modifier.align(Alignment.TopEnd)) {
-                    Text(channel.unreadCount.toString())
+                if (newVideoCount > 0) Badge(Modifier.align(Alignment.TopEnd)) {
+                    Text(newVideoCount.coerceAtMost(99).let { if (newVideoCount > 99) "99+" else "$it" })
                 }
             }
             Text(
@@ -352,3 +377,5 @@ private fun ChannelAvatar(
         }
     }
 }
+
+private fun Int?.orZero(): Int = this ?: 0

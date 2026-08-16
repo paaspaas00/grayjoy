@@ -601,4 +601,19 @@
     <string name="video_title_language">Lingua dei titoli video</string>
     <string name="prefer_original_title">Preferisci il titolo originale</string>
     <string name="use_app_language_for_titles">Usa la lingua dell’app</string>
+    <string name="details">Dettagli</string>
+    <string name="dismiss">Ignora</string>
+    <string name="no_changelog">Non è stato fornito alcun changelog per questa versione.</string>
+    <string name="update_download_started">Download dell’aggiornamento Grayjoy…</string>
+    <string name="update_download_failed">Impossibile scaricare l’aggiornamento Grayjoy.</string>
+    <string name="sort">Ordina</string>
+    <string name="sort_videos">Ordina video</string>
+    <string name="playlist_order">Ordine della playlist</string>
+    <string name="popularity">Popolarità</string>
+    <string name="upload_date">Data di caricamento</string>
+    <string name="ascending">Crescente</string>
+    <string name="descending">Decrescente</string>
+    <string name="show_all_queue">Mostra tutti (%1$d)</string>
+    <string name="play_next">Riproduci subito dopo</string>
+    <string name="play_next_description">Sposta questo video subito dopo quello corrente.</string>
 </resources>

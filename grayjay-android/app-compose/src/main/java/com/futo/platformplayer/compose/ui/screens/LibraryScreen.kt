@@ -40,6 +40,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -111,7 +115,7 @@ internal fun downloadExportAvailability(
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 internal fun LibraryScreen(
     videos: List<VideoUiModel>,
@@ -474,28 +478,32 @@ internal fun LibraryScreen(
                             style = MaterialTheme.typography.titleMedium,
                         )
                         if (selectedFilter == LibraryFilter.History) {
-                            IconButton(
-                                onClick = {
-                                    onQueueSelection(selectedVideoIds.toList())
-                                    leaveSelectionMode()
-                                },
-                                enabled = selectedVideoIds.isNotEmpty(),
-                                modifier = Modifier.testTag("history-enqueue"),
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Outlined.PlaylistPlay,
-                                    contentDescription = stringResource(R.string.enqueue),
-                                )
+                            SelectionTooltip(stringResource(R.string.enqueue)) {
+                                IconButton(
+                                    onClick = {
+                                        onQueueSelection(selectedVideoIds.toList())
+                                        leaveSelectionMode()
+                                    },
+                                    enabled = selectedVideoIds.isNotEmpty(),
+                                    modifier = Modifier.testTag("history-enqueue"),
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Outlined.PlaylistPlay,
+                                        contentDescription = stringResource(R.string.enqueue),
+                                    )
+                                }
                             }
-                            IconButton(
-                                onClick = { onAddSelectionToPlaylist(selectedVideoIds.toList()) },
-                                enabled = selectedVideoIds.isNotEmpty(),
-                                modifier = Modifier.testTag("history-add-to-playlist"),
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Outlined.PlaylistAdd,
-                                    contentDescription = stringResource(R.string.add_to_playlist),
-                                )
+                            SelectionTooltip(stringResource(R.string.add_to_playlist)) {
+                                IconButton(
+                                    onClick = { onAddSelectionToPlaylist(selectedVideoIds.toList()) },
+                                    enabled = selectedVideoIds.isNotEmpty(),
+                                    modifier = Modifier.testTag("history-add-to-playlist"),
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Outlined.PlaylistAdd,
+                                        contentDescription = stringResource(R.string.add_to_playlist),
+                                    )
+                                }
                             }
                         } else if (selectedFilter == LibraryFilter.Downloads) {
                             TextButton(
@@ -510,25 +518,27 @@ internal fun LibraryScreen(
                                 Text(stringResource(R.string.export))
                             }
                         }
-                        IconButton(
-                            onClick = { confirmRemoval = true },
-                            enabled = if (selectedFilter == LibraryFilter.Playlists) {
-                                selectedPlaylistIds.isNotEmpty()
-                            } else {
-                                selectedVideoIds.isNotEmpty()
-                            },
-                            modifier = Modifier.testTag(
-                                when (selectedFilter) {
-                                    LibraryFilter.History -> "history-remove"
-                                    LibraryFilter.Downloads -> "downloads-remove"
-                                    else -> "playlists-remove"
+                        SelectionTooltip(stringResource(R.string.remove)) {
+                            IconButton(
+                                onClick = { confirmRemoval = true },
+                                enabled = if (selectedFilter == LibraryFilter.Playlists) {
+                                    selectedPlaylistIds.isNotEmpty()
+                                } else {
+                                    selectedVideoIds.isNotEmpty()
                                 },
-                            ),
-                        ) {
-                            Icon(
-                                Icons.Outlined.DeleteOutline,
-                                contentDescription = stringResource(R.string.remove),
-                            )
+                                modifier = Modifier.testTag(
+                                    when (selectedFilter) {
+                                        LibraryFilter.History -> "history-remove"
+                                        LibraryFilter.Downloads -> "downloads-remove"
+                                        else -> "playlists-remove"
+                                    },
+                                ),
+                            ) {
+                                Icon(
+                                    Icons.Outlined.DeleteOutline,
+                                    contentDescription = stringResource(R.string.remove),
+                                )
+                            }
                         }
                     }
                 }
@@ -601,6 +611,17 @@ internal fun LibraryScreen(
             onRename = { title -> onRenamePlaylist(playlist.id, title) },
         )
     }
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectionTooltip(label: String, content: @Composable () -> Unit) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(label) } },
+        state = rememberTooltipState(),
+        content = content,
+    )
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)

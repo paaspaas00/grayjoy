@@ -601,4 +601,19 @@
     <string name="video_title_language">Video title language</string>
     <string name="prefer_original_title">Prefer original title</string>
     <string name="use_app_language_for_titles">Use app language</string>
+    <string name="details">Details</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="no_changelog">No changelog was provided for this release.</string>
+    <string name="update_download_started">Downloading the Grayjoy update…</string>
+    <string name="update_download_failed">Could not download the Grayjoy update.</string>
+    <string name="sort">Sort</string>
+    <string name="sort_videos">Sort videos</string>
+    <string name="playlist_order">Playlist order</string>
+    <string name="popularity">Popularity</string>
+    <string name="upload_date">Upload date</string>
+    <string name="ascending">Ascending</string>
+    <string name="descending">Descending</string>
+    <string name="show_all_queue">Show all (%1$d)</string>
+    <string name="play_next">Play next</string>
+    <string name="play_next_description">Move this video directly after the current one.</string>
 </resources>

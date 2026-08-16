@@ -7,13 +7,18 @@ import java.net.URL
 internal data class GitHubRelease(
     val versionName: String,
     val releaseUrl: String,
+    val changelog: String,
+    val debugApkUrl: String?,
 )
+
+internal data class GitHubReleaseAsset(val name: String, val downloadUrl: String)
 
 internal class GitHubReleaseChecker(
     private val releasesUrl: String = RELEASES_URL,
 ) {
     fun latestUpdate(
         currentVersionName: String,
+        supportedAbis: List<String> = emptyList(),
     ): GitHubRelease? {
         val connection = URL(releasesUrl).openConnection() as HttpURLConnection
         connection.connectTimeout = CONNECT_TIMEOUT_MS
@@ -40,6 +45,20 @@ internal class GitHubReleaseChecker(
             return GitHubRelease(
                 versionName = versionName,
                 releaseUrl = releaseUrl,
+                changelog = release.optString("body"),
+                debugApkUrl = selectDebugApkUrl(
+                    assets = (release.optJSONArray("assets") ?: JSONArray()).let { assets ->
+                        (0 until assets.length()).mapNotNull { index ->
+                            assets.optJSONObject(index)?.let { asset ->
+                                GitHubReleaseAsset(
+                                    name = asset.optString("name"),
+                                    downloadUrl = asset.optString("browser_download_url"),
+                                )
+                            }
+                        }
+                    },
+                    supportedAbis = supportedAbis,
+                ),
             )
         } finally {
             connection.disconnect()
@@ -51,6 +70,30 @@ internal class GitHubReleaseChecker(
             "https://api.github.com/repos/paaspaas00/grayjoy/releases?per_page=10"
         private const val CONNECT_TIMEOUT_MS = 5_000
         private const val READ_TIMEOUT_MS = 8_000
+    }
+}
+
+internal fun selectDebugApkUrl(
+    assets: List<GitHubReleaseAsset>,
+    supportedAbis: List<String>,
+): String? {
+    val candidates = assets.filter { asset ->
+        asset.name.endsWith("-debug.apk", ignoreCase = true) &&
+            asset.downloadUrl.startsWith("https://")
+    }
+    val variants = supportedAbis.mapNotNull { abi ->
+        when (abi.lowercase()) {
+            "arm64-v8a" -> "arm64-v8a"
+            "armeabi-v7a" -> "armeabi-v7a"
+            "x86_64" -> "x86_64"
+            "x86" -> "x86"
+            else -> null
+        }
+    } + "universal"
+    return variants.firstNotNullOfOrNull { variant ->
+        candidates.firstOrNull { asset ->
+            asset.name.endsWith("-$variant-debug.apk", ignoreCase = true)
+        }?.downloadUrl
     }
 }
 

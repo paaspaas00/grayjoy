@@ -191,6 +191,7 @@ fun VideoDetailScreen(
     onRetryPlayback: () -> Unit,
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
+    onQueueVideoLongClick: (VideoUiModel) -> Unit = onVideoLongClick,
     creatorChannel: ChannelUiModel?,
     onCreatorPreview: (ChannelUiModel) -> Unit,
     onCreatorClick: (ChannelUiModel) -> Unit,
@@ -205,6 +206,7 @@ fun VideoDetailScreen(
         mutableStateOf(DetailSection.UpNext.name)
     }
     var showCreatorSheet by rememberSaveable(video.id) { mutableStateOf(false) }
+    var showFullQueue by rememberSaveable(video.id) { mutableStateOf(false) }
     val creatorLabel = stringResource(R.string.creator)
     val followerCountLabel = video.authorSubscriberCount?.let { count ->
         pluralStringResource(
@@ -357,6 +359,9 @@ fun VideoDetailScreen(
                         },
                         onVideoClick = onVideoClick,
                         onVideoLongClick = onVideoLongClick,
+                        onQueueVideoLongClick = onQueueVideoLongClick,
+                        showFullQueue = showFullQueue,
+                        onShowFullQueueChange = { showFullQueue = it },
                     )
                     detailPagingIndicator(nowPlaying, selectedSection)
                 }
@@ -397,6 +402,9 @@ fun VideoDetailScreen(
                         },
                         onVideoClick = onVideoClick,
                         onVideoLongClick = onVideoLongClick,
+                        onQueueVideoLongClick = onQueueVideoLongClick,
+                        showFullQueue = showFullQueue,
+                        onShowFullQueueChange = { showFullQueue = it },
                     )
                     detailPagingIndicator(nowPlaying, selectedSection)
                 }
@@ -753,16 +761,26 @@ internal fun PlayerSurface(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (isFullscreen) {
-                    Text(
-                        text = video.title,
+                    Column(
                         modifier = Modifier
                             .weight(1f)
                             .padding(start = 8.dp),
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleSmall,
-                    )
+                    ) {
+                        Text(
+                            text = video.title,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        if (video.creator.isNotBlank()) Text(
+                            text = video.creator,
+                            color = Color.White.copy(alpha = 0.76f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
                 } else {
                     Spacer(Modifier.weight(1f))
                 }
@@ -1948,6 +1966,9 @@ private fun LazyListScope.videoDetails(
     onCreatorClick: () -> Unit,
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
+    onQueueVideoLongClick: (VideoUiModel) -> Unit,
+    showFullQueue: Boolean,
+    onShowFullQueueChange: (Boolean) -> Unit,
 ) {
     item {
         Column(
@@ -2041,7 +2062,12 @@ private fun LazyListScope.videoDetails(
     when (selectedSection) {
         DetailSection.UpNext -> {
             val currentId = video.id
-            val queue = queueVideos.filter { it.id != currentId }
+            val currentQueueIndex = queueVideos.indexOfFirst { it.id == currentId }
+            val queue = if (currentQueueIndex >= 0) {
+                queueVideos.drop(currentQueueIndex + 1)
+            } else {
+                queueVideos.filter { it.id != currentId }
+            }
             val recommendations = nowPlaying.recommendations.filter { recommendation ->
                 recommendation.id != currentId && queue.none { it.id == recommendation.id }
             }
@@ -2053,16 +2079,28 @@ private fun LazyListScope.videoDetails(
                         style = MaterialTheme.typography.titleLarge,
                     )
                 }
-                queue.forEachIndexed { index, queuedVideo ->
+                val visibleQueue = if (showFullQueue) queue else queue.take(3)
+                visibleQueue.forEachIndexed { index, queuedVideo ->
                     item(key = "queue-${queuedVideo.id}") {
                         Box(Modifier.padding(horizontal = horizontalPadding)) {
                             CompactVideoCard(
                                 video = queuedVideo,
                                 index = index,
                                 onClick = { onVideoClick(queuedVideo) },
-                                onLongClick = { onVideoLongClick(queuedVideo) },
+                                onLongClick = { onQueueVideoLongClick(queuedVideo) },
                             )
                         }
+                    }
+                }
+                if (queue.size > 3) item {
+                    TextButton(
+                        onClick = { onShowFullQueueChange(!showFullQueue) },
+                        modifier = Modifier.padding(horizontal = horizontalPadding),
+                    ) {
+                        Text(
+                            if (showFullQueue) stringResource(R.string.show_less)
+                            else stringResource(R.string.show_all_queue, queue.size),
+                        )
                     }
                 }
             }

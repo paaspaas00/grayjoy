@@ -220,6 +220,7 @@ private data class PlaybackQueueSession(
     val playlistId: String?,
     val pendingVideos: MutableList<VideoUiModel>,
     val knownVideoIds: MutableSet<String>,
+    val orderedVideoIds: MutableList<String>,
 )
 
 private data class SpeedHoldSnapshot(
@@ -421,6 +422,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     // Old Grayjay prepares the next queued video immediately before transferring it. Keeping
     // this single-file queue prevents signed plugin URLs for later playlist items expiring.
     private val downloadPreparationSemaphore = Semaphore(1)
+    private val metadataHydrationSemaphore = Semaphore(2)
+    private val metadataHydrationJobs = mutableMapOf<String, Job>()
+    private val metadataHydrationAttempts = mutableSetOf<String>()
+    private var metadataHydrationSaveJob: Job? = null
     private val downloadPreparationStates = mutableMapOf<String, DownloadUiModel>()
     private val autoRepairedDownloadKeys = mutableSetOf<String>()
     private var appliedDownloadIndexSignature: Pair<Set<String>, Set<String>>? = null
@@ -488,7 +493,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             engine.playback.collect { playback ->
                 val cast = chromecastManager.state.value
-                _uiState.update { it.copy(playback = playback.toUiState().withChromecast(cast)) }
+                _uiState.update {
+                    it.copy(
+                        playback = playback.toUiState(
+                            fullQueueVideoIds = playbackQueueSession
+                                ?.orderedVideoIds
+                                ?.toList()
+                                .orEmpty(),
+                        ).withChromecast(cast),
+                    )
+                }
                 val currentId = playback.currentVideoId
                 // engine.pausePlayback() publishes the old Media3 item while a newly selected
                 // video/playlist is still resolving. Treating that stale item as a transition
@@ -1405,12 +1419,15 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 val release = withContext(Dispatchers.IO) {
                     releaseChecker.latestUpdate(
                         currentVersionName = BuildConfig.VERSION_NAME,
+                        supportedAbis = android.os.Build.SUPPORTED_ABIS.toList(),
                     )
                 }
                 val availableUpdate = release?.let {
                     ReleaseUpdateUiModel(
                         versionName = it.versionName,
                         releaseUrl = it.releaseUrl,
+                        changelog = it.changelog,
+                        debugApkUrl = it.debugApkUrl,
                     )
                 }
                 _uiState.update { it.copy(availableUpdate = availableUpdate) }
@@ -1420,6 +1437,61 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 // Prefs must remain instant and usable offline. A failed background check is
                 // intentionally silent; entering Prefs later retries it.
                 Log.d("GrayjayViewModel", "Could not check GitHub releases.", error)
+            }
+        }
+    }
+
+    /**
+     * Atom subscription feeds deliberately avoid opening every watch page, so some cards arrive
+     * without a duration. Resolve only cards that actually become visible and cap concurrency;
+     * this preserves the fast feed while filling the UI metadata progressively.
+     */
+    fun hydrateVideoMetadata(videoId: String) {
+        val video = findVideo(videoId) ?: return
+        if (video.duration.isNotBlank() || video.isLive) return
+        val attemptKey = "$activeProfileId|$videoId"
+        if (!metadataHydrationAttempts.add(attemptKey)) return
+        val profileAtStart = activeProfileId
+        metadataHydrationJobs[attemptKey] = viewModelScope.launch {
+            try {
+                val resolved = metadataHydrationSemaphore.withPermit {
+                    resolveWithAudioPreferences(video)
+                }
+                if (activeProfileId != profileAtStart) return@launch
+                val resolvedDuration = resolved.duration
+                if (resolvedDuration.isBlank()) return@launch
+                homeFeedCache.replaceAll { _, videos ->
+                    videos.map { current ->
+                        if (current.id == videoId) current.copy(duration = resolvedDuration)
+                        else current
+                    }
+                }
+                _uiState.update { state ->
+                    state.copy(
+                        subscriptionVideos = state.subscriptionVideos.map { current ->
+                            if (current.id == videoId) current.copy(duration = resolvedDuration)
+                            else current
+                        },
+                        home = state.home.copy(
+                            videos = state.home.videos.map { current ->
+                                if (current.id == videoId) current.copy(duration = resolvedDuration)
+                                else current
+                            },
+                        ),
+                    )
+                }
+                metadataHydrationSaveJob?.cancel()
+                metadataHydrationSaveJob = viewModelScope.launch {
+                    delay(1_200L)
+                    if (activeProfileId == profileAtStart) saveHomeToSession()
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.d("GrayjayViewModel", "Visible metadata hydration failed for $videoId", error)
+                metadataHydrationAttempts.remove(attemptKey)
+            } finally {
+                metadataHydrationJobs.remove(attemptKey)
             }
         }
     }
@@ -1753,6 +1825,24 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun playNext(videoId: String) {
+        val currentId = engine.playback.value.currentVideoId ?: return
+        if (videoId == currentId) return
+        val session = playbackQueueSession
+        if (session != null && videoId in session.orderedVideoIds) {
+            session.orderedVideoIds.remove(videoId)
+            val currentIndex = session.orderedVideoIds.indexOf(currentId)
+            session.orderedVideoIds.add((currentIndex + 1).coerceAtLeast(0), videoId)
+            session.pendingVideos.firstOrNull { it.id == videoId }?.let { pending ->
+                session.pendingVideos.remove(pending)
+                session.pendingVideos.add(0, pending)
+            }
+        }
+        engine.moveQueueItemNext(videoId)
+        publishLogicalQueue()
+        prepareQueueLookAhead()
+    }
+
     private suspend fun enqueueVideosWithoutBlockingUi(requested: List<VideoUiModel>) {
         val profileAtStart = activeProfileId
         val repositoryAtStart = libraryRepository
@@ -1825,6 +1915,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     playlistId = createdSnapshot.first.id,
                     pendingVideos = mutableListOf(),
                     knownVideoIds = currentPlayback.queueVideoIds.toMutableSet(),
+                    orderedVideoIds = snapshotIds.toMutableList(),
                 )
             } else {
                 currentSession.copy(playlistId = createdSnapshot.first.id)
@@ -1837,13 +1928,18 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 playlistId = activePlaylistId,
                 pendingVideos = mutableListOf(),
                 knownVideoIds = currentPlayback.queueVideoIds.toMutableSet(),
+                orderedVideoIds = currentPlayback.queueVideoIds.toMutableList(),
             )
             playbackQueueSession = queueSession
         }
 
         additions.forEach { video ->
-            if (queueSession.knownVideoIds.add(video.id)) queueSession.pendingVideos += video
+            if (queueSession.knownVideoIds.add(video.id)) {
+                queueSession.pendingVideos += video
+                queueSession.orderedVideoIds += video.id
+            }
         }
+        publishLogicalQueue()
         prepareQueueLookAhead()
     }
 
@@ -1878,6 +1974,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             playlistId = playlistIdForQueue,
             pendingVideos = queue.drop(1).toMutableList(),
             knownVideoIds = queue.mapTo(linkedSetOf(), VideoUiModel::id),
+            orderedVideoIds = queue.mapTo(mutableListOf(), VideoUiModel::id),
         )
         detailsJob?.cancel()
         storyboardJob?.cancel()
@@ -2002,7 +2099,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         "Skipping unresolvable queued video ${video.id} from ${video.sourceId}.",
                         error,
                     )
-                    if (playbackQueueSession === session) session.pendingVideos.remove(video)
+                    if (playbackQueueSession === session) {
+                        session.pendingVideos.remove(video)
+                        session.orderedVideoIds.remove(video.id)
+                        session.knownVideoIds.remove(video.id)
+                        publishLogicalQueue()
+                    }
                     continue
                 }
                 if (
@@ -2022,6 +2124,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         "Could not append queued video ${resolved.id}; continuing with the queue.",
                         error,
                     )
+                    session.orderedVideoIds.remove(resolved.id)
+                    session.knownVideoIds.remove(resolved.id)
+                    publishLogicalQueue()
                 }
             }
         }
@@ -3841,8 +3946,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 result.first.isNotEmpty()
             ) {
                 result.first.forEach { video ->
-                    if (session.knownVideoIds.add(video.id)) session.pendingVideos += video
+                    if (session.knownVideoIds.add(video.id)) {
+                        session.pendingVideos += video
+                        session.orderedVideoIds += video.id
+                    }
                 }
+                publishLogicalQueue()
                 prepareQueueLookAhead()
             }
         }
@@ -4543,9 +4652,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         else "${text(R.string.newpipe_import_failed)} $detail"
     }
 
-    private fun EnginePlaybackState.toUiState() = PlaybackUiState(
+    private fun EnginePlaybackState.toUiState(
+        fullQueueVideoIds: List<String> = emptyList(),
+    ) = PlaybackUiState(
         currentVideoId = currentVideoId,
         queueVideoIds = queueVideoIds,
+        fullQueueVideoIds = fullQueueVideoIds.ifEmpty { queueVideoIds },
         isPlaying = isPlaying,
         isBuffering = isBuffering,
         positionMs = positionMs,
@@ -5124,6 +5236,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 },
             ),
         )
+    }
+
+    private fun publishLogicalQueue() {
+        val logicalIds = playbackQueueSession?.orderedVideoIds?.toList().orEmpty()
+        _uiState.update { state ->
+            state.copy(
+                playback = state.playback.copy(
+                    fullQueueVideoIds = logicalIds.ifEmpty { state.playback.queueVideoIds },
+                ),
+            )
+        }
     }
 
     private fun VideoUiModel.creatorKey(): String = authorUrl.ifBlank {

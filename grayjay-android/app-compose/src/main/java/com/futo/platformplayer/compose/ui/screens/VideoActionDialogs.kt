@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.QueuePlayNext
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
@@ -97,6 +98,7 @@ internal fun VideoActionsSheet(
     onDownloadAudio: () -> Unit,
     onShare: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onPlayNext: (() -> Unit)? = null,
     onPlayFromHere: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -121,6 +123,18 @@ internal fun VideoActionsSheet(
                 )
             }
             HorizontalDivider()
+            onPlayNext?.let { playNext ->
+                VideoAction(
+                    title = stringResource(R.string.play_next),
+                    subtitle = stringResource(R.string.play_next_description),
+                    icon = { Icon(Icons.Outlined.QueuePlayNext, contentDescription = null) },
+                    tag = "video-action-play-next",
+                    onClick = {
+                        playNext()
+                        onDismiss()
+                    },
+                )
+            }
             onPlayFromHere?.let { playFromHere ->
                 VideoAction(
                     title = stringResource(R.string.play_from_here),

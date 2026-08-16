@@ -22,7 +22,6 @@ import androidx.compose.material.icons.outlined.ClosedCaption
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.MusicNote
-import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.PictureInPicture
 import androidx.compose.material.icons.outlined.Recommend
 import androidx.compose.material.icons.outlined.ScreenLockPortrait
@@ -49,14 +48,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.BuildConfig
 import com.futo.platformplayer.compose.AppLanguageManager
-import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
 import com.futo.platformplayer.compose.ui.PcLinkUiState
 import com.futo.platformplayer.compose.ui.ThemeMode
 import com.futo.platformplayer.compose.ui.VideoTitleLanguageMode
@@ -110,9 +107,7 @@ fun SettingsScreen(
     pcLink: PcLinkUiState = PcLinkUiState(),
     onScanPcPairingQr: () -> Unit = {},
     onRemovePairedComputer: (String) -> Unit = {},
-    availableUpdate: ReleaseUpdateUiModel? = null,
 ) {
-    val uriHandler = LocalUriHandler.current
     var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showQualityDialog by rememberSaveable { mutableStateOf(false) }
@@ -134,52 +129,6 @@ fun SettingsScreen(
                     stringResource(R.string.settings_description),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-        }
-        availableUpdate?.let { update ->
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("update-available-banner"),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Outlined.NewReleases, contentDescription = null)
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    stringResource(R.string.update_available),
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                Text(
-                                    stringResource(
-                                        R.string.update_available_description,
-                                        update.versionName,
-                                    ),
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                )
-                            }
-                        }
-                        FilledTonalButton(
-                            modifier = Modifier
-                                .align(Alignment.End)
-                                .testTag("download-update"),
-                            onClick = { uriHandler.openUri(update.releaseUrl) },
-                        ) {
-                            Text(stringResource(R.string.open_release_page))
-                        }
-                    }
-                }
             }
         }
         item {

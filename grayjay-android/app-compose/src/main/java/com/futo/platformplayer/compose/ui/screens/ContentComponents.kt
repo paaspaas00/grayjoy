@@ -431,23 +431,25 @@ private fun CompactVideoThumbnail(
                 )
             }
         }
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(6.dp),
-            color = if (video.isLive) {
-                MaterialTheme.colorScheme.error
-            } else {
-                Color.Black.copy(alpha = 0.78f)
-            },
-            contentColor = Color.White,
-            shape = MaterialTheme.shapes.extraSmall,
-        ) {
-            Text(
-                text = video.duration,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                style = MaterialTheme.typography.labelSmall,
-            )
+        if (video.duration.isNotBlank()) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp),
+                color = if (video.isLive) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    Color.Black.copy(alpha = 0.78f)
+                },
+                contentColor = Color.White,
+                shape = MaterialTheme.shapes.extraSmall,
+            ) {
+                Text(
+                    text = video.duration,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
         }
     }
 }

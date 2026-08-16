@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,12 +24,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +48,27 @@ import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.RemotePlaylistDetailUiState
 import com.futo.platformplayer.compose.ui.VideoUiModel
+
+internal enum class RemotePlaylistSortMode { PlaylistOrder, Popularity, UploadDate }
+
+internal fun sortedRemotePlaylistVideos(
+    videos: List<VideoUiModel>,
+    mode: RemotePlaylistSortMode,
+    ascending: Boolean,
+): List<VideoUiModel> {
+    if (mode == RemotePlaylistSortMode.PlaylistOrder) {
+        return if (ascending) videos else videos.asReversed()
+    }
+    val key: (VideoUiModel) -> Long = when (mode) {
+        RemotePlaylistSortMode.Popularity -> VideoUiModel::viewCount
+        RemotePlaylistSortMode.UploadDate -> VideoUiModel::publishedAtMs
+        RemotePlaylistSortMode.PlaylistOrder -> error("Handled above")
+    }
+    val (known, unknown) = videos.withIndex().partition { key(it.value) > 0L }
+    val sortedKnown = known.sortedWith(compareBy<IndexedValue<VideoUiModel>> { key(it.value) }.thenBy { it.index })
+    return (if (ascending) sortedKnown else sortedKnown.asReversed()).map { it.value } +
+        unknown.map { it.value }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +87,15 @@ fun RemotePlaylistDetailScreen(
     val playlist = detail.playlist ?: return
     val listState = rememberLazyListState()
     var showCreateSheet by rememberSaveable(playlist.id) { mutableStateOf(false) }
+    var showSortSheet by rememberSaveable(playlist.id) { mutableStateOf(false) }
+    var sortModeName by rememberSaveable(playlist.id) {
+        mutableStateOf(RemotePlaylistSortMode.PlaylistOrder.name)
+    }
+    var sortAscending by rememberSaveable(playlist.id) { mutableStateOf(true) }
+    val sortMode = RemotePlaylistSortMode.valueOf(sortModeName)
+    val sortedVideos = remember(detail.videos, sortMode, sortAscending) {
+        sortedRemotePlaylistVideos(detail.videos, sortMode, sortAscending)
+    }
     val existingPlaylistTitles = localPlaylists.map(PlaylistUiModel::title)
     val suggestedLocalTitle = uniqueRemotePlaylistTitle(
         requestedTitle = playlist.title,
@@ -207,11 +240,23 @@ fun RemotePlaylistDetailScreen(
         detail.errorMessage?.let { message ->
             item { Text(message, color = MaterialTheme.colorScheme.error) }
         }
-        item { SectionHeading(stringResource(R.string.videos)) }
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.videos), style = MaterialTheme.typography.headlineSmall)
+                OutlinedButton(onClick = { showSortSheet = true }) {
+                    Icon(Icons.Outlined.Sort, contentDescription = null)
+                    Text(stringResource(R.string.sort))
+                }
+            }
+        }
         if (detail.isLoading) {
             item { VideoListSkeleton(count = 5, modifier = Modifier.fillMaxWidth()) }
         } else {
-            itemsIndexed(detail.videos, key = { _, video -> video.id }) { index, video ->
+            itemsIndexed(sortedVideos, key = { _, video -> video.id }) { index, video ->
                 VideoCard(
                     video = video,
                     index = index,
@@ -223,6 +268,47 @@ fun RemotePlaylistDetailScreen(
         }
         if (detail.isLoadingMore || detail.isLoadingAll) {
             item { VideoListSkeleton(count = 2, modifier = Modifier.fillMaxWidth()) }
+        }
+    }
+
+    if (showSortSheet) {
+        ModalBottomSheet(onDismissRequest = { showSortSheet = false }) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.sort_videos), style = MaterialTheme.typography.titleLarge)
+                RemotePlaylistSortMode.entries.forEach { option ->
+                    val label = when (option) {
+                        RemotePlaylistSortMode.PlaylistOrder -> R.string.playlist_order
+                        RemotePlaylistSortMode.Popularity -> R.string.popularity
+                        RemotePlaylistSortMode.UploadDate -> R.string.upload_date
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = sortMode == option,
+                            onClick = { sortModeName = option.name },
+                        )
+                        Text(stringResource(label))
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = sortAscending, onClick = { sortAscending = true })
+                    Text(stringResource(R.string.ascending))
+                    RadioButton(selected = !sortAscending, onClick = { sortAscending = false })
+                    Text(stringResource(R.string.descending))
+                }
+                Button(
+                    onClick = { showSortSheet = false },
+                    modifier = Modifier.align(Alignment.End),
+                ) { Text(stringResource(R.string.done)) }
+            }
         }
     }
 

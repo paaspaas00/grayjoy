@@ -279,6 +279,7 @@ interface GrayjayEngine {
     fun open(videos: List<VideoUiModel>, currentVideoId: String, playWhenReady: Boolean)
     fun replaceCurrent(video: VideoUiModel, positionMs: Long, playWhenReady: Boolean)
     fun appendToQueue(videos: List<VideoUiModel>)
+    fun moveQueueItemNext(videoId: String)
     fun togglePlayback()
     fun pausePlayback()
     fun skipToNext()
@@ -895,6 +896,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             } else {
                 formatDuration(source.durationSeconds).ifBlank { video.duration }
             },
+            viewCount = source.viewCount.takeIf { it > 0L } ?: video.viewCount,
+            publishedAtMs = source.datetime?.toInstant()?.toEpochMilli()
+                ?.takeIf { it > 0L } ?: video.publishedAtMs,
             isLive = source.isLive,
             isDrmProtected = source.isDrmProtected,
             playbackAudioOnly = source.isAudioOnly,
@@ -1171,6 +1175,23 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         // after the timeline changes so Media3 cannot leave only the MediaSession/AVRCP controls
         // alive while the visible notification disappears.
         PlaybackNotificationService.refresh(appContext)
+    }
+
+    override fun moveQueueItemNext(videoId: String) {
+        val fromIndex = queueIds.indexOf(videoId)
+        val currentIndex = exoPlayer.currentMediaItemIndex
+        if (fromIndex < 0 || currentIndex < 0 || fromIndex == currentIndex) return
+        val targetIndex = (if (fromIndex < currentIndex) currentIndex else currentIndex + 1)
+            .coerceAtMost(queueIds.lastIndex)
+        if (fromIndex == targetIndex) return
+        exoPlayer.moveMediaItem(fromIndex, targetIndex)
+        queueIds = queueIds.toMutableList().apply {
+            add(targetIndex, removeAt(fromIndex))
+        }
+        openedVideos = openedVideos.toMutableList().apply {
+            add(targetIndex, removeAt(fromIndex))
+        }
+        syncPlayback()
     }
 
     private fun VideoUiModel.nearestQualityVariantHeight(targetHeight: Int): Int? =
@@ -1734,6 +1755,8 @@ private fun GrayjaySearchItem.toVideoUiModel(endpoint: PluginEndpoint?, context:
         }
     },
     duration = if (isLive) context.getString(R.string.live) else formatDuration(durationSeconds),
+    viewCount = viewCount,
+    publishedAtMs = datetime?.toInstant()?.toEpochMilli() ?: 0L,
     channelId = authorUrl,
     sourceId = sourceId,
     isLive = isLive,
