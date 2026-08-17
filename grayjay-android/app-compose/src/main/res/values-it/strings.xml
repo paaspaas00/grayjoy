@@ -634,4 +634,7 @@
     <string name="video_no_longer_available_title">Video non più disponibile</string>
     <string name="video_no_longer_available_message">L’autore o la sorgente ha rimosso questo video, che non può più essere riprodotto.</string>
     <string name="could_not_open_video">Impossibile aprire il video</string>
+    <string name="video_scheduled_badge">Programmato</string>
+    <string name="video_scheduled_title">Diretta programmata</string>
+    <string name="video_scheduled_message">Questa diretta è programmata per %1$s. Sarà riproducibile quando inizierà.</string>
 </resources>

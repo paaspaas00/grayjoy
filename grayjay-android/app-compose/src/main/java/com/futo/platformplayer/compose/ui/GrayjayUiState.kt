@@ -59,6 +59,7 @@ data class VideoOpenDialogUiModel(
     val title: String,
     val message: String,
     val permanentlyUnavailable: Boolean,
+    val scheduledStartAtMs: Long = 0L,
 )
 
 enum class VideoTitleLanguageMode {

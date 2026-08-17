@@ -222,6 +222,8 @@ data class EngineUserImportResult(
     val warnings: List<String>,
 )
 
+enum class EngineResolvePriority { UserPlayback, BackgroundMetadata }
+
 internal fun VideoUiModel.pluginContentUrlOrNull(): String? =
     contentUrl.takeIf(String::isWebUrl)
         ?: id.takeIf(String::isWebUrl)
@@ -286,6 +288,7 @@ interface GrayjayEngine {
         video: VideoUiModel,
         preferredAudioLanguage: String? = "en",
         preferOriginalAudio: Boolean = true,
+        priority: EngineResolvePriority = EngineResolvePriority.UserPlayback,
     ): VideoUiModel
     fun configureVideoTitleLanguage(preferOriginal: Boolean, languageTag: String)
     suspend fun loadStoryboard(video: VideoUiModel): StoryboardUiModel?
@@ -894,6 +897,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         video: VideoUiModel,
         preferredAudioLanguage: String?,
         preferOriginalAudio: Boolean,
+        priority: EngineResolvePriority,
     ): VideoUiModel {
         if (video.playbackUrl.isNotBlank()) return video
         val endpoint = pluginEndpoints[video.sourceId]
@@ -905,6 +909,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             endpoint = endpoint,
             preferredAudioLanguage = preferredAudioLanguage,
             preferOriginalAudio = preferOriginalAudio,
+            backgroundMetadata = priority == EngineResolvePriority.BackgroundMetadata,
         )
         return video.copy(
             title = source.title.ifBlank { video.title },

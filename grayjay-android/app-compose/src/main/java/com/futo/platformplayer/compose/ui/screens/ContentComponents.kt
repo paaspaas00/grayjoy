@@ -413,7 +413,22 @@ private fun CompactVideoThumbnail(
                 .padding(6.dp)
                 .size(22.dp),
         )
-        if (!video.isAvailable) {
+        val isScheduled = video.scheduledStartAtMs > System.currentTimeMillis()
+        if (isScheduled) {
+            Surface(
+                modifier = Modifier.align(Alignment.Center),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Text(
+                    stringResource(R.string.video_scheduled_badge),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        } else if (!video.isAvailable) {
             Surface(
                 modifier = Modifier.align(Alignment.Center),
                 color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.94f),

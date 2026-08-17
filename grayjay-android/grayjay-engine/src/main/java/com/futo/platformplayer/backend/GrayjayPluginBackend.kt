@@ -200,6 +200,21 @@ data class GrayjayUrlRoute(
     val kind: GrayjayUrlKind,
 )
 
+class GrayjayScheduledVideoException(
+    val scheduledStartAtMs: Long,
+) : IllegalStateException("This live event is scheduled for a future time.")
+
+private val YOUTUBE_UPCOMING_REGEX = Regex("\\\"isUpcoming\\\"\\s*:\\s*true")
+private val YOUTUBE_START_TIMESTAMP_REGEX =
+    Regex("\\\"startTimestamp\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+
+internal fun parseYouTubeScheduledStartMs(html: String): Long? {
+    if (!YOUTUBE_UPCOMING_REGEX.containsMatchIn(html)) return null
+    val timestamp = YOUTUBE_START_TIMESTAMP_REGEX.find(html)?.groupValues?.getOrNull(1)
+        ?: return null
+    return runCatching { OffsetDateTime.parse(timestamp).toInstant().toEpochMilli() }.getOrNull()
+}
+
 data class GrayjayPlaybackSource(
     val contentUrl: String,
     val shareUrl: String,
@@ -466,6 +481,11 @@ class GrayjayPluginBackend(context: Context) {
         "Compose main",
         MAIN_CLIENT_CONCURRENCY,
     )
+    // Visible-card hydration must not occupy the clients used for a video the user just tapped.
+    private val metadataClientPool = PlatformMultiClientPool(
+        "Compose metadata",
+        METADATA_CLIENT_CONCURRENCY,
+    )
     // Account imports can spend a long time traversing a plugin-owned pager. Keep them off the
     // primary client so a bad continuation cannot block playback, search, or normal navigation.
     // A second slot lets a new import start after a cancelled V8 call that ignored interruption.
@@ -704,6 +724,7 @@ class GrayjayPluginBackend(context: Context) {
         private const val SUBSCRIPTION_CONCURRENCY = 6
         private const val SUBSCRIPTION_NETWORK_CONCURRENCY = 8
         private const val MAIN_CLIENT_CONCURRENCY = 2
+        private const val METADATA_CLIENT_CONCURRENCY = 1
         private const val ACCOUNT_IMPORT_CLIENT_CONCURRENCY = 2
         const val CHANNEL_PLAYLISTS_TYPE = "PLAYLISTS"
         private const val STORYBOARD_CACHE_TTL_MS = 30L * 60L * 1_000L
@@ -1365,6 +1386,7 @@ class GrayjayPluginBackend(context: Context) {
         endpoint: PluginEndpoint,
         preferredAudioLanguage: String? = "en",
         preferOriginalAudio: Boolean = true,
+        backgroundMetadata: Boolean = false,
     ): GrayjayPlaybackSource = withContext(Dispatchers.IO) {
         if (endpoint.pluginId == YOUTUBE_PLUGIN_ID && !isAuthenticated(endpoint.pluginId)) {
             val settings = loadPluginSettings(endpoint.pluginId)
@@ -1372,12 +1394,23 @@ class GrayjayPluginBackend(context: Context) {
                 setPluginSettings(endpoint.pluginId, settings)
             }
         }
-        var plugin = mainClientPool.getClientPooled(
+        val resolvePool = if (backgroundMetadata) metadataClientPool else mainClientPool
+        val resolveConcurrency = if (backgroundMetadata) {
+            METADATA_CLIENT_CONCURRENCY
+        } else {
+            MAIN_CLIENT_CONCURRENCY
+        }
+        var plugin = resolvePool.getClientPooled(
             getOrLoad(sourceId, endpoint),
-            MAIN_CLIENT_CONCURRENCY,
+            resolveConcurrency,
         ) as JSClient
         val detailsResult = runCatching { plugin.getContentDetails(contentUrl) }
         val rawDetails = detailsResult.getOrElse { error ->
+            if (endpoint.pluginId == YOUTUBE_PLUGIN_ID) {
+                youtubeScheduledStartMs(contentUrl)?.let { startAtMs ->
+                    throw GrayjayScheduledVideoException(startAtMs)
+                }
+            }
             if (
                 endpoint.pluginId == YOUTUBE_PLUGIN_ID &&
                 error is ScriptLoginRequiredException &&
@@ -1388,9 +1421,9 @@ class GrayjayPluginBackend(context: Context) {
                     put("composeLegacyAgeFallback", "true")
                 }
                 setPluginSettings(endpoint.pluginId, updatedSettings)
-                plugin = mainClientPool.getClientPooled(
+                plugin = resolvePool.getClientPooled(
                     getOrLoad(sourceId, endpoint),
-                    MAIN_CLIENT_CONCURRENCY,
+                    resolveConcurrency,
                 ) as JSClient
                 runCatching { plugin.getContentDetails(contentUrl) }.getOrElse { fallbackError ->
                     Log.w(TAG, "Anonymous age-restriction fallback failed; source login is required.", fallbackError)
@@ -1698,6 +1731,11 @@ class GrayjayPluginBackend(context: Context) {
         val selectedVideoSource: IVideoSource? =
             hlsSource ?: dashSource ?: liveSource ?: rawDashSource ?: video
         val isAudioOnly = selectedVideoSource == null && playbackAudioSource != null
+        if (selectedVideoSource == null && !isAudioOnly && endpoint.pluginId == YOUTUBE_PLUGIN_ID) {
+            youtubeScheduledStartMs(contentUrl)?.let { startAtMs ->
+                throw GrayjayScheduledVideoException(startAtMs)
+            }
+        }
         require(selectedVideoSource != null || isAudioOnly) {
             "The plugin returned no supported video or audio stream."
         }
@@ -2241,6 +2279,23 @@ class GrayjayPluginBackend(context: Context) {
         }
         return storyboard
     }
+
+    private fun youtubeScheduledStartMs(contentUrl: String): Long? = runCatching {
+        client.newCall(
+            Request.Builder()
+                .url(contentUrl)
+                .header("User-Agent", STORYBOARD_USER_AGENT)
+                .header("Accept-Language", videoTitleLanguageTag)
+                .header("Cookie", "CONSENT=YES+cb")
+                .get()
+                .build(),
+        ).execute().use { response ->
+            if (!response.isSuccessful) return@use null
+            parseYouTubeScheduledStartMs(response.body.string())
+        }
+    }.onFailure { error ->
+        Log.d(TAG, "Could not inspect YouTube live schedule.", error)
+    }.getOrNull()
 
     private fun storyboardCacheKey(contentUrl: String): String =
         "$profileId:${youtubeVideoId(contentUrl).orEmpty()}"

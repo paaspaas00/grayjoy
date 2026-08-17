@@ -17,6 +17,7 @@ data class VideoUiModel(
     val sourceId: String = "youtube",
     val isLive: Boolean = false,
     val isAvailable: Boolean = true,
+    val scheduledStartAtMs: Long = 0L,
     val isDrmProtected: Boolean = false,
     val drmLicenseUri: String = "",
     val drmLicenseRequestExecutor: JSRequestExecutor? = null,

@@ -647,6 +647,9 @@ fun GrayjayApp(
     }
     val onVideoClick: (VideoUiModel) -> Unit = {
         onOpenVideo(it.id)
+        if (it.isAvailable && it.scheduledStartAtMs <= System.currentTimeMillis()) {
+            settlePlayer(0f, it.id)
+        }
     }
     val onVideoLongClick: (VideoUiModel) -> Unit = {
         actionIsRemotePlaylistVideo = false
@@ -695,6 +698,12 @@ fun GrayjayApp(
             }
         }
         onExternalNavigationHandled(request.requestId)
+    }
+    LaunchedEffect(uiState.videoOpenDialog?.videoId) {
+        val dialog = uiState.videoOpenDialog ?: return@LaunchedEffect
+        if (selectedVideoId == dialog.videoId) {
+            settlePlayer(1f, dialog.videoId)
+        }
     }
     LaunchedEffect(selected) {
         if (RELEASE_UPDATE_CHECK_ENABLED && selected == GrayjayDestination.Home) {
@@ -1313,10 +1322,10 @@ fun GrayjayApp(
             title = {
                 Text(
                     stringResource(
-                        if (dialog.permanentlyUnavailable) {
-                            R.string.video_no_longer_available_title
-                        } else {
-                            R.string.could_not_open_video
+                        when {
+                            dialog.scheduledStartAtMs > 0L -> R.string.video_scheduled_title
+                            dialog.permanentlyUnavailable -> R.string.video_no_longer_available_title
+                            else -> R.string.could_not_open_video
                         },
                     ),
                 )

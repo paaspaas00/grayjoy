@@ -80,6 +80,7 @@ interface LibraryRepository {
     fun setDownloaded(videoId: String, enabled: Boolean)
     fun setLiked(videoId: String, enabled: Boolean)
     fun setAvailable(videoId: String, available: Boolean)
+    fun setScheduledStart(videoId: String, scheduledStartAtMs: Long)
     fun setWatchProgress(videoId: String, progress: Float)
     fun removeFromHistory(videoIds: Collection<String>)
     fun createPlaylist(title: String, videos: List<VideoUiModel>): PlaylistUiModel?
@@ -212,6 +213,9 @@ internal class SharedPreferencesLibraryRepository(
 
     override fun setAvailable(videoId: String, available: Boolean) =
         updateVideo(videoId) { it.copy(isAvailable = available) }
+
+    override fun setScheduledStart(videoId: String, scheduledStartAtMs: Long) =
+        updateVideo(videoId) { it.copy(scheduledStartAtMs = scheduledStartAtMs.coerceAtLeast(0L)) }
 
     override fun setWatchProgress(videoId: String, progress: Float) {
         // The history itself is one large JSON value. Rewriting it every five seconds allocated
@@ -571,6 +575,7 @@ private fun VideoUiModel.mergeImported(
         sourceId = if (sourceId.isBlank()) imported.sourceId else sourceId,
         isLive = isLive || imported.isLive,
         isAvailable = isAvailable && imported.isAvailable,
+        scheduledStartAtMs = maxOf(scheduledStartAtMs, imported.scheduledStartAtMs),
         watchProgress = if (importedHistoryIsNewer) imported.watchProgress else watchProgress,
         isDownloaded = isDownloaded || imported.isDownloaded,
         isWatchLater = isWatchLater || imported.isWatchLater,
@@ -606,6 +611,7 @@ internal fun VideoUiModel.toJson() = JSONObject().apply {
     put("sourceId", sourceId)
     put("isLive", isLive)
     put("isAvailable", isAvailable)
+    put("scheduledStartAtMs", scheduledStartAtMs)
     put("watchProgress", watchProgress.toDouble())
     put("isDownloaded", isDownloaded)
     put("isWatchLater", isWatchLater)
@@ -666,6 +672,7 @@ internal fun JSONArray.toVideoList(): List<VideoUiModel> = buildList {
                 sourceId = json.optString("sourceId", "youtube"),
                 isLive = json.optBoolean("isLive"),
                 isAvailable = json.optBoolean("isAvailable", true),
+                scheduledStartAtMs = json.optLong("scheduledStartAtMs", 0L),
                 watchProgress = json.optDouble("watchProgress", 0.0).toFloat(),
                 isDownloaded = json.optBoolean("isDownloaded"),
                 isWatchLater = json.optBoolean("isWatchLater"),

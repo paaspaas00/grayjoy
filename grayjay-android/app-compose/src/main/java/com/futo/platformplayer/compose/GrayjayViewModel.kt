@@ -36,6 +36,7 @@ import com.futo.platformplayer.compose.engine.AndroidGrayjayEngine
 import com.futo.platformplayer.compose.engine.EnginePlaybackState
 import com.futo.platformplayer.compose.engine.EngineUserImportSelection
 import com.futo.platformplayer.compose.engine.EngineUserImportStage
+import com.futo.platformplayer.compose.engine.EngineResolvePriority
 import com.futo.platformplayer.compose.engine.EngineUrlKind
 import com.futo.platformplayer.compose.engine.GrayjayEngine
 import com.futo.platformplayer.compose.engine.SearchCorpus
@@ -91,6 +92,7 @@ import com.futo.platformplayer.compose.ui.YoutubeImportSelection
 import com.futo.platformplayer.compose.ui.YoutubeImportStageUi
 import com.futo.platformplayer.compose.ui.YoutubeImportUiState
 import com.futo.platformplayer.backend.GrayjaySignatureMismatchException
+import com.futo.platformplayer.backend.GrayjayScheduledVideoException
 import com.futo.platformplayer.engine.exceptions.ScriptLoginRequiredException
 import com.futo.platformplayer.engine.exceptions.ScriptUnavailableException
 import com.futo.platformplayer.compose.ui.VideoUiModel
@@ -296,6 +298,11 @@ private val PERMANENT_UNAVAILABLE_MESSAGES = listOf(
 private fun Throwable.hasMessageInChain(value: String): Boolean =
     generateSequence(this) { it.cause }
         .any { it.message?.contains(value, ignoreCase = true) == true }
+
+private fun Throwable.scheduledVideoException(): GrayjayScheduledVideoException? =
+    generateSequence(this) { it.cause }
+        .filterIsInstance<GrayjayScheduledVideoException>()
+        .firstOrNull()
 
 /**
  * Chooses the same hierarchy as legacy Grayjay: a requested audio rendition first, then the
@@ -1494,14 +1501,21 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
      */
     fun hydrateVideoMetadata(videoId: String) {
         val video = findVideo(videoId) ?: return
-        if (video.duration.isNotBlank() || video.isLive) return
+        if (
+            video.duration.isNotBlank() ||
+            video.isLive ||
+            video.scheduledStartAtMs > System.currentTimeMillis()
+        ) return
         val attemptKey = "$activeProfileId|$videoId"
         if (!metadataHydrationAttempts.add(attemptKey)) return
         val profileAtStart = activeProfileId
         metadataHydrationJobs[attemptKey] = viewModelScope.launch {
             try {
                 val resolved = metadataHydrationSemaphore.withPermit {
-                    resolveWithAudioPreferences(video)
+                    resolveWithAudioPreferences(
+                        video,
+                        priority = EngineResolvePriority.BackgroundMetadata,
+                    )
                 }
                 if (activeProfileId != profileAtStart) return@launch
                 val resolvedDuration = resolved.duration
@@ -1534,8 +1548,24 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                Log.d("GrayjayViewModel", "Visible metadata hydration failed for $videoId", error)
-                metadataHydrationAttempts.remove(attemptKey)
+                val scheduled = error.scheduledVideoException()
+                if (scheduled != null) {
+                    libraryRepository.setAvailable(video.id, true)
+                    libraryRepository.setScheduledStart(video.id, scheduled.scheduledStartAtMs)
+                    _uiState.update { state ->
+                        updateVideoEverywhere(state, video.id) { current ->
+                            current.copy(
+                                isAvailable = true,
+                                scheduledStartAtMs = scheduled.scheduledStartAtMs,
+                                metadata = scheduledVideoDate(scheduled.scheduledStartAtMs),
+                            )
+                        }
+                    }
+                    saveHomeToSession()
+                } else {
+                    Log.d("GrayjayViewModel", "Visible metadata hydration failed for $videoId", error)
+                    metadataHydrationAttempts.remove(attemptKey)
+                }
             } finally {
                 metadataHydrationJobs.remove(attemptKey)
             }
@@ -1737,7 +1767,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun openVideo(videoId: String) {
         val video = findVideo(videoId) ?: return
-        if (!video.isAvailable) {
+        if (video.scheduledStartAtMs > System.currentTimeMillis()) {
+            showScheduledVideoDialog(video)
+            return
+        }
+        val shouldRecheckPossibleScheduledLive =
+            video.sourceId == "youtube" && video.title.contains("(live)", ignoreCase = true)
+        if (!video.isAvailable && !shouldRecheckPossibleScheduledLive) {
             showVideoOpenDialog(video, permanentlyUnavailable = true)
             return
         }
@@ -1745,14 +1781,30 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val profileAtStart = activeProfileId
         videoOpenRequestGeneration += 1L
         val requestGeneration = videoOpenRequestGeneration
+        val previousNowPlaying = _uiState.value.nowPlaying
         pendingPlaybackVideoId = video.id
         detailsJob?.cancel()
         storyboardJob?.cancel()
         extrasPagingJob?.cancel()
         commentRepliesJob?.cancel()
+        engine.pausePlayback()
+        _uiState.update { state ->
+            state.copy(
+                nowPlaying = NowPlayingUiState(
+                    video = video,
+                    isLoadingPlayback = true,
+                    isLoadingExtras = true,
+                    isFollowing = preferences.isCreatorFollowed(video.creatorKey()),
+                    resumePositionFraction = video.resumePositionFraction(),
+                ),
+            )
+        }
         detailsJob = viewModelScope.launch {
             try {
-                val resolved = resolveForPlayback(video, profileAtStart).copy(isAvailable = true)
+                val resolved = resolveForPlayback(video, profileAtStart).copy(
+                    isAvailable = true,
+                    scheduledStartAtMs = 0L,
+                )
                 if (
                     requestGeneration != videoOpenRequestGeneration ||
                     profileAtStart != activeProfileId ||
@@ -1763,6 +1815,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 val generation = invalidatePlaybackQueue()
                 activePlaylistId = null
                 libraryRepository.setAvailable(video.id, true)
+                libraryRepository.setScheduledStart(video.id, 0L)
                 remoteVideos[resolved.id] = resolved
                 registerRemoteChannel(resolved)
                 recordHistory(resolved)
@@ -1817,6 +1870,29 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 }
                 Log.e("GrayjayViewModel", "Could not resolve video from ${video.sourceId}.", error)
                 if (pendingPlaybackVideoId == video.id) pendingPlaybackVideoId = null
+                val scheduled = error.scheduledVideoException()
+                if (scheduled != null) {
+                    libraryRepository.setAvailable(video.id, true)
+                    libraryRepository.setScheduledStart(video.id, scheduled.scheduledStartAtMs)
+                    _uiState.update { state ->
+                        updateVideoEverywhere(state, video.id) { current ->
+                            current.copy(
+                                isAvailable = true,
+                                scheduledStartAtMs = scheduled.scheduledStartAtMs,
+                                metadata = scheduledVideoDate(scheduled.scheduledStartAtMs),
+                            )
+                        }.copy(
+                            nowPlaying = previousNowPlaying,
+                            videoOpenDialog = videoOpenDialog(
+                                video = video,
+                                permanentlyUnavailable = false,
+                                scheduledStartAtMs = scheduled.scheduledStartAtMs,
+                            ),
+                        )
+                    }
+                    saveHomeToSession()
+                    return@launch
+                }
                 val permanentlyUnavailable = isPermanentlyUnavailableVideo(
                     error = error,
                     videoTitle = video.title,
@@ -1828,6 +1904,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         updateVideoEverywhere(state, video.id) { current ->
                             current.copy(isAvailable = false)
                         }.copy(
+                            nowPlaying = previousNowPlaying,
                             videoOpenDialog = videoOpenDialog(
                                 video = video,
                                 permanentlyUnavailable = true,
@@ -1846,6 +1923,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     }
                     _uiState.update { state ->
                         state.copy(
+                            nowPlaying = previousNowPlaying,
                             videoOpenDialog = videoOpenDialog(
                                 video = video,
                                 permanentlyUnavailable = false,
@@ -1868,19 +1946,41 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun showScheduledVideoDialog(video: VideoUiModel) {
+        _uiState.update {
+            it.copy(
+                videoOpenDialog = videoOpenDialog(
+                    video = video,
+                    permanentlyUnavailable = false,
+                    scheduledStartAtMs = video.scheduledStartAtMs,
+                ),
+            )
+        }
+    }
+
     private fun videoOpenDialog(
         video: VideoUiModel,
         permanentlyUnavailable: Boolean,
         message: String? = null,
+        scheduledStartAtMs: Long = 0L,
     ) = com.futo.platformplayer.compose.ui.VideoOpenDialogUiModel(
         videoId = video.id,
         title = video.title,
-        message = message ?: text(
-            if (permanentlyUnavailable) R.string.video_no_longer_available_message
-            else R.string.video_details_load_failed,
-        ),
+        message = message ?: when {
+            scheduledStartAtMs > 0L -> text(
+                R.string.video_scheduled_message,
+                scheduledVideoDate(scheduledStartAtMs),
+            )
+            permanentlyUnavailable -> text(R.string.video_no_longer_available_message)
+            else -> text(R.string.video_details_load_failed)
+        },
         permanentlyUnavailable = permanentlyUnavailable,
+        scheduledStartAtMs = scheduledStartAtMs,
     )
+
+    private fun scheduledVideoDate(startAtMs: Long): String =
+        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+            .format(Date(startAtMs))
 
     private fun requestStoryboard(video: VideoUiModel, generation: Long) {
         if (video.storyboard != null || video.isLive || video.playbackAudioOnly) return
@@ -5064,6 +5164,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             watchProgress = saved.watchProgress,
             isLiked = saved.isLiked,
             isAvailable = saved.isAvailable,
+            scheduledStartAtMs = saved.scheduledStartAtMs,
             lastWatchedAt = saved.lastWatchedAt,
             playlistNames = saved.playlistNames,
         )
@@ -5187,10 +5288,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private suspend fun resolveWithAudioPreferences(
         video: VideoUiModel,
         audioLanguageOverride: String? = null,
+        priority: EngineResolvePriority = EngineResolvePriority.UserPlayback,
     ): VideoUiModel = engine.resolve(
         video = video,
         preferredAudioLanguage = audioLanguageOverride ?: preferences.preferredAudioLanguage,
         preferOriginalAudio = audioLanguageOverride == null && preferences.preferOriginalAudio,
+        priority = priority,
     )
 
     private fun VideoUiModel.downloadDescriptor(preferredHeight: Int?): VideoUiModel {

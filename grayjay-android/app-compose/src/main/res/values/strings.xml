@@ -634,4 +634,7 @@
     <string name="video_no_longer_available_title">Video no longer available</string>
     <string name="video_no_longer_available_message">The publisher or source has removed this video, so it can no longer be played.</string>
     <string name="could_not_open_video">Could not open video</string>
+    <string name="video_scheduled_badge">Scheduled</string>
+    <string name="video_scheduled_title">Scheduled live stream</string>
+    <string name="video_scheduled_message">This live stream is scheduled for %1$s. It will become playable when it starts.</string>
 </resources>
