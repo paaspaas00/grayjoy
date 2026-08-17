@@ -24,6 +24,7 @@ import com.futo.platformplayer.api.media.models.streams.sources.IWidevineSource
 import com.futo.platformplayer.api.media.models.video.IPlatformVideo
 import com.futo.platformplayer.api.media.models.video.IPlatformVideoDetails
 import com.futo.platformplayer.api.media.PlatformMultiClientPool
+import com.futo.platformplayer.api.media.IPlatformClient
 import com.futo.platformplayer.api.media.structures.IPager
 import com.futo.platformplayer.api.media.structures.PlatformContentPager
 import com.futo.platformplayer.api.media.platforms.js.JSClient
@@ -68,6 +69,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 private const val MAX_USER_IMPORT_EMPTY_PAGES = 2
+private const val MAX_COMMENT_HANDLES = 2_000
 
 data class GrayjaySearchItem(
     val id: String,
@@ -110,6 +112,8 @@ data class GrayjayChannelDetails(
     val hasMore: Boolean = false,
     val supportsShorts: Boolean = false,
     val supportsPlaylists: Boolean = false,
+    val liveContentType: String? = null,
+    val supportsPopularSort: Boolean = false,
 )
 
 data class GrayjayChannelPage(
@@ -323,6 +327,7 @@ data class GrayjaySubtitleTrack(
 )
 
 data class GrayjayComment(
+    val id: String,
     val author: String,
     val authorThumbnailUrl: String?,
     val message: String,
@@ -384,6 +389,7 @@ private data class SourcePagerSession(
     val sourceId: String,
     val pluginId: String,
     val pager: IPager<*>,
+    val commentClient: IPlatformClient? = null,
     val emittedKeys: MutableSet<String> = linkedSetOf(),
     var failed: Boolean = false,
 )
@@ -418,6 +424,13 @@ private data class CachedVideoDetails(
     val plugin: JSClient,
     val details: IPlatformVideoDetails,
     val cachedAtMs: Long,
+)
+
+private data class CommentHandle(
+    val comment: IPlatformComment,
+    val client: IPlatformClient,
+    val sourceId: String,
+    val pluginId: String,
 )
 
 /**
@@ -459,6 +472,7 @@ class GrayjayPluginBackend(context: Context) {
     private val storyboardFailures = ConcurrentHashMap<String, Long>()
     private val storyboardDurations = ConcurrentHashMap<String, Long>()
     private val resolvedVideoDetails = ConcurrentHashMap<String, CachedVideoDetails>()
+    private val commentHandles = ConcurrentHashMap<String, CommentHandle>()
     private val loadMutex = Mutex()
     @Volatile
     private var profileId: String = "main"
@@ -1032,6 +1046,17 @@ class GrayjayPluginBackend(context: Context) {
             hasMore = page.hasMore,
             supportsShorts = capabilities.hasType(ResultCapabilities.TYPE_SHORTS),
             supportsPlaylists = plugin.capabilities.hasGetChannelPlaylists,
+            liveContentType = when {
+                capabilities.hasType(ResultCapabilities.TYPE_STREAMS) ->
+                    ResultCapabilities.TYPE_STREAMS
+                capabilities.hasType(ResultCapabilities.TYPE_LIVE) ->
+                    ResultCapabilities.TYPE_LIVE
+                else -> null
+            },
+            supportsPopularSort = capabilities.sorts.any { sort ->
+                sort.contains("popular", ignoreCase = true) ||
+                    sort.contains("view", ignoreCase = true)
+            },
         )
     }
 
@@ -1790,6 +1815,10 @@ class GrayjayPluginBackend(context: Context) {
             } ?: PagerBatch()
         }.getOrDefault(PagerBatch())
 
+        // Comment handles retain the plugin-owned objects required by getReplies(). They are
+        // scoped to the active video's comment tree so old channels/videos cannot accumulate
+        // V8-backed objects indefinitely.
+        commentHandles.clear()
         var commentsAvailable = false
         val commentsPage = runCatching {
             val pager = details.getComments(plugin)
@@ -1799,7 +1828,14 @@ class GrayjayPluginBackend(context: Context) {
                 readNewSession(
                     PagerSession(
                         kind = PagerContentKind.Comments,
-                        sources = listOf(SourcePagerSession(sourceId, plugin.id, it)),
+                        sources = listOf(
+                            SourcePagerSession(
+                                sourceId = sourceId,
+                                pluginId = plugin.id,
+                                pager = it,
+                                commentClient = plugin,
+                            ),
+                        ),
                     ),
                     commentLimit,
                 )
@@ -1830,6 +1866,29 @@ class GrayjayPluginBackend(context: Context) {
         pageSize: Int = 40,
     ): GrayjayCommentPage = withContext(Dispatchers.IO) {
         readExistingSession(continuationId, pageSize).toCommentPage()
+    }
+
+    suspend fun loadCommentReplies(
+        commentId: String,
+        pageSize: Int = 40,
+    ): GrayjayCommentPage = withContext(Dispatchers.IO) {
+        val handle = commentHandles[commentId] ?: return@withContext GrayjayCommentPage()
+        val pager = handle.comment.getReplies(handle.client)
+            ?: return@withContext GrayjayCommentPage()
+        readNewSession(
+            PagerSession(
+                kind = PagerContentKind.Comments,
+                sources = listOf(
+                    SourcePagerSession(
+                        sourceId = handle.sourceId,
+                        pluginId = handle.pluginId,
+                        pager = pager,
+                        commentClient = handle.client,
+                    ),
+                ),
+            ),
+            pageSize,
+        ).toCommentPage()
     }
 
     private suspend fun readNewSession(session: PagerSession, pageSize: Int): PagerBatch {
@@ -1912,7 +1971,8 @@ class GrayjayPluginBackend(context: Context) {
                     .map { it.toSearchPlaylist(source.sourceId, source.pluginId) },
             )
             PagerContentKind.Comments -> PagerBatch(
-                comments = rawItems.filterIsInstance<IPlatformComment>().map { it.toComment() },
+                comments = rawItems.filterIsInstance<IPlatformComment>()
+                    .map { it.toComment(source) },
             )
         }
     }
@@ -2492,9 +2552,23 @@ class GrayjayPluginBackend(context: Context) {
         }
     }
 
-    private fun IPlatformComment.toComment(): GrayjayComment {
+    private fun IPlatformComment.toComment(source: SourcePagerSession): GrayjayComment {
         val (likes, _) = rating.counts()
+        val commentId = source.commentClient?.let { client ->
+            UUID.randomUUID().toString().also { id ->
+                commentHandles[id] = CommentHandle(
+                    comment = this,
+                    client = client,
+                    sourceId = source.sourceId,
+                    pluginId = source.pluginId,
+                )
+                if (commentHandles.size > MAX_COMMENT_HANDLES) {
+                    commentHandles.keys.firstOrNull()?.let(commentHandles::remove)
+                }
+            }
+        }.orEmpty()
         return GrayjayComment(
+            id = commentId,
             author = author.name,
             authorThumbnailUrl = author.thumbnail,
             message = message,

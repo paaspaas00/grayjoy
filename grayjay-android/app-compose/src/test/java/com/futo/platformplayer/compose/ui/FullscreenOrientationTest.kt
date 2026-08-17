@@ -76,6 +76,12 @@ class FullscreenOrientationTest {
     fun `ordinary app chrome is covered while the window returns from landscape`() {
         assertTrue(shouldCoverAppChromeDuringOrientationHandoff(Configuration.ORIENTATION_LANDSCAPE))
         assertFalse(shouldCoverAppChromeDuringOrientationHandoff(Configuration.ORIENTATION_PORTRAIT))
+        assertFalse(
+            shouldCoverAppChromeDuringOrientationHandoff(
+                windowOrientation = Configuration.ORIENTATION_LANDSCAPE,
+                compactViewport = false,
+            ),
+        )
     }
 
     private fun testVideo(id: String = "video") = VideoUiModel(

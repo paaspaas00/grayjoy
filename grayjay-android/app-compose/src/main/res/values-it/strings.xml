@@ -616,4 +616,17 @@
     <string name="show_all_queue">Mostra tutti (%1$d)</string>
     <string name="play_next">Riproduci subito dopo</string>
     <string name="play_next_description">Sposta questo video subito dopo quello corrente.</string>
+    <string name="sort_upload_date">Data di caricamento</string>
+    <string name="sort_popularity">Popolarità</string>
+    <string name="sort_name">Nome</string>
+    <string name="update_downloading">Download dell’aggiornamento…</string>
+    <string name="update_download_progress">%1$s di %2$s</string>
+    <string name="update_downloaded_amount">%1$s scaricati</string>
+    <string name="save_crash_logs">Salva log dei crash</string>
+    <string name="save_crash_logs_description">Conserva privatamente fino a 10 file diagnostici locali per crash ed eccezioni non gestite. Non viene caricato nulla.</string>
+    <string name="open_navigation_menu">Apri menu di navigazione</string>
+    <string name="close_navigation_menu">Chiudi menu di navigazione</string>
+    <string name="comment_replies">Risposte</string>
+    <string name="no_comment_replies">Non è stata restituita alcuna risposta.</string>
+    <string name="comment_replies_load_failed">Impossibile caricare le risposte al commento.</string>
 </resources>

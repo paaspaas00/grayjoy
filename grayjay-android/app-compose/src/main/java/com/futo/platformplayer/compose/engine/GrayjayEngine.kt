@@ -157,6 +157,8 @@ data class EngineChannelDetails(
     val hasMore: Boolean = false,
     val supportsShorts: Boolean = false,
     val supportsPlaylists: Boolean = false,
+    val liveContentType: String? = null,
+    val supportsPopularSort: Boolean = false,
 )
 
 data class EngineChannelPage(
@@ -262,7 +264,11 @@ interface GrayjayEngine {
     suspend fun loadMoreHome(feed: HomeFeedType, continuationId: String): EngineVideoPage
     suspend fun suggestions(query: String, enabledSourceIds: Set<String>): List<String>
     suspend fun loadChannel(channel: ChannelUiModel): EngineChannelDetails
-    suspend fun loadChannelPage(channel: ChannelUiModel, tab: ChannelContentTab): EngineChannelPage
+    suspend fun loadChannelPage(
+        channel: ChannelUiModel,
+        tab: ChannelContentTab,
+        contentType: String? = null,
+    ): EngineChannelPage
     suspend fun loadMoreChannel(continuationId: String): EngineChannelPage
     suspend fun loadPlaylist(playlist: PlaylistUiModel): EnginePlaylistDetails
     suspend fun routeUrl(url: String, enabledSourceIds: Set<String>): EngineUrlRoute?
@@ -276,6 +282,7 @@ interface GrayjayEngine {
     suspend fun loadExtras(video: VideoUiModel): EngineVideoExtras
     suspend fun loadMoreRecommendations(continuationId: String): EngineVideoPage
     suspend fun loadMoreComments(continuationId: String): EngineCommentPage
+    suspend fun loadCommentReplies(commentId: String): EngineCommentPage
     fun open(videos: List<VideoUiModel>, currentVideoId: String, playWhenReady: Boolean)
     fun replaceCurrent(video: VideoUiModel, positionMs: Long, playWhenReady: Boolean)
     fun appendToQueue(videos: List<VideoUiModel>)
@@ -799,12 +806,15 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override suspend fun loadChannelPage(
         channel: ChannelUiModel,
         tab: ChannelContentTab,
+        contentType: String?,
     ): EngineChannelPage {
         val endpoint = pluginEndpoints[channel.sourceId]
             ?: error(appContext.getString(R.string.source_plugin_unavailable, channel.source))
         val type = when (tab) {
             ChannelContentTab.Videos -> com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_VIDEOS
             ChannelContentTab.Shorts -> com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_SHORTS
+            ChannelContentTab.Live -> contentType
+                ?: com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_STREAMS
             ChannelContentTab.Playlists -> GrayjayPluginBackend.CHANNEL_PLAYLISTS_TYPE
         }
         return pluginBackend.loadChannelPage(channel.sourceId, channel.id, endpoint, type)
@@ -1016,6 +1026,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             },
             comments = extras.comments.map { comment ->
                 VideoCommentUiModel(
+                    id = comment.id,
                     author = comment.author,
                     authorThumbnailUrl = comment.authorThumbnailUrl.orEmpty(),
                     message = comment.message,
@@ -1044,6 +1055,15 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override suspend fun loadMoreComments(continuationId: String): EngineCommentPage {
         val page = pluginBackend.loadMoreComments(continuationId)
+        return EngineCommentPage(
+            comments = page.comments.map { it.toVideoCommentUiModel() },
+            continuationId = page.continuationId,
+            hasMore = page.hasMore,
+        )
+    }
+
+    override suspend fun loadCommentReplies(commentId: String): EngineCommentPage {
+        val page = pluginBackend.loadCommentReplies(commentId)
         return EngineCommentPage(
             comments = page.comments.map { it.toVideoCommentUiModel() },
             continuationId = page.continuationId,
@@ -1815,6 +1835,8 @@ private fun GrayjayChannelDetails.toEngineChannelDetails(
     hasMore = hasMore,
     supportsShorts = supportsShorts,
     supportsPlaylists = supportsPlaylists,
+    liveContentType = liveContentType,
+    supportsPopularSort = supportsPopularSort,
 )
 
 private fun GrayjayPlaylistDetails.toEnginePlaylistDetails(
@@ -1837,6 +1859,7 @@ private fun GrayjayPlaylistDetails.toEnginePlaylistDetails(
 )
 
 private fun GrayjayComment.toVideoCommentUiModel() = VideoCommentUiModel(
+    id = id,
     author = author,
     authorThumbnailUrl = authorThumbnailUrl.orEmpty(),
     message = message,

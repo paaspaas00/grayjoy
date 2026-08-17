@@ -25,6 +25,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -47,6 +48,7 @@ import com.futo.platformplayer.compose.ui.HomeFeedType
 import com.futo.platformplayer.compose.ui.HomeUiState
 import com.futo.platformplayer.compose.ui.PcPlaybackUiModel
 import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
+import com.futo.platformplayer.compose.ui.UpdateDownloadUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -64,6 +66,8 @@ fun HomeScreen(
     onVideoLongClick: (VideoUiModel) -> Unit,
     availableUpdate: ReleaseUpdateUiModel? = null,
     onInstallUpdate: (ReleaseUpdateUiModel) -> Unit = {},
+    updateDownload: UpdateDownloadUiModel? = null,
+    onCancelUpdateDownload: () -> Unit = {},
     onHydrateVideoMetadata: (String) -> Unit = {},
     pcPlayback: PcPlaybackUiModel? = null,
     onPlayFromComputer: (String) -> Unit = {},
@@ -305,37 +309,96 @@ fun HomeScreen(
     }
 
     if (updateDetailsVisible && availableUpdate != null) {
+        val activeDownload = updateDownload?.takeIf {
+            it.versionName == availableUpdate.versionName
+        }
         AlertDialog(
-            onDismissRequest = { updateDetailsVisible = false },
+            onDismissRequest = {
+                if (activeDownload == null) updateDetailsVisible = false
+            },
             title = {
                 Text(stringResource(R.string.update_available_description, availableUpdate.versionName))
             },
             text = {
-                Text(
-                    availableUpdate.changelog.ifBlank { stringResource(R.string.no_changelog) },
-                    modifier = Modifier
-                        .heightIn(max = 360.dp)
-                        .verticalScroll(rememberScrollState()),
-                )
+                if (activeDownload != null) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(stringResource(R.string.update_downloading))
+                        val total = activeDownload.totalBytes
+                        if (total != null && total > 0L) {
+                            LinearProgressIndicator(
+                                progress = {
+                                    (activeDownload.downloadedBytes.toFloat() / total)
+                                        .coerceIn(0f, 1f)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Text(
+                                stringResource(
+                                    R.string.update_download_progress,
+                                    formatDownloadSize(activeDownload.downloadedBytes),
+                                    formatDownloadSize(total),
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        } else {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                            Text(
+                                stringResource(
+                                    R.string.update_downloaded_amount,
+                                    formatDownloadSize(activeDownload.downloadedBytes),
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                } else {
+                    ReleaseMarkdown(
+                        markdown = availableUpdate.changelog.ifBlank {
+                            stringResource(R.string.no_changelog)
+                        },
+                        modifier = Modifier
+                            .heightIn(max = 360.dp)
+                            .verticalScroll(rememberScrollState()),
+                    )
+                }
             },
             dismissButton = {
-                FilledTonalButton(onClick = { updateDetailsVisible = false }) {
-                    Text(stringResource(R.string.dismiss))
+                FilledTonalButton(
+                    onClick = {
+                        if (activeDownload != null) onCancelUpdateDownload()
+                        else updateDetailsVisible = false
+                    },
+                ) {
+                    Text(
+                        stringResource(
+                            if (activeDownload != null) R.string.cancel_download
+                            else R.string.dismiss,
+                        ),
+                    )
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        updateDetailsVisible = false
-                        onInstallUpdate(availableUpdate)
-                    },
-                    enabled = availableUpdate.debugApkUrl != null,
-                ) {
-                    Text(stringResource(R.string.install))
+                if (activeDownload == null) {
+                    Button(
+                        onClick = { onInstallUpdate(availableUpdate) },
+                        enabled = availableUpdate.debugApkUrl != null,
+                    ) {
+                        Text(stringResource(R.string.install))
+                    }
                 }
             },
         )
     }
+}
+
+internal fun formatDownloadSize(bytes: Long): String {
+    val safe = bytes.coerceAtLeast(0L)
+    val mebibytes = safe / (1024.0 * 1024.0)
+    return if (mebibytes >= 1.0) "%.1f MB".format(mebibytes)
+    else "%.0f KB".format(safe / 1024.0)
 }
 
 @Composable

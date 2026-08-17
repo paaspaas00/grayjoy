@@ -20,10 +20,15 @@ class ChannelTabsTest {
             listOf(
                 ChannelContentTab.Videos,
                 ChannelContentTab.Shorts,
+                ChannelContentTab.Live,
                 ChannelContentTab.Playlists,
             ),
             channelTabsFor(
-                ChannelDetailUiState(supportsShorts = true, supportsPlaylists = true),
+                ChannelDetailUiState(
+                    supportsShorts = true,
+                    liveContentType = "STREAMS",
+                    supportsPlaylists = true,
+                ),
             ),
         )
     }

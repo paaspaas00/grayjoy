@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.NorthWest
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
@@ -38,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -69,6 +71,8 @@ fun SearchScreen(
     onVideoLongClick: (VideoUiModel) -> Unit,
     onChannelClick: (ChannelUiModel) -> Unit,
     onPlaylistClick: (PlaylistUiModel) -> Unit,
+    showNavigationMenuButton: Boolean = false,
+    onNavigationMenuClick: () -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     var typeName by rememberSaveable { mutableStateOf(SearchContentType.Videos.name) }
@@ -156,6 +160,21 @@ fun SearchScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+            if (showNavigationMenuButton) {
+                IconButton(
+                    onClick = onNavigationMenuClick,
+                    modifier = Modifier.testTag("search-navigation-menu"),
+                ) {
+                    Icon(
+                        Icons.Outlined.Menu,
+                        contentDescription = stringResource(R.string.open_navigation_menu),
+                    )
+                }
+            }
             OutlinedTextField(
                 value = queryFieldValue,
                 onValueChange = { value ->
@@ -165,7 +184,7 @@ fun SearchScreen(
                     }
                 },
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .weight(1f)
                     .focusRequester(focusRequester)
                     .testTag("search-field"),
                 singleLine = true,
@@ -199,6 +218,7 @@ fun SearchScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { submit(search.query) }),
             )
+            }
         }
 
         item {
@@ -344,6 +364,7 @@ fun SearchScreen(
                     onSubmit(search.query, type, selectedSources)
                 }
             },
+            contentWindowInsets = { grayjoySheetInsets() },
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),

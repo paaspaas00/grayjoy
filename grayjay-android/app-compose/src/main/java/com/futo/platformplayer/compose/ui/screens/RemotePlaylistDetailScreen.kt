@@ -272,7 +272,10 @@ fun RemotePlaylistDetailScreen(
     }
 
     if (showSortSheet) {
-        ModalBottomSheet(onDismissRequest = { showSortSheet = false }) {
+        ModalBottomSheet(
+            onDismissRequest = { showSortSheet = false },
+            contentWindowInsets = { grayjoySheetInsets() },
+        ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -313,7 +316,10 @@ fun RemotePlaylistDetailScreen(
     }
 
     if (showCreateSheet) {
-        ModalBottomSheet(onDismissRequest = { showCreateSheet = false }) {
+        ModalBottomSheet(
+            onDismissRequest = { showCreateSheet = false },
+            contentWindowInsets = { grayjoySheetInsets() },
+        ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),

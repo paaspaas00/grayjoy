@@ -21,26 +21,33 @@ class AdaptivePlayerLayoutTest {
     @Test
     fun railAndDrawerMiniplayerReserveAndroidNavigationBar() {
         assertTrue(
-            miniplayerNeedsNavigationBarPadding(
-                searchImeVisible = false,
+            scaffoldBottomBarNeedsNavigationBarPadding(
                 bottomNavigationProvidesInset = false,
             ),
         )
     }
 
     @Test
-    fun keyboardAndBottomNavigationAlreadyProvideTheirOwnInset() {
+    fun bottomNavigationAlreadyProvidesItsOwnInset() {
         assertFalse(
-            miniplayerNeedsNavigationBarPadding(
-                searchImeVisible = true,
-                bottomNavigationProvidesInset = false,
-            ),
-        )
-        assertFalse(
-            miniplayerNeedsNavigationBarPadding(
-                searchImeVisible = false,
+            scaffoldBottomBarNeedsNavigationBarPadding(
                 bottomNavigationProvidesInset = true,
             ),
         )
+    }
+
+    @Test
+    fun searchMiniplayerFollowsLargestKeyboardOrNavigationInset() {
+        assertEquals(820, searchMiniplayerBottomInsetPx(820, 72, 240))
+        assertEquals(240, searchMiniplayerBottomInsetPx(0, 72, 240))
+        assertEquals(72, searchMiniplayerBottomInsetPx(0, 72, 0))
+    }
+
+    @Test
+    fun automaticRotationFullscreenIsLimitedToCompactViewports() {
+        assertTrue(automaticFullscreenAllowedForViewport(360, 800))
+        assertTrue(automaticFullscreenAllowedForViewport(800, 360))
+        assertFalse(automaticFullscreenAllowedForViewport(800, 1_280))
+        assertFalse(automaticFullscreenAllowedForViewport(1_280, 800))
     }
 }

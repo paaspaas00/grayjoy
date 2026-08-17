@@ -24,6 +24,7 @@ import com.futo.platformplayer.compose.data.LocalContentRepository
 import com.futo.platformplayer.compose.data.ProfileRepository
 import com.futo.platformplayer.compose.data.SharedPreferencesLibraryRepository
 import com.futo.platformplayer.compose.data.SharedPreferencesSourceRepository
+import com.futo.platformplayer.compose.diagnostics.CrashLogStore
 import com.futo.platformplayer.compose.data.SourceRepository
 import com.futo.platformplayer.compose.data.visibleContentForSources
 import com.futo.platformplayer.compose.data.withLibraryState
@@ -66,6 +67,7 @@ import com.futo.platformplayer.compose.ui.DatabaseImportFormat
 import com.futo.platformplayer.compose.ui.ChannelDetailUiState
 import com.futo.platformplayer.compose.ui.ChannelContentTab
 import com.futo.platformplayer.compose.ui.ChannelUiModel
+import com.futo.platformplayer.compose.ui.CommentRepliesUiState
 import com.futo.platformplayer.compose.ui.ChromecastUiState
 import com.futo.platformplayer.compose.ui.AudioQualityUiModel
 import com.futo.platformplayer.compose.ui.HomeFeedType
@@ -395,6 +397,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var remotePlaylistJob: Job? = null
     private var remotePlaylistPagingJob: Job? = null
     private var extrasPagingJob: Job? = null
+    private var commentRepliesJob: Job? = null
     private var resumePromptJob: Job? = null
     private var downloadQueueRestoreJob: Job? = null
     private var offlinePlaylistSyncJob: Job? = null
@@ -469,6 +472,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
+            crashLoggingEnabled = CrashLogStore.isEnabled(application),
             keepScreenAwake = preferences.keepScreenAwake,
             pictureInPictureEnabled = preferences.pictureInPictureEnabled,
             otherAudioDuckingEnabled = preferences.otherAudioDuckingEnabled,
@@ -725,6 +729,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun setSearchHistoryEnabled(enabled: Boolean) {
         preferences.searchHistoryEnabled = enabled
         _uiState.update { it.copy(searchHistoryEnabled = enabled) }
+    }
+
+    fun setCrashLoggingEnabled(enabled: Boolean) {
+        CrashLogStore.setEnabled(getApplication(), enabled)
+        _uiState.update { it.copy(crashLoggingEnabled = enabled) }
     }
 
     fun setKeepScreenAwake(enabled: Boolean) {
@@ -1305,6 +1314,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
+            crashLoggingEnabled = CrashLogStore.isEnabled(getApplication()),
             keepScreenAwake = preferences.keepScreenAwake,
             pictureInPictureEnabled = preferences.pictureInPictureEnabled,
             otherAudioDuckingEnabled = preferences.otherAudioDuckingEnabled,
@@ -2485,6 +2495,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                             hasMore = details.hasMore,
                             supportsShorts = details.supportsShorts,
                             supportsPlaylists = details.supportsPlaylists,
+                            liveContentType = details.liveContentType,
+                            supportsPopularSort = details.supportsPopularSort,
                         ),
                     )
                 }
@@ -2509,6 +2521,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val channel = current.channel ?: return
         if (tab == ChannelContentTab.Shorts && !current.supportsShorts) return
         if (tab == ChannelContentTab.Playlists && !current.supportsPlaylists) return
+        if (tab == ChannelContentTab.Live && current.liveContentType == null) return
         _uiState.update {
             it.copy(
                 channelDetail = it.channelDetail.copy(
@@ -2526,7 +2539,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         channelPagingJob?.cancel()
         channelJob = viewModelScope.launch {
             try {
-                val page = engine.loadChannelPage(channel, tab)
+                val page = engine.loadChannelPage(
+                    channel = channel,
+                    tab = tab,
+                    contentType = current.liveContentType.takeIf {
+                        tab == ChannelContentTab.Live
+                    },
+                )
                 val videos = page.videos.map { it.withPersistedLibraryState() }
                 videos.forEach { remoteVideos[it.id] = it }
                 videos.forEach(::registerRemoteChannel)
@@ -2538,6 +2557,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         channels = visibleKnownChannels(),
                         channelDetail = state.channelDetail.copy(
                             shorts = if (tab == ChannelContentTab.Shorts) videos else state.channelDetail.shorts,
+                            liveStreams = if (tab == ChannelContentTab.Live) {
+                                videos
+                            } else {
+                                state.channelDetail.liveStreams
+                            },
                             playlists = if (tab == ChannelContentTab.Playlists) page.playlists else state.channelDetail.playlists,
                             loadedTabs = state.channelDetail.loadedTabs + tab,
                             continuationIds = state.channelDetail.continuationIds
@@ -2599,6 +2623,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                             shorts = if (tab == ChannelContentTab.Shorts) {
                                 (state.channelDetail.shorts + videos).distinctBy(VideoUiModel::id)
                             } else state.channelDetail.shorts,
+                            liveStreams = if (tab == ChannelContentTab.Live) {
+                                (state.channelDetail.liveStreams + videos)
+                                    .distinctBy(VideoUiModel::id)
+                            } else state.channelDetail.liveStreams,
                             playlists = if (tab == ChannelContentTab.Playlists) {
                                 (state.channelDetail.playlists + page.playlists).distinctBy(PlaylistUiModel::id)
                             } else state.channelDetail.playlists,
@@ -4739,6 +4767,124 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun loadMoreComments() = loadMoreExtras(comments = true)
 
+    fun openCommentReplies(commentId: String) {
+        val parent = _uiState.value.nowPlaying.comments.firstOrNull { it.id == commentId }
+            ?: return
+        if (parent.id.isBlank() || (parent.replyCount ?: 0) <= 0) return
+        commentRepliesJob?.cancel()
+        _uiState.update { state ->
+            state.copy(
+                nowPlaying = state.nowPlaying.copy(
+                    commentReplies = CommentRepliesUiState(
+                        parent = parent,
+                        isVisible = true,
+                        isLoading = true,
+                    ),
+                ),
+            )
+        }
+        commentRepliesJob = viewModelScope.launch {
+            try {
+                val page = engine.loadCommentReplies(commentId)
+                _uiState.update { state ->
+                    val replies = state.nowPlaying.commentReplies
+                    if (!replies.isVisible || replies.parent?.id != commentId) state else state.copy(
+                        nowPlaying = state.nowPlaying.copy(
+                            commentReplies = replies.copy(
+                                replies = page.comments,
+                                isLoading = false,
+                                continuationId = page.continuationId,
+                                hasMore = page.hasMore,
+                                errorMessage = null,
+                            ),
+                        ),
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update { state ->
+                    val replies = state.nowPlaying.commentReplies
+                    if (!replies.isVisible || replies.parent?.id != commentId) state else state.copy(
+                        nowPlaying = state.nowPlaying.copy(
+                            commentReplies = replies.copy(
+                                isLoading = false,
+                                errorMessage = error.localizedMessage
+                                    ?: text(R.string.comment_replies_load_failed),
+                            ),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissCommentReplies() {
+        commentRepliesJob?.cancel()
+        _uiState.update { state ->
+            state.copy(
+                nowPlaying = state.nowPlaying.copy(
+                    commentReplies = CommentRepliesUiState(),
+                ),
+            )
+        }
+    }
+
+    fun loadMoreCommentReplies() {
+        val current = _uiState.value.nowPlaying.commentReplies
+        val parentId = current.parent?.id ?: return
+        val continuationId = current.continuationId ?: return
+        if (!current.isVisible || !current.hasMore || current.isLoading || current.isLoadingMore) {
+            return
+        }
+        commentRepliesJob?.cancel()
+        _uiState.update { state ->
+            state.copy(
+                nowPlaying = state.nowPlaying.copy(
+                    commentReplies = state.nowPlaying.commentReplies.copy(isLoadingMore = true),
+                ),
+            )
+        }
+        commentRepliesJob = viewModelScope.launch {
+            try {
+                val page = engine.loadMoreComments(continuationId)
+                _uiState.update { state ->
+                    val replies = state.nowPlaying.commentReplies
+                    if (!replies.isVisible || replies.parent?.id != parentId) state else state.copy(
+                        nowPlaying = state.nowPlaying.copy(
+                            commentReplies = replies.copy(
+                                replies = (replies.replies + page.comments).distinctBy { reply ->
+                                    reply.id.ifBlank {
+                                        "${reply.author}|${reply.age}|${reply.message}"
+                                    }
+                                },
+                                isLoadingMore = false,
+                                continuationId = page.continuationId,
+                                hasMore = page.hasMore,
+                                errorMessage = null,
+                            ),
+                        ),
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update { state ->
+                    val replies = state.nowPlaying.commentReplies
+                    if (!replies.isVisible || replies.parent?.id != parentId) state else state.copy(
+                        nowPlaying = state.nowPlaying.copy(
+                            commentReplies = replies.copy(
+                                isLoadingMore = false,
+                                errorMessage = error.localizedMessage
+                                    ?: text(R.string.comment_replies_load_failed),
+                            ),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     private fun loadMoreExtras(comments: Boolean) {
         val current = _uiState.value.nowPlaying
         val videoId = current.video?.id ?: return
@@ -5177,6 +5323,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 channelDetail = state.channelDetail.copy(
                     videos = state.channelDetail.videos.map(::merge),
                     shorts = state.channelDetail.shorts.map(::merge),
+                    liveStreams = state.channelDetail.liveStreams.map(::merge),
                 ),
                 remotePlaylistDetail = state.remotePlaylistDetail.copy(
                     videos = state.remotePlaylistDetail.videos.map(::merge),
@@ -5221,6 +5368,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     if (it.id == videoId) transform(it) else it
                 },
                 shorts = state.channelDetail.shorts.map {
+                    if (it.id == videoId) transform(it) else it
+                },
+                liveStreams = state.channelDetail.liveStreams.map {
                     if (it.id == videoId) transform(it) else it
                 },
             ),
@@ -5355,6 +5505,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         return remoteVideos[videoId]
             ?: state.channelDetail.videos.firstOrNull { it.id == videoId }
             ?: state.channelDetail.shorts.firstOrNull { it.id == videoId }
+            ?: state.channelDetail.liveStreams.firstOrNull { it.id == videoId }
             ?: state.remotePlaylistDetail.videos.firstOrNull { it.id == videoId }
             ?: state.search.videos.firstOrNull { it.id == videoId }
             ?: state.home.videos.firstOrNull { it.id == videoId }

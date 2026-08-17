@@ -51,7 +51,10 @@ internal fun ChromecastSheet(
         state.activeProtocol?.let { selectedTab = if (it == CastProtocolUi.Chromecast) 0 else 1 }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        contentWindowInsets = { grayjoySheetInsets() },
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

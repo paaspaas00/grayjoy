@@ -5,6 +5,9 @@ import android.content.res.Configuration
 import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -27,8 +30,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,6 +44,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.MenuOpen
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.outlined.CastConnected
@@ -51,6 +56,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Masks
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -58,7 +64,6 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -69,7 +74,6 @@ import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.PermanentDrawerSheet
-import androidx.compose.material3.PermanentNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -136,8 +140,10 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-internal fun shouldCoverAppChromeDuringOrientationHandoff(windowOrientation: Int): Boolean =
-    windowOrientation == Configuration.ORIENTATION_LANDSCAPE
+internal fun shouldCoverAppChromeDuringOrientationHandoff(
+    windowOrientation: Int,
+    compactViewport: Boolean = true,
+): Boolean = compactViewport && windowOrientation == Configuration.ORIENTATION_LANDSCAPE
 
 // Private GitHub repositories do not expose release metadata to unauthenticated app clients.
 // Keep the complete banner/check path dormant until the repository is made public.
@@ -167,10 +173,18 @@ internal fun playerBoundsInsideScaffold(
     bottom = boundsInRoot.bottom - scaffoldTopInRoot,
 )
 
-internal fun miniplayerNeedsNavigationBarPadding(
-    searchImeVisible: Boolean,
+internal fun scaffoldBottomBarNeedsNavigationBarPadding(
     bottomNavigationProvidesInset: Boolean,
-): Boolean = !searchImeVisible && !bottomNavigationProvidesInset
+): Boolean = !bottomNavigationProvidesInset
+
+internal fun searchMiniplayerBottomInsetPx(
+    imeBottomPx: Int,
+    navigationBottomPx: Int,
+    appBottomBarHeightPx: Int,
+): Int = maxOf(imeBottomPx, navigationBottomPx, appBottomBarHeightPx)
+
+internal fun automaticFullscreenAllowedForViewport(widthDp: Int, heightDp: Int): Boolean =
+    minOf(widthDp, heightDp) < 600
 
 internal enum class GrayjayDestination(
     @param:StringRes val navigationLabelRes: Int,
@@ -253,6 +267,9 @@ private data class PlaybackPresentation(
     val onCreateLocalPlaylistFromRemote: (String) -> Unit,
     val onLoadMoreRecommendations: () -> Unit,
     val onLoadMoreComments: () -> Unit,
+    val onOpenCommentReplies: (String) -> Unit,
+    val onDismissCommentReplies: () -> Unit,
+    val onLoadMoreCommentReplies: () -> Unit,
     val onClose: () -> Unit,
     val onPlayQueue: (List<String>) -> Unit,
     val onQueueVideos: (List<String>) -> Unit,
@@ -297,6 +314,7 @@ private data class PlaybackPresentation(
     val stickyCaptionsEnabled: Boolean,
     val showRecommendations: Boolean,
     val searchHistoryEnabled: Boolean,
+    val crashLoggingEnabled: Boolean,
     val keepScreenAwake: Boolean,
     val pictureInPictureEnabled: Boolean,
     val otherAudioDuckingEnabled: Boolean,
@@ -316,6 +334,7 @@ private data class PlaybackPresentation(
     val onStickyCaptionsChange: (Boolean) -> Unit,
     val onShowRecommendationsChange: (Boolean) -> Unit,
     val onSearchHistoryChange: (Boolean) -> Unit,
+    val onCrashLoggingChange: (Boolean) -> Unit,
     val onKeepScreenAwakeChange: (Boolean) -> Unit,
     val onPictureInPictureChange: (Boolean) -> Unit,
     val onOtherAudioDuckingChange: (Boolean) -> Unit,
@@ -329,6 +348,8 @@ private data class PlaybackPresentation(
     val onNextComputerPlayback: (String) -> Unit,
     val onSeekComputerPlayback: (String, Long) -> Unit,
     val onInstallUpdate: (ReleaseUpdateUiModel) -> Unit,
+    val updateDownload: UpdateDownloadUiModel?,
+    val onCancelUpdateDownload: () -> Unit,
     val onHydrateVideoMetadata: (String) -> Unit,
     val onThemeModeChange: (ThemeMode) -> Unit,
     val chromecast: ChromecastUiState,
@@ -458,6 +479,9 @@ fun GrayjayApp(
     onCreateLocalPlaylistFromRemote: (String) -> Unit = {},
     onLoadMoreRecommendations: () -> Unit = {},
     onLoadMoreComments: () -> Unit = {},
+    onOpenCommentReplies: (String) -> Unit = {},
+    onDismissCommentReplies: () -> Unit = {},
+    onLoadMoreCommentReplies: () -> Unit = {},
     onToggleFollowing: () -> Unit,
     onResumeFromHistory: () -> Unit = {},
     onCreatorFollowedChange: (String, Boolean) -> Unit,
@@ -482,6 +506,7 @@ fun GrayjayApp(
     onStickyCaptionsChange: (Boolean) -> Unit,
     onShowRecommendationsChange: (Boolean) -> Unit,
     onSearchHistoryChange: (Boolean) -> Unit,
+    onCrashLoggingChange: (Boolean) -> Unit = {},
     onKeepScreenAwakeChange: (Boolean) -> Unit,
     onPictureInPictureChange: (Boolean) -> Unit = {},
     onStartChromecastDiscovery: () -> Unit = {},
@@ -499,6 +524,8 @@ fun GrayjayApp(
     onExternalNavigationHandled: (Long) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
     onInstallUpdate: (ReleaseUpdateUiModel) -> Unit = {},
+    updateDownload: UpdateDownloadUiModel? = null,
+    onCancelUpdateDownload: () -> Unit = {},
     onHydrateVideoMetadata: (String) -> Unit = {},
     deviceIsLandscape: Boolean = false,
     pictureInPictureMode: Boolean = false,
@@ -533,6 +560,7 @@ fun GrayjayApp(
         uiState.home.videos,
         uiState.channelDetail.videos,
         uiState.channelDetail.shorts,
+        uiState.channelDetail.liveStreams,
         uiState.remotePlaylistDetail.videos,
         uiState.nowPlaying.video,
         uiState.nowPlaying.recommendations,
@@ -546,6 +574,7 @@ fun GrayjayApp(
                 uiState.home.videos,
                 uiState.channelDetail.videos,
                 uiState.channelDetail.shorts,
+                uiState.channelDetail.liveStreams,
                 uiState.remotePlaylistDetail.videos,
                 listOfNotNull(uiState.nowPlaying.video),
                 uiState.nowPlaying.recommendations,
@@ -754,7 +783,7 @@ fun GrayjayApp(
         onCaptionsEnabledChange = onCaptionsEnabledChange,
         onSubtitleLanguageChange = onSubtitleLanguageChange,
         onEnterFullscreen = {
-            fullscreenEnteredByRotation = deviceIsLandscape
+            fullscreenEnteredByRotation = false
             isFullscreen = true
         },
         onExitFullscreen = {
@@ -784,6 +813,9 @@ fun GrayjayApp(
         onCreateLocalPlaylistFromRemote = onCreateLocalPlaylistFromRemote,
         onLoadMoreRecommendations = onLoadMoreRecommendations,
         onLoadMoreComments = onLoadMoreComments,
+        onOpenCommentReplies = onOpenCommentReplies,
+        onDismissCommentReplies = onDismissCommentReplies,
+        onLoadMoreCommentReplies = onLoadMoreCommentReplies,
         onClose = {
             playerTransitionJob?.cancel()
             playerTransition.snapTo(1f)
@@ -854,6 +886,7 @@ fun GrayjayApp(
         stickyCaptionsEnabled = uiState.stickyCaptionsEnabled,
         showRecommendations = uiState.showRecommendations,
         searchHistoryEnabled = uiState.searchHistoryEnabled,
+        crashLoggingEnabled = uiState.crashLoggingEnabled,
         keepScreenAwake = uiState.keepScreenAwake,
         pictureInPictureEnabled = uiState.pictureInPictureEnabled,
         otherAudioDuckingEnabled = uiState.otherAudioDuckingEnabled,
@@ -873,6 +906,7 @@ fun GrayjayApp(
         onStickyCaptionsChange = onStickyCaptionsChange,
         onShowRecommendationsChange = onShowRecommendationsChange,
         onSearchHistoryChange = onSearchHistoryChange,
+        onCrashLoggingChange = onCrashLoggingChange,
         onKeepScreenAwakeChange = onKeepScreenAwakeChange,
         onPictureInPictureChange = onPictureInPictureChange,
         onOtherAudioDuckingChange = onOtherAudioDuckingChange,
@@ -886,6 +920,8 @@ fun GrayjayApp(
         onNextComputerPlayback = onNextComputerPlayback,
         onSeekComputerPlayback = onSeekComputerPlayback,
         onInstallUpdate = onInstallUpdate,
+        updateDownload = updateDownload,
+        onCancelUpdateDownload = onCancelUpdateDownload,
         onHydrateVideoMetadata = onHydrateVideoMetadata,
         onThemeModeChange = onThemeModeChange,
         chromecast = uiState.chromecast,
@@ -978,12 +1014,18 @@ fun GrayjayApp(
 
     val fullscreenVideo = selectedVideo ?: playbackVideo
     val portraitFullscreen = usePortraitPlayerFullscreen(fullscreenVideo, uiState.playback)
-    val windowOrientation = LocalConfiguration.current.orientation
+    val currentConfiguration = LocalConfiguration.current
+    val windowOrientation = currentConfiguration.orientation
+    val automaticFullscreenAllowed = automaticFullscreenAllowedForViewport(
+        widthDp = currentConfiguration.screenWidthDp,
+        heightDp = currentConfiguration.screenHeightDp,
+    )
     LaunchedEffect(isFullscreen, portraitFullscreen) {
         onFullscreenPresentationChanged(isFullscreen, portraitFullscreen)
     }
     LaunchedEffect(
         deviceIsLandscape,
+        automaticFullscreenAllowed,
         selectedVideo?.id,
         playerTransition.isSettling,
         playerTransition.target,
@@ -991,11 +1033,13 @@ fun GrayjayApp(
         val expandedNowPlaying = selectedVideo != null &&
             !playerTransition.isSettling && playerTransition.target < 0.01f
         when {
-            deviceIsLandscape && expandedNowPlaying && !isFullscreen && !portraitFullscreen -> {
+            automaticFullscreenAllowed && deviceIsLandscape && expandedNowPlaying &&
+                !isFullscreen && !portraitFullscreen -> {
                 fullscreenEnteredByRotation = true
                 isFullscreen = true
             }
-            !deviceIsLandscape && isFullscreen && fullscreenEnteredByRotation -> {
+            (!deviceIsLandscape || !automaticFullscreenAllowed) &&
+                isFullscreen && fullscreenEnteredByRotation -> {
                 fullscreenEnteredByRotation = false
                 isFullscreen = false
             }
@@ -1084,7 +1128,12 @@ fun GrayjayApp(
                 alpha = 1f - 0.22f * progress
             },
         )
-    } else if (shouldCoverAppChromeDuringOrientationHandoff(windowOrientation)) {
+    } else if (
+        shouldCoverAppChromeDuringOrientationHandoff(
+            windowOrientation = windowOrientation,
+            compactViewport = automaticFullscreenAllowed,
+        )
+    ) {
         // Fullscreen state changes before Android finishes returning this window to portrait.
         // Keep that hand-off opaque so ordinary app chrome is never drawn or visibly rotated
         // inside the temporary landscape viewport.
@@ -1443,9 +1492,15 @@ private fun DrawerNavigationLayout(
     channels: List<ChannelUiModel>,
     playlists: List<PlaylistUiModel>,
 ) {
-    PermanentNavigationDrawer(
-        drawerContent = {
-            PermanentDrawerSheet(Modifier.width(280.dp)) {
+    var drawerVisible by rememberSaveable { mutableStateOf(true) }
+    val toggleDrawer = { drawerVisible = !drawerVisible }
+    Row(Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = drawerVisible,
+            enter = expandHorizontally(expandFrom = Alignment.Start) + fadeIn(tween(180)),
+            exit = shrinkHorizontally(shrinkTowards = Alignment.Start) + fadeOut(tween(130)),
+        ) {
+            PermanentDrawerSheet(Modifier.width(280.dp).fillMaxSize()) {
                 Row(
                     modifier = Modifier
                         .statusBarsPadding()
@@ -1453,6 +1508,12 @@ private fun DrawerNavigationLayout(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    IconButton(onClick = toggleDrawer) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.MenuOpen,
+                            contentDescription = stringResource(R.string.close_navigation_menu),
+                        )
+                    }
                     GrayjoyMark()
                     Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
                 }
@@ -1466,8 +1527,7 @@ private fun DrawerNavigationLayout(
                     )
                 }
             }
-        },
-    ) {
+        }
         GrayjayScaffold(
             selected = selected,
             selectedVideo = selectedVideo,
@@ -1491,6 +1551,9 @@ private fun DrawerNavigationLayout(
             videos = videos,
             channels = channels,
             playlists = playlists,
+            drawerVisible = drawerVisible,
+            onToggleDrawer = toggleDrawer,
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -1522,6 +1585,8 @@ private fun GrayjayScaffold(
     playlists: List<PlaylistUiModel>,
     modifier: Modifier = Modifier,
     bottomNavigationProvidesInset: Boolean = false,
+    drawerVisible: Boolean = false,
+    onToggleDrawer: (() -> Unit)? = null,
     bottomBar: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -1531,10 +1596,24 @@ private fun GrayjayScaffold(
     var rootHeightPx by remember { mutableFloatStateOf(0f) }
     var rootLeftPx by remember { mutableFloatStateOf(0f) }
     var rootTopPx by remember { mutableFloatStateOf(0f) }
+    var appBottomBarHeightPx by remember { mutableFloatStateOf(0f) }
     var isTransitionDragging by remember { mutableStateOf(false) }
     val transitionVideo = selectedVideo ?: playback.video
     val transitionActive = transitionVideo != null && selectedVideo != null
-    val searchImeVisible = selected == GrayjayDestination.Search && WindowInsets.isImeVisible
+    val isRootSearch = selected == GrayjayDestination.Search &&
+        selectedChannel == null && selectedPlaylist == null && !nestedBackEnabled
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val navigationBottomPx = WindowInsets.navigationBars.getBottom(density)
+    val bottomNavigationFallbackPx = with(density) { 80.dp.roundToPx() }
+    val searchMiniplayerBottomPx = searchMiniplayerBottomInsetPx(
+        imeBottomPx = imeBottomPx,
+        navigationBottomPx = navigationBottomPx,
+        appBottomBarHeightPx = if (bottomNavigationProvidesInset) {
+            appBottomBarHeightPx.roundToInt().coerceAtLeast(bottomNavigationFallbackPx)
+        } else {
+            0
+        },
+    )
     val predictiveBackTransform = Modifier.graphicsLayer {
         val progress = playback.navigationBackProgress.coerceIn(0f, 1f)
         transformOrigin = TransformOrigin(0f, 0.5f)
@@ -1583,8 +1662,6 @@ private fun GrayjayScaffold(
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             topBar = {
-                val isRootSearch = selected == GrayjayDestination.Search &&
-                    selectedChannel == null && selectedPlaylist == null && !nestedBackEnabled
                 if (!isRootSearch) CenterAlignedTopAppBar(
                     modifier = predictiveBackTransform.then(
                         if (transitionActive) Modifier.clearAndSetSemantics { }
@@ -1619,34 +1696,49 @@ private fun GrayjayScaffold(
                         }
                     },
                     navigationIcon = {
-                        if (selectedChannel != null || selectedPlaylist != null || nestedBackEnabled) {
-                            IconButton(onClick = onVideoBack) {
-                                Icon(
-                                    Icons.AutoMirrored.Outlined.ArrowBack,
-                                    contentDescription = stringResource(R.string.back),
-                                )
+                        val hasBack = selectedChannel != null ||
+                            selectedPlaylist != null || nestedBackEnabled
+                        Row {
+                            if (onToggleDrawer != null && !drawerVisible) {
+                                IconButton(onClick = onToggleDrawer) {
+                                    Icon(
+                                        Icons.Outlined.Menu,
+                                        contentDescription = stringResource(
+                                            R.string.open_navigation_menu,
+                                        ),
+                                    )
+                                }
                             }
-                        } else if (
-                            selected == GrayjayDestination.Home &&
-                            playback.showPrivateThemeToggle
-                        ) {
-                            IconButton(
-                                onClick = {
-                                    playback.onDarkThemeChange(!playback.isDarkTheme)
-                                },
+                            if (hasBack) {
+                                IconButton(onClick = onVideoBack) {
+                                    Icon(
+                                        Icons.AutoMirrored.Outlined.ArrowBack,
+                                        contentDescription = stringResource(R.string.back),
+                                    )
+                                }
+                            } else if (
+                                onToggleDrawer == null &&
+                                selected == GrayjayDestination.Home &&
+                                playback.showPrivateThemeToggle
                             ) {
-                                Icon(
-                                    if (playback.isDarkTheme) {
-                                        Icons.Outlined.LightMode
-                                    } else {
-                                        Icons.Outlined.DarkMode
+                                IconButton(
+                                    onClick = {
+                                        playback.onDarkThemeChange(!playback.isDarkTheme)
                                     },
-                                    contentDescription = if (playback.isDarkTheme) {
-                                        stringResource(R.string.use_light_theme)
-                                    } else {
-                                        stringResource(R.string.use_dark_theme)
-                                    },
-                                )
+                                ) {
+                                    Icon(
+                                        if (playback.isDarkTheme) {
+                                            Icons.Outlined.LightMode
+                                        } else {
+                                            Icons.Outlined.DarkMode
+                                        },
+                                        contentDescription = if (playback.isDarkTheme) {
+                                            stringResource(R.string.use_light_theme)
+                                        } else {
+                                            stringResource(R.string.use_dark_theme)
+                                        },
+                                    )
+                                }
                             }
                         }
                     },
@@ -1672,11 +1764,9 @@ private fun GrayjayScaffold(
             bottomBar = {
                 Column(
                     Modifier
-                        .then(if (searchImeVisible) Modifier.imePadding() else Modifier)
                         .then(
                             if (
-                                miniplayerNeedsNavigationBarPadding(
-                                    searchImeVisible = searchImeVisible,
+                                scaffoldBottomBarNeedsNavigationBarPadding(
                                     bottomNavigationProvidesInset =
                                         bottomNavigationProvidesInset,
                                 )
@@ -1687,7 +1777,7 @@ private fun GrayjayScaffold(
                             },
                         ),
                 ) {
-                    playback.video?.let { video ->
+                    if (!isRootSearch) playback.video?.let { video ->
                         MiniPlayer(
                             video = video,
                             isPlaying = playback.isPlaying,
@@ -1712,7 +1802,13 @@ private fun GrayjayScaffold(
                             modifier = transitionDragModifier,
                         )
                     }
-                    if (!searchImeVisible) bottomBar()
+                    Box(
+                        Modifier.onGloballyPositioned { coordinates ->
+                            appBottomBarHeightPx = coordinates.size.height.toFloat()
+                        },
+                    ) {
+                        bottomBar()
+                    }
                 }
             },
         ) { contentPadding ->
@@ -1841,6 +1937,8 @@ private fun GrayjayScaffold(
                             RELEASE_UPDATE_CHECK_ENABLED
                         },
                         onInstallUpdate = playback.onInstallUpdate,
+                        updateDownload = playback.updateDownload,
+                        onCancelUpdateDownload = playback.onCancelUpdateDownload,
                         onHydrateVideoMetadata = playback.onHydrateVideoMetadata,
                         onFeedSelected = sourcePresentation.onHomeFeedSelected,
                         onRefresh = sourcePresentation.onRefreshHome,
@@ -1877,6 +1975,8 @@ private fun GrayjayScaffold(
                         onVideoLongClick = playback.onVideoLongClick,
                         onChannelClick = onChannelClick,
                         onPlaylistClick = onPlaylistClick,
+                        showNavigationMenuButton = onToggleDrawer != null && !drawerVisible,
+                        onNavigationMenuClick = onToggleDrawer ?: {},
                     )
                     GrayjayDestination.Library -> LibraryScreen(
                         videos = playback.libraryVideos,
@@ -1933,6 +2033,8 @@ private fun GrayjayScaffold(
                         onShowRecommendationsChange = playback.onShowRecommendationsChange,
                         searchHistoryEnabled = playback.searchHistoryEnabled,
                         onSearchHistoryChange = playback.onSearchHistoryChange,
+                        crashLoggingEnabled = playback.crashLoggingEnabled,
+                        onCrashLoggingChange = playback.onCrashLoggingChange,
                         keepScreenAwake = playback.keepScreenAwake,
                         onKeepScreenAwakeChange = playback.onKeepScreenAwakeChange,
                         pictureInPictureEnabled = playback.pictureInPictureEnabled,
@@ -1965,6 +2067,37 @@ private fun GrayjayScaffold(
                 }
                 }
             }
+        }
+
+        if (isRootSearch) playback.video?.let { video ->
+            MiniPlayer(
+                video = video,
+                isPlaying = playback.isPlaying,
+                progress = if (playback.state.durationMs > 0) {
+                    playback.state.positionMs.toFloat() / playback.state.durationMs
+                } else {
+                    0f
+                },
+                canSkip = playback.queueSize > 1,
+                chromeAlpha = if (transitionActive) 0f else 1f,
+                onExpand = playback.onExpand,
+                onTogglePlayback = playback.onToggle,
+                onSkipToNext = playback.onNext,
+                onClose = playback.onClose,
+                onVideoBoundsChanged = { measuredBounds ->
+                    miniPlayerBounds = playerBoundsInsideScaffold(
+                        boundsInRoot = measuredBounds,
+                        scaffoldLeftInRoot = rootLeftPx,
+                        scaffoldTopInRoot = rootTopPx,
+                    )
+                },
+                modifier = transitionDragModifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        bottom = with(density) { searchMiniplayerBottomPx.toDp() },
+                    )
+                    .zIndex(2f),
+            )
         }
 
         if (transitionActive) {
@@ -2035,11 +2168,23 @@ private fun GrayjayScaffold(
                                     }
                                 },
                                 navigationIcon = {
-                                    IconButton(onClick = playback.onCollapse) {
-                                        Icon(
-                                            Icons.AutoMirrored.Outlined.ArrowBack,
-                                            contentDescription = stringResource(R.string.back),
-                                        )
+                                    Row {
+                                        if (onToggleDrawer != null && !drawerVisible) {
+                                            IconButton(onClick = onToggleDrawer) {
+                                                Icon(
+                                                    Icons.Outlined.Menu,
+                                                    contentDescription = stringResource(
+                                                        R.string.open_navigation_menu,
+                                                    ),
+                                                )
+                                            }
+                                        }
+                                        IconButton(onClick = playback.onCollapse) {
+                                            Icon(
+                                                Icons.AutoMirrored.Outlined.ArrowBack,
+                                                contentDescription = stringResource(R.string.back),
+                                            )
+                                        }
                                     }
                                 },
                                 actions = {
@@ -2144,8 +2289,12 @@ private fun GrayjayScaffold(
                                 onFullscreen = playback.onEnterFullscreen,
                                 onLoadMoreRecommendations = playback.onLoadMoreRecommendations,
                                 onLoadMoreComments = playback.onLoadMoreComments,
+                                onOpenCommentReplies = playback.onOpenCommentReplies,
+                                onDismissCommentReplies = playback.onDismissCommentReplies,
+                                onLoadMoreCommentReplies = playback.onLoadMoreCommentReplies,
                                 onResumeFromHistory = playback.onResumeFromHistory,
                                 renderPlayer = false,
+                                allowSideBySideLayout = onToggleDrawer != null && !drawerVisible,
                                 onPlayerBoundsChanged = { measuredBounds ->
                                     val transitionProgress = playback.transition.progress
                                         .coerceIn(0f, 1f)
@@ -2225,6 +2374,7 @@ private fun GrayjayScaffold(
                     transitionActive && !isTransitionDragging &&
                     !playback.transition.isSettling && playback.transition.target <= 0.001f
                 ) 1f else 0f,
+                topControlsAtStart = onToggleDrawer != null && !drawerVisible,
                 resumePositionFraction = playback.nowPlaying.resumePositionFraction,
                 onResumeFromHistory = playback.onResumeFromHistory,
                 modifier = (if (transitionActive && expanded != null) {

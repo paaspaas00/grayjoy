@@ -631,7 +631,10 @@ private fun DownloadExportSheet(
     onDismiss: () -> Unit,
     onChoose: (DownloadMediaType) -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        contentWindowInsets = { grayjoySheetInsets() },
+    ) {
         Column(
             modifier = Modifier.padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),

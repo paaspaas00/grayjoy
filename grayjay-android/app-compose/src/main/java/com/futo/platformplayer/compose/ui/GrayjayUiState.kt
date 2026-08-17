@@ -25,6 +25,7 @@ data class GrayjayUiState(
     val stickyCaptionsEnabled: Boolean = true,
     val showRecommendations: Boolean = true,
     val searchHistoryEnabled: Boolean = true,
+    val crashLoggingEnabled: Boolean = false,
     val keepScreenAwake: Boolean = true,
     val pictureInPictureEnabled: Boolean = true,
     val otherAudioDuckingEnabled: Boolean = true,
@@ -120,6 +121,12 @@ data class ReleaseUpdateUiModel(
     val releaseUrl: String,
     val changelog: String,
     val debugApkUrl: String?,
+)
+
+data class UpdateDownloadUiModel(
+    val versionName: String,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long? = null,
 )
 
 data class ChromecastDeviceUiModel(
@@ -227,6 +234,7 @@ data class HomeUiState(
 enum class ChannelContentTab(@param:StringRes val labelRes: Int) {
     Videos(R.string.videos),
     Shorts(R.string.shorts),
+    Live(R.string.live),
     Playlists(R.string.playlists),
 }
 
@@ -236,12 +244,15 @@ data class ChannelDetailUiState(
     val selectedTab: ChannelContentTab = ChannelContentTab.Videos,
     val videos: List<VideoUiModel> = emptyList(),
     val shorts: List<VideoUiModel> = emptyList(),
+    val liveStreams: List<VideoUiModel> = emptyList(),
     val playlists: List<PlaylistUiModel> = emptyList(),
     val loadedTabs: Set<ChannelContentTab> = emptySet(),
     val continuationIds: Map<ChannelContentTab, String> = emptyMap(),
     val tabsWithMore: Set<ChannelContentTab> = emptySet(),
     val supportsShorts: Boolean = false,
     val supportsPlaylists: Boolean = false,
+    val liveContentType: String? = null,
+    val supportsPopularSort: Boolean = false,
     val isLoading: Boolean = false,
     val isLoaded: Boolean = false,
     val isLoadingMore: Boolean = false,
@@ -339,6 +350,7 @@ data class PlaybackUiState(
 )
 
 data class VideoCommentUiModel(
+    val id: String = "",
     val author: String,
     val authorThumbnailUrl: String = "",
     val message: String,
@@ -347,12 +359,24 @@ data class VideoCommentUiModel(
     val replyCount: Int? = null,
 )
 
+data class CommentRepliesUiState(
+    val parent: VideoCommentUiModel? = null,
+    val replies: List<VideoCommentUiModel> = emptyList(),
+    val isVisible: Boolean = false,
+    val isLoading: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val continuationId: String? = null,
+    val hasMore: Boolean = false,
+    val errorMessage: String? = null,
+)
+
 data class NowPlayingUiState(
     val video: VideoUiModel? = null,
     val isLoadingPlayback: Boolean = false,
     val isLoadingExtras: Boolean = false,
     val recommendations: List<VideoUiModel> = emptyList(),
     val comments: List<VideoCommentUiModel> = emptyList(),
+    val commentReplies: CommentRepliesUiState = CommentRepliesUiState(),
     val recommendationsAvailable: Boolean = false,
     val commentsAvailable: Boolean = false,
     val isLoadingMoreRecommendations: Boolean = false,

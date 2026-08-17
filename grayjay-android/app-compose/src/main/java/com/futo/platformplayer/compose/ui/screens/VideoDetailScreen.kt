@@ -19,17 +19,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -119,6 +124,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -136,6 +142,7 @@ import androidx.media3.ui.PlayerView
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.ChannelUiModel
+import com.futo.platformplayer.compose.ui.CommentRepliesUiState
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.NowPlayingUiState
@@ -198,8 +205,12 @@ fun VideoDetailScreen(
     onFullscreen: () -> Unit,
     onLoadMoreRecommendations: () -> Unit = {},
     onLoadMoreComments: () -> Unit = {},
+    onOpenCommentReplies: (String) -> Unit = {},
+    onDismissCommentReplies: () -> Unit = {},
+    onLoadMoreCommentReplies: () -> Unit = {},
     onResumeFromHistory: () -> Unit = {},
     renderPlayer: Boolean = true,
+    allowSideBySideLayout: Boolean = false,
     onPlayerBoundsChanged: (Rect) -> Unit = {},
 ) {
     var selectedSectionName by rememberSaveable(video.id) {
@@ -242,7 +253,14 @@ fun VideoDetailScreen(
     }
     val displayedCreatorChannel = creatorChannel ?: fallbackCreatorChannel
     val selectedSection = DetailSection.valueOf(selectedSectionName)
+    val topPlayerControlsAtStart = shouldUseSideBySideNowPlaying(
+        drawerHidden = allowSideBySideLayout,
+        availableWidthDp = LocalConfiguration.current.screenWidthDp.toFloat(),
+    )
     val detailListState = rememberLazyListState()
+    LaunchedEffect(video.id, video.title, allowSideBySideLayout) {
+        detailListState.scrollToItem(0)
+    }
     RequestNextPageEffect(
         listState = detailListState,
         canLoadMore = when (selectedSection) {
@@ -292,6 +310,7 @@ fun VideoDetailScreen(
             onFullscreen = onFullscreen,
             resumePositionFraction = resumeFraction,
             onResumeFromHistory = onResumeFromHistory,
+            topControlsAtStart = topPlayerControlsAtStart,
             modifier = modifier,
         )
     }
@@ -314,7 +333,7 @@ fun VideoDetailScreen(
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (maxWidth >= 840.dp) {
+        if (shouldUseSideBySideNowPlaying(allowSideBySideLayout, maxWidth.value)) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -327,6 +346,34 @@ fun VideoDetailScreen(
                         .widthIn(max = 1_080.dp),
                 ) {
                     playerHost(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+                    VideoPrimaryInfo(
+                        video = video,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                    VideoActions(
+                        video = video,
+                        download = download,
+                        horizontalPadding = 0.dp,
+                        onToggleWatchLater = onToggleWatchLater,
+                        onToggleDownload = onToggleDownload,
+                        onDownloadVideo = onDownloadVideo,
+                        onToggleAudioDownload = onToggleAudioDownload,
+                        onDownloadAudio = onDownloadAudio,
+                        onAddToPlaylist = onAddToPlaylist,
+                        preferredVideoQuality = preferredVideoQuality,
+                        preferredAudioBitrate = preferredAudioBitrate,
+                        availableVideoQualities = playback.availableVideoQualities,
+                    )
+                    CreatorCard(
+                        video = video,
+                        isFollowing = nowPlaying.isFollowing,
+                        onToggleFollowing = onToggleFollowing,
+                        onClick = {
+                            onCreatorPreview(displayedCreatorChannel)
+                            showCreatorSheet = true
+                        },
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
                 }
                 LazyColumn(
                     state = detailListState,
@@ -341,6 +388,8 @@ fun VideoDetailScreen(
                         nowPlaying = nowPlaying,
                         queueVideos = queueVideos,
                         selectedSection = selectedSection,
+                        includePrimaryInfo = false,
+                        includeCreatorInfo = false,
                         onSectionChange = { selectedSectionName = it.name },
                         onToggleWatchLater = onToggleWatchLater,
                         download = download,
@@ -360,54 +409,62 @@ fun VideoDetailScreen(
                         onVideoClick = onVideoClick,
                         onVideoLongClick = onVideoLongClick,
                         onQueueVideoLongClick = onQueueVideoLongClick,
+                        onCommentClick = onOpenCommentReplies,
                         showFullQueue = showFullQueue,
                         onShowFullQueueChange = { showFullQueue = it },
                     )
                     detailPagingIndicator(nowPlaying, selectedSection)
                 }
             }
+            return@BoxWithConstraints
+        }
+        val naturalPlayerHeight = maxWidth * (9f / 16f)
+        val playerHeight = if (maxWidth > maxHeight) {
+            minOf(naturalPlayerHeight, maxHeight * 0.60f)
         } else {
-            Column(Modifier.fillMaxSize()) {
-                playerHost(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
-                LazyColumn(
-                    state = detailListState,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .testTag("video-detail-list"),
-                    contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    videoDetails(
-                        video = video,
-                        nowPlaying = nowPlaying,
-                        queueVideos = queueVideos,
-                        selectedSection = selectedSection,
-                        horizontalPadding = 16.dp,
-                        onSectionChange = { selectedSectionName = it.name },
-                        onToggleWatchLater = onToggleWatchLater,
-                        download = download,
-                        onToggleDownload = onToggleDownload,
-                        onDownloadVideo = onDownloadVideo,
-                        onToggleAudioDownload = onToggleAudioDownload,
-                        onDownloadAudio = onDownloadAudio,
-                        onAddToPlaylist = onAddToPlaylist,
-                        preferredVideoQuality = preferredVideoQuality,
-                        preferredAudioBitrate = preferredAudioBitrate,
-                        availableVideoQualities = playback.availableVideoQualities,
-                        onToggleFollowing = onToggleFollowing,
-                        onCreatorClick = {
-                            onCreatorPreview(displayedCreatorChannel)
-                            showCreatorSheet = true
-                        },
-                        onVideoClick = onVideoClick,
-                        onVideoLongClick = onVideoLongClick,
-                        onQueueVideoLongClick = onQueueVideoLongClick,
-                        showFullQueue = showFullQueue,
-                        onShowFullQueueChange = { showFullQueue = it },
-                    )
-                    detailPagingIndicator(nowPlaying, selectedSection)
-                }
+            naturalPlayerHeight
+        }
+        Column(Modifier.fillMaxSize()) {
+            playerHost(Modifier.fillMaxWidth().height(playerHeight))
+            LazyColumn(
+                state = detailListState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .testTag("video-detail-list"),
+                contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                videoDetails(
+                    video = video,
+                    nowPlaying = nowPlaying,
+                    queueVideos = queueVideos,
+                    selectedSection = selectedSection,
+                    horizontalPadding = 16.dp,
+                    onSectionChange = { selectedSectionName = it.name },
+                    onToggleWatchLater = onToggleWatchLater,
+                    download = download,
+                    onToggleDownload = onToggleDownload,
+                    onDownloadVideo = onDownloadVideo,
+                    onToggleAudioDownload = onToggleAudioDownload,
+                    onDownloadAudio = onDownloadAudio,
+                    onAddToPlaylist = onAddToPlaylist,
+                    preferredVideoQuality = preferredVideoQuality,
+                    preferredAudioBitrate = preferredAudioBitrate,
+                    availableVideoQualities = playback.availableVideoQualities,
+                    onToggleFollowing = onToggleFollowing,
+                    onCreatorClick = {
+                        onCreatorPreview(displayedCreatorChannel)
+                        showCreatorSheet = true
+                    },
+                    onVideoClick = onVideoClick,
+                    onVideoLongClick = onVideoLongClick,
+                    onQueueVideoLongClick = onQueueVideoLongClick,
+                    onCommentClick = onOpenCommentReplies,
+                    showFullQueue = showFullQueue,
+                    onShowFullQueueChange = { showFullQueue = it },
+                )
+                detailPagingIndicator(nowPlaying, selectedSection)
             }
         }
     }
@@ -425,7 +482,20 @@ fun VideoDetailScreen(
         )
     }
 
+    if (nowPlaying.commentReplies.isVisible) {
+        CommentRepliesSheet(
+            state = nowPlaying.commentReplies,
+            onDismiss = onDismissCommentReplies,
+            onLoadMore = onLoadMoreCommentReplies,
+        )
+    }
+
 }
+
+internal fun shouldUseSideBySideNowPlaying(
+    drawerHidden: Boolean,
+    availableWidthDp: Float,
+): Boolean = drawerHidden && availableWidthDp >= 960f
 
 private fun LazyListScope.detailPagingIndicator(
     nowPlaying: NowPlayingUiState,
@@ -576,6 +646,7 @@ internal fun PlayerSurface(
     onFullscreen: () -> Unit,
     modifier: Modifier,
     controlsAlpha: Float = 1f,
+    topControlsAtStart: Boolean = false,
     resumePositionFraction: Float? = null,
     onResumeFromHistory: () -> Unit = {},
 ) {
@@ -734,7 +805,14 @@ internal fun PlayerSurface(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer { alpha = controlsVisibilityAlpha },
+                    .graphicsLayer { alpha = controlsVisibilityAlpha }
+                    .then(
+                        if (isFullscreen) {
+                            Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                        } else {
+                            Modifier
+                        },
+                    ),
             ) {
             Box(
                 modifier = Modifier
@@ -769,7 +847,7 @@ internal fun PlayerSurface(
                         Text(
                             text = video.title,
                             color = Color.White,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleSmall,
                         )
@@ -782,42 +860,18 @@ internal fun PlayerSurface(
                         )
                     }
                 } else {
-                    Spacer(Modifier.weight(1f))
+                    if (!topControlsAtStart) Spacer(Modifier.weight(1f))
                 }
-                IconButton(
-                    onClick = {
+                PlayerTopActionButtons(
+                    isFullscreen = isFullscreen,
+                    onSettings = {
                         settingsPageName = PlayerSettingsPage.Main.name
                         showSettings = true
                         controlsVisible = true
                     },
-                    modifier = Modifier
-                        .offset(y = if (isFullscreen) 8.dp else 0.dp)
-                        .size(if (isFullscreen) 56.dp else 48.dp)
-                        .testTag("player-settings"),
-                ) {
-                    Icon(
-                        Icons.Outlined.Settings,
-                        contentDescription = stringResource(R.string.player_settings),
-                        tint = Color.White,
-                        modifier = Modifier.size(if (isFullscreen) 30.dp else 24.dp),
-                    )
-                }
-                IconButton(
-                    onClick = onFullscreen,
-                    modifier = Modifier
-                        .offset(y = if (isFullscreen) 8.dp else 0.dp)
-                        .size(if (isFullscreen) 56.dp else 48.dp)
-                        .testTag("player-fullscreen"),
-                ) {
-                    Icon(
-                        if (isFullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
-                        contentDescription = stringResource(
-                            if (isFullscreen) R.string.exit_fullscreen else R.string.enter_fullscreen,
-                        ),
-                        tint = Color.White,
-                        modifier = Modifier.size(if (isFullscreen) 30.dp else 24.dp),
-                    )
-                }
+                    onFullscreen = onFullscreen,
+                )
+                if (!isFullscreen && topControlsAtStart) Spacer(Modifier.weight(1f))
             }
 
             Row(
@@ -1078,6 +1132,46 @@ internal fun PlayerSurface(
                 showSettings = false
             },
         )
+    }
+}
+
+@Composable
+private fun PlayerTopActionButtons(
+    isFullscreen: Boolean,
+    onSettings: () -> Unit,
+    onFullscreen: () -> Unit,
+) {
+    Row {
+        IconButton(
+            onClick = onSettings,
+            modifier = Modifier
+                .offset(y = if (isFullscreen) 8.dp else 0.dp)
+                .size(if (isFullscreen) 56.dp else 48.dp)
+                .testTag("player-settings"),
+        ) {
+            Icon(
+                Icons.Outlined.Settings,
+                contentDescription = stringResource(R.string.player_settings),
+                tint = Color.White,
+                modifier = Modifier.size(if (isFullscreen) 30.dp else 24.dp),
+            )
+        }
+        IconButton(
+            onClick = onFullscreen,
+            modifier = Modifier
+                .offset(y = if (isFullscreen) 8.dp else 0.dp)
+                .size(if (isFullscreen) 56.dp else 48.dp)
+                .testTag("player-fullscreen"),
+        ) {
+            Icon(
+                if (isFullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
+                contentDescription = stringResource(
+                    if (isFullscreen) R.string.exit_fullscreen else R.string.enter_fullscreen,
+                ),
+                tint = Color.White,
+                modifier = Modifier.size(if (isFullscreen) 30.dp else 24.dp),
+            )
+        }
     }
 }
 
@@ -1513,6 +1607,7 @@ private fun PlayerSettingsSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
+        contentWindowInsets = { grayjoySheetInsets() },
     ) {
         PlayerSettingsSheetSystemBars(
             isFullscreen = isFullscreen,
@@ -1951,6 +2046,8 @@ private fun LazyListScope.videoDetails(
     nowPlaying: NowPlayingUiState,
     queueVideos: List<VideoUiModel>,
     selectedSection: DetailSection,
+    includePrimaryInfo: Boolean = true,
+    includeCreatorInfo: Boolean = true,
     horizontalPadding: androidx.compose.ui.unit.Dp = 0.dp,
     onSectionChange: (DetailSection) -> Unit,
     onToggleWatchLater: () -> Unit,
@@ -1967,48 +2064,44 @@ private fun LazyListScope.videoDetails(
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
     onQueueVideoLongClick: (VideoUiModel) -> Unit,
+    onCommentClick: (String) -> Unit,
     showFullQueue: Boolean,
     onShowFullQueueChange: (Boolean) -> Unit,
 ) {
-    item {
-        Column(
-            modifier = Modifier.padding(horizontal = horizontalPadding),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(video.title, style = MaterialTheme.typography.titleLarge)
-            if (video.metadata.isNotBlank()) {
-                Text(
-                    video.metadata,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
+    if (includePrimaryInfo) {
+        item {
+            VideoPrimaryInfo(
+                video = video,
+                modifier = Modifier.padding(horizontal = horizontalPadding),
+            )
+        }
+        item {
+            VideoActions(
+                video = video,
+                download = download,
+                horizontalPadding = horizontalPadding,
+                onToggleWatchLater = onToggleWatchLater,
+                onToggleDownload = onToggleDownload,
+                onDownloadVideo = onDownloadVideo,
+                onToggleAudioDownload = onToggleAudioDownload,
+                onDownloadAudio = onDownloadAudio,
+                onAddToPlaylist = onAddToPlaylist,
+                preferredVideoQuality = preferredVideoQuality,
+                preferredAudioBitrate = preferredAudioBitrate,
+                availableVideoQualities = availableVideoQualities,
+            )
         }
     }
-    item {
-        VideoActions(
-            video = video,
-            download = download,
-            horizontalPadding = horizontalPadding,
-            onToggleWatchLater = onToggleWatchLater,
-            onToggleDownload = onToggleDownload,
-            onDownloadVideo = onDownloadVideo,
-            onToggleAudioDownload = onToggleAudioDownload,
-            onDownloadAudio = onDownloadAudio,
-            onAddToPlaylist = onAddToPlaylist,
-            preferredVideoQuality = preferredVideoQuality,
-            preferredAudioBitrate = preferredAudioBitrate,
-            availableVideoQualities = availableVideoQualities,
-        )
-    }
-    item {
-        CreatorCard(
-            video = video,
-            isFollowing = nowPlaying.isFollowing,
-            onToggleFollowing = onToggleFollowing,
-            onClick = onCreatorClick,
-            modifier = Modifier.padding(horizontal = horizontalPadding),
-        )
+    if (includeCreatorInfo) {
+        item {
+            CreatorCard(
+                video = video,
+                isFollowing = nowPlaying.isFollowing,
+                onToggleFollowing = onToggleFollowing,
+                onClick = onCreatorClick,
+                modifier = Modifier.padding(horizontal = horizontalPadding),
+            )
+        }
     }
     if (video.description.isNotBlank()) {
         item {
@@ -2155,7 +2248,11 @@ private fun LazyListScope.videoDetails(
             } else if (nowPlaying.comments.isNotEmpty()) {
                 nowPlaying.comments.forEachIndexed { index, comment ->
                     item(key = "comment-$index-${comment.author}") {
-                        CommentCard(comment, Modifier.padding(horizontal = horizontalPadding))
+                        CommentCard(
+                            comment = comment,
+                            modifier = Modifier.padding(horizontal = horizontalPadding),
+                            onClick = { onCommentClick(comment.id) },
+                        )
                     }
                 }
             } else if (!nowPlaying.isLoadingExtras) {
@@ -2174,6 +2271,26 @@ private fun LazyListScope.videoDetails(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun VideoPrimaryInfo(
+    video: VideoUiModel,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(video.title, style = MaterialTheme.typography.titleLarge)
+        if (video.metadata.isNotBlank()) {
+            Text(
+                video.metadata,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
@@ -2309,7 +2426,10 @@ private fun DownloadOptionsSheet(
         },
     )
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        contentWindowInsets = { grayjoySheetInsets() },
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2663,7 +2783,10 @@ private fun CreatorInfoSheet(
     onDismiss: () -> Unit,
     onOpenChannel: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        contentWindowInsets = { grayjoySheetInsets() },
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2749,9 +2872,18 @@ private fun VideoDescriptionCard(description: String, modifier: Modifier) {
 }
 
 @Composable
-private fun CommentCard(comment: VideoCommentUiModel, modifier: Modifier = Modifier) {
+private fun CommentCard(
+    comment: VideoCommentUiModel,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
+    val canOpenReplies = onClick != null && comment.id.isNotBlank() &&
+        (comment.replyCount ?: 0) > 0
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(enabled = canOpenReplies) { onClick?.invoke() }
+            .testTag("comment-${comment.id.ifBlank { comment.author }}"),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.Top,
     ) {
@@ -2794,6 +2926,85 @@ private fun CommentCard(comment: VideoCommentUiModel, modifier: Modifier = Modif
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommentRepliesSheet(
+    state: CommentRepliesUiState,
+    onDismiss: () -> Unit,
+    onLoadMore: () -> Unit,
+) {
+    val listState = rememberLazyListState()
+    RequestNextPageEffect(
+        listState = listState,
+        canLoadMore = state.hasMore && !state.isLoading && !state.isLoadingMore,
+        onLoadMore = onLoadMore,
+    )
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentWindowInsets = { grayjoySheetInsets() },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.88f),
+        ) {
+            Text(
+                stringResource(R.string.comment_replies),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .testTag("comment-replies-list"),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                state.parent?.let { parent ->
+                    item(key = "parent-${parent.id}") {
+                        CommentCard(comment = parent)
+                    }
+                }
+                if (state.isLoading) {
+                    item { CommentListSkeleton(count = 3, modifier = Modifier.fillMaxWidth()) }
+                } else {
+                    itemsIndexed(
+                        items = state.replies,
+                        key = { index, reply ->
+                            reply.id.ifBlank { "reply-$index-${reply.author}" }
+                        },
+                    ) { _, reply ->
+                        CommentCard(comment = reply)
+                    }
+                }
+                state.errorMessage?.let { message ->
+                    item {
+                        Text(
+                            message,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+                if (!state.isLoading && state.replies.isEmpty() && state.errorMessage == null) {
+                    item {
+                        Text(
+                            stringResource(R.string.no_comment_replies),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (state.isLoadingMore) {
+                    item { CommentListSkeleton(count = 2, modifier = Modifier.fillMaxWidth()) }
+                }
             }
         }
     }

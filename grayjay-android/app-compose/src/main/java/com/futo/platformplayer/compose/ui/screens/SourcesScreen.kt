@@ -433,7 +433,10 @@ private fun SourceOptionsSheet(
 ) {
     val context = LocalContext.current
     val clipboardLabel = stringResource(R.string.grayjay_source_clipboard_label)
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        contentWindowInsets = { grayjoySheetInsets() },
+    ) {
         Column(
             modifier = Modifier.padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -588,6 +591,7 @@ private fun YoutubeImportSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        contentWindowInsets = { grayjoySheetInsets() },
     ) {
         Column(
             modifier = Modifier

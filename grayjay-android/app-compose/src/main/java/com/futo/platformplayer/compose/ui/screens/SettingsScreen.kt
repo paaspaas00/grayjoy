@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeDown
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Extension
@@ -96,6 +97,8 @@ fun SettingsScreen(
     onShowRecommendationsChange: (Boolean) -> Unit,
     searchHistoryEnabled: Boolean,
     onSearchHistoryChange: (Boolean) -> Unit,
+    crashLoggingEnabled: Boolean,
+    onCrashLoggingChange: (Boolean) -> Unit,
     keepScreenAwake: Boolean,
     onKeepScreenAwakeChange: (Boolean) -> Unit,
     pictureInPictureEnabled: Boolean,
@@ -345,6 +348,15 @@ fun SettingsScreen(
                     icon = Icons.Outlined.PrivacyTip,
                     onClick = {},
                     testTag = "privacy-controls",
+                )
+                HorizontalDivider()
+                ToggleSetting(
+                    title = stringResource(R.string.save_crash_logs),
+                    description = stringResource(R.string.save_crash_logs_description),
+                    icon = Icons.Outlined.BugReport,
+                    checked = crashLoggingEnabled,
+                    onCheckedChange = onCrashLoggingChange,
+                    testTag = "crash-logging",
                 )
             }
         }

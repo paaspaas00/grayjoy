@@ -616,4 +616,17 @@
     <string name="show_all_queue">Show all (%1$d)</string>
     <string name="play_next">Play next</string>
     <string name="play_next_description">Move this video directly after the current one.</string>
+    <string name="sort_upload_date">Upload date</string>
+    <string name="sort_popularity">Popularity</string>
+    <string name="sort_name">Name</string>
+    <string name="update_downloading">Downloading the update…</string>
+    <string name="update_download_progress">%1$s of %2$s</string>
+    <string name="update_downloaded_amount">%1$s downloaded</string>
+    <string name="save_crash_logs">Save crash logs</string>
+    <string name="save_crash_logs_description">Privately keep up to 10 local diagnostic files for crashes and unhandled exceptions. Nothing is uploaded.</string>
+    <string name="open_navigation_menu">Open navigation menu</string>
+    <string name="close_navigation_menu">Close navigation menu</string>
+    <string name="comment_replies">Replies</string>
+    <string name="no_comment_replies">No replies were returned.</string>
+    <string name="comment_replies_load_failed">Could not load comment replies.</string>
 </resources>

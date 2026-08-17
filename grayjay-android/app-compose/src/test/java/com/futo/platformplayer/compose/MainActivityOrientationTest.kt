@@ -118,6 +118,18 @@ class MainActivityOrientationTest {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
             fullscreenPlayerOrientation(fullscreen = false, portraitVideo = false),
         )
+        assertEquals(
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,
+            fullscreenPlayerOrientation(
+                fullscreen = false,
+                portraitVideo = false,
+                supportsResponsiveLayout = true,
+            ),
+        )
+        assertEquals(
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,
+            appOrientationForWindow(supportsResponsiveLayout = true),
+        )
     }
 
     @Test

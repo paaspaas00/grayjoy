@@ -44,6 +44,7 @@ import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.ThemeMode
 import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
+import com.futo.platformplayer.compose.ui.UpdateDownloadUiModel
 import com.futo.platformplayer.compose.update.GrayjoyUpdateInstaller
 import com.futo.platformplayer.compose.ui.theme.GrayjayTheme
 import com.futo.platformplayer.compose.playback.PictureInPictureActionReceiver
@@ -52,6 +53,10 @@ import com.journeyapps.barcodescanner.ScanOptions
 import androidx.media3.ui.PlayerView
 import java.io.File
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 
 class MainActivity : FragmentActivity() {
     private val grayjayViewModel by viewModels<GrayjayViewModel>()
@@ -67,6 +72,8 @@ class MainActivity : FragmentActivity() {
     private var playerLandscapeFullscreen = false
     private val updateInstaller by lazy { GrayjoyUpdateInstaller(this) }
     private var pendingUpdateApk: File? = null
+    private var updateDownloadState by mutableStateOf<UpdateDownloadUiModel?>(null)
+    private var updateDownloadJob: Job? = null
     private val unknownSourcesLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
@@ -89,7 +96,9 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        requestedOrientation = appOrientationForWindow(
+            supportsResponsiveLayout = resources.configuration.smallestScreenWidthDp >= 600,
+        )
         pendingSourceUrl = intent.pluginSourceUrlOrNull()
         pendingDatabaseImportUri = intent.databaseImportUriOrNull()
         pendingExternalContentUrl = intent.externalContentUrlOrNull()
@@ -353,6 +362,9 @@ class MainActivity : FragmentActivity() {
                     onLoadMoreChannel = viewModel::loadMoreChannel,
                     onLoadMoreRecommendations = viewModel::loadMoreRecommendations,
                     onLoadMoreComments = viewModel::loadMoreComments,
+                    onOpenCommentReplies = viewModel::openCommentReplies,
+                    onDismissCommentReplies = viewModel::dismissCommentReplies,
+                    onLoadMoreCommentReplies = viewModel::loadMoreCommentReplies,
                     onToggleFollowing = viewModel::toggleFollowing,
                     onCreatorFollowedChange = viewModel::setCreatorFollowed,
                     onChooseDatabaseImport = { databaseImportPicker.launch(arrayOf("*/*")) },
@@ -380,6 +392,7 @@ class MainActivity : FragmentActivity() {
                     onStickyCaptionsChange = viewModel::setStickyCaptionsEnabled,
                     onShowRecommendationsChange = viewModel::setShowRecommendations,
                     onSearchHistoryChange = viewModel::setSearchHistoryEnabled,
+                    onCrashLoggingChange = viewModel::setCrashLoggingEnabled,
                     onKeepScreenAwakeChange = viewModel::setKeepScreenAwake,
                     onPictureInPictureChange = viewModel::setPictureInPictureEnabled,
                     onStartChromecastDiscovery = viewModel::startChromecastDiscovery,
@@ -407,6 +420,8 @@ class MainActivity : FragmentActivity() {
                     onExternalNavigationHandled = viewModel::consumeExternalNavigation,
                     onCheckForUpdates = viewModel::checkForUpdates,
                     onInstallUpdate = ::downloadAndInstallUpdate,
+                    updateDownload = updateDownloadState,
+                    onCancelUpdateDownload = ::cancelUpdateDownload,
                     onHydrateVideoMetadata = viewModel::hydrateVideoMetadata,
                     pictureInPictureMode = pictureInPictureMode,
                 )
@@ -478,6 +493,20 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!playerFullscreen) {
+            val orientation = appOrientationForWindow(
+                supportsResponsiveLayout = newConfig.smallestScreenWidthDp >= 600,
+            )
+            if (requestedOrientation != orientation) requestedOrientation = orientation
+        }
+        window.decorView.post {
+            capturePictureInPictureSourceRect()
+            updatePictureInPictureParams()
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -489,21 +518,45 @@ class MainActivity : FragmentActivity() {
 
     private fun downloadAndInstallUpdate(update: ReleaseUpdateUiModel) {
         val url = update.debugApkUrl ?: return
+        if (updateDownloadJob?.isActive == true &&
+            updateDownloadState?.versionName == update.versionName
+        ) return
+        cancelUpdateDownload()
+        updateDownloadState = UpdateDownloadUiModel(versionName = update.versionName)
         Toast.makeText(this, R.string.update_download_started, Toast.LENGTH_SHORT).show()
-        lifecycleScope.launch {
-            runCatching { updateInstaller.download(update.versionName, url) }
-                .onSuccess { apk ->
-                    pendingUpdateApk = apk
-                    installPendingUpdateIfAllowed()
+        updateDownloadJob = lifecycleScope.launch {
+            try {
+                val apk = updateInstaller.download(update.versionName, url) { downloaded, total ->
+                    withContext(Dispatchers.Main.immediate) {
+                        updateDownloadState = UpdateDownloadUiModel(
+                            versionName = update.versionName,
+                            downloadedBytes = downloaded,
+                            totalBytes = total,
+                        )
+                    }
                 }
-                .onFailure {
-                    Toast.makeText(
-                        this@MainActivity,
-                        getString(R.string.update_download_failed),
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
+                pendingUpdateApk = apk
+                updateDownloadState = null
+                installPendingUpdateIfAllowed()
+            } catch (_: CancellationException) {
+                updateDownloadState = null
+            } catch (_: Throwable) {
+                updateDownloadState = null
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.update_download_failed),
+                    Toast.LENGTH_LONG,
+                ).show()
+            } finally {
+                updateDownloadJob = null
+            }
         }
+    }
+
+    private fun cancelUpdateDownload() {
+        updateDownloadJob?.cancel()
+        updateDownloadJob = null
+        updateDownloadState = null
     }
 
     private fun installPendingUpdateIfAllowed() {
@@ -538,7 +591,11 @@ class MainActivity : FragmentActivity() {
     private fun setFullscreenPresentation(fullscreen: Boolean, portraitVideo: Boolean) {
         playerFullscreen = fullscreen
         playerLandscapeFullscreen = fullscreen && !portraitVideo
-        val playerOrientation = fullscreenPlayerOrientation(fullscreen, portraitVideo)
+        val playerOrientation = fullscreenPlayerOrientation(
+            fullscreen = fullscreen,
+            portraitVideo = portraitVideo,
+            supportsResponsiveLayout = resources.configuration.smallestScreenWidthDp >= 600,
+        )
         if (requestedOrientation != playerOrientation) {
             // This is scoped to Grayjoy's Activity. SENSOR_LANDSCAPE deliberately bypasses the
             // user's global rotation lock without reading or changing that Android setting.
@@ -678,11 +735,17 @@ internal fun automaticFullscreenPosture(
 internal fun fullscreenPlayerOrientation(
     fullscreen: Boolean,
     portraitVideo: Boolean,
-): Int = if (fullscreen && !portraitVideo) {
-    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-} else {
-    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    supportsResponsiveLayout: Boolean = false,
+): Int = when {
+    fullscreen && !portraitVideo -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    fullscreen -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    supportsResponsiveLayout -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 }
+
+internal fun appOrientationForWindow(supportsResponsiveLayout: Boolean): Int =
+    if (supportsResponsiveLayout) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
 internal data class DownloadCompletionKey(
     val profileId: String,

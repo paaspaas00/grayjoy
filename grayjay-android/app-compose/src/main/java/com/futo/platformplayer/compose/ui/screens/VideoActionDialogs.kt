@@ -101,7 +101,10 @@ internal fun VideoActionsSheet(
     onPlayNext: (() -> Unit)? = null,
     onPlayFromHere: (() -> Unit)? = null,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        contentWindowInsets = { grayjoySheetInsets() },
+    ) {
         Column(
             modifier = Modifier.padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
