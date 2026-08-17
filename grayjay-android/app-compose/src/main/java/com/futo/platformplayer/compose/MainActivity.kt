@@ -275,6 +275,7 @@ class MainActivity : FragmentActivity() {
                     onDynamicColorsChange = viewModel::setDynamicColorsEnabled,
                     onPrivateSessionChange = viewModel::setPrivateSessionEnabled,
                     onOpenVideo = viewModel::openVideo,
+                    onDismissVideoOpenDialog = viewModel::dismissVideoOpenDialog,
                     onLoadChannel = viewModel::loadChannel,
                     onChannelTabSelected = viewModel::selectChannelTab,
                     onHomeFeedSelected = viewModel::selectHomeFeed,

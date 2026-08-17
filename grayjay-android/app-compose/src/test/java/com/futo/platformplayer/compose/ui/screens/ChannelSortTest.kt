@@ -3,9 +3,17 @@ package com.futo.platformplayer.compose.ui.screens
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChannelSortTest {
+    @Test
+    fun `channel search stacks before the sort chip can squeeze it`() {
+        assertTrue(channelSearchUsesStackedLayout(393f))
+        assertFalse(channelSearchUsesStackedLayout(600f))
+    }
+
     @Test
     fun `video sorting respects criterion and keeps unknown metadata last`() {
         val videos = listOf(

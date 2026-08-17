@@ -92,6 +92,7 @@ import com.futo.platformplayer.compose.ui.YoutubeImportStageUi
 import com.futo.platformplayer.compose.ui.YoutubeImportUiState
 import com.futo.platformplayer.backend.GrayjaySignatureMismatchException
 import com.futo.platformplayer.engine.exceptions.ScriptLoginRequiredException
+import com.futo.platformplayer.engine.exceptions.ScriptUnavailableException
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.ui.VideoTitleLanguageMode
 import com.futo.platformplayer.compose.update.GitHubReleaseChecker
@@ -263,6 +264,39 @@ private fun String?.equalsAudioLanguage(other: String): Boolean {
     return first == second || first.substringBefore('-') == second.substringBefore('-')
 }
 
+internal fun isPermanentlyUnavailableVideo(
+    error: Throwable,
+    videoTitle: String = "",
+    isLive: Boolean = false,
+): Boolean {
+    val messages = generateSequence(error) { it.cause }
+        .map { it.message?.lowercase(Locale.ROOT).orEmpty() }
+        .toList()
+    return generateSequence(error) { it.cause }
+        .any { cause ->
+            if (cause is ScriptUnavailableException) return@any true
+            val message = cause.message?.lowercase(Locale.ROOT).orEmpty()
+            PERMANENT_UNAVAILABLE_MESSAGES.any(message::contains)
+        } || (
+        messages.any { it.contains("no supported video or audio stream") } &&
+            (isLive || videoTitle.contains("(live)", ignoreCase = true))
+        )
+}
+
+private val PERMANENT_UNAVAILABLE_MESSAGES = listOf(
+    "video unavailable",
+    "content unavailable",
+    "no longer available",
+    "has been removed",
+    "was removed",
+    "deleted video",
+    "private video",
+)
+
+private fun Throwable.hasMessageInChain(value: String): Boolean =
+    generateSequence(this) { it.cause }
+        .any { it.message?.contains(value, ignoreCase = true) == true }
+
 /**
  * Chooses the same hierarchy as legacy Grayjay: a requested audio rendition first, then the
  * plugin's dedicated download/playback audio, and finally a muxed representation when the source
@@ -402,6 +436,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var downloadQueueRestoreJob: Job? = null
     private var offlinePlaylistSyncJob: Job? = null
     private var queuePreparationJob: Job? = null
+    private var queuePreparationBlockedUntilMs = 0L
     private var queueMutationJob: Job? = null
     private var watchProgressWriteJob: Job? = null
     private var externalUrlJob: Job? = null
@@ -411,6 +446,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val historyWriteJobs = mutableMapOf<String, Job>()
     private var homeLoadGeneration = 0L
     private var playbackGeneration = 0L
+    private var videoOpenRequestGeneration = 0L
     private var youtubeImportGeneration = 0L
     private var playbackQueueSession: PlaybackQueueSession? = null
     private var pendingPlaybackVideoId: String? = null
@@ -1701,50 +1737,43 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun openVideo(videoId: String) {
         val video = findVideo(videoId) ?: return
+        if (!video.isAvailable) {
+            showVideoOpenDialog(video, permanentlyUnavailable = true)
+            return
+        }
         val resumePositionFraction = video.resumePositionFraction()
         val profileAtStart = activeProfileId
-        val generation = invalidatePlaybackQueue()
-        activePlaylistId = null
-        recordHistory(video)
+        videoOpenRequestGeneration += 1L
+        val requestGeneration = videoOpenRequestGeneration
         pendingPlaybackVideoId = video.id
         detailsJob?.cancel()
         storyboardJob?.cancel()
         extrasPagingJob?.cancel()
-        // Interrupt the old item immediately, but keep its foreground playback service alive
-        // while the replacement is resolved. Stopping and immediately restarting that service
-        // lets a delayed notification-cancel callback tear down the new start and Android then
-        // raises ForegroundServiceDidNotStartInTimeException.
-        engine.pausePlayback()
-        _uiState.update { state ->
-            state.copy(
-                nowPlaying = NowPlayingUiState(
-                    video = video,
-                    isLoadingPlayback = true,
-                    isLoadingExtras = true,
-                    isFollowing = preferences.isCreatorFollowed(video.creatorKey()),
-                    resumePositionFraction = resumePositionFraction,
-                ),
-            )
-        }
-        scheduleResumePromptDismiss(video.id, resumePositionFraction)
+        commentRepliesJob?.cancel()
         detailsJob = viewModelScope.launch {
             try {
-                val resolved = resolveForPlayback(video, profileAtStart)
+                val resolved = resolveForPlayback(video, profileAtStart).copy(isAvailable = true)
                 if (
-                    generation != playbackGeneration ||
+                    requestGeneration != videoOpenRequestGeneration ||
                     profileAtStart != activeProfileId ||
                     pendingPlaybackVideoId != video.id
                 ) {
                     return@launch
                 }
+                val generation = invalidatePlaybackQueue()
+                activePlaylistId = null
+                libraryRepository.setAvailable(video.id, true)
                 remoteVideos[resolved.id] = resolved
                 registerRemoteChannel(resolved)
                 recordHistory(resolved)
+                // Only replace the current item after the source returned a playable descriptor.
+                // This keeps the existing player and screen intact for removed/private videos.
+                engine.pausePlayback()
                 _uiState.update { current ->
                     if (
-                        generation != playbackGeneration ||
+                        requestGeneration != videoOpenRequestGeneration ||
                         pendingPlaybackVideoId != video.id ||
-                        current.nowPlaying.video?.id != video.id
+                        profileAtStart != activeProfileId
                     ) {
                         current
                     } else current.copy(
@@ -1753,12 +1782,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         search = current.search.copy(
                             videos = current.search.videos.map { if (it.id == resolved.id) resolved else it },
                         ),
-                        nowPlaying = current.nowPlaying.copy(
+                        nowPlaying = NowPlayingUiState(
                             video = resolved,
+                            isLoadingPlayback = true,
+                            isLoadingExtras = true,
                             isFollowing = preferences.isCreatorFollowed(resolved.creatorKey()),
+                            resumePositionFraction = resumePositionFraction,
                         ),
                     )
                 }
+                scheduleResumePromptDismiss(resolved.id, resumePositionFraction)
+                publishExternalNavigation(ExternalNavigationKind.Video, resolved.id)
                 openLocallyOrCast(
                     video = resolved,
                     playWhenReady = resolved.playbackFromDownload || resolved.contentUrl.isNotBlank(),
@@ -1775,32 +1809,78 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                if (generation != playbackGeneration || pendingPlaybackVideoId != video.id) {
+                if (
+                    requestGeneration != videoOpenRequestGeneration ||
+                    pendingPlaybackVideoId != video.id
+                ) {
                     return@launch
                 }
                 Log.e("GrayjayViewModel", "Could not resolve video from ${video.sourceId}.", error)
-                recordHistory(video)
-                engine.open(listOf(video), video.id, playWhenReady = false)
                 if (pendingPlaybackVideoId == video.id) pendingPlaybackVideoId = null
-                _uiState.update { state ->
-                    state.copy(
-                        nowPlaying = state.nowPlaying.copy(
-                            isLoadingPlayback = false,
-                            isLoadingExtras = false,
-                            errorMessage = if (error is ScriptLoginRequiredException) {
-                                text(
-                                    R.string.source_login_required_for_video,
-                                    video.sourceName.ifBlank { video.sourceId },
-                                )
-                            } else {
-                                error.localizedMessage ?: text(R.string.video_details_load_failed)
-                            },
-                        ),
-                    )
+                val permanentlyUnavailable = isPermanentlyUnavailableVideo(
+                    error = error,
+                    videoTitle = video.title,
+                    isLive = video.isLive,
+                )
+                if (permanentlyUnavailable) {
+                    libraryRepository.setAvailable(video.id, false)
+                    _uiState.update { state ->
+                        updateVideoEverywhere(state, video.id) { current ->
+                            current.copy(isAvailable = false)
+                        }.copy(
+                            videoOpenDialog = videoOpenDialog(
+                                video = video,
+                                permanentlyUnavailable = true,
+                            ),
+                        )
+                    }
+                    saveHomeToSession()
+                } else {
+                    val message = if (error is ScriptLoginRequiredException) {
+                        text(
+                            R.string.source_login_required_for_video,
+                            video.sourceName.ifBlank { video.sourceId },
+                        )
+                    } else {
+                        error.localizedMessage ?: text(R.string.video_details_load_failed)
+                    }
+                    _uiState.update { state ->
+                        state.copy(
+                            videoOpenDialog = videoOpenDialog(
+                                video = video,
+                                permanentlyUnavailable = false,
+                                message = message,
+                            ),
+                        )
+                    }
                 }
             }
         }
     }
+
+    fun dismissVideoOpenDialog() {
+        _uiState.update { it.copy(videoOpenDialog = null) }
+    }
+
+    private fun showVideoOpenDialog(video: VideoUiModel, permanentlyUnavailable: Boolean) {
+        _uiState.update {
+            it.copy(videoOpenDialog = videoOpenDialog(video, permanentlyUnavailable))
+        }
+    }
+
+    private fun videoOpenDialog(
+        video: VideoUiModel,
+        permanentlyUnavailable: Boolean,
+        message: String? = null,
+    ) = com.futo.platformplayer.compose.ui.VideoOpenDialogUiModel(
+        videoId = video.id,
+        title = video.title,
+        message = message ?: text(
+            if (permanentlyUnavailable) R.string.video_no_longer_available_message
+            else R.string.video_details_load_failed,
+        ),
+        permanentlyUnavailable = permanentlyUnavailable,
+    )
 
     private fun requestStoryboard(video: VideoUiModel, generation: Long) {
         if (video.storyboard != null || video.isLive || video.playbackAudioOnly) return
@@ -2076,6 +2156,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
      */
     private fun prepareQueueLookAhead(playback: EnginePlaybackState = engine.playback.value) {
         val session = playbackQueueSession ?: return
+        if (System.currentTimeMillis() < queuePreparationBlockedUntilMs) return
         if (session.generation != playbackGeneration || session.profileId != activeProfileId) return
         if (pendingPlaybackVideoId?.let { it != playback.currentVideoId } == true) return
         if (playback.currentVideoId == null || engine.player.mediaItemCount == 0) return
@@ -2104,6 +2185,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
+                    if (error.hasMessageInChain("TOO_MANY_ACTIVE_STREAMS")) {
+                        // Crunchyroll counts every resolved episode as an active stream. Keep the
+                        // item pending and back off instead of walking the whole season and
+                        // repeatedly exhausting the account's stream allowance.
+                        queuePreparationBlockedUntilMs = System.currentTimeMillis() + 30_000L
+                        Log.w(
+                            "GrayjayViewModel",
+                            "Queue look-ahead paused because the source rejected another active stream.",
+                        )
+                        return@launch
+                    }
                     Log.w(
                         "GrayjayViewModel",
                         "Skipping unresolvable queued video ${video.id} from ${video.sourceId}.",
@@ -2148,6 +2240,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private fun invalidatePlaybackQueue(): Long {
         playbackGeneration += 1
+        queuePreparationBlockedUntilMs = 0L
         queuePreparationJob?.cancel()
         queuePreparationJob = null
         playbackQueueSession = null
@@ -4970,6 +5063,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             isDownloaded = saved.isDownloaded,
             watchProgress = saved.watchProgress,
             isLiked = saved.isLiked,
+            isAvailable = saved.isAvailable,
             lastWatchedAt = saved.lastWatchedAt,
             playlistNames = saved.playlistNames,
         )

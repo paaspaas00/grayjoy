@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -44,7 +45,10 @@ class PlaybackNotificationService : Service() {
         // Run after PlayerNotificationManager has completely finished its transient cancellation.
         // Reposting synchronously from onNotificationCancelled can be overwritten by the tail of
         // the same Media3 update, which is most visible while a playlist grows or changes items.
-        startForegroundCompat(NOTIFICATION_ID, bootstrapNotification())
+        if (!startForegroundCompat(NOTIFICATION_ID, bootstrapNotification())) {
+            stopSelf()
+            return@Runnable
+        }
         attachAndInvalidate(playback)
     }
 
@@ -112,7 +116,10 @@ class PlaybackNotificationService : Service() {
         // the small window between startForegroundService() and this callback. Posting the
         // bootstrap first makes that race legal on Android 12+; we can remove it immediately when
         // there is no longer an attachment.
-        startForegroundCompat(NOTIFICATION_ID, bootstrapNotification())
+        if (!startForegroundCompat(NOTIFICATION_ID, bootstrapNotification())) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         val playback = attachment
         if (playback == null) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -179,17 +186,24 @@ class PlaybackNotificationService : Service() {
         .setOnlyAlertOnce(true)
         .build()
 
-    private fun startForegroundCompat(notificationId: Int, notification: Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                notificationId,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-            )
-        } else {
-            startForeground(notificationId, notification)
+    private fun startForegroundCompat(notificationId: Int, notification: Notification): Boolean =
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    notificationId,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                )
+            } else {
+                startForeground(notificationId, notification)
+            }
+            true
+        } catch (error: IllegalStateException) {
+            // Android can restart a sticky service before the app has returned to the foreground.
+            // It is illegal to promote that restart, but it must not crash the whole process.
+            Log.w(TAG, "Playback notification restart was not allowed; waiting for foreground playback.", error)
+            false
         }
-    }
 
     private fun contentIntent(): PendingIntent = PendingIntent.getActivity(
         this,
@@ -317,6 +331,7 @@ class PlaybackNotificationService : Service() {
     )
 
     companion object {
+        private const val TAG = "PlaybackNotification"
         private const val CHANNEL_ID = "grayjay_playback"
         private const val NOTIFICATION_ID = 4201
         private const val ACTION_CLOSE_NOTIFICATION =

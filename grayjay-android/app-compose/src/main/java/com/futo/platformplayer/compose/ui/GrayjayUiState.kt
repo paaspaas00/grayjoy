@@ -51,6 +51,14 @@ data class GrayjayUiState(
     val pcLink: PcLinkUiState = PcLinkUiState(),
     val externalNavigation: ExternalNavigationUiModel? = null,
     val availableUpdate: ReleaseUpdateUiModel? = null,
+    val videoOpenDialog: VideoOpenDialogUiModel? = null,
+)
+
+data class VideoOpenDialogUiModel(
+    val videoId: String,
+    val title: String,
+    val message: String,
+    val permanentlyUnavailable: Boolean,
 )
 
 enum class VideoTitleLanguageMode {
@@ -234,7 +242,7 @@ data class HomeUiState(
 enum class ChannelContentTab(@param:StringRes val labelRes: Int) {
     Videos(R.string.videos),
     Shorts(R.string.shorts),
-    Live(R.string.live),
+    Live(R.string.channel_live),
     Playlists(R.string.playlists),
 }
 

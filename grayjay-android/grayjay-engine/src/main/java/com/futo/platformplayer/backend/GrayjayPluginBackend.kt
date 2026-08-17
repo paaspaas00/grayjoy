@@ -8,6 +8,7 @@ import com.futo.platformplayer.api.media.models.IPlatformChannelContent
 import com.futo.platformplayer.api.media.models.ResultCapabilities
 import com.futo.platformplayer.api.media.models.playlists.IPlatformPlaylist
 import com.futo.platformplayer.api.media.models.comments.IPlatformComment
+import com.futo.platformplayer.api.media.models.playback.IPlaybackTracker
 import com.futo.platformplayer.api.media.models.ratings.IRating
 import com.futo.platformplayer.api.media.models.ratings.RatingLikeDislikes
 import com.futo.platformplayer.api.media.models.ratings.RatingLikes
@@ -37,6 +38,7 @@ import com.futo.platformplayer.api.media.platforms.js.models.sources.JSDashManif
 import com.futo.platformplayer.api.media.platforms.js.models.sources.JSDashManifestRawSource
 import com.futo.platformplayer.api.media.platforms.js.models.sources.JSAudioUrlRangeSource
 import com.futo.platformplayer.api.media.platforms.js.models.sources.JSVideoUrlRangeSource
+import com.futo.platformplayer.api.media.platforms.js.models.JSRequestExecutor
 import com.futo.platformplayer.builders.DashBuilder
 import com.futo.platformplayer.engine.exceptions.ScriptLoginRequiredException
 import com.futo.platformplayer.states.StateApp
@@ -234,6 +236,9 @@ data class GrayjayPlaybackSource(
     val selectedAudioIsOriginal: Boolean = false,
     val storyboard: GrayjayStoryboard? = null,
     val isDrmProtected: Boolean = false,
+    val drmLicenseUri: String? = null,
+    val drmLicenseRequestExecutor: JSRequestExecutor? = null,
+    val playbackTracker: IPlaybackTracker? = null,
     val isLive: Boolean = false,
     val isAudioOnly: Boolean = false,
     /** The selected video representation already contains its audio track. */
@@ -1726,6 +1731,15 @@ class GrayjayPluginBackend(context: Context) {
             dashUrl != null || playbackDashManifest != null -> GrayjayStreamType.Dash
             else -> inferStreamType(resolvedVideoUrl)
         }
+        val widevineSource = selectedVideoSource as? IWidevineSource
+        val drmLicenseRequestExecutor = widevineSource
+            ?.takeIf(IWidevineSource::hasLicenseRequestExecutor)
+            ?.let { source -> runCatching(source::getLicenseRequestExecutor).getOrNull() }
+        val playbackTracker = runCatching(details::getPlaybackTracker)
+            .onFailure { error ->
+                Log.w(TAG, "Could not create playback tracker for ${details.url}.", error)
+            }
+            .getOrNull()
 
         GrayjayPlaybackSource(
             contentUrl = details.url.ifBlank { contentUrl },
@@ -1770,7 +1784,10 @@ class GrayjayPluginBackend(context: Context) {
             // request; return a warm cache hit now and let Compose request a miss after Media3
             // has started preparing the stream.
             storyboard = cachedYouTubeStoryboard(contentUrl),
-            isDrmProtected = selectedVideoSource is IWidevineSource && videoVariants.isEmpty(),
+            isDrmProtected = widevineSource != null,
+            drmLicenseUri = widevineSource?.licenseUri,
+            drmLicenseRequestExecutor = drmLicenseRequestExecutor,
+            playbackTracker = playbackTracker,
             isLive = details.isLive,
             isAudioOnly = isAudioOnly,
             videoHasMuxedAudio = !isAudioOnly && !details.video.isUnMuxed,

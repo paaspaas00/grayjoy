@@ -629,4 +629,9 @@
     <string name="comment_replies">Replies</string>
     <string name="no_comment_replies">No replies were returned.</string>
     <string name="comment_replies_load_failed">Could not load comment replies.</string>
+    <string name="channel_live">Live</string>
+    <string name="video_unavailable_badge">Unavailable</string>
+    <string name="video_no_longer_available_title">Video no longer available</string>
+    <string name="video_no_longer_available_message">The publisher or source has removed this video, so it can no longer be played.</string>
+    <string name="could_not_open_video">Could not open video</string>
 </resources>

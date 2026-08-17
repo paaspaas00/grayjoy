@@ -2,6 +2,8 @@ package com.futo.platformplayer.compose.ui
 
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.common.StreamKey
+import com.futo.platformplayer.api.media.models.playback.IPlaybackTracker
+import com.futo.platformplayer.api.media.platforms.js.models.JSRequestExecutor
 
 data class VideoUiModel(
     val id: String,
@@ -14,7 +16,11 @@ data class VideoUiModel(
     val channelId: String = "",
     val sourceId: String = "youtube",
     val isLive: Boolean = false,
+    val isAvailable: Boolean = true,
     val isDrmProtected: Boolean = false,
+    val drmLicenseUri: String = "",
+    val drmLicenseRequestExecutor: JSRequestExecutor? = null,
+    val playbackTracker: IPlaybackTracker? = null,
     val playbackHasMuxedAudio: Boolean = false,
     val watchProgress: Float = 0f,
     val isDownloaded: Boolean = false,

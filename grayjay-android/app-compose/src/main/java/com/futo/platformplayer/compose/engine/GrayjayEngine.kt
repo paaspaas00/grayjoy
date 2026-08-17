@@ -23,6 +23,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -31,6 +32,9 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.TeeAudioProcessor
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.dash.manifest.DashManifestParser
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.DrmSessionManager
+import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
@@ -64,6 +68,7 @@ import com.futo.platformplayer.backend.GrayjayUserImportSelection
 import com.futo.platformplayer.backend.GrayjayUserImportStage
 import com.futo.platformplayer.backend.PluginEndpoint
 import com.futo.platformplayer.backend.formatRelativeDate
+import com.futo.platformplayer.api.media.models.playback.IPlaybackTracker
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.ChannelContentTab
 import com.futo.platformplayer.compose.ui.HomeFeedType
@@ -81,10 +86,15 @@ import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.playback.PlaybackNotificationService
 import com.futo.platformplayer.compose.playback.AudioSpectrumAnalyzer
 import com.futo.platformplayer.views.video.datasources.JSHttpDataSource
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.net.URI
@@ -358,6 +368,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         // the equivalent lifecycle-safe behavior for this shared player.
         .setAudioAttributes(AudioAttributes.DEFAULT, true)
         .setHandleAudioBecomingNoisy(true)
+        // Match legacy Grayjay's player and keep plugin streams inside the player bounds.
+        .setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
         .build()
         .apply {
             repeatMode = Player.REPEAT_MODE_OFF
@@ -451,6 +463,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private var openedVideos: List<VideoUiModel> = emptyList()
     private var activeQualityVariantHeight: Int? = null
     private var activeQualityVariantVideoId: String? = null
+    private val playbackTrackerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var activePlaybackTrackerVideoId: String? = null
+    private var activePlaybackTracker: IPlaybackTracker? = null
+    private var playbackTrackerUpdateJob: Job? = null
 
     override val player: Player = exoPlayer
     override val playback: StateFlow<EnginePlaybackState> = _playback.asStateFlow()
@@ -466,6 +482,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     updateAudioSpectrumAnalysis(mediaItem?.mediaId)
                     val video = openedVideos.firstOrNull { it.id == mediaItem?.mediaId }
+                    switchPlaybackTracker(video)
                     audioLanguageAutomatic = true
                     selectedAudioLanguage = video?.resolvedAudioLanguage
                     applyAudioLanguageTrackPreference(
@@ -911,6 +928,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 ?.takeIf { it > 0L } ?: video.publishedAtMs,
             isLive = source.isLive,
             isDrmProtected = source.isDrmProtected,
+            drmLicenseUri = source.drmLicenseUri.orEmpty(),
+            drmLicenseRequestExecutor = source.drmLicenseRequestExecutor,
+            playbackTracker = source.playbackTracker,
             playbackAudioOnly = source.isAudioOnly,
             playbackHasMuxedAudio = source.videoHasMuxedAudio,
             playbackUrl = source.videoUrl,
@@ -1314,7 +1334,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 baseUri,
                 ByteArrayInputStream(video.playbackManifest.toByteArray()),
             )
-            DashMediaSource.Factory(video.dataSourceFactory()).createMediaSource(manifest, mediaItem)
+            video.dashMediaSourceFactory().createMediaSource(manifest, mediaItem)
         } else {
             factory.createMediaSource(mediaItem)
         }
@@ -1375,7 +1395,29 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     private fun VideoUiModel.mediaSourceFactory(): DefaultMediaSourceFactory {
-        return DefaultMediaSourceFactory(dataSourceFactory())
+        return DefaultMediaSourceFactory(dataSourceFactory()).also { factory ->
+            if (drmLicenseUri.isNotBlank()) {
+                factory.setDrmSessionManagerProvider { createDrmSessionManager() }
+            }
+        }
+    }
+
+    private fun VideoUiModel.dashMediaSourceFactory(): DashMediaSource.Factory {
+        return DashMediaSource.Factory(dataSourceFactory()).also { factory ->
+            if (drmLicenseUri.isNotBlank()) {
+                factory.setDrmSessionManagerProvider { createDrmSessionManager() }
+            }
+        }
+    }
+
+    private fun VideoUiModel.createDrmSessionManager(): DrmSessionManager {
+        val baseCallback = HttpMediaDrmCallback(drmLicenseUri, httpDataSourceFactory())
+        val callback = drmLicenseRequestExecutor?.let { executor ->
+            PluginMediaDrmCallback(baseCallback, executor, drmLicenseUri)
+        } ?: baseCallback
+        return DefaultDrmSessionManager.Builder()
+            .setMultiSession(true)
+            .build(callback)
     }
 
     private fun VideoUiModel.dataSourceFactory(): DataSource.Factory {
@@ -1383,12 +1425,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         // immediately redirects to an HTTPS CDN. Media3 deliberately rejects
         // cross-protocol redirects unless the client opts in, while browsers
         // and the legacy Grayjay HTTP stack follow these redirects normally.
-        val httpFactory = playbackDataSourceFactory
-            ?: DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
-        if (playbackRequestHeaders.isNotEmpty()) {
-            httpFactory.setDefaultRequestProperties(playbackRequestHeaders)
-        }
-        val upstream = DefaultDataSource.Factory(appContext, httpFactory)
+        val upstream = DefaultDataSource.Factory(appContext, httpDataSourceFactory())
         // Match Grayjay's VideoLocal invariant: only a descriptor reconstructed from a
         // completed download is an offline source. Failed and in-progress downloads must
         // never put the player's ordinary network stream behind the permanent download
@@ -1397,6 +1434,15 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         return if (playbackFromDownload) {
             downloadStore.offlinePlayback(playbackCacheNamespace)
         } else upstream
+    }
+
+    private fun VideoUiModel.httpDataSourceFactory(): HttpDataSource.Factory {
+        val factory = playbackDataSourceFactory
+            ?: DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
+        if (playbackRequestHeaders.isNotEmpty()) {
+            factory.setDefaultRequestProperties(playbackRequestHeaders)
+        }
+        return factory
     }
 
     override fun togglePlayback() {
@@ -1632,6 +1678,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun closePlayback() {
         PlaybackNotificationService.dismiss(appContext)
+        concludePlaybackTracker()
         audioSpectrumAnalyzer.setEnabled(false)
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
@@ -1656,13 +1703,59 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun release() {
         PlaybackNotificationService.dismiss(appContext)
+        val tracker = activePlaybackTracker
+        activePlaybackTracker = null
+        activePlaybackTrackerVideoId = null
+        playbackTrackerUpdateJob?.cancel()
         otherAudioDuckingController.release()
         audioSpectrumAnalyzer.setEnabled(false)
         activePluginDataSources.forEach(JSHttpDataSource.Factory::closeExecutors)
         activePluginDataSources = emptySet()
-        pluginBackend.release()
         mediaSession.release()
         exoPlayer.release()
+        if (tracker == null) {
+            pluginBackend.release()
+            playbackTrackerScope.cancel()
+        } else {
+            playbackTrackerScope.launch {
+                runCatching(tracker::onConcluded)
+                    .onFailure { Log.w(TAG, "Could not conclude plugin playback tracker.", it) }
+                pluginBackend.release()
+                playbackTrackerScope.cancel()
+            }
+        }
+    }
+
+    private fun switchPlaybackTracker(video: VideoUiModel?) {
+        if (activePlaybackTrackerVideoId == video?.id) return
+        concludePlaybackTracker()
+        val tracker = video?.playbackTracker ?: return
+        activePlaybackTrackerVideoId = video.id
+        activePlaybackTracker = tracker
+        playbackTrackerUpdateJob = playbackTrackerScope.launch {
+            runCatching { tracker.onInit(exoPlayer.currentPosition.coerceAtLeast(0L) / 1_000.0) }
+                .onFailure { Log.w(TAG, "Could not initialize playback tracker for ${video.id}.", it) }
+        }
+    }
+
+    private fun concludePlaybackTracker() {
+        val tracker = activePlaybackTracker ?: return
+        activePlaybackTracker = null
+        activePlaybackTrackerVideoId = null
+        playbackTrackerUpdateJob?.cancel()
+        playbackTrackerUpdateJob = playbackTrackerScope.launch {
+            runCatching(tracker::onConcluded)
+                .onFailure { Log.w(TAG, "Could not conclude plugin playback tracker.", it) }
+        }
+    }
+
+    private fun updatePlaybackTrackerProgress(positionMs: Long, isPlaying: Boolean) {
+        val tracker = activePlaybackTracker ?: return
+        if (playbackTrackerUpdateJob?.isActive == true || !tracker.shouldUpdate()) return
+        playbackTrackerUpdateJob = playbackTrackerScope.launch {
+            runCatching { tracker.onProgress(positionMs.coerceAtLeast(0L) / 1_000.0, isPlaying) }
+                .onFailure { Log.w(TAG, "Could not update plugin playback tracker.", it) }
+        }
     }
 
     private fun updateAudioSpectrumAnalysis(videoId: String?) {
@@ -1684,6 +1777,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             .toList()
         val currentVideoId = exoPlayer.currentMediaItem?.mediaId ?: fallbackVideoId
         val currentVideo = openedVideos.firstOrNull { it.id == currentVideoId }
+        updatePlaybackTrackerProgress(exoPlayer.currentPosition, exoPlayer.isPlaying)
         val mediaTrackLanguages = exoPlayer.currentTracks.groups
             .asSequence()
             .filter { it.type == C.TRACK_TYPE_AUDIO }
@@ -1961,6 +2055,7 @@ private val officialPluginIconUrls = mapOf(
     "kick" to "https://plugins.grayjay.app/Kick/kick.png",
     "patreon" to "https://plugins.grayjay.app/Patreon/patreon_logo.png",
     "nebula" to "https://plugins.grayjay.app/Nebula/NebulaIcon.png",
+    "crunchyroll" to "https://plugins.grayjay.app/Crunchyroll/CrunchyrollIcon.png",
     "bilibili" to "https://plugins.grayjay.app/Bilibili/BiliBiliIcon.png",
     "dailymotion" to "https://plugins.grayjay.app/Dailymotion/DailymotionIcon.png",
     "bitchute" to "https://plugins.grayjay.app/Bitchute/BitchuteIcon.png",
@@ -1984,6 +2079,7 @@ internal val officialPluginEndpoints = mapOf(
     "kick" to PluginEndpoint("4a78c2ff-c20f-43ac-8f75-34515df1d320", "https://plugins.grayjay.app/Kick/KickConfig.json"),
     "patreon" to PluginEndpoint("aac9e9f0-24b5-11ee-be56-0242ac120002", "https://plugins.grayjay.app/Patreon/PatreonConfig.json"),
     "nebula" to PluginEndpoint("9d703ff5-c556-4962-a990-4f000829cb87", "https://plugins.grayjay.app/Nebula/NebulaConfig.json"),
+    "crunchyroll" to PluginEndpoint("9bb33039-8580-48d4-9849-21319ae845a4", "https://plugins.grayjay.app/Crunchyroll/CrunchyrollConfig.json"),
     "bilibili" to PluginEndpoint("cf8ea74d-ad9b-489e-a083-539b6aa8648c", "https://plugins.grayjay.app/Bilibili/BiliBiliConfig.json"),
     "dailymotion" to PluginEndpoint("9c87e8db-e75d-48f4-afe5-2d203d4b95c5", "https://plugins.grayjay.app/Dailymotion/DailymotionConfig.json"),
     "bitchute" to PluginEndpoint("e8b1ad5f-0c6d-497d-a5fa-0a785a16d902", "https://plugins.grayjay.app/Bitchute/BitchuteConfig.json"),

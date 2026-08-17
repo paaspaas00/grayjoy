@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose.ui.screens
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -112,6 +113,57 @@ fun ChannelDetailScreen(
     val visibleVideos = sortChannelVideos(filteredVideos, sortMode, sortAscending)
     val visiblePlaylists = sortChannelPlaylists(detail.playlists, sortAscending)
     val tabs = channelTabsFor(detail)
+    val searchField: @Composable (Modifier) -> Unit = { modifier ->
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            modifier = modifier.testTag("channel-video-search"),
+            singleLine = true,
+            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { query = "" }) {
+                        Icon(
+                            Icons.Outlined.Close,
+                            contentDescription = stringResource(R.string.clear_video_search),
+                        )
+                    }
+                }
+            },
+            placeholder = {
+                Text(
+                    stringResource(R.string.search_channel_videos),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+        )
+    }
+    val sortChip: @Composable () -> Unit = {
+        FilterChip(
+            selected = showSortSheet,
+            onClick = { showSortSheet = true },
+            leadingIcon = {
+                Icon(
+                    if (sortAscending) Icons.Outlined.ArrowUpward
+                    else Icons.Outlined.ArrowDownward,
+                    contentDescription = null,
+                )
+            },
+            label = {
+                Text(
+                    stringResource(
+                        when (sortMode) {
+                            ChannelSortMode.UploadDate -> R.string.sort_upload_date
+                            ChannelSortMode.Popularity -> R.string.sort_popularity
+                            ChannelSortMode.Name -> R.string.sort_name
+                        },
+                    ),
+                )
+            },
+            modifier = Modifier.testTag("channel-sort"),
+        )
+    }
 
     LazyColumn(
         state = listState,
@@ -227,54 +279,31 @@ fun ChannelDetailScreen(
         }
 
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (detail.selectedTab != ChannelContentTab.Playlists) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.weight(1f).testTag("channel-video-search"),
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                    trailingIcon = {
-                        if (query.isNotEmpty()) {
-                            IconButton(onClick = { query = "" }) {
-                                Icon(
-                                    Icons.Outlined.Close,
-                                    contentDescription = stringResource(R.string.clear_video_search),
-                                )
-                            }
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                if (channelSearchUsesStackedLayout(maxWidth.value)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (detail.selectedTab != ChannelContentTab.Playlists) {
+                            searchField(Modifier.fillMaxWidth())
                         }
-                    },
-                    placeholder = { Text(stringResource(R.string.search_channel_videos)) },
-                )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            sortChip()
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (detail.selectedTab != ChannelContentTab.Playlists) {
+                            searchField(Modifier.weight(1f))
+                        }
+                        sortChip()
+                    }
                 }
-                FilterChip(
-                    selected = showSortSheet,
-                    onClick = { showSortSheet = true },
-                    leadingIcon = {
-                        Icon(
-                            if (sortAscending) Icons.Outlined.ArrowUpward
-                            else Icons.Outlined.ArrowDownward,
-                            contentDescription = null,
-                        )
-                    },
-                    label = {
-                        Text(
-                            stringResource(
-                                when (sortMode) {
-                                    ChannelSortMode.UploadDate -> R.string.sort_upload_date
-                                    ChannelSortMode.Popularity -> R.string.sort_popularity
-                                    ChannelSortMode.Name -> R.string.sort_name
-                                },
-                            ),
-                        )
-                    },
-                    modifier = Modifier.testTag("channel-sort"),
-                )
             }
         }
 
@@ -489,6 +518,9 @@ internal fun channelTabsFor(detail: ChannelDetailUiState): List<ChannelContentTa
 }
 
 internal enum class ChannelSortMode { UploadDate, Popularity, Name }
+
+internal fun channelSearchUsesStackedLayout(availableWidthDp: Float): Boolean =
+    availableWidthDp < 520f
 
 internal fun sortChannelVideos(
     videos: List<VideoUiModel>,

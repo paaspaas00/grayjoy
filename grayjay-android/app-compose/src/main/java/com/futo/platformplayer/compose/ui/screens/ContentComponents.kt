@@ -413,6 +413,21 @@ private fun CompactVideoThumbnail(
                 .padding(6.dp)
                 .size(22.dp),
         )
+        if (!video.isAvailable) {
+            Surface(
+                modifier = Modifier.align(Alignment.Center),
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.94f),
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Text(
+                    stringResource(R.string.video_unavailable_badge),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
         if (video.isDownloaded) {
             Surface(
                 modifier = Modifier

@@ -79,6 +79,7 @@ interface LibraryRepository {
     fun setWatchLater(videoId: String, enabled: Boolean)
     fun setDownloaded(videoId: String, enabled: Boolean)
     fun setLiked(videoId: String, enabled: Boolean)
+    fun setAvailable(videoId: String, available: Boolean)
     fun setWatchProgress(videoId: String, progress: Float)
     fun removeFromHistory(videoIds: Collection<String>)
     fun createPlaylist(title: String, videos: List<VideoUiModel>): PlaylistUiModel?
@@ -208,6 +209,9 @@ internal class SharedPreferencesLibraryRepository(
 
     override fun setLiked(videoId: String, enabled: Boolean) =
         updateVideo(videoId) { it.copy(isLiked = enabled) }
+
+    override fun setAvailable(videoId: String, available: Boolean) =
+        updateVideo(videoId) { it.copy(isAvailable = available) }
 
     override fun setWatchProgress(videoId: String, progress: Float) {
         // The history itself is one large JSON value. Rewriting it every five seconds allocated
@@ -498,6 +502,9 @@ internal fun VideoUiModel.forLocalStorage(preservePlayback: Boolean = false) = c
     audioDownloadDataSourceFactory = null,
     playbackRequestHeaders = playbackRequestHeaders.takeIf { preservePlayback }.orEmpty(),
     playbackDataSourceFactory = null,
+    drmLicenseUri = "",
+    drmLicenseRequestExecutor = null,
+    playbackTracker = null,
     subtitleTracks = subtitleTracks.takeIf { preservePlayback }.orEmpty(),
     qualityVariants = emptyList(),
     audioQualityVariants = emptyList(),
@@ -563,6 +570,7 @@ private fun VideoUiModel.mergeImported(
         channelId = preferCurrent(channelId, imported.channelId),
         sourceId = if (sourceId.isBlank()) imported.sourceId else sourceId,
         isLive = isLive || imported.isLive,
+        isAvailable = isAvailable && imported.isAvailable,
         watchProgress = if (importedHistoryIsNewer) imported.watchProgress else watchProgress,
         isDownloaded = isDownloaded || imported.isDownloaded,
         isWatchLater = isWatchLater || imported.isWatchLater,
@@ -597,6 +605,7 @@ internal fun VideoUiModel.toJson() = JSONObject().apply {
     put("channelId", channelId)
     put("sourceId", sourceId)
     put("isLive", isLive)
+    put("isAvailable", isAvailable)
     put("watchProgress", watchProgress.toDouble())
     put("isDownloaded", isDownloaded)
     put("isWatchLater", isWatchLater)
@@ -656,6 +665,7 @@ internal fun JSONArray.toVideoList(): List<VideoUiModel> = buildList {
                 channelId = json.optString("channelId"),
                 sourceId = json.optString("sourceId", "youtube"),
                 isLive = json.optBoolean("isLive"),
+                isAvailable = json.optBoolean("isAvailable", true),
                 watchProgress = json.optDouble("watchProgress", 0.0).toFloat(),
                 isDownloaded = json.optBoolean("isDownloaded"),
                 isWatchLater = json.optBoolean("isWatchLater"),

@@ -61,6 +61,7 @@ import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
@@ -76,6 +77,7 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.PermanentDrawerSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -413,6 +415,7 @@ fun GrayjayApp(
     onDynamicColorsChange: (Boolean) -> Unit,
     onPrivateSessionChange: (Boolean) -> Unit,
     onOpenVideo: (String) -> Unit,
+    onDismissVideoOpenDialog: () -> Unit = {},
     onLoadChannel: (ChannelUiModel) -> Unit,
     onChannelTabSelected: (ChannelContentTab) -> Unit = {},
     onHomeFeedSelected: (HomeFeedType) -> Unit,
@@ -644,7 +647,6 @@ fun GrayjayApp(
     }
     val onVideoClick: (VideoUiModel) -> Unit = {
         onOpenVideo(it.id)
-        settlePlayer(0f, it.id)
     }
     val onVideoLongClick: (VideoUiModel) -> Unit = {
         actionIsRemotePlaylistVideo = false
@@ -1303,6 +1305,33 @@ fun GrayjayApp(
             onConnect = onConnectChromecast,
             onDisconnect = onDisconnectChromecast,
             onDismiss = { chromecastSheetVisible = false },
+        )
+    }
+    uiState.videoOpenDialog?.let { dialog ->
+        AlertDialog(
+            onDismissRequest = onDismissVideoOpenDialog,
+            title = {
+                Text(
+                    stringResource(
+                        if (dialog.permanentlyUnavailable) {
+                            R.string.video_no_longer_available_title
+                        } else {
+                            R.string.could_not_open_video
+                        },
+                    ),
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(dialog.title, style = MaterialTheme.typography.titleMedium)
+                    Text(dialog.message)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onDismissVideoOpenDialog) {
+                    Text(stringResource(R.string.ok))
+                }
+            },
         )
     }
 }

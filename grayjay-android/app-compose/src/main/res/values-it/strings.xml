@@ -247,7 +247,7 @@
     <string name="currently_quality">Attualmente %1$dp</string>
     <string name="normal">Normale</string>
     <string name="captions_number">Sottotitoli %1$d</string>
-    <string name="live">IN DIRETTA</string>
+    <string name="live">In diretta</string>
     <string name="up_next">A seguire</string>
     <string name="comments">Commenti</string>
     <string name="comments_with_count">Commenti (%1$d)</string>
@@ -629,4 +629,9 @@
     <string name="comment_replies">Risposte</string>
     <string name="no_comment_replies">Non è stata restituita alcuna risposta.</string>
     <string name="comment_replies_load_failed">Impossibile caricare le risposte al commento.</string>
+    <string name="channel_live">Live</string>
+    <string name="video_unavailable_badge">Non disponibile</string>
+    <string name="video_no_longer_available_title">Video non più disponibile</string>
+    <string name="video_no_longer_available_message">L’autore o la sorgente ha rimosso questo video, che non può più essere riprodotto.</string>
+    <string name="could_not_open_video">Impossibile aprire il video</string>
 </resources>
