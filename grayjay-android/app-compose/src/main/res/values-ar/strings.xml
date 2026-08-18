@@ -564,6 +564,8 @@
     <string name="pc_transfer_failed">تعذر فتح تشغيل الكمبيوتر باستخدام المصادر النشطة.</string>
     <string name="primary_audio_language">لغة الصوت الأساسية</string>
     <string name="prefer_original_audio">تفضيل الصوت الأصلي</string>
+    <string name="prefer_newpipe_youtube_playback">تفضيل NewPipe لتشغيل YouTube</string>
+    <string name="prefer_newpipe_youtube_playback_description">يفضّل NewPipe Extractor عند تشغيل فيديوهات YouTube. إذا فشل أحد محركي التشغيل، يتولى الآخر المهمة تلقائيًا.</string>
     <string name="prefer_original_audio_description">استخدام مسار الصوت الأصلي للفيديو عند توفره، ثم اللغة الأساسية.</string>
     <string name="audio_language">لغة الصوت</string>
     <string name="automatic_with_value">تلقائي · %1$s</string>

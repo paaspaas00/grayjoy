@@ -106,6 +106,12 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
             preferences.edit().putBoolean(KEY_PREFER_ORIGINAL_AUDIO, value).apply()
         }
 
+    var preferNewPipeForYoutubePlayback: Boolean
+        get() = preferences.getBoolean(KEY_PREFER_NEWPIPE_YOUTUBE_PLAYBACK, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_PREFER_NEWPIPE_YOUTUBE_PLAYBACK, value).apply()
+        }
+
     var videoTitleLanguageMode: VideoTitleLanguageMode
         get() = runCatching {
             VideoTitleLanguageMode.valueOf(
@@ -314,6 +320,8 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         private const val KEY_PREFERRED_AUDIO_BITRATE = "preferred_audio_bitrate"
         private const val KEY_PREFERRED_AUDIO_LANGUAGE = "preferred_audio_language"
         private const val KEY_PREFER_ORIGINAL_AUDIO = "prefer_original_audio"
+        private const val KEY_PREFER_NEWPIPE_YOUTUBE_PLAYBACK =
+            "prefer_newpipe_youtube_playback"
         private const val KEY_VIDEO_TITLE_LANGUAGE_MODE = "video_title_language_mode"
         private const val KEY_STICKY_CAPTIONS = "sticky_captions"
         private const val KEY_CAPTIONS_ENABLED = "captions_enabled"

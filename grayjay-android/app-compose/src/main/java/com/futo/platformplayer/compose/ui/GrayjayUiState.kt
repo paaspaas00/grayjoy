@@ -21,6 +21,7 @@ data class GrayjayUiState(
     val preferredAudioBitrate: Int = Int.MAX_VALUE,
     val preferredAudioLanguage: String = "en",
     val preferOriginalAudio: Boolean = true,
+    val preferNewPipeForYoutubePlayback: Boolean = true,
     val videoTitleLanguageMode: VideoTitleLanguageMode = VideoTitleLanguageMode.Original,
     val stickyCaptionsEnabled: Boolean = true,
     val showRecommendations: Boolean = true,

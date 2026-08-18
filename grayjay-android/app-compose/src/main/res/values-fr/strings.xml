@@ -564,6 +564,8 @@
     <string name="pc_transfer_failed">Impossible d\'ouvrir la lecture sur ordinateur avec les sources actives.</string>
     <string name="primary_audio_language">Langue audio principale</string>
     <string name="prefer_original_audio">Préférer l’audio d’origine</string>
+    <string name="prefer_newpipe_youtube_playback">Préférer NewPipe pour la lecture YouTube</string>
+    <string name="prefer_newpipe_youtube_playback_description">Préfère NewPipe Extractor pour lire les vidéos YouTube. Si l’un des moteurs échoue, l’autre prend automatiquement le relais.</string>
     <string name="prefer_original_audio_description">Utilise la piste audio d’origine de la vidéo lorsqu’elle est disponible, puis la langue principale.</string>
     <string name="audio_language">Langue audio</string>
     <string name="automatic_with_value">Automatique · %1$s</string>

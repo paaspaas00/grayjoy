@@ -564,6 +564,8 @@
     <string name="pc_transfer_failed">Не удалось открыть воспроизведение на компьютере с активными источниками.</string>
     <string name="primary_audio_language">Основной язык аудио</string>
     <string name="prefer_original_audio">Предпочитать оригинальную дорожку</string>
+    <string name="prefer_newpipe_youtube_playback">Предпочитать NewPipe для YouTube</string>
+    <string name="prefer_newpipe_youtube_playback_description">Предпочитать NewPipe Extractor при воспроизведении видео YouTube. Если один движок не сработает, автоматически подключится другой.</string>
     <string name="prefer_original_audio_description">Использовать оригинальную аудиодорожку видео, если она доступна, затем основной язык.</string>
     <string name="audio_language">Язык аудио</string>
     <string name="automatic_with_value">Автоматически · %1$s</string>

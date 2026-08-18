@@ -564,6 +564,8 @@
     <string name="pc_transfer_failed">활성 소스가 있는 컴퓨터 재생을 열 수 없습니다.</string>
     <string name="primary_audio_language">기본 오디오 언어</string>
     <string name="prefer_original_audio">원본 오디오 우선</string>
+    <string name="prefer_newpipe_youtube_playback">YouTube 재생에 NewPipe 우선 사용</string>
+    <string name="prefer_newpipe_youtube_playback_description">YouTube 동영상을 재생할 때 NewPipe Extractor를 우선 사용합니다. 한 재생 엔진이 실패하면 다른 엔진이 자동으로 이어받습니다.</string>
     <string name="prefer_original_audio_description">가능하면 동영상의 원본 오디오를 사용하고, 그다음 기본 언어를 사용합니다.</string>
     <string name="audio_language">오디오 언어</string>
     <string name="automatic_with_value">자동 · %1$s</string>

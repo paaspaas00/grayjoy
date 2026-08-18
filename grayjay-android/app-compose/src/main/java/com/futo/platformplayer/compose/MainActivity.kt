@@ -389,6 +389,8 @@ class MainActivity : FragmentActivity() {
                     onPreferredAudioBitrateChange = viewModel::setPreferredAudioBitrate,
                     onPreferredAudioLanguageChange = viewModel::setPreferredAudioLanguage,
                     onPreferOriginalAudioChange = viewModel::setPreferOriginalAudio,
+                    onPreferNewPipeForYoutubePlaybackChange =
+                        viewModel::setPreferNewPipeForYoutubePlayback,
                     onVideoTitleLanguageModeChange = viewModel::setVideoTitleLanguageMode,
                     onStickyCaptionsChange = viewModel::setStickyCaptionsEnabled,
                     onShowRecommendationsChange = viewModel::setShowRecommendations,

@@ -511,6 +511,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             preferredAudioBitrate = preferences.preferredAudioBitrate,
             preferredAudioLanguage = preferences.preferredAudioLanguage,
             preferOriginalAudio = preferences.preferOriginalAudio,
+            preferNewPipeForYoutubePlayback = preferences.preferNewPipeForYoutubePlayback,
             videoTitleLanguageMode = preferences.videoTitleLanguageMode,
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
             showRecommendations = preferences.showRecommendations,
@@ -531,6 +532,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     init {
         engine.setProfile(activeProfileId)
         configureVideoTitleLanguage()
+        configureYoutubePlaybackEngine()
         chromecastManager.onMediaEnded = {
             viewModelScope.launch(Dispatchers.Main.immediate) { skipToNext() }
         }
@@ -725,6 +727,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         setAudioLanguage(null)
     }
 
+    fun setPreferNewPipeForYoutubePlayback(enabled: Boolean) {
+        preferences.preferNewPipeForYoutubePlayback = enabled
+        configureYoutubePlaybackEngine()
+        _uiState.update {
+            it.copy(
+                preferNewPipeForYoutubePlayback =
+                    preferences.preferNewPipeForYoutubePlayback,
+            )
+        }
+    }
+
     fun setVideoTitleLanguageMode(mode: VideoTitleLanguageMode) {
         if (preferences.videoTitleLanguageMode == mode) return
         preferences.videoTitleLanguageMode = mode
@@ -741,6 +754,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             preferOriginal = preferences.videoTitleLanguageMode == VideoTitleLanguageMode.Original,
             languageTag = AppLanguageManager.effectiveLanguageTag(getApplication()),
         )
+    }
+
+    private fun configureYoutubePlaybackEngine() {
+        engine.configureYoutubePlaybackEngine(preferences.preferNewPipeForYoutubePlayback)
     }
 
     fun refreshVideoTitleLanguageConfiguration() = configureVideoTitleLanguage()
@@ -1302,6 +1319,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val application = getApplication<Application>()
         preferences = GrayjayPreferences(application, activeProfileId)
         configureVideoTitleLanguage()
+        configureYoutubePlaybackEngine()
         libraryRepository = SharedPreferencesLibraryRepository(application, activeProfileId)
         homeCacheRepository = HomeCacheRepository(application, activeProfileId)
         sourceRepository = SharedPreferencesSourceRepository(application, activeProfileId)
@@ -1353,6 +1371,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             preferredAudioBitrate = preferences.preferredAudioBitrate,
             preferredAudioLanguage = preferences.preferredAudioLanguage,
             preferOriginalAudio = preferences.preferOriginalAudio,
+            preferNewPipeForYoutubePlayback = preferences.preferNewPipeForYoutubePlayback,
             videoTitleLanguageMode = preferences.videoTitleLanguageMode,
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
             showRecommendations = preferences.showRecommendations,
@@ -3990,7 +4009,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                                 qualityVariants = emptyList(),
                                 audioQualityVariants = emptyList(),
                             )
-                            val resolved = resolveWithAudioPreferences(freshVideo)
+                            val resolved = resolveWithAudioPreferences(
+                                freshVideo,
+                                priority = EngineResolvePriority.Download,
+                            )
                             if (profileAtStart != activeProfileId) return@launch
                             val storedDescriptor = if (mediaType == DownloadMediaType.Audio) {
                                 resolved.asAudioDownloadDescriptor(selectedAudioBitrate)

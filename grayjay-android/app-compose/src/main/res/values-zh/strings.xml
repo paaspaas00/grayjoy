@@ -564,6 +564,8 @@
     <string name="pc_transfer_failed">无法打开活动源的计算机播放。</string>
     <string name="primary_audio_language">主要音频语言</string>
     <string name="prefer_original_audio">优先使用原始音频</string>
+    <string name="prefer_newpipe_youtube_playback">YouTube 播放优先使用 NewPipe</string>
+    <string name="prefer_newpipe_youtube_playback_description">播放 YouTube 视频时优先使用 NewPipe Extractor。如果其中一个播放引擎失败，将自动切换到另一个。</string>
     <string name="prefer_original_audio_description">可用时使用视频的原始音轨，否则使用主要语言。</string>
     <string name="audio_language">音频语言</string>
     <string name="automatic_with_value">自动 · %1$s</string>

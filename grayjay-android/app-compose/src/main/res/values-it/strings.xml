@@ -588,6 +588,8 @@
     <string name="pc_transfer_failed">Impossibile aprire la riproduzione del PC con le sorgenti attive.</string>
     <string name="primary_audio_language">Lingua audio principale</string>
     <string name="prefer_original_audio">Preferisci audio originale</string>
+    <string name="prefer_newpipe_youtube_playback">Preferisci NewPipe per la riproduzione YouTube</string>
+    <string name="prefer_newpipe_youtube_playback_description">Preferisce NewPipe Extractor per riprodurre i video YouTube. Se uno dei due motori fallisce, subentra automaticamente l’altro.</string>
     <string name="prefer_original_audio_description">Usa la traccia audio originale del video quando disponibile, poi passa alla lingua principale.</string>
     <string name="audio_language">Lingua audio</string>
     <string name="automatic_with_value">Automatica · %1$s</string>

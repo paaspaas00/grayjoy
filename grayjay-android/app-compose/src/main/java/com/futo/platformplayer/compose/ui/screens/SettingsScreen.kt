@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.Recommend
 import androidx.compose.material.icons.outlined.ScreenLockPortrait
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.TextButton
@@ -89,6 +90,8 @@ fun SettingsScreen(
     onPreferredAudioLanguageChange: (String) -> Unit,
     preferOriginalAudio: Boolean,
     onPreferOriginalAudioChange: (Boolean) -> Unit,
+    preferNewPipeForYoutubePlayback: Boolean,
+    onPreferNewPipeForYoutubePlaybackChange: (Boolean) -> Unit,
     videoTitleLanguageMode: VideoTitleLanguageMode,
     onVideoTitleLanguageModeChange: (VideoTitleLanguageMode) -> Unit,
     stickyCaptionsEnabled: Boolean,
@@ -244,6 +247,17 @@ fun SettingsScreen(
                     checked = preferOriginalAudio,
                     onCheckedChange = onPreferOriginalAudioChange,
                     testTag = "prefer-original-audio",
+                )
+                HorizontalDivider()
+                ToggleSetting(
+                    title = stringResource(R.string.prefer_newpipe_youtube_playback),
+                    description = stringResource(
+                        R.string.prefer_newpipe_youtube_playback_description,
+                    ),
+                    icon = Icons.Outlined.SwapHoriz,
+                    checked = preferNewPipeForYoutubePlayback,
+                    onCheckedChange = onPreferNewPipeForYoutubePlaybackChange,
+                    testTag = "prefer-newpipe-youtube-playback",
                 )
                 HorizontalDivider()
                 LinkSetting(

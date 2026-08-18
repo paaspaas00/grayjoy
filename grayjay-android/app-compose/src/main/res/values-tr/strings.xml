@@ -564,6 +564,8 @@
     <string name="pc_transfer_failed">Etkin kaynaklarla bilgisayar oynatma işlemi açılamadı.</string>
     <string name="primary_audio_language">Birincil ses dili</string>
     <string name="prefer_original_audio">Orijinal sesi tercih et</string>
+    <string name="prefer_newpipe_youtube_playback">YouTube oynatmada NewPipe’ı tercih et</string>
+    <string name="prefer_newpipe_youtube_playback_description">YouTube videolarını oynatırken NewPipe Extractor tercih edilir. Motorlardan biri başarısız olursa diğeri otomatik olarak devralır.</string>
     <string name="prefer_original_audio_description">Varsa videonun orijinal ses parçasını, yoksa birincil dili kullanır.</string>
     <string name="audio_language">Ses dili</string>
     <string name="automatic_with_value">Otomatik · %1$s</string>
