@@ -297,6 +297,47 @@ internal data class AudioSourcePreference(
     val bitrate: Int,
 )
 
+internal data class VideoSourcePreference(
+    val language: String?,
+    val isOriginal: Boolean,
+    val isPriority: Boolean,
+    val height: Int,
+    val bitrate: Int,
+)
+
+internal fun selectPreferredVideoSourceIndex(
+    sources: List<VideoSourcePreference>,
+    preferredLanguage: String?,
+    preferOriginal: Boolean,
+): Int? {
+    if (sources.isEmpty()) return null
+    var candidates = sources.indices.toList()
+    if (preferOriginal && candidates.any { sources[it].isOriginal }) {
+        candidates = candidates.filter { sources[it].isOriginal }
+    } else {
+        val requestedLanguage = preferredLanguage?.takeIf(String::isNotBlank)
+        val selectedLanguage = when {
+            requestedLanguage != null && candidates.any {
+                sources[it].language.matchesAudioLanguage(requestedLanguage)
+            } -> requestedLanguage
+            candidates.any { sources[it].language.matchesAudioLanguage("en") } -> "en"
+            else -> null
+        }
+        if (selectedLanguage != null) {
+            candidates = candidates.filter {
+                sources[it].language.matchesAudioLanguage(selectedLanguage)
+            }
+        }
+    }
+    if (candidates.any { sources[it].isPriority }) {
+        candidates = candidates.filter { sources[it].isPriority }
+    }
+    return candidates.maxWithOrNull(
+        compareBy<Int> { sources[it].height }
+            .thenBy { sources[it].bitrate },
+    )
+}
+
 internal fun selectPreferredAudioSourceIndex(
     sources: List<AudioSourcePreference>,
     preferredLanguage: String?,
@@ -304,11 +345,14 @@ internal fun selectPreferredAudioSourceIndex(
 ): Int? {
     if (sources.isEmpty()) return null
     var candidates = sources.indices.toList()
-    if (candidates.any { sources[it].isPriority }) {
-        candidates = candidates.filter { sources[it].isPriority }
-    }
+    // An explicit "prefer original" choice is stronger than the plugin's default/priority
+    // marker. YouTube can mark an auto-dub as the account-locale default; filtering priority
+    // first used to discard the genuine original track before this preference was evaluated.
     if (preferOriginal && candidates.any { sources[it].isOriginal }) {
         candidates = candidates.filter { sources[it].isOriginal }
+    }
+    if (candidates.any { sources[it].isPriority }) {
+        candidates = candidates.filter { sources[it].isPriority }
     }
     val requestedLanguage = preferredLanguage
         ?.takeIf(String::isNotBlank)
@@ -1454,11 +1498,11 @@ class GrayjayPluginBackend(context: Context) {
         val hlsSource = details.hls ?: descriptorSources
             .filterIsInstance<IHLSManifestSource>()
             .filter { it.url.isNotBlank() }
-            .bestSource()
+            .selectPreferredVideoSource(preferredAudioLanguage, preferOriginalAudio)
         val dashSource = details.dash ?: descriptorSources
             .filterIsInstance<IDashManifestSource>()
             .filter { it.url.isNotBlank() }
-            .bestSource()
+            .selectPreferredVideoSource(preferredAudioLanguage, preferOriginalAudio)
         val liveSource = details.live as? IVideoUrlSource
         val hlsUrl = hlsSource?.url?.takeIf(String::isNotBlank)
         val dashUrl = dashSource?.url?.takeIf(String::isNotBlank)
@@ -1474,7 +1518,10 @@ class GrayjayPluginBackend(context: Context) {
         } else {
             emptyList()
         }
-        val rawVideoSource = rawVideoSources.bestSource()
+        val rawVideoSource = rawVideoSources.selectPreferredVideoSource(
+            preferredAudioLanguage,
+            preferOriginalAudio,
+        )
         val supportedAudioSources = unMuxedDescriptor
             ?.audioSources
             .orEmpty()
@@ -1501,7 +1548,7 @@ class GrayjayPluginBackend(context: Context) {
             ?.takeIf(String::isNotBlank)
         val rawDataSourceFactory = rawDashSource?.dataSourceFactoryOrNull()
         val video = if (manifestUrl == null && rawDashManifest == null) {
-            descriptorSources.bestVideoUrl()
+            descriptorSources.bestVideoUrl(preferredAudioLanguage, preferOriginalAudio)
         } else {
             null
         }
@@ -1563,10 +1610,7 @@ class GrayjayPluginBackend(context: Context) {
             .groupBy(IVideoSource::height)
             .values
             .mapNotNull { sameHeight ->
-                sameHeight.maxWithOrNull(
-                    compareBy<IVideoUrlSource> { it.priority }
-                        .thenBy { it.bitrate ?: 0 },
-                )
+                sameHeight.selectPreferredVideoSource(preferredAudioLanguage, preferOriginalAudio)
             }
             .map { source ->
                 val dataSourceFactory = source.dataSourceFactoryOrNull()
@@ -1595,10 +1639,7 @@ class GrayjayPluginBackend(context: Context) {
             .groupBy(IVideoSource::height)
             .values
             .mapNotNull { sameHeight ->
-                sameHeight.maxWithOrNull(
-                    compareBy<JSDashManifestRawSource> { it.priority }
-                        .thenBy { it.bitrate ?: 0 },
-                )
+                sameHeight.selectPreferredVideoSource(preferredAudioLanguage, preferOriginalAudio)
             }
             .mapNotNull { rawSource ->
                 val variantSource = if (rawSource === rawVideoSource) {
@@ -1708,19 +1749,33 @@ class GrayjayPluginBackend(context: Context) {
                     .thenBy { it.language.orEmpty() }
                     .thenByDescending { it.bitrate },
             )
-        val audioLanguages = supportedAudioSources
-            .filter { !it.language.isNullOrBlank() }
-            .groupBy { requireNotNull(it.language).lowercase(Locale.ROOT) }
+        val audioLanguages = buildList {
+            supportedAudioSources.forEach { source ->
+                if (!source.language.isNullOrBlank()) {
+                    add(GrayjayAudioLanguage(source.language, source.name, source.original))
+                }
+            }
+            descriptorSources.forEach { source ->
+                if (!source.language.isNullOrBlank()) {
+                    add(
+                        GrayjayAudioLanguage(
+                            language = requireNotNull(source.language),
+                            name = source.language.orEmpty(),
+                            isOriginal = source.original == true,
+                        ),
+                    )
+                }
+            }
+        }
+            .groupBy { it.language.lowercase(Locale.ROOT) }
             .map { (language, sources) ->
                 val representative = sources.maxWithOrNull(
-                    compareBy<IAudioSource> { if (it.original) 1 else 0 }
-                        .thenBy { if (it.priority) 1 else 0 }
-                        .thenBy(IAudioSource::bitrate),
+                    compareBy<GrayjayAudioLanguage> { if (it.isOriginal) 1 else 0 },
                 )
                 GrayjayAudioLanguage(
                     language = language,
                     name = representative?.name.orEmpty().ifBlank { language.uppercase(Locale.ROOT) },
-                    isOriginal = sources.any(IAudioSource::original),
+                    isOriginal = sources.any(GrayjayAudioLanguage::isOriginal),
                 )
             }
             .sortedWith(
@@ -1816,8 +1871,9 @@ class GrayjayPluginBackend(context: Context) {
             videoVariants = videoVariants,
             audioVariants = audioVariants,
             audioLanguages = audioLanguages,
-            selectedAudioLanguage = selectedAudioSource?.language,
-            selectedAudioIsOriginal = selectedAudioSource?.original == true,
+            selectedAudioLanguage = selectedAudioSource?.language ?: selectedVideoSource?.language,
+            selectedAudioIsOriginal =
+                selectedAudioSource?.original == true || selectedVideoSource?.original == true,
             // Seek previews are auxiliary UI. Never hold playback behind a second watch-page
             // request; return a warm cache hit now and let Compose request a miss after Media3
             // has started preparing the stream.
@@ -2502,14 +2558,13 @@ class GrayjayPluginBackend(context: Context) {
         videoCount = videoCount,
     )
 
-    private fun Array<IVideoSource>.bestVideoUrl(): IVideoUrlSource? =
+    private fun Array<IVideoSource>.bestVideoUrl(
+        preferredLanguage: String?,
+        preferOriginal: Boolean,
+    ): IVideoUrlSource? =
         filterIsInstance<IVideoUrlSource>()
             .filter { it.getVideoUrl().isNotBlank() }
-            .maxWithOrNull(
-                compareBy<IVideoUrlSource> { it.priority }
-                    .thenBy { it.height }
-                    .thenBy { it.bitrate ?: 0 },
-            )
+            .selectPreferredVideoSource(preferredLanguage, preferOriginal)
 
     private fun <T : IVideoSource> List<T>.bestSource(): T? =
         maxWithOrNull(
@@ -2517,6 +2572,23 @@ class GrayjayPluginBackend(context: Context) {
                 .thenBy { it.height }
                 .thenBy { it.bitrate ?: 0 },
         )
+
+    private fun <T : IVideoSource> List<T>.selectPreferredVideoSource(
+        preferredLanguage: String?,
+        preferOriginal: Boolean,
+    ): T? = selectPreferredVideoSourceIndex(
+        sources = map { source ->
+            VideoSourcePreference(
+                language = source.language,
+                isOriginal = source.original == true,
+                isPriority = source.priority,
+                height = source.height,
+                bitrate = source.bitrate ?: 0,
+            )
+        },
+        preferredLanguage = preferredLanguage,
+        preferOriginal = preferOriginal,
+    )?.let(::get)
 
     /**
      * Mirrors legacy Grayjay's audio-source hierarchy: priority sources, original audio when

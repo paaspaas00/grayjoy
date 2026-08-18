@@ -35,13 +35,13 @@ class AudioSourceSelectionTest {
     }
 
     @Test
-    fun `priority sources are selected before all other preferences`() {
+    fun `original preference wins over a dubbed priority source`() {
         val sources = listOf(
             source("it", original = true, bitrate = 256_000),
             source("en", priority = true, bitrate = 96_000),
         )
 
-        assertEquals(1, selectPreferredAudioSourceIndex(sources, "it", preferOriginal = true))
+        assertEquals(0, selectPreferredAudioSourceIndex(sources, "it", preferOriginal = true))
     }
 
     private fun source(

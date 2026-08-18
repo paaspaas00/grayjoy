@@ -231,6 +231,17 @@ internal fun VideoUiModel.pluginContentUrlOrNull(): String? =
 private fun String.isWebUrl(): Boolean =
     startsWith("https://", ignoreCase = true) || startsWith("http://", ignoreCase = true)
 
+internal fun resolvedVideoTitle(
+    feedTitle: String,
+    sourceTitle: String,
+    sourceId: String,
+    preferOriginal: Boolean,
+): String = if (preferOriginal && sourceId == "youtube" && feedTitle.isNotBlank()) {
+    feedTitle
+} else {
+    sourceTitle.ifBlank { feedTitle }
+}
+
 /**
  * Compose-facing boundary for Grayjay's source registry, federated search, and
  * shared player. A full checkout can replace this adapter with StatePlatform
@@ -462,6 +473,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private var selectedSubtitleTrackIndex: Int? = null
     private var selectedAudioLanguage: String? = null
     private var audioLanguageAutomatic = true
+    private var preferOriginalVideoTitles = true
     private var activePluginDataSources: Set<JSHttpDataSource.Factory> = emptySet()
     private var openedVideos: List<VideoUiModel> = emptyList()
     private var activeQualityVariantHeight: Int? = null
@@ -912,7 +924,12 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             backgroundMetadata = priority == EngineResolvePriority.BackgroundMetadata,
         )
         return video.copy(
-            title = source.title.ifBlank { video.title },
+            title = resolvedVideoTitle(
+                feedTitle = video.title,
+                sourceTitle = source.title,
+                sourceId = video.sourceId,
+                preferOriginal = preferOriginalVideoTitles,
+            ),
             creator = source.author.ifBlank { video.creator },
             metadata = buildString {
                 if (source.viewCount > 0) {
@@ -1024,6 +1041,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun configureVideoTitleLanguage(preferOriginal: Boolean, languageTag: String) {
+        preferOriginalVideoTitles = preferOriginal
         pluginBackend.configureVideoTitleLanguage(preferOriginal, languageTag)
     }
 

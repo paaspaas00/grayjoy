@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -86,6 +87,11 @@ fun SearchScreen(
     val selectedSources = selectedSourceIds.toSet().intersect(activeSources.map(SourceUiModel::id).toSet())
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val leaveSearch: () -> Unit = {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
     var queryFieldValue by remember {
         mutableStateOf(
             TextFieldValue(
@@ -324,10 +330,22 @@ fun SearchScreen(
                 }
                 else -> when (type) {
                     SearchContentType.Creators -> items(search.channels, key = ChannelUiModel::id) { channel ->
-                        ChannelRow(channel = channel, onClick = { onChannelClick(channel) })
+                        ChannelRow(
+                            channel = channel,
+                            onClick = {
+                                leaveSearch()
+                                onChannelClick(channel)
+                            },
+                        )
                     }
                     SearchContentType.Playlists -> items(search.playlists, key = PlaylistUiModel::id) { playlist ->
-                        PlaylistRow(playlist = playlist, onClick = { onPlaylistClick(playlist) })
+                        PlaylistRow(
+                            playlist = playlist,
+                            onClick = {
+                                leaveSearch()
+                                onPlaylistClick(playlist)
+                            },
+                        )
                     }
                     SearchContentType.Videos -> {
                         if (search.videos.isNotEmpty()) {
@@ -337,7 +355,10 @@ fun SearchScreen(
                             CompactVideoCard(
                                 video = video,
                                 index = index,
-                                onClick = { onVideoClick(video) },
+                                onClick = {
+                                    leaveSearch()
+                                    onVideoClick(video)
+                                },
                                 onLongClick = { onVideoLongClick(video) },
                             )
                         }

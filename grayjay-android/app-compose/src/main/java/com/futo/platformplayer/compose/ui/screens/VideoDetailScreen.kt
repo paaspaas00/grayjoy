@@ -334,6 +334,7 @@ fun VideoDetailScreen(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         if (shouldUseSideBySideNowPlaying(allowSideBySideLayout, maxWidth.value)) {
+            val placement = sideBySideNowPlayingPlacement(maxWidth.value, maxHeight.value)
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -346,34 +347,40 @@ fun VideoDetailScreen(
                         .widthIn(max = 1_080.dp),
                 ) {
                     playerHost(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
-                    VideoPrimaryInfo(
-                        video = video,
-                        modifier = Modifier.padding(top = 10.dp),
-                    )
-                    VideoActions(
-                        video = video,
-                        download = download,
-                        horizontalPadding = 0.dp,
-                        onToggleWatchLater = onToggleWatchLater,
-                        onToggleDownload = onToggleDownload,
-                        onDownloadVideo = onDownloadVideo,
-                        onToggleAudioDownload = onToggleAudioDownload,
-                        onDownloadAudio = onDownloadAudio,
-                        onAddToPlaylist = onAddToPlaylist,
-                        preferredVideoQuality = preferredVideoQuality,
-                        preferredAudioBitrate = preferredAudioBitrate,
-                        availableVideoQualities = playback.availableVideoQualities,
-                    )
-                    CreatorCard(
-                        video = video,
-                        isFollowing = nowPlaying.isFollowing,
-                        onToggleFollowing = onToggleFollowing,
-                        onClick = {
-                            onCreatorPreview(displayedCreatorChannel)
-                            showCreatorSheet = true
-                        },
-                        modifier = Modifier.padding(top = 10.dp),
-                    )
+                    if (placement.primaryInfoUnderPlayer) {
+                        VideoPrimaryInfo(
+                            video = video,
+                            modifier = Modifier.padding(top = 10.dp),
+                        )
+                    }
+                    if (placement.actionsUnderPlayer) {
+                        VideoActions(
+                            video = video,
+                            download = download,
+                            horizontalPadding = 0.dp,
+                            onToggleWatchLater = onToggleWatchLater,
+                            onToggleDownload = onToggleDownload,
+                            onDownloadVideo = onDownloadVideo,
+                            onToggleAudioDownload = onToggleAudioDownload,
+                            onDownloadAudio = onDownloadAudio,
+                            onAddToPlaylist = onAddToPlaylist,
+                            preferredVideoQuality = preferredVideoQuality,
+                            preferredAudioBitrate = preferredAudioBitrate,
+                            availableVideoQualities = playback.availableVideoQualities,
+                        )
+                    }
+                    if (placement.creatorUnderPlayer) {
+                        CreatorCard(
+                            video = video,
+                            isFollowing = nowPlaying.isFollowing,
+                            onToggleFollowing = onToggleFollowing,
+                            onClick = {
+                                onCreatorPreview(displayedCreatorChannel)
+                                showCreatorSheet = true
+                            },
+                            modifier = Modifier.padding(top = 10.dp),
+                        )
+                    }
                 }
                 LazyColumn(
                     state = detailListState,
@@ -388,8 +395,9 @@ fun VideoDetailScreen(
                         nowPlaying = nowPlaying,
                         queueVideos = queueVideos,
                         selectedSection = selectedSection,
-                        includePrimaryInfo = false,
-                        includeCreatorInfo = false,
+                        includePrimaryInfo = !placement.primaryInfoUnderPlayer,
+                        includeActions = !placement.actionsUnderPlayer,
+                        includeCreatorInfo = !placement.creatorUnderPlayer,
                         onSectionChange = { selectedSectionName = it.name },
                         onToggleWatchLater = onToggleWatchLater,
                         download = download,
@@ -496,6 +504,30 @@ internal fun shouldUseSideBySideNowPlaying(
     drawerHidden: Boolean,
     availableWidthDp: Float,
 ): Boolean = drawerHidden && availableWidthDp >= 960f
+
+internal data class SideBySideNowPlayingPlacement(
+    val primaryInfoUnderPlayer: Boolean,
+    val actionsUnderPlayer: Boolean,
+    val creatorUnderPlayer: Boolean,
+)
+
+internal fun sideBySideNowPlayingPlacement(
+    availableWidthDp: Float,
+    availableHeightDp: Float,
+): SideBySideNowPlayingPlacement {
+    val rowContentWidth = (availableWidthDp - 72f).coerceAtLeast(0f)
+    val leftWidth = rowContentWidth * (1.35f / (1.35f + 0.85f))
+    val playerHeight = leftWidth * (9f / 16f)
+    val remainingHeight = (availableHeightDp - 48f - playerHeight).coerceAtLeast(0f)
+    val primaryFits = remainingHeight >= 92f
+    val actionsFit = primaryFits && remainingHeight >= 172f
+    val creatorFits = actionsFit && remainingHeight >= 292f
+    return SideBySideNowPlayingPlacement(
+        primaryInfoUnderPlayer = primaryFits,
+        actionsUnderPlayer = actionsFit,
+        creatorUnderPlayer = creatorFits,
+    )
+}
 
 private fun LazyListScope.detailPagingIndicator(
     nowPlaying: NowPlayingUiState,
@@ -2047,6 +2079,7 @@ private fun LazyListScope.videoDetails(
     queueVideos: List<VideoUiModel>,
     selectedSection: DetailSection,
     includePrimaryInfo: Boolean = true,
+    includeActions: Boolean = includePrimaryInfo,
     includeCreatorInfo: Boolean = true,
     horizontalPadding: androidx.compose.ui.unit.Dp = 0.dp,
     onSectionChange: (DetailSection) -> Unit,
@@ -2075,6 +2108,8 @@ private fun LazyListScope.videoDetails(
                 modifier = Modifier.padding(horizontal = horizontalPadding),
             )
         }
+    }
+    if (includeActions) {
         item {
             VideoActions(
                 video = video,

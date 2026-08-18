@@ -1403,7 +1403,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     ?: route.sourceId.replaceFirstChar(Char::uppercase)
                 when (route.kind) {
                     EngineUrlKind.Video -> {
-                        val video = VideoUiModel(
+                        val video = findVideo(route.url) ?: VideoUiModel(
                             id = route.url,
                             title = externalContentLabel(route.url),
                             creator = sourceName,
