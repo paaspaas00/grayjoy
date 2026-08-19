@@ -41,8 +41,8 @@ android {
         applicationId 'com.futo.platformplayer.compose'
         minSdk 28
         targetSdk 36
-        versionCode 1600
-        versionName '1.6.0'
+        versionCode 1601
+        versionName '1.6.1'
         manifestPlaceholders = [grayjoyAppLabel: '@string/app_name']
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'

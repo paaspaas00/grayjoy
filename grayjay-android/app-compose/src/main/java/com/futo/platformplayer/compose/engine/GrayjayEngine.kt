@@ -38,6 +38,7 @@ import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.text.TextOutput
 import androidx.media3.exoplayer.text.TextRenderer
@@ -69,6 +70,7 @@ import com.futo.platformplayer.backend.GrayjayUserImportSelection
 import com.futo.platformplayer.backend.GrayjayUserImportStage
 import com.futo.platformplayer.backend.PluginEndpoint
 import com.futo.platformplayer.backend.NewPipeYoutubePlaybackBackend
+import com.futo.platformplayer.backend.NewPipeYoutubeHttpDataSource
 import com.futo.platformplayer.backend.formatRelativeDate
 import com.futo.platformplayer.api.media.models.playback.IPlaybackTracker
 import com.futo.platformplayer.compose.ui.ChannelUiModel
@@ -1582,32 +1584,44 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 ByteArrayInputStream(video.playbackManifest.toByteArray()),
             )
             video.dashMediaSourceFactory().createMediaSource(manifest, mediaItem)
+        } else if (video.playbackDataSourceFactory is NewPipeYoutubeHttpDataSource.Factory) {
+            ProgressiveMediaSource.Factory(video.dataSourceFactory())
+                // NewPipe uses 64 KiB instead of Media3's much larger default so LoadControl is
+                // consulted frequently and a progressive YouTube connection cannot consume the
+                // short initial buffer and then sit idle before requesting more data.
+                .setContinueLoadingCheckIntervalBytes(64 * 1024)
+                .createMediaSource(mediaItem)
         } else {
             factory.createMediaSource(mediaItem)
         }
         val sources = buildList {
             add(videoSource)
             if (video.audioUrl.isNotBlank()) {
+                val audioManifest = video.audioDownloadManifest.takeIf {
+                    video.audioDownloadUrl == video.audioUrl
+                }.orEmpty()
+                val audioMimeType = video.audioDownloadMimeType.takeIf {
+                    audioManifest.isNotBlank()
+                }.orEmpty()
                 val audioVideo = video.copy(
                     playbackUrl = video.audioUrl,
-                    playbackMimeType = "",
-                    playbackManifest = "",
+                    playbackMimeType = audioMimeType,
+                    playbackManifest = audioManifest,
                     audioUrl = "",
+                    audioDownloadUrl = "",
+                    audioDownloadMimeType = "",
+                    audioDownloadManifest = "",
                     playbackCacheNamespace = video.audioCacheNamespace,
                     audioCacheNamespace = "",
                     playbackStreamKeys = video.audioStreamKeys,
                     audioStreamKeys = emptyList(),
                     playbackRequestHeaders = video.audioRequestHeaders,
                     playbackDataSourceFactory = video.audioDataSourceFactory,
+                    subtitleTracks = emptyList(),
+                    qualityVariants = emptyList(),
+                    audioQualityVariants = emptyList(),
                 )
-                add(
-                    audioVideo.mediaSourceFactory().createMediaSource(
-                        MediaItem.Builder()
-                            .setUri(video.audioUrl)
-                            .setStreamKeys(video.audioStreamKeys)
-                            .build(),
-                    ),
-                )
+                add(audioVideo.buildMediaSource())
             }
             video.subtitleTracks.forEach { subtitle ->
                 val configuration = MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.uri))

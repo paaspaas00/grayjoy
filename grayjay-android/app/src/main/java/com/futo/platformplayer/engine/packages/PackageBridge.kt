@@ -142,37 +142,65 @@ class PackageBridge : V8Package {
 
         StateApp.instance.scopeOrNull?.launch(Dispatchers.IO) {
             delay(timeout);
-            if (_plugin.isStopped)
-                return@launch;
-            if (!timeoutMap.containsKey(id)) {
-                _plugin.busy {
-                    if (!_plugin.isStopped)
-                        JavetResourceUtils.safeClose(funcClone);
-                }
+            if (_plugin.isStopped) {
+                closeTimeoutCloneSafely(funcClone, id)
                 return@launch;
             }
-            timeoutMap.remove(id);
+            // remove() is the atomic ownership hand-off between clearTimeout() and this callback.
+            // A containsKey()/remove() pair allowed both paths to race and use the same V8 clone.
+            if (timeoutMap.remove(id) == null) {
+                closeTimeoutCloneSafely(funcClone, id)
+                return@launch;
+            }
             try {
-                Logger.w(TAG, "setTimeout before busy (${timeout}): ${_plugin.isBusy}");
-                _plugin.busy {
-                    Logger.w(TAG, "setTimeout in busy");
-                    if (!_plugin.isStopped)
-                        funcClone.callVoid(null, arrayOf<Any>());
-                    Logger.w(TAG, "setTimeout after");
-                }
-            } catch (ex: Throwable) {
-                Logger.e(TAG, "Failed timeout callback", ex);
+                invokeTimeoutCallbackSafely(funcClone, id, timeout)
             } finally {
-                _plugin.busy {
-                    if (!_plugin.isStopped)
-                        JavetResourceUtils.safeClose(funcClone);
-                }
-                //_plugin.whenNotBusy {
-                //}
+                closeTimeoutCloneSafely(funcClone, id)
             }
         };
         timeoutMap.put(id, true);
         return id;
+    }
+
+    private suspend fun invokeTimeoutCallbackSafely(
+        funcClone: V8ValueFunction,
+        id: Int,
+        timeout: Long,
+    ) {
+        repeat(TIMEOUT_CALLBACK_ATTEMPTS) { attempt ->
+            if (_plugin.isStopped) return
+            try {
+                Logger.w(
+                    TAG,
+                    "setTimeout $id before busy (${timeout}), attempt ${attempt + 1}: " +
+                        _plugin.isBusy,
+                )
+                _plugin.tryBusy(TIMEOUT_CALLBACK_WAIT_MS) {
+                    if (!_plugin.isStopped) funcClone.callVoid(null, arrayOf<Any>())
+                }
+                return
+            } catch (ex: Throwable) {
+                val busyTimeout = ex is IllegalStateException &&
+                    ex.message?.startsWith("V8 busy lock") == true
+                if (!busyTimeout || attempt == TIMEOUT_CALLBACK_ATTEMPTS - 1) {
+                    Logger.e(TAG, "Failed timeout callback $id", ex)
+                    return
+                }
+                delay(TIMEOUT_CALLBACK_RETRY_DELAY_MS)
+            }
+        }
+    }
+
+    private fun closeTimeoutCloneSafely(funcClone: V8ValueFunction, id: Int) {
+        try {
+            _plugin.tryBusy(TIMEOUT_CLEANUP_WAIT_MS) {
+                JavetResourceUtils.safeClose(funcClone)
+            }
+        } catch (ex: Throwable) {
+            // Never let deferred cleanup escape its coroutine. The runtime owns any clone that
+            // could not be closed here and disposes it when the plugin is reloaded/stopped.
+            Logger.w(TAG, "Could not dispose stale timeout callback $id", ex)
+        }
     }
     @V8Function
     fun clearTimeout(id: Int) {
@@ -264,6 +292,10 @@ class PackageBridge : V8Package {
 
     companion object {
         private const val TAG = "PackageBridge";
+        private const val TIMEOUT_CALLBACK_WAIT_MS = 1_000L
+        private const val TIMEOUT_CALLBACK_RETRY_DELAY_MS = 250L
+        private const val TIMEOUT_CALLBACK_ATTEMPTS = 8
+        private const val TIMEOUT_CLEANUP_WAIT_MS = 250L
 
         private var _mediaCodecList: MutableList<String> = mutableListOf();
         private var _mediaCodecListHardware: MutableList<String> = mutableListOf();

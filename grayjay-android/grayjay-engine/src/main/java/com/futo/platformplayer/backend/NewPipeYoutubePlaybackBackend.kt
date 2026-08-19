@@ -2,6 +2,9 @@ package com.futo.platformplayer.backend
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import androidx.media3.datasource.HttpDataSource
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.schabi.newpipe.extractor.Image
@@ -19,11 +22,14 @@ import org.schabi.newpipe.extractor.stream.Stream
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamType
 import org.schabi.newpipe.extractor.stream.VideoStream
+import org.schabi.newpipe.extractor.services.youtube.dashmanifestcreators.YoutubeOtfDashManifestCreator
+import org.schabi.newpipe.extractor.services.youtube.dashmanifestcreators.YoutubeProgressiveDashManifestCreator
 import java.io.IOException
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-private const val NEWPIPE_USER_AGENT =
+internal const val NEWPIPE_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
 private const val YOUTUBE_WATCH_PREFIX = "https://www.youtube.com/watch?v="
 
@@ -34,6 +40,20 @@ private const val YOUTUBE_WATCH_PREFIX = "https://www.youtube.com/watch?v="
 class NewPipeYoutubePlaybackBackend(
     private val downloader: Downloader = OkHttpNewPipeDownloader(),
 ) {
+    private val progressiveDataSourceFactory = NewPipeYoutubeHttpDataSource.Factory(
+        useRangeParameter = false,
+        useRequestNumber = true,
+    )
+    private val dashDataSourceFactory = NewPipeYoutubeHttpDataSource.Factory(
+        useRangeParameter = true,
+        useRequestNumber = true,
+    )
+    private val hlsDataSourceFactory = NewPipeYoutubeHttpDataSource.Factory(
+        useRangeParameter = false,
+        useRequestNumber = false,
+    )
+    private val resolveCache = ConcurrentHashMap<ResolveCacheKey, CachedPlaybackSource>()
+    private val resolveLocks = ConcurrentHashMap<ResolveCacheKey, Mutex>()
     @Volatile
     private var localization = Localization.DEFAULT
 
@@ -45,10 +65,12 @@ class NewPipeYoutubePlaybackBackend(
 
     fun configureLanguage(languageTag: String) {
         val locale = Locale.forLanguageTag(languageTag)
-        localization = Localization(
+        val updated = Localization(
             locale.language.takeIf(String::isNotBlank) ?: "en",
             locale.country.takeIf(String::isNotBlank),
         )
+        if (updated != localization) resolveCache.clear()
+        localization = updated
         synchronized(NEWPIPE_INITIALIZATION_LOCK) {
             NewPipe.setupLocalization(localization)
         }
@@ -59,16 +81,59 @@ class NewPipeYoutubePlaybackBackend(
         preferredAudioLanguage: String?,
         preferOriginalAudio: Boolean,
     ): GrayjayPlaybackSource = withContext(Dispatchers.IO) {
+        val cacheKey = ResolveCacheKey(
+            contentUrl = contentUrl.toYoutubeWatchUrl(),
+            preferredAudioLanguage = preferredAudioLanguage
+                ?.lowercase(Locale.ROOT)
+                .orEmpty(),
+            preferOriginalAudio = preferOriginalAudio,
+            localization = localization.localizationCode,
+        )
+        resolveCache[cacheKey]
+            ?.takeIf { !it.isExpired() }
+            ?.let { return@withContext it.source }
+        val lock = resolveLocks.getOrPut(cacheKey) { Mutex() }
+        lock.withLock {
+            try {
+                resolveCache[cacheKey]
+                    ?.takeIf { !it.isExpired() }
+                    ?.let { return@withLock it.source }
+                val source = extractPlaybackSource(
+                    youtubeUrl = cacheKey.contentUrl,
+                    preferredAudioLanguage = preferredAudioLanguage,
+                    preferOriginalAudio = preferOriginalAudio,
+                )
+                trimResolveCache()
+                resolveCache[cacheKey] = CachedPlaybackSource(source)
+                source
+            } finally {
+                resolveLocks.remove(cacheKey, lock)
+            }
+        }
+    }
+
+    private fun extractPlaybackSource(
+        youtubeUrl: String,
+        preferredAudioLanguage: String?,
+        preferOriginalAudio: Boolean,
+    ): GrayjayPlaybackSource {
         synchronized(NEWPIPE_INITIALIZATION_LOCK) {
             NewPipe.setupLocalization(localization)
         }
-        val youtubeUrl = contentUrl.toYoutubeWatchUrl()
         val info = StreamInfo.getInfo(ServiceList.YouTube, youtubeUrl)
-        info.toGrayjayPlaybackSource(
+        return info.toGrayjayPlaybackSource(
             fallbackUrl = youtubeUrl,
             preferredAudioLanguage = preferredAudioLanguage,
             preferOriginalAudio = preferOriginalAudio,
         )
+    }
+
+    private fun trimResolveCache() {
+        resolveCache.entries.removeAll { it.value.isExpired() }
+        while (resolveCache.size >= MAX_RESOLVE_CACHE_ENTRIES) {
+            val oldest = resolveCache.entries.minByOrNull { it.value.createdAtMs } ?: break
+            resolveCache.remove(oldest.key, oldest.value)
+        }
     }
 
     private fun StreamInfo.toGrayjayPlaybackSource(
@@ -124,13 +189,17 @@ class NewPipeYoutubePlaybackBackend(
                 .thenBy { it.bitrate.coerceAtLeast(0) },
         )
         val primaryStream = when {
-            hls != null -> ResolvedNewPipeStream(hls, GrayjayStreamType.Hls)
-            selectedVideo != null -> selectedVideo.toResolvedStream(fallbackUrl)
+            hls != null -> ResolvedNewPipeStream(
+                hls,
+                GrayjayStreamType.Hls,
+                dataSourceFactory = hlsDataSourceFactory,
+            )
+            selectedVideo != null -> selectedVideo.toResolvedStream(fallbackUrl, duration)
             dash != null -> ResolvedNewPipeStream(dash, GrayjayStreamType.Dash)
-            selectedAudio != null -> selectedAudio.stream.toResolvedStream(fallbackUrl)
+            selectedAudio != null -> selectedAudio.stream.toResolvedStream(fallbackUrl, duration)
             else -> error("NewPipe returned no supported YouTube playback stream.")
         }
-        val audioStream = selectedAudio?.stream?.toResolvedStream(fallbackUrl)
+        val audioStream = selectedAudio?.stream?.toResolvedStream(fallbackUrl, duration)
         val effectiveAudioOnly = isAudioOnly ||
             (selectedVideo == null && hls == null && dash == null && selectedAudio != null)
         val selectedContainsAudio = effectiveAudioOnly || hls != null ||
@@ -140,7 +209,7 @@ class NewPipeYoutubePlaybackBackend(
             emptyList()
         } else {
             selectedVideos.mapNotNull { stream ->
-                stream.toResolvedStreamOrNull(fallbackUrl)?.let { resolved ->
+                stream.toResolvedStreamOrNull(fallbackUrl, duration)?.let { resolved ->
                     GrayjayVideoVariant(
                         height = stream.height.takeIf { it > 0 }
                             ?: stream.getResolution().resolutionHeight(),
@@ -148,13 +217,14 @@ class NewPipeYoutubePlaybackBackend(
                         streamType = resolved.type,
                         requestHeaders = NEWPIPE_PLAYBACK_HEADERS,
                         rawDashManifest = resolved.rawManifest,
+                        dataSourceFactory = resolved.dataSourceFactory,
                     )
                 }
             }.distinctBy { it.height to it.videoUrl }
                 .sortedBy(GrayjayVideoVariant::height)
         }
         val audioVariants = audioDescriptors.mapNotNull { descriptor ->
-            descriptor.stream.toResolvedStreamOrNull(fallbackUrl)?.let { resolved ->
+            descriptor.stream.toResolvedStreamOrNull(fallbackUrl, duration)?.let { resolved ->
                 GrayjayAudioVariant(
                     bitrate = descriptor.bitrate,
                     name = descriptor.stream.audioTrackName
@@ -167,6 +237,7 @@ class NewPipeYoutubePlaybackBackend(
                     isOriginal = descriptor.isOriginal,
                     requestHeaders = NEWPIPE_PLAYBACK_HEADERS,
                     rawDashManifest = resolved.rawManifest,
+                    dataSourceFactory = resolved.dataSourceFactory,
                 )
             }
         }.distinctBy { Triple(it.audioUrl, it.language, it.bitrate) }
@@ -202,12 +273,16 @@ class NewPipeYoutubePlaybackBackend(
             audioRequestHeaders = NEWPIPE_PLAYBACK_HEADERS.takeIf {
                 selectedAudioUrl != null
             }.orEmpty(),
+            audioDataSourceFactory = audioStream?.dataSourceFactory.takeIf {
+                selectedAudioUrl != null
+            },
             audioDownloadUrl = audioStream?.url,
             audioDownloadStreamType = audioStream?.type,
             audioDownloadRawDashManifest = audioStream?.rawManifest,
             audioDownloadRequestHeaders = NEWPIPE_PLAYBACK_HEADERS.takeIf {
                 audioStream != null
             }.orEmpty(),
+            audioDownloadDataSourceFactory = audioStream?.dataSourceFactory,
             title = name,
             author = uploaderName.orEmpty(),
             authorUrl = uploaderUrl.orEmpty(),
@@ -235,6 +310,7 @@ class NewPipeYoutubePlaybackBackend(
             },
             requestHeaders = NEWPIPE_PLAYBACK_HEADERS,
             rawDashManifest = primaryStream.rawManifest,
+            dataSourceFactory = primaryStream.dataSourceFactory,
             videoVariants = videoVariants,
             audioVariants = audioVariants,
             audioLanguages = audioLanguages,
@@ -253,19 +329,60 @@ class NewPipeYoutubePlaybackBackend(
         val bitrate: Int,
     )
 
+    private data class ResolveCacheKey(
+        val contentUrl: String,
+        val preferredAudioLanguage: String,
+        val preferOriginalAudio: Boolean,
+        val localization: String,
+    )
+
+    private data class CachedPlaybackSource(
+        val source: GrayjayPlaybackSource,
+        val createdAtMs: Long = System.currentTimeMillis(),
+    ) {
+        fun isExpired(nowMs: Long = System.currentTimeMillis()): Boolean =
+            nowMs - createdAtMs >= RESOLVE_CACHE_TTL_MS
+    }
+
     private data class ResolvedNewPipeStream(
         val url: String,
         val type: GrayjayStreamType,
         val rawManifest: String? = null,
+        val dataSourceFactory: HttpDataSource.Factory? = null,
     )
 
-    private fun Stream.toResolvedStream(fallbackUrl: String): ResolvedNewPipeStream =
-        toResolvedStreamOrNull(fallbackUrl)
+    private fun Stream.toResolvedStream(
+        fallbackUrl: String,
+        durationSeconds: Long,
+    ): ResolvedNewPipeStream =
+        toResolvedStreamOrNull(fallbackUrl, durationSeconds)
             ?: error("NewPipe returned an unusable stream descriptor.")
 
-    private fun Stream.toResolvedStreamOrNull(fallbackUrl: String): ResolvedNewPipeStream? {
+    private fun Stream.toResolvedStreamOrNull(
+        fallbackUrl: String,
+        durationSeconds: Long,
+    ): ResolvedNewPipeStream? {
         if (content.isBlank()) return null
         if (isUrl) {
+            val shouldGenerateDash = deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
+                (this is AudioStream || (this is VideoStream && isVideoOnly()))
+            if (shouldGenerateDash) {
+                val manifest = runCatching {
+                    YoutubeProgressiveDashManifestCreator.fromProgressiveStreamingUrl(
+                        content,
+                        requireNotNull(itagItem),
+                        durationSeconds,
+                    )
+                }.getOrNull()
+                if (manifest != null) {
+                    return ResolvedNewPipeStream(
+                        url = content,
+                        type = GrayjayStreamType.Dash,
+                        rawManifest = manifest,
+                        dataSourceFactory = dashDataSourceFactory,
+                    )
+                }
+            }
             return ResolvedNewPipeStream(
                 url = content,
                 type = if (deliveryMethod == DeliveryMethod.HLS) {
@@ -276,18 +393,39 @@ class NewPipeYoutubePlaybackBackend(
                     // selected audio representation separately.
                     GrayjayStreamType.Progressive
                 },
+                dataSourceFactory = if (deliveryMethod == DeliveryMethod.HLS) {
+                    hlsDataSourceFactory
+                } else {
+                    progressiveDataSourceFactory
+                },
             )
         }
         if (deliveryMethod != DeliveryMethod.DASH) return null
+        val otfManifest = runCatching {
+            YoutubeOtfDashManifestCreator.fromOtfStreamingUrl(
+                content,
+                requireNotNull(itagItem),
+                durationSeconds,
+            )
+        }.getOrNull()
+        if (otfManifest != null) {
+            return ResolvedNewPipeStream(
+                url = manifestUrl?.takeIf(String::isNotBlank) ?: fallbackUrl,
+                type = GrayjayStreamType.Dash,
+                rawManifest = otfManifest,
+                dataSourceFactory = dashDataSourceFactory,
+            )
+        }
         return ResolvedNewPipeStream(
             url = manifestUrl?.takeIf(String::isNotBlank) ?: fallbackUrl,
             type = GrayjayStreamType.Dash,
             rawManifest = content,
+            dataSourceFactory = dashDataSourceFactory,
         )
     }
 
     private fun Stream.isPlayableByMedia3(): Boolean = content.isNotBlank() &&
-        (isUrl || (deliveryMethod == DeliveryMethod.DASH && !manifestUrl.isNullOrBlank()))
+        (isUrl || (deliveryMethod == DeliveryMethod.DASH && itagItem != null))
 
     private fun AudioStream.bitrateBitsPerSecond(): Int {
         val extracted = averageBitrate.takeIf { it > 0 } ?: bitrate.takeIf { it > 0 } ?: 0
@@ -324,6 +462,8 @@ class NewPipeYoutubePlaybackBackend(
     companion object {
         private val NEWPIPE_INITIALIZATION_LOCK = Any()
         private val NEWPIPE_PLAYBACK_HEADERS = mapOf("User-Agent" to NEWPIPE_USER_AGENT)
+        private const val RESOLVE_CACHE_TTL_MS = 10 * 60 * 1_000L
+        private const val MAX_RESOLVE_CACHE_ENTRIES = 24
     }
 }
 
