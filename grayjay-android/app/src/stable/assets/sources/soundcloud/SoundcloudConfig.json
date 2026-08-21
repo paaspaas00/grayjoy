@@ -11,8 +11,8 @@
   "version": 29,
   "iconUrl": "./soundcloud.png",
   "id": "5fb74e28-2fba-406a-9418-38af04f63c08",
-  "scriptSignature": "",
-  "scriptPublicKey": "",
+  "scriptSignature": "MBDXhHJXNnp7yFGQl76A7T5ZErbONgTZS5Cf6jwNx0jUahpE2UBziEbPkxyuzlTZuIfVzDHaa/HPmB3PHnVfecPTLedEpy46/u2FCdxRDSszHXq3iowIG0iFTAreNGcUJMSZKWb5v2XbL+rKITRKhLCI4Bkk7YWAdV7do9EllLHoMlwI8zmzJSUsBUganLz1M23kPkHeQoDV/4Wx7ym45gD3bAGZL739NcIlqRjzgi/fYv3Na/WMi0o1Vzla8HrQyPE43UKjHWacIlJMDzgcAwSdRAdmVdTSV4FGzGSpmQ1zYkCEtrSEnDnR/H2IRW0SXfmsf/p7aqnFAaAQ3aqxDQ==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
   "packages": [
     "Http"
   ],

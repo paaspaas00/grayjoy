@@ -61,6 +61,7 @@ import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.ui.supportsOfflineDownload
 
 @Composable
 fun PlaylistDetailScreen(
@@ -91,7 +92,7 @@ fun PlaylistDetailScreen(
         playlist.videoIds.mapNotNull(videosById::get)
     }
     val downloadableIds = remember(playlistVideos) {
-        playlistVideos.filterNot(VideoUiModel::isLive).map(VideoUiModel::id)
+        playlistVideos.filter(VideoUiModel::supportsOfflineDownload).map(VideoUiModel::id)
     }
     val audioDownloadCount = remember(downloadableIds, downloads) {
         downloadableIds.count {
@@ -288,7 +289,11 @@ fun PlaylistDetailScreen(
                     }
                 }
             }
-            itemsIndexed(playlistVideos, key = { _, video -> video.id }) { index, video ->
+            itemsIndexed(
+                playlistVideos,
+                key = { _, video -> video.id },
+                contentType = { _, _ -> "video" },
+            ) { index, video ->
                 VideoCard(
                     video = video,
                     index = index,

@@ -7,16 +7,18 @@
   "sourceUrl": "https://plugins.grayjay.app/Dailymotion/DailymotionConfig.json",
   "scriptUrl": "./DailymotionScript.js",
   "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/dailymotion",
-  "version": 37,
+  "version": 38,
   "iconUrl": "./DailymotionIcon.png",
   "id": "9c87e8db-e75d-48f4-afe5-2d203d4b95c5",
-  "scriptSignature": "",
-  "scriptPublicKey": "",
+  "scriptSignature": "Vj/HT+ANtgRzUtwwb6XUSOsHZwpk3emdhk6QkWdySfv9f+hgbEVRLlQRb/TFiDU0MNnW2fmkf1iFN7VefgzFld1IZDJdNtazyD8KN1M8/LqxkWPP146btRlcRCZM3/FW9f9WqqljGx5KgK7ka7CamDUJ/R7lO/QFhWJS0rOmLlNG6FfpBivWpVKzXxm+dbyn4gkiYHWcnSwaACzdnC6P8jB+HQCnQQftV5hnD7RikaJ/XMDFDW6KClVmpXIFnDnshvhYYwBa69BRYLixmCsnfjUwBD31Edl+7chP/hX5kJOQ9tjb2jgzRVz7hOQ5zi7Pxaq/sqlbCOyBntC/NJrFKA==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
   "packages": [
     "Http",
     "DOMParser"
   ],
-  "packagesOptional": ["HttpImp"],
+  "packagesOptional": [
+    "HttpImp"
+  ],
   "allowEval": false,
   "allowAllHttpHeaderAccess": false,
   "allowUrls": [
@@ -404,6 +406,9 @@
     ],
     "37": [
       "Fix: authentication;"
+    ],
+    "38": [
+      "Fix: Token extraction;"
     ]
   }
 }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Widevine decoders output protected hardware buffers. A TextureView sends those buffers through
+  HWUI/Skia and can abort the whole process (Invalid GrBackendTexture, protected==1). Keep the
+  ordinary player on a TextureView for the morph animation, but use Grayjay's SurfaceView path for
+  protected sources such as Crunchyroll.
+-->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    app:resize_mode="fit"
+    app:surface_type="surface_view"
+    app:use_controller="false" />

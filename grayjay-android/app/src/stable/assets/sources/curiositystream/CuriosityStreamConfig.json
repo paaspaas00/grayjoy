@@ -10,8 +10,8 @@
   "version": 13,
   "iconUrl": "./CuriosityStreamIcon.png",
   "id": "273b6523-5438-44e2-9f5d-78e0325a8fd9",
-  "scriptSignature": "",
-  "scriptPublicKey": "",
+  "scriptSignature": "RQy1tWPrs6Hfm/kBU0ymfvgSKSYZWUVQ0+CXd2Cj24ZEkhGZ0aBoMq+y5VmzdqG1dXNEAGrUU8Vr0H4n3AfTJHYuLi1tPBj2XR+EI/IgkjCI/asN/VsvEyiM1N9lxe2efdTOIZoCKT25qCHW6EAZ1r76IHORjfx0AckyHsmqnZKZEKy8iHFgandrVJkOL5tbpKyCROHHQkZ7Aqc0K2DDWGMaNvKa2mT8X7s7R5nt7iAjaxxDkIWtsl0sBurB/hhRP0IIgF11EW7DImDBeCaG3cB5cHDPJmlGnwjMM77gTIOULWbTVysvNAyRxtuMPQQogar9Y4Y9A0QPay4Y2xpI6Q==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
   "packages": [
     "Http",
     "DOMParser"

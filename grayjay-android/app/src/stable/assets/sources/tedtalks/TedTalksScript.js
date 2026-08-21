@@ -29,7 +29,9 @@ const REGEX = {
     SPEAKER_ID: /speakerId=(\d+)/,
     TALK_SLUG: /ted\.com\/talks\/([^?#]+)/i,
     HLS_URL: /https:\/\/.*\.m3u8/i,
-    MPEG_URL: /https:\/\/.*\.mp4/i
+    MPEG_URL: /https:\/\/.*\.mp4/i,
+    HLS_PROJECT_ID: /project_masters\/(\d+)\//i,
+    HLS_INTRO_ID: /intro_master_id=(\d+)/i
 };
 
 // Default request headers for TED API
@@ -58,18 +60,49 @@ const VIDEO_QUALITY = {
     }
 };
 
+// Hits requested when recovering a speaker's talks from the search index (API caps this at 24)
+const SPEAKER_TALKS_SEARCH_LIMIT = 24;
+
+// Bounds the fallback search so an ambiguous speaker name cannot walk the whole index
+const SPEAKER_TALKS_MAX_PAGES = 5;
+
+// Client errors that are worth another attempt: a timeout or an early-data rejection can succeed
+// on retry, and 429 is paced. 429 is a safety net only: ~6000 requests at up to 100 concurrency
+// never produced one, since a CDN absorbs the load ahead of TED's origin.
+const HTTP_TOO_MANY_REQUESTS = 429;
+const HTTP_RETRYABLE_CLIENT_ERRORS = [408, 425, HTTP_TOO_MANY_REQUESTS];
+const HTTP_RETRY_BASE_DELAY_MS = 1000;
+
+// Bot blocking presents as 403, which a different TLS fingerprint can clear
+const HTTP_FORBIDDEN = 403;
+
+// TED reports a missing id as a 404 carried inside the GraphQL error payload, not as an empty result
+const HTTP_NOT_FOUND = 404;
+
+// VIDEOS_INFO_BY_SLUG returns at most this many nodes per request
+const VIDEO_DETAILS_BATCH_SIZE = 50;
+
 // Plugin configuration storage
 let config = {};
 
 // Plugin settings storage
 let _settings = {
-    showExternalContent: false,
+    showExternalContent: true,
     useBrowserImpersonation: true,
     verboseNotifications: false
 };
 
 const IS_ANDROID = bridge.buildPlatform === "android";
 const IS_DESKTOP = bridge.buildPlatform === "desktop";
+
+// Android intercepts any plugin_type ending in "Details" inside JSContentPager feeds
+// (IJSContent.fromV8) and VideoDetailFragment reuses it without calling getContentDetails.
+// It advertises no capability for this, so the platform itself is the signal.
+const DETAILS_IN_FEED_ANDROID = true;
+// Desktop reuses feed details only once its pagers stamp a refPager BackendUrl, and it
+// advertises no capability to detect that, so this stays off until a version floor exists.
+const DETAILS_IN_FEED_DESKTOP = false;
+const DETAILS_IN_FEED = IS_DESKTOP ? DETAILS_IN_FEED_DESKTOP : DETAILS_IN_FEED_ANDROID;
 
 const IMPERSONATION_TARGET = IS_DESKTOP ? 'chrome136' : 'chrome131_android';
 const IS_IMPERSONATION_AVAILABLE = (typeof httpimp !== 'undefined');
@@ -102,7 +135,11 @@ source.getHome = () => {
     // 1. GraphQL: POST to www.ted.com/graphql with HOME_VIDEOS query.
     //    Reliable, proper cursor-based pagination, no SSL issues.
     try {
-        return new TedTalksHomePager();
+        const pager = new TedTalksHomePager();
+        if (!pager.loadFailed) {
+            return pager;
+        }
+        trace('HomePager failed: Home feed unavailable via GraphQL.');
     } catch (error) {
         trace(`HomePager failed: ${error.message}`);
     }
@@ -110,7 +147,11 @@ source.getHome = () => {
     // 2. Search API: POST to zenith-prod-alt.ted.com/api/search.
     //    This endpoint requests SSL/TLS renegotiation which can cause intermittent failures.
     try {
-        return new TedTalksSearchPager("");
+        const pager = new TedTalksSearchPager("");
+        if (!pager.loadFailed) {
+            return pager;
+        }
+        trace('SearchPager failed: TED search is unavailable.');
     } catch (error) {
         trace(`SearchPager failed: ${error.message}`);
     }
@@ -231,6 +272,7 @@ class TedTalksHomePager extends ContentPager {
     constructor() {
         super([], true);
         this.cursor = "0";
+        this.loadFailed = false;
         this.nextPage();
     }
 
@@ -239,6 +281,7 @@ class TedTalksHomePager extends ContentPager {
      * @returns {ContentPager} Pager with the current page results
      */
     nextPage() {
+        this.loadFailed = false;
         try {
             const queryInfo = {
                 query: GQL_QUERIES.HOME_VIDEOS,
@@ -252,6 +295,7 @@ class TedTalksHomePager extends ContentPager {
 
             if (!response.isOk) {
                 trace(`GraphQL request failed for home videos. Status: ${response.code}`);
+                this.loadFailed = true;
                 this.results = [];
                 this.hasMore = false;
                 return this;
@@ -260,31 +304,24 @@ class TedTalksHomePager extends ContentPager {
             const responseData = safeJsonParse(response.body);
             if (!responseData?.data?.videos?.nodes) {
                 trace('Invalid response format for home videos');
+                this.loadFailed = true;
                 this.results = [];
                 this.hasMore = false;
                 return this;
             }
 
-            // Extract video data, filtering out podcast-only content (unless external content handling is "Show")
             const videos = responseData.data.videos.nodes
                 .filter(video => shouldShowContent(video, {}))
-                .map(video => {
-                    if (hasPlayableVideoSources(video, {})) {
-                        return convertToPlatformVideoDetails(video, {});
-                    }
-                    return convertToNestedMediaContent(video, {});
-                });
+                .map(video => convertToFeedEntry(video, {}));
 
-            // Update pagination info
             this.cursor = responseData.data.videos.pageInfo.endCursor;
-
-            // Update results
             this.results = videos;
             this.hasMore = responseData.data.videos.pageInfo.hasNextPage;
 
             return this;
         } catch (error) {
             trace(`Exception in TedTalksHomePager.nextPage: ${error.message}`);
+            this.loadFailed = true;
             this.results = [];
             this.hasMore = false;
             return this;
@@ -338,27 +375,18 @@ class TedTalksWebPager extends ContentPager {
                 return this;
             }
 
-            // Normalize the web page format to match what convertToPlatformVideoDetails expects:
-            // - presenterDisplayName -> speakers (as string, handled by extractSpeakerInfo fallback)
-            // - primaryImageSet is already supported by extractThumbnailUrl
+            // Search-style speaker strings are supported by extractSpeakerInfo.
             const normalizedTalks = talksArray.map(talk => ({
                 ...talk,
                 speakers: talk.presenterDisplayName || 'TED'
             }));
 
-            // Fetch extra metadata (hlsUrl, nativeDownloads, playerData, speakers objects)
             const slugs = normalizedTalks.map(t => t.slug).filter(Boolean);
             const extraMetadata = slugs.length > 0 ? (getVideoDetailsBySlugList(slugs) || {}) : {};
 
             const videos = normalizedTalks
                 .filter(talk => shouldShowContent(talk, extraMetadata[talk.slug] || {}))
-                .map(talk => {
-                    const extra = extraMetadata[talk.slug] || {};
-                    if (hasPlayableVideoSources(talk, extra)) {
-                        return convertToPlatformVideoDetails(talk, extra);
-                    }
-                    return convertToNestedMediaContent(talk, extra);
-                });
+                .map(talk => convertToFeedEntry(talk, extraMetadata[talk.slug] || {}));
 
             this.results = videos;
             this.hasMore = false;
@@ -384,6 +412,7 @@ class TedTalksSearchPager extends ContentPager {
         this.query = query;
         this.currentPage = 0;
         this.hitsPerPage = 24;
+        this.loadFailed = false;
         this.nextPage();
     }
 
@@ -392,6 +421,7 @@ class TedTalksSearchPager extends ContentPager {
      * @returns {ContentPager} Pager with the current page results
      */
     nextPage() {
+        this.loadFailed = false;
         try {
             const searchParams = {
                 "attributeForDistinct": "objectID",
@@ -410,6 +440,7 @@ class TedTalksSearchPager extends ContentPager {
 
             if (!response.isOk) {
                 trace(`Search API request failed. Status: ${response.code}, Query: "${this.query}", Page: ${this.currentPage}`);
+                this.loadFailed = true;
                 this.results = [];
                 this.hasMore = false;
                 return this;
@@ -418,6 +449,7 @@ class TedTalksSearchPager extends ContentPager {
             const searchResults = safeJsonParse(response.body)?.results?.[0];
             if (!searchResults?.hits) {
                 trace(`Invalid search response format for query: "${this.query}", Page: ${this.currentPage}`);
+                this.loadFailed = true;
                 this.results = [];
                 this.hasMore = false;
                 return this;
@@ -430,37 +462,25 @@ class TedTalksSearchPager extends ContentPager {
                 return this;
             }
 
-            // Get additional metadata for the videos
             const slugs = hits.map(hit => hit.slug).filter(Boolean);
 
             const extraMetadata = getVideoDetailsBySlugList(slugs) || {};
-            // Convert hits to videos, filtering out podcast-only content (unless external content handling is "Show")
             const videos = hits
                 .filter(hit => shouldShowContent(hit, extraMetadata[hit.slug] || {}))
-                .map(hit => {
-                    const extra = extraMetadata[hit.slug] || {};
-                    if (hasPlayableVideoSources(hit, extra)) {
-                        return convertToPlatformVideoDetails(hit, extra);
-                    }
-                    return convertToNestedMediaContent(hit, extra);
-                });
+                .map(hit => convertToFeedEntry(hit, extraMetadata[hit.slug] || {}));
 
-            // Calculate if there are more pages
             const totalHits = searchResults.nbHits || 0;
             const totalPages = Math.ceil(totalHits / this.hitsPerPage);
             const hasNextPage = this.currentPage < totalPages - 1;
 
-            // Increment the page for next time
             this.currentPage++;
-
-            // Update results and hasMore
             this.results = videos;
             this.hasMore = hasNextPage;
 
-            // Return self
             return this;
         } catch (error) {
             trace(`Exception in TedTalksSearchPager.nextPage: ${error.message}`);
+            this.loadFailed = true;
             this.results = [];
             this.hasMore = false;
             return this;
@@ -530,34 +550,21 @@ class TedTalksTopicPager extends ContentPager {
                 return this;
             }
 
-            // Get additional metadata for the videos
             const slugs = hits.map(hit => hit.slug).filter(Boolean);
             const extraMetadata = getVideoDetailsBySlugList(slugs) || {};
 
-            // Convert hits to videos, filtering out podcast-only content (unless external content handling is "Show")
             const videos = hits
                 .filter(hit => shouldShowContent(hit, extraMetadata[hit.slug] || {}))
-                .map(hit => {
-                    const extra = extraMetadata[hit.slug] || {};
-                    if (hasPlayableVideoSources(hit, extra)) {
-                        return convertToPlatformVideoDetails(hit, extra);
-                    }
-                    return convertToNestedMediaContent(hit, extra);
-                });
+                .map(hit => convertToFeedEntry(hit, extraMetadata[hit.slug] || {}));
 
-            // Calculate if there are more pages
             const totalHits = searchResults.nbHits || 0;
             const totalPages = Math.ceil(totalHits / this.hitsPerPage);
             const hasNextPage = this.currentPage < totalPages - 1;
 
-            // Increment the page for next time
             this.currentPage++;
-
-            // Update results and hasMore
             this.results = videos;
             this.hasMore = hasNextPage;
 
-            // Return self
             return this;
         } catch (error) {
             trace(`Exception in TedTalksTopicPager.nextPage: ${error.message}`);
@@ -591,7 +598,15 @@ function searchSpeakers(query) {
             .querySelectorAll('div#browse-results .col');
 
         const channels = Array.from(speakerElements).map(element => {
-            const name = element.querySelector('div.media__message h4')?.text;
+            // The name is split across a <br> (\nAaron<br>Bastani), which .text would join
+            // without a separator, so read the markup and turn the break into a space.
+            const nameHtml = element.querySelector('div.media__message h4')?.innerHTML || '';
+            const name = nameHtml
+                .replace(/<br\s*\/?>/gi, ' ')
+                .replace(/<[^>]+>/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+
             const photoUrl = element.querySelector('img.thumb__image')?.getAttribute('src');
             const profileRelativeUrl = element.querySelector('a.results__result')?.getAttribute('href');
             const profileUrl = profileRelativeUrl ? `${PLATFORM.BASE_URL}${profileRelativeUrl}` : '';
@@ -656,13 +671,7 @@ function getVideoRecommendations(url, relatedVideos) {
         // Convert related videos to platform videos, filtering out podcast-only content (unless external content handling is "Show")
         const videos = relatedVideos
             .filter(relatedVideo => shouldShowContent(relatedVideo, metaSet[relatedVideo.slug]))
-            .map(relatedVideo => {
-                const extra = metaSet[relatedVideo.slug];
-                if (hasPlayableVideoSources(relatedVideo, extra)) {
-                    return convertToPlatformVideoDetails(relatedVideo, extra);
-                }
-                return convertToNestedMediaContent(relatedVideo, extra);
-            });
+            .map(relatedVideo => convertToFeedEntry(relatedVideo, metaSet[relatedVideo.slug]));
 
         return new ContentPager(videos, false);
     } catch (error) {
@@ -680,25 +689,22 @@ function getPlaylistByUrl(url) {
     try {
         const { id, slug } = extractPlaylistIdAndSlug(url);
         if (!id) {
-            trace(`Could not extract playlist ID from URL: ${url}`);
-            trace('Could not determine playlist from URL.');
-            return null;
+            // Returning null here would surface as an engine cast error rather than a clean message
+            throw new UnavailableException('Could not determine playlist from URL.');
         }
 
         // Fetch the playlist page to get data from __NEXT_DATA__
-        const response = makeRequestWithRetry('GET', url, null, { 'User-Agent': DEFAULT_HEADERS["User-Agent"] });
+        const response = makeRequestWithRetry('GET', url, null, { 'User-Agent': DEFAULT_HEADERS["User-Agent"] }, { throwOnError: false });
         if (!response.isOk) {
             trace(`Failed to get playlist page. Status: ${response.code}, URL: ${url}`);
-            trace('Failed to load playlist.');
-            return null;
+            throw new UnavailableException('This playlist is unavailable.');
         }
 
         // Extract playlist data from __NEXT_DATA__
         const playlistData = extractNextDataFromHtml(response.body, 'playlist');
         if (!playlistData) {
             trace(`Could not extract playlist data from page: ${url}`);
-            trace('Failed to parse playlist data.');
-            return null;
+            throw new UnavailableException('This playlist could not be read.');
         }
 
         // Get thumbnail from primaryImageSet
@@ -716,10 +722,10 @@ function getPlaylistByUrl(url) {
             .filter(video => shouldShowContent(video, extraMetadata[video.slug] || {}))
             .map(video => {
                 const extra = extraMetadata[video.slug] || {};
-                if (hasPlayableVideoSources(video, extra)) {
-                    return convertPlaylistVideoToPlatformVideo(video, extra);
+                if (isKnownExternalContent(video, extra)) {
+                    return convertToNestedMediaContent(video, extra);
                 }
-                return convertToNestedMediaContent(video, extra);
+                return convertPlaylistVideoToPlatformVideo(video, extra);
             });
 
         return new PlatformPlaylistDetails({
@@ -739,8 +745,13 @@ function getPlaylistByUrl(url) {
         });
     } catch (error) {
         trace(`Exception in getPlaylistByUrl: ${error.message}`);
-        trace('Failed to load playlist.');
-        return null;
+
+        if (error instanceof UnavailableException) {
+            throw error;
+        }
+
+        // The caller is source.getPlaylist, whose result must be an object
+        throw new ScriptException(`Could not load this playlist: ${error.message}`);
     }
 }
 
@@ -753,9 +764,8 @@ function getTopicAsPlaylist(url) {
     try {
         const topicSlug = extractTopicSlug(url);
         if (!topicSlug) {
-            trace(`Could not extract topic slug from URL: ${url}`);
-            trace('Could not determine topic from URL.');
-            return null;
+            // Returning null here would surface as an engine cast error rather than a clean message
+            throw new UnavailableException('Could not determine topic from URL.');
         }
 
         // Get topic info from GraphQL
@@ -782,8 +792,13 @@ function getTopicAsPlaylist(url) {
         });
     } catch (error) {
         trace(`Exception in getTopicAsPlaylist: ${error.message}`);
-        trace('Failed to load topic.');
-        return null;
+
+        if (error instanceof UnavailableException) {
+            throw error;
+        }
+
+        // The caller is source.getPlaylist, whose result must be an object
+        throw new ScriptException(`Could not load this topic: ${error.message}`);
     }
 }
 
@@ -921,10 +936,10 @@ function convertPlaylistVideoToPlatformVideo(video, extraData) {
     // Parse presenter name for author
     const presenterName = video.presenterDisplayName || 'Unknown Speaker';
     
-    // Get speaker info from extraData if available
-    const speaker = extraData?.speaker || extraData?.speakers?.[0] || null;
-    
-    const author = speaker ? createAuthorLink(speaker) : new PlatformAuthorLink(
+    // Speakers arrive as a { nodes: [...] } connection, which the shared extractor handles
+    const speaker = extractSpeakerInfo(video, extraData);
+
+    const author = (speaker.id || speaker.slug) ? createAuthorLink(speaker) : new PlatformAuthorLink(
         new PlatformID(PLATFORM.NAME, presenterName, config.id),
         presenterName,
         PLATFORM.BASE_URL,
@@ -932,7 +947,7 @@ function convertPlaylistVideoToPlatformVideo(video, extraData) {
     );
 
     return new PlatformVideo({
-        id: new PlatformID(PLATFORM.NAME, video.id || slug, config.id),
+        id: new PlatformID(PLATFORM.NAME, video.canonicalUrl || extraData?.canonicalUrl || slug || video.id, config.id),
         name: video.title || 'Unknown TED Talk',
         thumbnails: new Thumbnails(thumbnailUrl ? [new Thumbnail(thumbnailUrl, 0)] : []),
         author: author,
@@ -983,15 +998,56 @@ function getChannelContentsByUrl(url) {
 
         // Fetch the speaker page (don't throw on error, handle gracefully)
         const response = makeRequestWithRetry('GET', cleanUrl, null, { 'User-Agent': DEFAULT_HEADERS["User-Agent"] }, { throwOnError: false });
-        if (!response.isOk) {
-            trace(`Failed to get channel page. Status: ${response.code}, URL: ${cleanUrl}`);
-            trace('Speaker does not have a profile page yet.', { showToast: true });
-            return createEmptyPager();
+
+        let talkSlugs = [];
+        let verifyBySpeakerSlug = false;
+        let speakerNameTokens = [];
+        if (response.isOk) {
+            talkSlugs = extractTalkSlugsFromHtml(response.body) || [];
+        } else {
+            // Many speakers have no profile page even though their talks exist, so fall back to
+            // the search index. Match on the speaker name it reports rather than the talk slug,
+            // because the slug may name a co-speaker first or differ from the speaker slug
+            // (jennifer_golbeck vs "Jen Golbeck").
+            trace(`Speaker page unavailable. Status: ${response.code}, URL: ${cleanUrl}`);
+
+            // Some speaker slugs carry an event suffix (lisa_monteggia_TEDxNashvilleWomen20250821-64681).
+            // Those tokens are not part of the name and stop the search from matching.
+            const speakerId = extractSpeakerId(url);
+            const nameTokens = channelSlug.split('_').filter(token => token && !/\d/.test(token));
+            let speakerName = (nameTokens.length ? nameTokens : channelSlug.split('_')).join(' ');
+            if (speakerId) {
+                const speaker = makeGraphQLRequest('SPEAKER_BY_ID', { id: speakerId }, "acmeSpeaker")?.data?.acmeSpeaker;
+                if (speaker) {
+                    speakerName = formatName(speaker.firstname, speaker.lastname);
+                }
+            }
+
+            // Every hit is taken as a candidate rather than matched on name here: display names and
+            // slugs disagree too often (larissa_may is credited "Larz May"). They are verified
+            // against the authoritative speaker slug after enrichment instead.
+            verifyBySpeakerSlug = true;
+            speakerNameTokens = speakerName.toLowerCase().split(/\s+/).filter(Boolean);
+            let totalPages = 1;
+            for (let page = 0; page < Math.min(totalPages, SPEAKER_TALKS_MAX_PAGES); page++) {
+                const searchParams = {
+                    "hitsPerPage": SPEAKER_TALKS_SEARCH_LIMIT,
+                    "page": page,
+                    "query": speakerName
+                };
+                const searchRequest = [{ "indexName": "newest", "params": searchParams }];
+                const searchResponse = makeRequestWithRetry('POST', PLATFORM.SEARCH_URL, JSON.stringify(searchRequest), DEFAULT_HEADERS, { throwOnError: false });
+                if (!searchResponse.isOk) {
+                    break;
+                }
+
+                const searchResults = safeJsonParse(searchResponse.body)?.results?.[0];
+                totalPages = searchResults?.nbPages || 1;
+                talkSlugs = talkSlugs.concat((searchResults?.hits || []).map(hit => hit?.slug).filter(Boolean));
+            }
         }
 
-        // Extract talk slugs from the page
-        const talkSlugs = extractTalkSlugsFromHtml(response.body);
-        if (!talkSlugs || talkSlugs.length === 0) {
+        if (!talkSlugs.length) {
             trace('Speaker does not have any talks yet.');
             return createEmptyPager();
         }
@@ -1002,8 +1058,30 @@ function getChannelContentsByUrl(url) {
             return createEmptyPager();
         }
 
+        // Search candidates are unverified, so drop any talk this speaker is not credited on. Match
+        // the canonical speaker slug, or the display name when the url slug is itself an alias
+        // (jen_golbeck resolves to the canonical jennifer_golbeck). The page path needs no check.
+        const candidates = verifyBySpeakerSlug
+            ? Object.values(extraMetadata).filter(video => {
+                // Some talks name a contributor only in their slug, not in the speakers list
+                // (pazit_cahlon_and_alex_gendler_... credits Pazit Cahlon alone).
+                if ((video?.slug || '').includes(channelSlug)) {
+                    return true;
+                }
+                return (video?.speakers?.nodes || []).some(speaker => {
+                    if (speaker?.slug === channelSlug) {
+                        return true;
+                    }
+                    const speakerTokens = formatName(speaker?.firstname, speaker?.lastname).toLowerCase().split(/\s+/).filter(Boolean);
+                    return speakerTokens.length > 0
+                        && (speakerNameTokens.every(token => speakerTokens.includes(token))
+                            || speakerTokens.every(token => speakerNameTokens.includes(token)));
+                });
+            })
+            : Object.values(extraMetadata);
+
         // Process videos and sort by date, filtering out podcast-only content (unless external content handling is "Show")
-        const videos = Object.values(extraMetadata)
+        const videos = candidates
             .filter(video => shouldShowContent(video, {}))
             .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
             .map(video => {
@@ -1011,10 +1089,7 @@ function getChannelContentsByUrl(url) {
                 if (video?.speakers?.nodes) {
                     video.speakers.nodes = video.speakers.nodes.filter(s => s.slug === channelSlug);
                 }
-                if (hasPlayableVideoSources(video, {})) {
-                    return convertToPlatformVideoDetails(video, {});
-                }
-                return convertToNestedMediaContent(video, {});
+                return convertToFeedEntry(video, {});
             });
 
         return new ContentPager(videos, false);
@@ -1028,22 +1103,26 @@ function getChannelContentsByUrl(url) {
 /**
  * Gets channel information for a TED speaker
  * @param {string} url Speaker URL
- * @returns {PlatformChannel|null} Channel information or null on error
+ * @returns {PlatformChannel} Channel information
+ * @throws {UnavailableException|ScriptException} When the speaker is unavailable or cannot be loaded
  */
 function getChannelByUrl(url) {
     try {
         const speakerId = extractSpeakerId(url);
 
-        // Try to get channel info using GraphQL API
         if (speakerId) {
             return getChannelByGraphQL(speakerId, url);
         }
 
-        // Fallback to extracting info from the page
         return getChannelByHTML(url);
     } catch (error) {
         trace(`Exception in getChannelByUrl: ${error.message}`);
-        return null;
+
+        if (error instanceof UnavailableException || error instanceof ScriptException) {
+            throw error;
+        }
+
+        throw new ScriptException(`Could not load this speaker: ${error.message}`);
     }
 }
 
@@ -1051,7 +1130,8 @@ function getChannelByUrl(url) {
  * Gets channel information using GraphQL API
  * @param {string} speakerId Speaker ID
  * @param {string} url Speaker URL
- * @returns {PlatformChannel|null} Channel information or null on error
+ * @returns {PlatformChannel} Channel information
+ * @throws {UnavailableException|ScriptException} When the speaker is unavailable or TED fails
  */
 function getChannelByGraphQL(speakerId, url) {
     const responseBody = makeGraphQLRequest(
@@ -1060,10 +1140,22 @@ function getChannelByGraphQL(speakerId, url) {
         "acmeSpeaker"
     );
 
+    if (!responseBody) {
+        throw new ScriptException('Could not reach TED to load this speaker.');
+    }
+
+    // TED carries missing IDs as 404s inside an otherwise successful GraphQL response.
+    if (Array.isArray(responseBody.errors) && responseBody.errors.length) {
+        if (isNotFoundGraphQLError(responseBody.errors)) {
+            throw new UnavailableException('This speaker could not be found. They may have been removed.');
+        }
+        throw new ScriptException(`TED could not load this speaker: ${responseBody.errors[0]?.message || 'unknown error'}`);
+    }
+
     const speaker = responseBody?.data?.acmeSpeaker;
     if (!speaker) {
         trace(`Speaker data not found in response for ID: ${speakerId}`);
-        return null;
+        throw new UnavailableException('This speaker could not be found. They may have been removed.');
     }
 
     const description = formatSpeakerDescription(speaker);
@@ -1082,12 +1174,14 @@ function getChannelByGraphQL(speakerId, url) {
 /**
  * Gets channel information by parsing HTML
  * @param {string} url Speaker URL
- * @returns {PlatformChannel|null} Channel information or null on error
+ * @returns {PlatformChannel} Channel information
+ * @throws {UnavailableException|ScriptException} When the profile is unavailable or malformed
  */
 function getChannelByHTML(url) {
     trace(`Could not extract speaker ID from URL: ${url}. Extracting info from page`);
 
-    const response = makeRequestWithRetry('GET', url, null, { 'User-Agent': DEFAULT_HEADERS["User-Agent"] });
+    // The status is handled locally below, so the request must not throw a generic error first
+    const response = makeRequestWithRetry('GET', url, null, { 'User-Agent': DEFAULT_HEADERS["User-Agent"] }, { throwOnError: false });
     if (!response.isOk) {
         trace(`Failed to get channel page. Status: ${response.code}, URL: ${url}`);
         trace('Speaker profile not found. This TED speaker may not have a public profile yet.', { showToast: true });
@@ -1097,6 +1191,9 @@ function getChannelByHTML(url) {
     try {
         const doc = domParser.parseFromString(response.body, 'text/html');
         const mainElement = doc.querySelector('div.main');
+        if (!mainElement) {
+            throw new UnavailableException("Not able to read speaker page.");
+        }
 
         const name = mainElement.querySelector('.profile-header__name')?.text;
         const photoUrl = mainElement.querySelector('img.thumb__image')?.getAttribute('src');
@@ -1116,21 +1213,26 @@ function getChannelByHTML(url) {
         });
     } catch (error) {
         trace(`Exception parsing HTML for channel: ${error.message}`);
-        return null;
+
+        if (error instanceof UnavailableException) {
+            throw error;
+        }
+
+        throw new ScriptException(`Could not read the speaker page: ${error.message}`);
     }
 }
 
 /**
  * Gets detailed video information for a TED Talk
  * @param {string} url TED Talk URL
- * @returns {PlatformVideoDetails|null} Video details or null on error
+ * @returns {PlatformVideoDetails} Video details
+ * @throws {UnavailableException|ScriptException} When the talk is unavailable or cannot be loaded
  */
 function getVideoDetailsByUrl(url) {
     try {
         const slug = extractTedSlug(url);
         if (!slug) {
-            trace(`Could not extract TED talk slug from URL: ${url}`);
-            return null;
+            throw new UnavailableException("This does not look like a TED talk link.");
         }
 
         const responseBody = makeGraphQLRequest(
@@ -1139,16 +1241,30 @@ function getVideoDetailsByUrl(url) {
             "shareLinks"
         );
 
-        if (!responseBody?.data?.videos?.nodes || responseBody.data.videos.nodes.length === 0) {
-            trace(`No video data found for slug: ${slug}`);
-            return null;
+        if (!responseBody) {
+            throw new ScriptException('Could not reach TED to load this talk.');
         }
 
-        const video = responseBody.data.videos.nodes[0];
+        // TED carries missing records as 404s inside an otherwise successful GraphQL response.
+        if (Array.isArray(responseBody.errors) && responseBody.errors.length) {
+            if (isNotFoundGraphQLError(responseBody.errors)) {
+                throw new UnavailableException('This talk could not be found. It may have been removed.');
+            }
+            throw new ScriptException(`TED could not load this talk: ${responseBody.errors[0]?.message || 'unknown error'}`);
+        }
+
+        const nodes = responseBody?.data?.videos?.nodes;
+        if (!Array.isArray(nodes)) {
+            throw new ScriptException('Unexpected response from TED while loading this talk.');
+        }
+
+        if (nodes.length === 0) {
+            throw new UnavailableException('This talk could not be found. It may have been removed.');
+        }
+
+        const video = nodes[0];
         
-        // Check if this is content without native video sources
         if (!hasPlayableVideoSources(video, null)) {
-            // Check if it's external content (e.g., YouTube, Vimeo)
             const externalUrl = getExternalContentUrl(video, null);
             if (externalUrl) {
                 const provider = getContentProviderFromUrl(externalUrl);
@@ -1198,15 +1314,25 @@ function getVideoDetailsByUrl(url) {
     } catch (error) {
         trace(`Exception in getVideoDetailsByUrl: ${error.message}`);
 
-        if (error instanceof UnavailableException) {
+        if (error instanceof UnavailableException || error instanceof ScriptException) {
             throw error;
         }
 
-        return null;
+        throw new ScriptException(`Could not load this talk: ${error.message}`);
     }
 }
 
 // ====================== DATA FETCHING ======================
+
+/**
+ * Reports whether GraphQL errors mean the record is missing rather than the request failing.
+ * @param {Array<Object>} errors GraphQL errors array
+ * @returns {boolean} True when the errors indicate a missing record
+ */
+function isNotFoundGraphQLError(errors) {
+    return errors.some(error => error?.extensions?.response?.status === HTTP_NOT_FOUND
+        || /^404\b/.test(error?.message || ''));
+}
 
 /**
  * Makes a GraphQL request to TED's API
@@ -1249,33 +1375,66 @@ function makeGraphQLRequest(queryName, variables, operationName) {
  */
 function getVideoDetailsBySlugList(slugs) {
     try {
-        const query = {
-            query: GQL_QUERIES.VIDEOS_INFO_BY_SLUG,
-            variables: {
-                slug: slugs
+        const detailsBySlug = {};
+
+        // The query caps results at VIDEO_DETAILS_BATCH_SIZE, so longer lists are sent in batches
+        // rather than silently losing everything past the cap.
+        for (let offset = 0; offset < slugs.length; offset += VIDEO_DETAILS_BATCH_SIZE) {
+            const query = {
+                query: GQL_QUERIES.VIDEOS_INFO_BY_SLUG,
+                variables: {
+                    slug: slugs.slice(offset, offset + VIDEO_DETAILS_BATCH_SIZE)
+                }
+            };
+
+            const response = makeRequestWithRetry('POST', PLATFORM.GRAPHQL_URL, JSON.stringify(query), DEFAULT_HEADERS, { throwOnError: false });
+            if (!response.isOk) {
+                continue;
             }
-        };
 
-        const response = makeRequestWithRetry('POST', PLATFORM.GRAPHQL_URL, JSON.stringify(query), DEFAULT_HEADERS, { throwOnError: false });
-
-        if (!response.isOk) {
-            return {};
+            const videos = safeJsonParse(response.body)?.data?.videos?.nodes || [];
+            videos.forEach(video => {
+                if (video.slug) {
+                    detailsBySlug[video.slug] = video;
+                }
+            });
         }
 
-        const data = safeJsonParse(response.body);
-        const videos = data?.data?.videos?.nodes || [];
-        
-        // Convert array to map keyed by slug
-        return videos.reduce((acc, video) => {
-            if (video.slug) {
-                acc[video.slug] = video;
-            }
-            return acc;
-        }, {});
+        return detailsBySlug;
     } catch (error) {
         trace(`Exception in getVideoDetailsBySlugList: ${error.message}`);
         return {};
     }
+}
+
+/**
+ * Builds subtitle sources from playerData without any HTTP request.
+ * playerData.languages already lists exactly the languages metadata.json reports, and the
+ * webvtt URLs are derivable from the master ids, so feeds avoid a request per item.
+ * @param {Object} playerData Parsed playerData object
+ * @returns {Array<SubtitleSource>|null} Subtitle sources, empty when the talk has none,
+ *   or null when they exist but could not be derived so the caller can fall back
+ */
+function deriveSubtitles(playerData) {
+    const languages = playerData?.languages;
+    if (!Array.isArray(languages) || !languages.length) {
+        return [];
+    }
+
+    const stream = playerData?.resources?.hls?.stream;
+    const projectId = stream?.match(REGEX.HLS_PROJECT_ID)?.[1];
+    const introId = stream?.match(REGEX.HLS_INTRO_ID)?.[1];
+    if (!projectId || !introId) {
+        return null;
+    }
+
+    return languages
+        .filter(language => language?.languageCode)
+        .map(language => ({
+            format: "text/vtt",
+            url: `https://hls.ted.com/project_masters/${projectId}/subtitles/${language.languageCode}/full.vtt?intro_master_id=${introId}&preview=`,
+            name: language.languageName || language.endonym || 'Unknown'
+        }));
 }
 
 /**
@@ -1363,6 +1522,18 @@ function makeRequestWithRetry(method, url, body = null, headers = {}, options = 
 
                 lastResponse = response;
                 trace(`[${label}] ${method} ${url} failed with status ${response.code}. Attempts left: ${attempts - 1}`);
+
+                // Most client errors are deterministic, so repeating them only wastes requests.
+                // Timeouts, early-data rejections and rate limits can still succeed on another try.
+                if (response.code >= 400 && response.code < 500) {
+                    if (!HTTP_RETRYABLE_CLIENT_ERRORS.includes(response.code)) {
+                        return { lastResponse, lastError };
+                    }
+                    // Only pace a rate limit, and only when a further attempt actually follows
+                    if (response.code === HTTP_TOO_MANY_REQUESTS && attempts > 1) {
+                        bridge.sleep(HTTP_RETRY_BASE_DELAY_MS * (maxRetries + 2 - attempts));
+                    }
+                }
             } catch (error) {
                 lastError = error;
                 trace(`[${label}] Exception in ${method} ${url}: ${error.message}. Attempts left: ${attempts - 1}`);
@@ -1378,8 +1549,13 @@ function makeRequestWithRetry(method, url, body = null, headers = {}, options = 
         return httpResult;
     }
 
-    // 2. Try httpimp if available (single attempt)
-    if (useImp) {
+    // 2. Try httpimp if available (single attempt). A deterministic client error will not change
+    // with a different TLS fingerprint, so only escalate on 403, which is how bot blocking presents.
+    const httpCode = httpResult.lastResponse?.code;
+    const isTerminalClientError = httpCode >= 400 && httpCode < 500
+        && httpCode !== HTTP_FORBIDDEN
+        && !HTTP_RETRYABLE_CLIENT_ERRORS.includes(httpCode);
+    if (useImp && !isTerminalClientError) {
         const impResult = tryClient(httpimp, 'httpimp', 1, impHeaders);
         if (impResult.isOk !== undefined) {
             return impResult;
@@ -1437,26 +1613,22 @@ function mapSource(source, key, duration) {
 } 
 
 /**
- * Checks if a video has playable sources nativelly in TED platform. This excluded content hosted on external platforms such as YouTube.
- * Content that have empty hlsUrl and no download sources
+ * Checks whether TED supplies a native playable source for a video.
  * @param {Object} videoData Video data from GraphQL or search API
  * @param {Object} [extraData] Extra metadata for the video
  * @returns {boolean} True if video has playable sources
  */
 function hasPlayableVideoSources(videoData, extraData) {
-    // Check hlsUrl from videoData or extraData
     const hlsUrl = videoData?.hlsUrl || extraData?.hlsUrl || '';
     if (hlsUrl && typeof hlsUrl === 'string' && hlsUrl.trim() !== '') {
         return true;
     }
     
-    // Check native downloads
     const nativeDownloads = videoData?.nativeDownloads || extraData?.nativeDownloads;
     if (nativeDownloads && (nativeDownloads.low || nativeDownloads.medium || nativeDownloads.high)) {
         return true;
     }
     
-    // Check playerData for hls stream
     const playerData = videoData?.playerData ? safeJsonParse(videoData.playerData) : null;
     if (playerData?.resources?.hls?.stream) {
         return true;
@@ -1472,11 +1644,9 @@ function hasPlayableVideoSources(videoData, extraData) {
  * @returns {string|null} External URL or null if not externally hosted
  */
 function getExternalContentUrl(videoData, extraData) {
-    // Check playerData for external resources
     const playerDataStr = videoData?.playerData || extraData?.playerData;
     const playerData = playerDataStr ? safeJsonParse(playerDataStr) : null;
-    
-    // Check for external embedded content (like YouTube)
+
     // TED stores external content as { service: "YouTube", code: "VIDEO_ID" }
     if (playerData?.external?.service && playerData?.external?.code) {
         const service = playerData.external.service.toLowerCase();
@@ -1488,10 +1658,8 @@ function getExternalContentUrl(videoData, extraData) {
         if (service === 'vimeo') {
             return `https://vimeo.com/${code}`;
         }
-        // Add more services as discovered
     }
-    
-    // Check for direct URI (fallback)
+
     if (playerData?.external?.uri) {
         return playerData.external.uri;
     }
@@ -1500,23 +1668,34 @@ function getExternalContentUrl(videoData, extraData) {
 }
 
 /**
- * Checks if content should be shown based on external content handling setting
- * @param {Object} videoData Video data from GraphQL or search API  
+ * Tests whether TED positively identifies a talk as externally hosted.
+ * Missing playback metadata alone is inconclusive during API outages.
+ * @param {Object} videoData Video data from GraphQL or search API
  * @param {Object} [extraData] Extra metadata for the video
- * @returns {boolean} True if content should be shown (either native or external with Show setting)
+ * @returns {boolean} True for known external content
  */
+function isKnownExternalContent(videoData, extraData) {
+    return !hasPlayableVideoSources(videoData, extraData)
+        && Boolean(getExternalContentUrl(videoData, extraData));
+}
+
 function shouldShowContent(videoData, extraData) {
-    // If has native playable sources, always show
-    if (hasPlayableVideoSources(videoData, extraData)) {
-        return true;
+    return _settings.showExternalContent || !isKnownExternalContent(videoData, extraData);
+}
+
+/**
+ * Builds a nested entry only for known external content. Native and temporarily unenriched
+ * talks remain normal video entries whose details are resolved when opened.
+ * @param {Object} videoData Video data from GraphQL, search API or web page
+ * @param {Object} [extraData] Extra metadata for the video
+ * @returns {PlatformVideo|PlatformVideoDetails|PlatformNestedMediaContent} Feed object
+ */
+function convertToFeedEntry(videoData, extraData) {
+    if (isKnownExternalContent(videoData, extraData)) {
+        return convertToNestedMediaContent(videoData, extraData);
     }
-    
-    // If showExternalContent is enabled, show external content too
-    if (_settings.showExternalContent) {
-        return true;
-    }
-    
-    return false;
+
+    return convertToFeedItem(videoData, extraData);
 }
 
 /**
@@ -1548,22 +1727,18 @@ function getContentProviderFromUrl(url) {
  * @returns {PlatformNestedMediaContent} Nested media content object
  */
 function convertToNestedMediaContent(videoData, extraData) {
-    // Ensure extraData is an object if provided
     extraData = extraData && typeof extraData === 'object' ? extraData : {};
     
     const slug = videoData.slug || '';
     const tedUrl = `${PLATFORM.TALKS_URL}/${slug}`;
     const thumbnailUrl = extractThumbnailUrl(videoData, extraData);
     
-    // Try to get the actual external URL (e.g., YouTube URL)
     const externalUrl = getExternalContentUrl(videoData, extraData);
-    
-    // Use external URL if available, otherwise fall back to TED URL
-    // When contentUrl is the actual YouTube URL, Grayjay can hand it off to the YouTube plugin
+
+    // Grayjay can hand an external contentUrl to the matching plugin.
     const contentUrl = externalUrl || tedUrl;
     const contentProvider = getContentProviderFromUrl(externalUrl);
-    
-    // Get speaker information
+
     const speaker = extractSpeakerInfo(videoData, extraData);
     
     const author = createAuthorLink({
@@ -1576,11 +1751,10 @@ function convertToNestedMediaContent(videoData, extraData) {
     
     const publishedAt = videoData?.publishedAt || extraData?.publishedAt || null;
     
-    // Build thumbnails - filter empty URLs before creating Thumbnail objects
     const thumbnailSources = thumbnailUrl ? [new Thumbnail(thumbnailUrl, 1)] : [];
     
     return new PlatformNestedMediaContent({
-        id: new PlatformID(PLATFORM.NAME, videoData.canonicalUrl || slug, config.id),
+        id: new PlatformID(PLATFORM.NAME, videoData.canonicalUrl || extraData?.canonicalUrl || slug, config.id),
         name: videoData.title || 'Unknown TED Talk',
         author: author,
         datetime: dateToUnixSeconds(publishedAt),
@@ -1594,13 +1768,15 @@ function convertToNestedMediaContent(videoData, extraData) {
 }
 
 /**
- * Converts TED Talk video data to platform-specific video format
+ * Converts TED Talk video data to a feed item.
+ * Returns a complete PlatformVideoDetails where the client reuses feed details and skips
+ * getContentDetails, otherwise a lightweight PlatformVideo. See DETAILS_IN_FEED.
  * @param {Object} videoData TED Talk video data
  * @param {Object} [extraData] Extra metadata for the video
- * @returns {PlatformVideo} Formatted platform video object
+ * @returns {PlatformVideo|PlatformVideoDetails} Formatted platform video object
  * @throws {ScriptException} If videoData is invalid or missing required properties
  */
-function convertToPlatformVideoDetails(videoData, extraData) {
+function convertToFeedItem(videoData, extraData) {
 
     if (!videoData || typeof videoData !== 'object') {
         throw new ScriptException('Invalid videoData: Expected an object');
@@ -1639,6 +1815,24 @@ function convertToPlatformVideoDetails(videoData, extraData) {
        trace('No thumbnails found for video');
     }
     
+    const base = {
+        id: new PlatformID(PLATFORM.NAME, videoData.canonicalUrl || extraData?.canonicalUrl || slug || 'unknown', config.id),
+        name: videoData.title || 'Unknown TED Talk',
+        thumbnails: new Thumbnails(thumbnails),
+        duration: duration,
+        viewCount: viewedCount,
+        url: videoUrl,
+        uploadDate: dateToUnixSeconds(publishedAt),
+        shareUrl: videoUrl,
+        author: author
+    };
+
+    // Clients that do not reuse feed details call getContentDetails on open, so a lightweight
+    // item is enough and avoids building sources for rows that may never be opened.
+    if (!DETAILS_IN_FEED) {
+        return new PlatformVideo(base);
+    }
+
     // Merge videoData and extraData for video sources - extraData contains hlsUrl from GraphQL
     const mergedVideoData = {
         ...videoData,
@@ -1646,32 +1840,22 @@ function convertToPlatformVideoDetails(videoData, extraData) {
         nativeDownloads: videoData.nativeDownloads || extraData?.nativeDownloads,
         playerData: videoData.playerData || extraData?.playerData
     };
-    
+
+    // The client reuses this object verbatim and never calls getContentDetails for it, so an
+    // incomplete one is unrecoverable. Fall back to a lightweight item instead of shipping one.
+    const playerData = mergedVideoData.playerData ? safeJsonParse(mergedVideoData.playerData) : null;
+    const subtitles = deriveSubtitles(playerData);
+    if (!playerData || subtitles === null) {
+        return new PlatformVideo(base);
+    }
+
     // Build description with topic links
     const topics = videoData.topics?.nodes || extraData?.topics?.nodes || [];
     const description = buildDescriptionWithTopics(videoData.description || extraData?.description || '', topics);
-    
-    // Fetch subtitles if playerData is available
-    let subtitles = [];
-    if (mergedVideoData.playerData) {
-        const playerData = safeJsonParse(mergedVideoData.playerData);
-        const metadataUrl = playerData?.resources?.hls?.metadata;
-        if (metadataUrl) {
-            subtitles = fetchSubtitles(metadataUrl);
-        }
-    }
-    
+
     const details = new PlatformVideoDetails({
-        id: new PlatformID(PLATFORM.NAME, slug || 'unknown', config.id),
-        name: videoData.title || 'Unknown TED Talk',
-        thumbnails: new Thumbnails(thumbnails),
+        ...base,
         description: description,
-        duration: duration,
-        viewCount: viewedCount,
-        url: videoUrl,
-        uploadDate: dateToUnixSeconds(publishedAt),
-        shareUrl: videoUrl,
-        author: author,
         video: createVideoSources(mergedVideoData),
         subtitles: subtitles
     });
@@ -1692,31 +1876,34 @@ function convertToPlatformVideoDetails(videoData, extraData) {
  * @returns {Object} Speaker information with firstname, lastname, slug, id, and photoUrl
  */
 function extractSpeakerInfo(videoData, extraData) {
-    // Helper to check if a value is a valid speaker object (not a string or character)
     const isValidSpeaker = (obj) => obj && typeof obj === 'object' && (obj.firstname || obj.lastname || obj.slug);
 
-    // Find the first available speaker source (must be an object, not a string)
-    const speakerSource = [
+    const speakerSources = [
         videoData.speakers?.nodes?.[0],
         extraData?.speakers?.nodes?.[0],
         extraData?.speakers?.[0],
         extraData?.speaker,
-        // Only check videoData.speakers array if it's actually an array of objects
         Array.isArray(videoData.speakers) ? videoData.speakers[0] : null
-    ].find(source => isValidSpeaker(source));
-    
-    // If a speaker source was found, extract information from it
+    ].filter(source => isValidSpeaker(source));
+
+    const speakerSource = speakerSources[0];
+
     if (speakerSource) {
+        // Playlist pages carry names and slug only, the enrichment carries id and photo. Matched
+        // on slug so a co-speaker's photo can never end up on someone else's name.
+        const details = speakerSources.find(source => source !== speakerSource
+            && source.slug === speakerSource.slug
+            && (source.id || source.photoUrl)) || {};
+
         return {
             firstname: speakerSource.firstname || '',
             lastname: speakerSource.lastname || '',
             slug: speakerSource.slug || '',
-            id: speakerSource.id || '',
-            photoUrl: speakerSource.photoUrl || PLATFORM.FALLBACK_AVATAR
+            id: speakerSource.id || details.id || '',
+            photoUrl: speakerSource.photoUrl || details.photoUrl || PLATFORM.FALLBACK_AVATAR
         };
     }
     
-    // Fallback: check if videoData.speakers is a string (from search API)
     if (typeof videoData.speakers === 'string' && videoData.speakers.trim()) {
         return {
             firstname: videoData.speakers.trim(),
@@ -1727,7 +1914,6 @@ function extractSpeakerInfo(videoData, extraData) {
         };
     }
     
-    // Return a default speaker object if no information was found
     return {
         firstname: 'Unknown Speaker',
         lastname: '',

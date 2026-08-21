@@ -22,6 +22,8 @@ data class GrayjayUiState(
     val preferredAudioLanguage: String = "en",
     val preferOriginalAudio: Boolean = true,
     val preferNewPipeForYoutubePlayback: Boolean = true,
+    val youtubeBackendMode: YoutubeBackendMode = YoutubeBackendMode.NewPipe,
+    val subscriptionFetchMode: SubscriptionFetchMode = SubscriptionFetchMode.Fast,
     val videoTitleLanguageMode: VideoTitleLanguageMode = VideoTitleLanguageMode.Original,
     val stickyCaptionsEnabled: Boolean = true,
     val showRecommendations: Boolean = true,
@@ -67,6 +69,10 @@ enum class VideoTitleLanguageMode {
     Original,
     AppLanguage,
 }
+
+enum class YoutubeBackendMode { NewPipe, Grayjay }
+
+enum class SubscriptionFetchMode { Fast, Complete }
 
 data class PcLinkUiState(
     val pairedComputers: List<PairedComputerUiModel> = emptyList(),

@@ -45,6 +45,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.rememberDevicePerformanceProfile
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 
@@ -87,12 +88,17 @@ fun SubscriptionsScreen(
     onQueueSelection: (List<String>) -> Unit,
     onChannelClick: (ChannelUiModel) -> Unit,
 ) {
+    val performance = rememberDevicePerformanceProfile()
     var isManaging by rememberSaveable { mutableStateOf(false) }
     var videoSelectionMode by rememberSaveable { mutableStateOf(false) }
     val selectedChannelIds = remember { mutableStateListOf<String>() }
     val selectedVideoIds = remember { mutableStateListOf<String>() }
-    val followedChannels = channels.filter { it.id in followedCreatorIds }
-    val followedVideos = videosForFollowedCreators(videos, followedCreatorIds)
+    val followedChannels = remember(channels, followedCreatorIds) {
+        channels.filter { it.id in followedCreatorIds }
+    }
+    val followedVideos = remember(videos, followedCreatorIds) {
+        videosForFollowedCreators(videos, followedCreatorIds)
+    }
     val newVideoCounts = remember(followedVideos, followedChannels) {
         newVideoCountsByCreator(followedVideos, followedChannels)
     }
@@ -103,12 +109,14 @@ fun SubscriptionsScreen(
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                start = 16.dp,
-                top = 16.dp,
-                end = 16.dp,
+                start = if (performance.compactContent) 8.dp else 16.dp,
+                top = if (performance.compactContent) 8.dp else 16.dp,
+                end = if (performance.compactContent) 8.dp else 16.dp,
                 bottom = if (videoSelectionMode) 88.dp else 16.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(
+                if (performance.compactContent) 8.dp else 16.dp,
+            ),
         ) {
         item {
             SectionHeading(
@@ -224,7 +232,11 @@ fun SubscriptionsScreen(
                 )
             }
         }
-        if (!isManaging) itemsIndexed(followedVideos) { index, video ->
+        if (!isManaging) itemsIndexed(
+            followedVideos,
+            key = { _, video -> video.id },
+            contentType = { _, _ -> "video" },
+        ) { index, video ->
             VideoCard(
                 video = video,
                 index = index + 1,

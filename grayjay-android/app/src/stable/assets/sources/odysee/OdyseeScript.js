@@ -33,6 +33,18 @@ const REGEX_WATCH_LATER = /^https:\/\/odysee\.com\/\$\/playlist\/watchlater$/
 const REGEX_TAG_DISCOVER = /^https:\/\/odysee\.com\/\$\/discover\?t=(.+)$/
 
 const CLAIM_ID_LENGTH = 40
+// How much of a claim id an odysee.com URL carries, by claim type
+const CLAIM_ID_PREFIX_CONTENT = 1
+const CLAIM_ID_PREFIX_CHANNEL = 2
+
+// The batch cache only ever holds live metrics (view, subscriber and reaction counts),
+// so entries have to expire or those numbers freeze for as long as the app runs.
+const BATCH_CACHE_TTL_MS = 5 * 60 * 1000
+const BATCH_CACHE_MAX_ENTRIES = 500
+
+// Spacing between attempts to re-mint an anonymous token after the endpoint fails
+const AUTH_TOKEN_RETRY_COOLDOWN_MS = 60 * 1000
+let lastAuthTokenAttempt = 0
 
 const PLATFORM = "Odysee";
 const PLATFORM_CLAIMTYPE = 3;
@@ -75,16 +87,9 @@ source.enable = function (config, settings, savedState) {
 
 	shortContentThresholdOptions = loadOptionsForSetting('shortContentThresholdIndex');
 
-	const parseNewUser = (resp) => {
-		if (!resp?.isOk) {
-			trace(`Create anonymous user failed (${resp?.code ?? ""})${resp?.body ? ` - ${resp.body}` : ""}`);
-			return null;
-		}
-		const obj = JSON.parse(resp.body);
-		return obj?.success && obj.data ? obj.data : null;
-	};
+	const restoredState = parseSavedState(savedState);
 
-	if (!savedState) {
+	if (!restoredState) {
 		if (bridge.isLoggedIn()) {
 			const response = http
 				.batch()
@@ -131,7 +136,10 @@ source.enable = function (config, settings, savedState) {
 				if (items.length > 0) {
 					channel = {
 						channelId: items[0].claim_id,
-						name: items[0].value.title,
+						// Signing goes against the @handle, which is the claim name and not
+						// value.title, so keep both instead of letting one stand in for the other.
+						handle: (items[0].name ?? "").replace(/^@/, ""),
+						name: items[0].value?.title ?? items[0].name ?? "",
 						thumbnail: items[0].value?.thumbnail?.url,
 						url: items[0].permanent_url,
 					};
@@ -140,7 +148,7 @@ source.enable = function (config, settings, savedState) {
 
 			let auth_token;
 			if (channel) {
-				const channelName = `@${channel.name}`;
+				const channelName = `@${channel.handle}`;
 				let hexdata = '';
 				for (let i = 0; i < channelName.length; i++) {
 					hexdata += channelName.charCodeAt(i).toString(16).padStart(2, '0');
@@ -154,8 +162,16 @@ source.enable = function (config, settings, savedState) {
 					.POST(URL_CHANNEL_SIGN, signBody, headersToAdd, true)
 					.GET(URL_USER_NEW, headersToAdd, false)
 					.execute();
-				if (signResp?.isOk) {
-					channel.signatureData = JSON.parse(signResp.body).result;
+				// Signing is best effort: without it only members-only playback degrades,
+				// so a failure here must never break the rest of the login.
+				let signature;
+				try {
+					signature = signResp?.isOk ? JSON.parse(signResp.body).result : undefined;
+				} catch (e) {
+					trace(`Channel sign returned malformed JSON (${e})`);
+				}
+				if (signature) {
+					channel.signatureData = signature;
 				} else {
 					trace(`Channel sign failed (${signResp?.code ?? ""})${signResp?.body ? ` - ${signResp.body}` : ""}`);
 				}
@@ -176,11 +192,15 @@ source.enable = function (config, settings, savedState) {
 
 		}
 	} else {
-		localState = JSON.parse(savedState)
+		localState = restoredState
 	}
 }
 source.saveState = function saveState() {
-	return JSON.stringify(localState)
+	// The batch cache is a request deduplicator for live counters. Persisting it would carry
+	// stale view and reaction counts across restarts and grow the saved state without bound.
+	const persisted = Object.assign({}, localState)
+	delete persisted.batch_response_cache
+	return JSON.stringify(persisted)
 }
 source.getHome = function () {
 	const wantLive = !!localSettings.showLiveStreamsInHome;
@@ -322,7 +342,14 @@ source.searchChannelContents = function (channelUrl, query, type, order, filters
 		channel_id = platform_channel.id.value
 	}
 
-	return getSearchPagerVideos(query, false, 4, channel_id);
+	// Android passes the advertised sort through, desktop calls with url and query only,
+	// so order is undefined there and the default claim_search ordering applies.
+	let sort = order;
+	if (sort === Type.Order.Chronological) {
+		sort = "release_time";
+	}
+
+	return getSearchPagerVideos(query, false, 4, channel_id, sort);
 };
 
 source.searchChannels = function (query) {
@@ -339,17 +366,6 @@ source.searchChannels = function (query) {
 source.isChannelUrl = function (url) {
 	return REGEX_CHANNEL_URL.test(url)
 };
-function parseChannelUrl(url) {
-	const match_result = url.match(REGEX_CHANNEL_URL)
-	if (!match_result) {
-		throw new ScriptException(`Unrecognized channel URL: ${url}`);
-	}
-
-	const slug = match_result[2]
-	const id = match_result[4]
-
-	return { slug, id }
-}
 source.getChannel = function (url) {
 	const { slug, id } = parseChannelUrl(url)
 
@@ -478,10 +494,10 @@ function parseDetailsUrl(url) {
 		throw new ScriptException(`Unrecognized content URL: ${url}`);
 	}
 
-	const channel_slug = match_result[3]
+	const channel_slug = decodeClaimNameFromUrl(match_result[3])
 	const channel_id = match_result[5]
 
-	const video_slug = match_result[6]
+	const video_slug = decodeClaimNameFromUrl(match_result[6])
 	const video_id = match_result[8]
 
 	return { video_slug, video_id, channel_slug, channel_id, }
@@ -492,10 +508,10 @@ source.getContentDetails = function (url) {
 	// Check if it's an embed URL
 	if (REGEX_LBRY_EMBED_URL.test(url) || REGEX_ODYSEE_EMBED_URL.test(url)) {
 		const embedMatch = url.match(REGEX_LBRY_EMBED_URL) ?? url.match(REGEX_ODYSEE_EMBED_URL);
-		video_slug = embedMatch[1];
+		video_slug = decodeClaimNameFromUrl(embedMatch[1]);
 		video_id = embedMatch[2];
 	} else {
-		({ video_slug, video_id } = parseDetailsUrl(decodeURI(url)));
+		({ video_slug, video_id } = parseDetailsUrl(url));
 	}
 
 	const claim_short_url = `lbry://${video_slug}#${video_id}`
@@ -519,7 +535,18 @@ source.getContentDetails = function (url) {
 	const currentDateTime = Math.floor(Date.now() / 1000);
 
 	if (releaseDateTime > currentDateTime) {
-		throw new UnavailableException("This video is not yet available");
+		throw new UnavailableException("This content is not yet available");
+	}
+
+	// Text posts resolve to a document claim. Only Desktop accepts a non-media return here;
+	// Android routes every content url to the video detail view, which rejects a post.
+	if (claim.value?.stream_type === 'document') {
+		if (IS_ANDROID) {
+			throw new UnavailableException("Opening text posts from a link is not supported on Android. Open the post from the channel feed instead.");
+		}
+		return TEXT_DOC_TYPES.includes(claim.value?.source?.media_type)
+			? lbryDocumentToPlatformPost(claim)
+			: lbryBinaryDocToPlatformPost(claim);
 	}
 
 	let result = lbryVideoDetailToPlatformVideoDetails(claim);
@@ -588,7 +615,7 @@ source.getComments = function (url, isMembersOnly = null) {
 	// loading when we already have a valid claim id straight from the URL.
 	if (!claimIdValid || isMembersOnly === null) {
 		try {
-			const { video_slug, video_id } = parseDetailsUrl(decodeURI(url));
+			const { video_slug, video_id } = parseDetailsUrl(url);
 			[claim] = resolveClaims([`lbry://${video_slug}#${video_id}`]);
 			if (!claimIdValid) {
 				claimId = claim?.claim_id;
@@ -657,24 +684,24 @@ source.getPlaylist = function (url) {
 		})
 	}
 	if (REGEX_FAVORITES.test(url)) {
-		const response = loadPreferences()
-
 		const playlistId = "favorites"
 
-		const preferences = JSON.parse(response.body)
+		const playlist = parseSharedPreferences(loadPreferences()).builtinCollections?.favorites
 
-		const playlist = preferences.result.shared.value.builtinCollections.favorites
+		if (!playlist) {
+			throw new ScriptException(`Playlist not found: ${playlistId}`)
+		}
 
 		return formatUserPlaylist(playlist, playlistId)
 	}
 	if (REGEX_WATCH_LATER.test(url)) {
 		const playlistId = "watchlater"
 
-		const response = loadPreferences()
+		const playlist = parseSharedPreferences(loadPreferences()).builtinCollections?.watchlater
 
-		const preferences = JSON.parse(response.body)
-
-		const playlist = preferences.result.shared.value.builtinCollections.watchlater
+		if (!playlist) {
+			throw new ScriptException(`Playlist not found: ${playlistId}`)
+		}
 
 		return formatUserPlaylist(playlist, playlistId)
 	}
@@ -683,11 +710,11 @@ source.getPlaylist = function (url) {
 	if (matchResult === null) {
 		const playlistId = url.match(REGEX_COLLECTION)[1]
 
-		const response = loadPreferences()
+		const playlist = parseSharedPreferences(loadPreferences()).unpublishedCollections?.[playlistId]
 
-		const preferences = JSON.parse(response.body)
-
-		const playlist = preferences.result.shared.value.unpublishedCollections[playlistId]
+		if (!playlist) {
+			throw new ScriptException(`Playlist not found: ${playlistId}`)
+		}
 
 		return formatUserPlaylist(playlist, playlistId)
 	} else {
@@ -699,7 +726,7 @@ source.getPlaylist = function (url) {
 			{},
 			false
 		)
-		const playlistMetadata = JSON.parse(response.body).result?.items?.[0];
+		const playlistMetadata = parseLbryResult(response, "Load playlist").items?.[0];
 		if (!playlistMetadata) {
 			throw new ScriptException(`Playlist not found: ${playlistId}`);
 		}
@@ -713,12 +740,8 @@ source.getPlaylist = function (url) {
 				params: { claim_ids: claims, page: 1, page_size: claims.length, no_totals: true },
 				id: 1719330225903
 			}), JSON_HEADERS);
-			if (!claimSearchResp.isOk) {
-				trace(`Resolve playlist claims failed (${claimSearchResp.code}) - ${claimSearchResp.body}`);
-				throw new ScriptException(`Failed to resolve playlist claims (${claimSearchResp.code})`);
-			}
 			const ordered = [];
-			JSON.parse(claimSearchResp.body).result.items.forEach(c => {
+			(parseLbryResult(claimSearchResp, "Resolve playlist claims").items ?? []).forEach(c => {
 				ordered[claims.indexOf(c.claim_id)] = c;
 			});
 			resolvedVideos = lbryVideosToPlatformVideos(ordered);
@@ -730,7 +753,7 @@ source.getPlaylist = function (url) {
 				new PlatformID(PLATFORM, signing.claim_id, plugin.config.id, PLATFORM_CLAIMTYPE),
 				signing.value?.title ?? signing.name ?? "",
 				signing.permanent_url ?? "",
-				signing.value?.thumbnail?.url ?? ""
+				signing.value?.thumbnail?.url ?? null
 			) : EMPTY_AUTHOR,
 			datetime: playlistMetadata.meta?.creation_timestamp ?? 0,
 			url,
@@ -741,7 +764,7 @@ source.getPlaylist = function (url) {
 }
 
 source.getLiveChatWindow = function(url) {
-	let { video_slug, video_id, channel_slug, channel_id } = parseDetailsUrl(decodeURI(url));
+	let { video_slug, video_id, channel_slug, channel_id } = parseDetailsUrl(url);
 
 	if (!channel_slug || !channel_id) {
 		const [claim] = resolveClaims([`lbry://${video_slug}#${video_id}`]);
@@ -751,9 +774,7 @@ source.getLiveChatWindow = function(url) {
 		}
 	}
 
-	const path = (channel_slug && channel_id)
-		? `/${channel_slug}:${channel_id.slice(0, 2)}/${video_slug}:${video_id.slice(0, 1)}`
-		: `/${video_slug}:${video_id.slice(0, 1)}`;
+	const path = format_odysee_path(channel_slug, channel_id, video_slug, video_id);
 	return { url: `${URL_BASE}/$/popout${path}` };
 };
 
@@ -785,15 +806,47 @@ function formatUserPlaylist(playlist, playlistId) {
 		contents: new VideoPager(resolveClaimsVideo(playlist.items), false)
 	})
 }
+// The LBRY proxy reports RPC failures as HTTP 200 with an {error} body and no result
+// key, so resp.isOk on its own is not enough to assume result exists.
+function parseLbryResult(resp, what) {
+	if (!resp?.isOk) {
+		trace(`${what} failed (${resp?.code ?? ""})${resp?.body ? ` - ${resp.body}` : ""}`, { showToast: true })
+		throw new ScriptException(`${what} failed (${resp?.code ?? "no response"})`)
+	}
+	let body
+	try {
+		body = JSON.parse(resp.body)
+	} catch (e) {
+		trace(`${what} returned malformed JSON (${e}) - ${resp.body}`, { showToast: true })
+		throw new ScriptException(`${what} failed: malformed response`)
+	}
+	if (!body?.result) {
+		const reason = body?.error?.message ?? body?.error?.name ?? "no result in response"
+		trace(`${what} returned no result - ${resp.body}`, { showToast: true })
+		throw new ScriptException(`${what} failed: ${reason}`)
+	}
+	return body.result
+}
+// Anonymous sessions get {error: "authentication required"} with no result key.
+function parseSharedPreferences(response) {
+	let body
+	try {
+		body = JSON.parse(response?.body)
+	} catch (e) {
+		trace(`Load preferences returned malformed JSON (${e}) - ${response?.body}`, { showToast: true })
+		throw new ScriptException("Load preferences failed: malformed response")
+	}
+	const shared = body?.result?.shared?.value
+	if (!shared) {
+		throw new LoginRequiredException("Please log in to your Odysee account to access your subscriptions and playlists.")
+	}
+	return shared
+}
 source.getUserSubscriptions = function () {
-	const response = loadPreferences()
-	const preferences = JSON.parse(response.body)
-	return preferences.result.shared.value.subscriptions
+	return parseSharedPreferences(loadPreferences()).subscriptions ?? []
 }
 source.getUserPlaylists = function () {
-	const response = loadPreferences()
-	const preferences = JSON.parse(response.body)
-	const collections = Object.keys(preferences.result.shared.value.unpublishedCollections)
+	const collections = Object.keys(parseSharedPreferences(loadPreferences()).unpublishedCollections ?? {})
 		.map(function (collectionId) {
 			return `${PLAYLIST_URL_BASE}${collectionId}`
 		})
@@ -804,7 +857,7 @@ source.getUserPlaylists = function () {
 		{},
 		true
 	)
-	const playlists = JSON.parse(publicPlaylistsResponse.body).result.items.map(function (playlist) {
+	const playlists = (parseLbryResult(publicPlaylistsResponse, "Load published playlists").items ?? []).map(function (playlist) {
 		return `${PLAYLIST_URL_BASE}${playlist.claim_id}`
 	})
 
@@ -816,16 +869,48 @@ source.getPlaybackTracker = function (url) {
 	}
 	return new OdyseePlaybackTracker(url)
 }
+
+
+// Inverse of encodeClaimNameForUrl. decodeURI is not usable here: it leaves %2C, %3B,
+// %26 and friends encoded, and LBRY rejects those names as "not a valid url".
+function decodeClaimNameFromUrl(name) {
+	if (name === undefined) {
+		return name;
+	}
+	try {
+		return decodeURIComponent(name);
+	} catch (error) {
+		return name;
+	}
+}
+
+function parseChannelUrl(url) {
+	const match_result = url.match(REGEX_CHANNEL_URL)
+	if (!match_result) {
+		throw new ScriptException(`Unrecognized channel URL: ${url}`);
+	}
+
+	const slug = decodeClaimNameFromUrl(match_result[2])
+	const id = match_result[4]
+
+	return { slug, id }
+}
+
+
 class OdyseePlaybackTracker extends PlaybackTracker {
 	constructor(url) {
 		const intervalSeconds = 10
 		super(intervalSeconds * 1000)
 
-		const { video_slug, video_id } = parseDetailsUrl(decodeURI(url))
+		const { video_slug, video_id } = parseDetailsUrl(url)
 
 		const claim_short_url = `lbry://${video_slug}#${video_id}`
 
 		const [claim] = resolveClaims([claim_short_url]);
+
+		if (!claim?.canonical_url) {
+			throw new ScriptException(`Failed to resolve content for playback tracking: ${claim_short_url}`);
+		}
 
 		this.url = claim.canonical_url.replace('lbry://','');
 
@@ -895,12 +980,20 @@ function getCommentsPager(contextUrl, claimId, page, topLevel, parentId = null, 
 
 	// currently only accounts with channels can see and add comments on members only content
 	if(isMembersOnly && bridge.isLoggedIn() && localState.channel) {
-		//required for members-only content
-		query.params.is_protected = true;
-		query.params.requestor_channel_id = localState.channel.channelId;
-		query.params.requestor_channel_name	 = `@${localState.channel.name}`;
-		query.params.signature = localState.channel.signatureData.signature;
-		query.params.signing_ts	= localState.channel.signatureData.signing_ts;
+		// signatureData is only set when channel_sign succeeded at login; without it the
+		// request cannot be signed, so load the public list instead of crashing.
+		if (localState.channel.signatureData) {
+			//required for members-only content
+			query.params.is_protected = true;
+			query.params.requestor_channel_id = localState.channel.channelId;
+			// State saved before handle existed only carries the display name.
+			const requestorHandle = localState.channel.handle ?? (localState.channel.name ?? "").replace(/^@/, "");
+			query.params.requestor_channel_name	 = `@${requestorHandle}`;
+			query.params.signature = localState.channel.signatureData.signature;
+			query.params.signing_ts	= localState.channel.signatureData.signing_ts;
+		} else {
+			trace("Channel signature unavailable, loading comments without members-only access");
+		}
 	}
 	
 	const body = JSON.stringify(query);
@@ -928,16 +1021,19 @@ function getCommentsPager(contextUrl, claimId, page, topLevel, parentId = null, 
 		}
 	}), JSON_HEADERS, isMembersOnly);
 
+	// Thumbnails are cosmetic, so a bad response here must never break the comment list.
+	// The parse used to run before the isOk check, which threw on any non-JSON body.
 	const thumbnailMap = {};
-	const claimsResItems = JSON.parse(claimsResp.body)?.result?.items;
 	if (claimsResp.isOk) {
-		if (claimsResItems) {
-			for (const i of claimsResItems) {
+		try {
+			for (const i of (JSON.parse(claimsResp.body)?.result?.items ?? [])) {
 				const url = i.value?.thumbnail?.url;
 				if (url) {
 					thumbnailMap[i.claim_id] = url;
 				}
 			}
+		} catch (e) {
+			trace(`Load comment thumbnails returned malformed JSON (${e})`);
 		}
 	} else {
 		trace(`Load comment thumbnails failed (${claimsResp.code})${claimsResp.body ? ` - ${claimsResp.body}` : ""}`);
@@ -970,7 +1066,20 @@ function parseOdyseeContentData(resp) {
 		trace(`Request ${URL_CONTENT} failed (${resp?.code ?? ""})${resp?.body ? ` - ${resp.body}` : ""}`, { showToast: true });
 		throw new ScriptException("Failed request [" + URL_CONTENT + "] (" + resp?.code + ")");
 	}
-	return JSON.parse(resp.body).data["en"];
+	// Both callers immediately read .categories.PRIMARY_CONTENT, so validate that far
+	// here: otherwise a shape change breaks Home and Shorts with a raw TypeError.
+	let data;
+	try {
+		data = JSON.parse(resp.body)?.data?.["en"];
+	} catch (e) {
+		trace(`Request ${URL_CONTENT} returned malformed JSON (${e})`, { showToast: true });
+		throw new ScriptException(`Failed request [${URL_CONTENT}]: malformed response`);
+	}
+	if (!data?.categories?.["PRIMARY_CONTENT"]) {
+		trace(`Request ${URL_CONTENT} returned no content configuration - ${resp.body}`, { showToast: true });
+		throw new ScriptException(`Failed request [${URL_CONTENT}]: no content configuration`);
+	}
+	return data;
 }
 function parseLiveStreamsResponse(resp, maxCount) {
 	if (!resp?.isOk) {
@@ -1002,7 +1111,7 @@ function liveClaimToPlatformVideo(lbry, viewerCount) {
 	const claimId = lbry.claim_id;
 	const shareUrl = lbry.signing_channel?.claim_id
 		? format_odysee_share_url(lbry.signing_channel.name, lbry.signing_channel.claim_id, lbry.name, claimId)
-		: format_odysee_share_url_anonymous(lbry.name, claimId.slice(0, 1));
+		: format_odysee_share_url_anonymous(lbry.name, claimId);
 
 	return new PlatformVideo({
 		id: new PlatformID(PLATFORM, claimId, plugin.config.id),
@@ -1073,7 +1182,8 @@ function getPlaylists(channelId, nextPageToLoad, pageSize) {
 		order_by: ["release_time"],
 		has_source: true,
 		channel_ids: [channelId],
-		release_time: `<${Date.now()}`
+		// release_time is in seconds; Date.now() milliseconds made this bound a no-op
+		release_time: `<${Math.floor(Date.now() / 1000)}`
 	}
 
 	const response = http.POST(
@@ -1090,9 +1200,7 @@ function getPlaylists(channelId, nextPageToLoad, pageSize) {
 		false
 	)
 
-	const playlists = JSON.parse(response.body)
-
-	const formattedPlaylists = playlists.result.items.map(function (playlist) {
+	const formattedPlaylists = (parseLbryResult(response, "Load channel playlists").items ?? []).map(function (playlist) {
 		return new PlatformPlaylist({
 			id: new PlatformID(PLATFORM, playlist.claim_id, plugin.config.id, PLATFORM_CLAIMTYPE),
 			name: playlist.value.title,
@@ -1100,11 +1208,13 @@ function getPlaylists(channelId, nextPageToLoad, pageSize) {
 				new PlatformID(PLATFORM, playlist.signing_channel.claim_id, plugin.config.id, PLATFORM_CLAIMTYPE),
 				playlist.signing_channel.value.title,
 				playlist.signing_channel.permanent_url,
-				playlist.signing_channel.value.thumbnail.url
+				// A channel without an avatar has no thumbnail node; null lets the app draw its placeholder.
+				playlist.signing_channel.value?.thumbnail?.url ?? null
 			),
 			datetime: playlist.meta.creation_timestamp,
 			url: `${PLAYLIST_URL_BASE}${playlist.claim_id}`,
-			videoCount: playlist.value.claims.length,
+			// A collection can be published with a title and no claims array at all.
+			videoCount: playlist.value.claims?.length ?? 0,
 			// thumbnail: string
 		})
 	})
@@ -1323,11 +1433,7 @@ function claimSearchBody(query) {
     return JSON.stringify({ jsonrpc: "2.0", method: "claim_search", params: query, id: Date.now() });
 }
 function parseClaimSearchResponse(resp, shortsOnly) {
-	if (!resp.isOk) {
-		trace(`Claim search failed (${resp.code}) - ${resp.body}`, { showToast: true });
-        throw new ScriptException("Failed to search claims\n" + resp.body);
-	}
-    const items = JSON.parse(resp.body).result.items;
+    const items = parseLbryResult(resp, "Claim search").items ?? [];
     return claimSearchItemsToResults(items, shortsOnly);
 }
 function claimSearch(query, shortsOnly) {
@@ -1414,7 +1520,7 @@ function lbryBinaryDocToPlatformPost(lbry) {
 
     const shareUrl = lbry.signing_channel?.claim_id !== undefined
         ? format_odysee_share_url(lbry.signing_channel.name, lbry.signing_channel.claim_id, name, claimId)
-        : format_odysee_share_url_anonymous(name, claimId.slice(0, 1));
+        : format_odysee_share_url_anonymous(name, claimId);
     
     const sdHash = lbry.value?.source?.sd_hash;
     const sdHashPrefix = sdHash ? sdHash.substring(0, 6) : "";
@@ -1457,10 +1563,11 @@ function resolveClaimsChannel(claims) {
 	const results = resolveClaims(claims);
 
 	// getsub count using batch request
+	const authToken = ensureAuthToken();
 	const requests = results.map(claim => {
 		return {
 			url: `${URL_API_SUB_COUNT}?claim_id=${claim.claim_id}`,
-			body: `auth_token=${localState.auth_token}&claim_id=${claim.claim_id}`,
+			body: `auth_token=${authToken}&claim_id=${claim.claim_id}`,
 			headers: FORM_URLENCODED_HEADERS,
 		};
 	});
@@ -1484,6 +1591,8 @@ function resolveClaimsChannel(claims) {
 		return map;
 	}, {});
 
+	// A channel that cannot be converted is dropped rather than retried; the previous
+	// retry called the same converter that had just thrown, so one bad entry killed the pager.
 	return results.map(channel => {
 		try {
 			const response = responseMap[channel.claim_id];
@@ -1493,9 +1602,9 @@ function resolveClaimsChannel(claims) {
 			return lbryChannelToPlatformChannel(channel, subCount);
 		} catch (error) {
 			trace(`Error processing channel ${channel.claim_id}: ${error}`);
-			return lbryChannelToPlatformChannel(channel, 0);
+			return null;
 		}
-	});
+	}).filter(channel => channel !== null);
 }
 function resolveClaimsVideo(claims) {
 	if (!claims || claims.length == 0) {
@@ -1508,16 +1617,20 @@ function resolveClaimsBody(claims) {
 	return JSON.stringify({ method: "resolve", params: { urls: claims } });
 }
 function parseResolveClaimsResponse(resp, claims) {
-	if (!resp.isOk) {
-		trace(`Resolve claims failed (${resp.code}) - ${resp.body}`, { showToast: true });
-		throw new ScriptException(`Failed to resolve claims (${resp.code})`);
-	}
-	const claimResults = JSON.parse(resp.body).result;
+	const claimResults = parseLbryResult(resp, "Resolve claims");
 	const results = [];
 	for (let i = 0; i < claims.length; i++) {
-		if (claimResults[claims[i]]) {
-			results.push(claimResults[claims[i]]);
+		const claim = claimResults[claims[i]];
+		// Per-claim failures come back as {error: {...}} objects, which are truthy but
+		// carry no claim fields; passing them on crashes every downstream converter.
+		if (!claim) {
+			continue;
 		}
+		if (claim.error) {
+			trace(`Claim did not resolve: ${claims[i]} (${claim.error.name ?? "unknown error"})`);
+			continue;
+		}
+		results.push(claim);
 	}
 	return results;
 }
@@ -1579,7 +1692,7 @@ function lbryChannelToPlatformChannel(lbry, subs = 0) {
 		description += `${lineSeparator}Staked Credits: ${lbry.meta.effective_amount} LBC`;
 	}
 
-	const odyseeUrl = `https://odysee.com/${lbry.normalized_name}:${lbry.claim_id.slice(0, 1)}`;
+	const odyseeUrl = format_odysee_channel_url(lbry.normalized_name, lbry.claim_id);
 
 	return new PlatformChannel({
 		id: new PlatformID(PLATFORM, lbry.claim_id, plugin.config.id, PLATFORM_CLAIMTYPE),
@@ -1601,7 +1714,7 @@ function lbryChannelToPlatformChannel(lbry, subs = 0) {
 function lbryVideoToPlatformVideo(lbry, viewCountMap = null) {
 	const shareUrl = lbry.signing_channel?.claim_id !== undefined
 		? format_odysee_share_url(lbry.signing_channel.name, lbry.signing_channel.claim_id, lbry.name, lbry.claim_id)
-		: format_odysee_share_url_anonymous(lbry.name, lbry.claim_id.slice(0, 1))
+		: format_odysee_share_url_anonymous(lbry.name, lbry.claim_id)
 
 	let viewCount = 0;
 	
@@ -1637,7 +1750,7 @@ function lbryVideosToPlatformVideos(lbryVideos) {
 	let viewCountMap = null;
 	if (localSettings.extraRequestToLoadViewCount) {
 		const claimIds = lbryVideos.map(lbry => lbry.claim_id);
-		const authToken = localState.auth_token;
+		const authToken = ensureAuthToken();
 		const requests = claimIds.map(claimId => ({
 			url: URL_VIEW_COUNT,
 			headers: FORM_URLENCODED_HEADERS,
@@ -1667,10 +1780,10 @@ function lbryVideosToPlatformVideos(lbryVideos) {
 function lbryDocumentToPlatformPost(lbry, postContent) {
 	const shareUrl = lbry.signing_channel?.claim_id !== undefined
 		? format_odysee_share_url(lbry.signing_channel.name, lbry.signing_channel.claim_id, lbry.name, lbry.claim_id)
-		: format_odysee_share_url_anonymous(lbry.name, lbry.claim_id.slice(0, 1));
+		: format_odysee_share_url_anonymous(lbry.name, lbry.claim_id);
 
 	const sdHash = lbry.value?.source?.sd_hash;
-	const sdHashPrefix = sdHash.substring(0, 6);
+	const sdHashPrefix = sdHash ? sdHash.substring(0, 6) : "";
 
 	if (!postContent) {
 		// Odysee get the markdown content like this...
@@ -1693,7 +1806,9 @@ function lbryDocumentToPlatformPost(lbry, postContent) {
 			images = extractImagesFromMarkdown(postContent);
 			break;
 		case 'text/plain':
-			content = postContent;
+			// Delivered to the app as Type.Text.HTML, so plain text has to be escaped or
+			// its markup is interpreted instead of shown.
+			content = escapeHtml(postContent);
 			break;
 		case 'text/html':
 			content = postContent; // Already HTML
@@ -1701,7 +1816,7 @@ function lbryDocumentToPlatformPost(lbry, postContent) {
 			break;
 		default:
 			trace(`Unhandled media type: ${mediaType}, treating as plain text`);
-			content = postContent;
+			content = escapeHtml(postContent);
 			break;
 	}
 
@@ -1735,11 +1850,40 @@ function lbryDocumentToPlatformPost(lbry, postContent) {
 	return new PlatformPostDetails(platformPostDef);
 }
 
+// Percent-encode a claim name to RFC 3986 unreserved; encodeURIComponent exempts !'()*
+function encodeClaimNameForUrl(name) {
+	return encodeURIComponent(name)
+		.replace(/[!'()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+// Odysee addresses a claim by a prefix of its 40-character id, and the length depends on
+// what the claim is: one character for content, two for a channel. Pass the full id.
+function contentClaimIdPrefix(claim_id) {
+	return claim_id.slice(0, CLAIM_ID_PREFIX_CONTENT)
+}
+function channelClaimIdPrefix(claim_id) {
+	return claim_id.slice(0, CLAIM_ID_PREFIX_CHANNEL)
+}
+// Single source of truth for the odysee.com channel segment shape: /@handle:cc
+function format_odysee_channel_path(channel_slug, channel_id) {
+	const channel_handle = encodeClaimNameForUrl(channel_slug.replace(/^@/, ''))
+	return `/@${channel_handle}:${channelClaimIdPrefix(channel_id)}`
+}
+// Single source of truth for the odysee.com path shape: /@handle:cc/name:v
+function format_odysee_path(channel_slug, channel_id, video_slug, video_id) {
+	const video_segment = `${encodeClaimNameForUrl(video_slug)}:${contentClaimIdPrefix(video_id)}`
+	if (!channel_slug || !channel_id) {
+		return `/${video_segment}`
+	}
+	return `${format_odysee_channel_path(channel_slug, channel_id)}/${video_segment}`
+}
+function format_odysee_channel_url(channel_slug, channel_id) {
+	return `${URL_BASE}${format_odysee_channel_path(channel_slug, channel_id)}`
+}
 function format_odysee_share_url_anonymous(video_name, video_claim_id) {
-	return `${URL_BASE}/${video_name}:${video_claim_id.slice(0, 1)}`
+	return `${URL_BASE}${format_odysee_path(null, null, video_name, video_claim_id)}`
 }
 function format_odysee_share_url(channel_name, channel_claim_id, video_name, video_claim_id) {
-	return `${URL_BASE}/${channel_name}:${channel_claim_id.slice(0, 2)}/${video_name}:${video_claim_id.slice(0, 1)}`
+	return `${URL_BASE}${format_odysee_path(channel_name, channel_claim_id, video_name, video_claim_id)}`
 }
 //Convert an LBRY Video to a PlatformVideoDetail
 function buildUrlTestRequests(urls) {
@@ -2008,8 +2152,26 @@ function lbryVideoDetailToPlatformVideoDetails(lbry) {
 				}
 			}
 
+			// Zero sources has three distinct causes; reporting all of them as
+			// members-only sends users looking for a membership they do not need.
 			if (sources.length === 0) {
-				throw new UnavailableException("Members Only Content Is Not Currently Supported");
+				if (getIsMemberOnlyClaim(lbry)) {
+					throw new UnavailableException("Members Only Content Is Not Currently Supported");
+				}
+				if (urlsToTest.length === 0) {
+					throw new UnavailableException("No video sources are enabled. Enable at least one under Odysee plugin settings > Video Sources.");
+				}
+				const probeCodes = urlsToTest.map(url => urlTests.get(url)?.response?.code ?? "no response");
+				trace(`No accessible source for ${claimId}: ${urlsToTest.map((url, index) => `${url} -> ${probeCodes[index]}`).join(", ")}`);
+				// A claim carrying a fee answers 402 until it is bought on Odysee. Both halves are
+				// required: a paid claim that 404s is genuinely missing, not purchasable.
+				const fee = lbry.value?.fee;
+				const paymentRequired = probeCodes.some((code) => Number(code) === 402);
+				if (paymentRequired && parseFloat(fee?.amount ?? "0") > 0 && !lbry.purchase_receipt) {
+					throw new UnavailableException(`This video must be purchased on Odysee (${fee.amount} ${fee.currency}) before it can be played.`);
+				}
+				const distinctCodes = probeCodes.filter((code, index) => probeCodes.indexOf(code) === index);
+				throw new UnavailableException(`This video has no playable source right now (CDN responded ${distinctCodes.join(", ")}).`);
 			}
 
 			video = new VideoSourceDescriptor(sources);
@@ -2042,7 +2204,7 @@ function lbryVideoDetailToPlatformVideoDetails(lbry) {
 	// Generate share URL
 	const shareUrl = lbry?.signing_channel?.claim_id
 		? format_odysee_share_url(lbry.signing_channel.name, lbry.signing_channel?.claim_id, name, claimId)
-		: format_odysee_share_url_anonymous(name, claimId.slice(0, 1));
+		: format_odysee_share_url_anonymous(name, claimId);
 
 	// Build description with tags
 	let description = lbry.value?.description ?? "";
@@ -2102,7 +2264,7 @@ function lbryToDuration(lbry){
 
 function buildMetricsRequests(lbry, opts = {}) {
 	const claimId = lbry.claim_id;
-	const authToken = localState.auth_token;
+	const authToken = ensureAuthToken();
 	const channelClaimId = lbry.signing_channel?.claim_id;
 	const req = (url, body) => ({ url, headers: FORM_URLENCODED_HEADERS, body });
 
@@ -2158,6 +2320,17 @@ function lbryToMetrics(lbry, opts = { loadViewCount: false, loadSubCount: false,
 	return parseMetricsResponses(responses, lbry, opts);
 }
 
+// Escape text that is about to be placed in an HTML context. markdownToHtml re-adds a
+// controlled subset of markup after escaping; every other text type stays escaped.
+function escapeHtml(text) {
+	return String(text ?? '')
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#039;');
+}
+
 /**
  * Converts Markdown text to HTML
  * @param {string} markdown - The markdown text to convert
@@ -2172,12 +2345,10 @@ function markdownToHtml(markdown) {
 	let html = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
 	// First, escape all HTML to prevent injection attacks
-	html = html
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#039;');
+	html = escapeHtml(html);
+
+	// The sentinel below marks stashed links, so it must not survive from the source text.
+	html = html.replace(/%%MDLINK\d+%%/g, '');
 
 	// Process code blocks (need to handle these first)
 	html = html.replace(/```([a-z]*)\n([\s\S]*?)\n```/g, function(match, language, code) {
@@ -2193,30 +2364,49 @@ function markdownToHtml(markdown) {
 		return `<h${level}>${content.trim()}</h${level}>`;
 	});
 
-	// Process bold (** or __)
-	html = html.replace(/(\*\*|__)(.*?)\1/g, '<strong>$2</strong>');
+	// Links and images are stashed before emphasis runs, otherwise a URL holding two
+	// underscores has an <em> spliced into its own href and the link breaks.
+	const stashedLinks = [];
+	const stashLink = function (replacement) {
+		stashedLinks.push(replacement);
+		return `%%MDLINK${stashedLinks.length - 1}%%`;
+	};
 
-	// Process italic (* or _)
-	html = html.replace(/(\*|_)(.*?)\1/g, '<em>$2</em>');
+	// Process images ![alt](url) - must run before links, which would otherwise consume
+	// the [alt](url) half of the same match and leave a stray "!" behind
+	html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function(match, alt, url) {
+		if (isValidUrl(url)) {
+			return stashLink(`<img src="${sanitizeUrl(url)}" alt="${alt}" loading="lazy">`);
+		} else {
+			return `[Image: ${alt}]`; // Fallback for invalid URLs
+		}
+	});
 
 	// Process links [text](url) - with URL validation
 	html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, text, url) {
 		// Validate and sanitize URLs
 		if (isValidUrl(url)) {
-			return `<a href="${sanitizeUrl(url)}" rel="noopener noreferrer">${text}</a>`;
+			return stashLink(`<a href="${sanitizeUrl(url)}" rel="noopener noreferrer">${text}</a>`);
 		} else {
 			return text; // If URL is invalid, just show the text
 		}
 	});
 
-	// Process images ![alt](url) - with URL validation
-	html = html.replace(/!\[([^\]]+)\]\(([^)]+)\)/g, function(match, alt, url) {
+	// Process automatic links (bare URLs) with validation. The lookbehind keeps this off
+	// the (url) half of a markdown link, which the two passes above already consumed.
+	html = html.replace(/(?<!["\(])(https?:\/\/[^\s<]+)(?!["\)])/g, function(match, url) {
 		if (isValidUrl(url)) {
-			return `<img src="${sanitizeUrl(url)}" alt="${alt}" loading="lazy">`;
+			return stashLink(`<a href="${sanitizeUrl(url)}" rel="noopener noreferrer">${url}</a>`);
 		} else {
-			return `[Image: ${alt}]`; // Fallback for invalid URLs
+			return url; // If URL is invalid, just show the text
 		}
 	});
+
+	// Process bold (** or __)
+	html = html.replace(/(\*\*|__)(.*?)\1/g, '<strong>$2</strong>');
+
+	// Process italic (* or _)
+	html = html.replace(/(\*|_)(.*?)\1/g, '<em>$2</em>');
 
 	// Process horizontal rules
 	html = html.replace(/^([-*_])\1\1+$/gm, '<hr>');
@@ -2285,8 +2475,8 @@ function markdownToHtml(markdown) {
 		html += listHtml + '</ol>';
 	}
 
-	// Process blockquotes
-	html = html.replace(/^>\s+(.*)$/gm, '<blockquote>$1</blockquote>');
+	// Process blockquotes - matches the escaped form, since the > was replaced above
+	html = html.replace(/^&gt;\s+(.*)$/gm, '<blockquote>$1</blockquote>');
 
 	// Process paragraphs (any text between blank lines that isn't a special element)
 	let inParagraph = false;
@@ -2320,14 +2510,13 @@ function markdownToHtml(markdown) {
 		html += `<p>${paragraphContent}</p>`;
 	}
 
-	// Process automatic links (bare URLs) with validation
-	html = html.replace(/(?<!["\(])(https?:\/\/[^\s<]+)(?!["\)])/g, function(match, url) {
-		if (isValidUrl(url)) {
-			return `<a href="${sanitizeUrl(url)}" rel="noopener noreferrer">${url}</a>`;
-		} else {
-			return url; // If URL is invalid, just show the text
-		}
-	});
+	// Put back the links and images stashed before emphasis processing. A link whose text
+	// holds an image nests one sentinel inside another, so restore until none are left.
+	for (let pass = 0; pass <= stashedLinks.length && html.includes('%%MDLINK'); pass++) {
+		html = html.replace(/%%MDLINK(\d+)%%/g, function(match, index) {
+			return stashedLinks[Number(index)] ?? '';
+		});
+	}
 
 	return html;
 }
@@ -2427,9 +2616,11 @@ function batchRequest(requests, opts = {}) {
 		// Store the request key for later use
 		request.requestKey = requestKey;
 
-		// Check cache if caching is enabled
-		if (useStateCache && localState.batch_response_cache[requestKey]) {
-			cacheHits[i] = localState.batch_response_cache[requestKey];
+		// Check cache if caching is enabled. Entries restored from a state saved by an older
+		// version carry no ts, so the NaN comparison below correctly treats them as expired.
+		const cached = useStateCache ? localState.batch_response_cache[requestKey] : null;
+		if (cached && Date.now() - cached.ts < BATCH_CACHE_TTL_MS) {
+			cacheHits[i] = cached.response;
 		} else {
 			// Add to batch if not in cache or caching is disabled
 			if (!hasBody) {
@@ -2481,11 +2672,45 @@ function batchRequest(requests, opts = {}) {
 		// Update cache with new responses if caching is enabled (only cache successful responses)
 		if (useStateCache && response?.isOk) {
 			const requestKey = requests[originalIndex].requestKey;
-			localState.batch_response_cache[requestKey] = response;
+			localState.batch_response_cache[requestKey] = { response, ts: Date.now() };
 		}
 	}
 
+	if (useStateCache) {
+		pruneBatchCache();
+	}
+
 	return finalResponses;
+}
+
+/**
+ * Drops expired entries from the batch cache, then the oldest ones if it is still over cap.
+ */
+function pruneBatchCache() {
+	const cache = localState.batch_response_cache;
+	const now = Date.now();
+	const live = [];
+
+	for (const key of Object.keys(cache)) {
+		// Entries with no ts predate the timestamped format and cannot be aged, so drop them
+		if (!(now - cache[key]?.ts < BATCH_CACHE_TTL_MS)) {
+			delete cache[key];
+		} else {
+			live.push(key);
+		}
+	}
+
+	if (live.length <= BATCH_CACHE_MAX_ENTRIES) {
+		return;
+	}
+
+	live.sort(function (a, b) {
+		return cache[a].ts - cache[b].ts;
+	});
+	const excess = live.length - BATCH_CACHE_MAX_ENTRIES;
+	for (let i = 0; i < excess; i++) {
+		delete cache[live[i]];
+	}
 }
 
 function createMultiSourcePager(sourcesConfig = []) {
@@ -2997,6 +3222,62 @@ function buildNotTags() {
 		tags.push(...MATURE_TAGS);
 	}
 	return tags;
+}
+
+
+// A corrupt or wrong-shaped saved state must not break plugin startup: return null so
+// enable falls through to building a fresh session, exactly as on a first run.
+function parseSavedState(savedState) {
+	if (!savedState) {
+		return null;
+	}
+	try {
+		const parsed = JSON.parse(savedState);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			return parsed;
+		}
+		trace("Saved state was not a state object, starting a fresh session");
+	} catch (e) {
+		trace(`Discarding unreadable saved state (${e})`);
+	}
+	return null;
+}
+
+
+function parseNewUser(resp) {
+	if (!resp?.isOk) {
+		trace(`Create anonymous user failed (${resp?.code ?? ""})${resp?.body ? ` - ${resp.body}` : ""}`);
+		return null;
+	}
+	try {
+		const obj = JSON.parse(resp.body);
+		return obj?.success && obj.data ? obj.data : null;
+	} catch (e) {
+		trace(`Create anonymous user returned malformed JSON (${e})`);
+		return null;
+	}
+}
+
+/**
+ * Returns the anonymous auth token, minting one if enable could not.
+ * @returns {string|undefined} The token, or undefined while the retry is on cooldown.
+ */
+function ensureAuthToken() {
+	if (localState.auth_token) {
+		return localState.auth_token;
+	}
+	// Without this retry a single failure of the new-user endpoint at enable time leaves
+	// every view and subscriber count at zero for the rest of the session.
+	if (Date.now() - lastAuthTokenAttempt < AUTH_TOKEN_RETRY_COOLDOWN_MS) {
+		return undefined;
+	}
+	lastAuthTokenAttempt = Date.now();
+	const userData = parseNewUser(http.GET(URL_USER_NEW, headersToAdd));
+	if (userData) {
+		localState.auth_token = userData.auth_token;
+		localState.userId = localState.userId ?? userData.id?.toString();
+	}
+	return localState.auth_token;
 }
 
 trace("LOADED");

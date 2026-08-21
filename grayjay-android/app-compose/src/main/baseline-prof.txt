@@ -1,0 +1,9 @@
+HSPLcom/futo/platformplayer/compose/MainActivity;->**(**)**
+HSPLcom/futo/platformplayer/compose/GrayjayViewModel;-><init>(Landroid/app/Application;)V
+HSPLcom/futo/platformplayer/compose/DevicePerformanceKt;->**(**)**
+HSPLcom/futo/platformplayer/compose/ui/GrayjayAppKt;->**(**)**
+HPLcom/futo/platformplayer/compose/ui/screens/HomeScreenKt;->**(**)**
+HPLcom/futo/platformplayer/compose/ui/screens/SearchScreenKt;->**(**)**
+HPLcom/futo/platformplayer/compose/ui/screens/ContentComponentsKt;->**(**)**
+HPLcom/futo/platformplayer/compose/ui/screens/SettingsScreenKt;->**(**)**
+HPLcom/futo/platformplayer/backend/NewPipeYoutubeContentBackend;->**(**)**

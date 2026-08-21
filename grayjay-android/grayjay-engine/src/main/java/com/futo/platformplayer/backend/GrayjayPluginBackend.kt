@@ -1,6 +1,7 @@
 package com.futo.platformplayer.backend
 
 import android.content.Context
+import android.util.AtomicFile
 import android.util.Log
 import androidx.media3.datasource.HttpDataSource
 import com.futo.platformplayer.api.media.models.contents.IPlatformContent
@@ -72,6 +73,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 private const val MAX_USER_IMPORT_EMPTY_PAGES = 2
 private const val MAX_COMMENT_HANDLES = 2_000
+private const val PLUGIN_UPDATE_CONCURRENCY = 4
 
 data class GrayjaySearchItem(
     val id: String,
@@ -163,6 +165,8 @@ data class GrayjayUserImportResult(
 data class GrayjayChannelRequest(
     val sourceId: String,
     val url: String,
+    val name: String = "",
+    val thumbnailUrl: String = "",
 )
 
 data class GrayjaySearchPlaylist(
@@ -427,6 +431,12 @@ data class GrayjayPluginMetadata(
     val warnings: List<String>,
 )
 
+data class GrayjayPluginUpdateSummary(
+    val checked: Int,
+    val updatedVersions: Map<String, Int>,
+    val failures: Int,
+)
+
 data class GrayjayUntrustedPlugin(
     val token: String,
     val pluginId: String,
@@ -502,7 +512,10 @@ private data class CommentHandle(
  * legacy Fragment/View dependencies are replaced; plugin execution, packages,
  * HTTP bridge, model conversion, paging, and URL resolution are unchanged.
  */
-class GrayjayPluginBackend(context: Context) {
+class GrayjayPluginBackend(
+    context: Context,
+    private val enforcePluginSignatures: Boolean = false,
+) {
     private val appContext = context.applicationContext
     private val client = OkHttpClient.Builder().build()
     private val clients = ConcurrentHashMap<String, JSClient>()
@@ -661,37 +674,106 @@ class GrayjayPluginBackend(context: Context) {
         require(config.id == endpoint.pluginId) {
             "Plugin ID mismatch for ${config.name}: expected ${endpoint.pluginId}, received ${config.id}."
         }
-        when (pluginSignatureState(config.scriptSignature, config.scriptPublicKey)) {
-            PluginSignatureState.Unsigned -> Unit
-            PluginSignatureState.Incomplete -> error(
-                "Plugin signature metadata is incomplete for ${config.name}.",
-            )
-            PluginSignatureState.Signed -> {
-                require(
-                    config.validate(scriptText) ||
-                        isTrustedPluginPayload(config.id, configText, scriptText),
-                ) { "Plugin signature validation failed for ${config.name}." }
+        if (enforcePluginSignatures) {
+            when (pluginSignatureState(config.scriptSignature, config.scriptPublicKey)) {
+                PluginSignatureState.Unsigned -> Unit
+                PluginSignatureState.Incomplete -> error(
+                    "Plugin signature metadata is incomplete for ${config.name}.",
+                )
+                PluginSignatureState.Signed -> {
+                    require(
+                        config.validate(scriptText) ||
+                            isTrustedPluginPayload(config.id, configText, scriptText),
+                    ) { "Plugin signature validation failed for ${config.name}." }
+                }
             }
         }
         return LoadedPluginPayload(config, configText, scriptText)
     }
 
     private fun loadPluginPayload(endpoint: PluginEndpoint): LoadedPluginPayload {
-        endpoint.configAssetPath?.let { assetPath ->
-            return validatePluginPayload(endpoint, loadEmbeddedPlugin(assetPath))
+        // Automatic updates populate the cache without starting V8. Pick the newest valid local
+        // generation so a newer APK can supersede an old cache, while a freshly downloaded plugin
+        // can supersede the embedded fallback. Network is only on the critical path when neither
+        // local generation exists.
+        val localCandidates = buildList {
+            cachedPlugin(endpoint.pluginId)?.let { payload ->
+                runCatching { validatePluginPayload(endpoint, payload) }.getOrNull()?.let(::add)
+            }
+            endpoint.configAssetPath?.let { assetPath ->
+                runCatching {
+                    validatePluginPayload(endpoint, loadEmbeddedPlugin(assetPath))
+                }.getOrNull()?.let(::add)
+            }
         }
-        val cached = cachedPlugin(endpoint.pluginId)
-        val downloaded = runCatching { downloadPlugin(endpoint.configUrl) }
-        val downloadedPayload = downloaded.mapCatching { validatePluginPayload(endpoint, it) }
-        downloadedPayload.getOrNull()?.let { return it }
+        localCandidates.maxByOrNull { it.config.version }?.let { return it }
 
-        val cachedPayload = cached?.let { runCatching { validatePluginPayload(endpoint, it) } }
-        cachedPayload?.getOrNull()?.let { return it }
+        val downloaded = downloadPlugin(endpoint.configUrl)
+        return validatePluginPayload(endpoint, downloaded).also { payload ->
+            cachePlugin(payload.config.id, payload.configText, payload.scriptText)
+        }
+    }
 
-        throw downloadedPayload.exceptionOrNull()
-            ?: cachedPayload?.exceptionOrNull()
-            ?: downloaded.exceptionOrNull()
-            ?: error("No plugin payload is available for ${endpoint.pluginId}.")
+    /**
+     * Checks every registered source without initializing a JSClient/V8 runtime. Each payload is
+     * downloaded completely, parsed, and ID-checked before an AtomicFile commit. A bad network
+     * response therefore leaves the previous cache (and the APK fallback) untouched.
+     */
+    suspend fun updatePlugins(
+        endpoints: Map<String, PluginEndpoint>,
+    ): GrayjayPluginUpdateSummary = withContext(Dispatchers.IO) {
+        val candidates = endpoints.filterValues { it.configUrl.startsWith("https://", true) }
+        val slots = Semaphore(PLUGIN_UPDATE_CONCURRENCY)
+        val outcomes = coroutineScope {
+            candidates.map { (alias, endpoint) ->
+                async {
+                    slots.withPermit {
+                        runCatching {
+                            val remotePair = downloadPlugin(endpoint.configUrl)
+                            val remote = validatePluginPayload(endpoint, remotePair)
+                            val cachedPair = cachedPlugin(endpoint.pluginId)
+                            val embeddedPair = endpoint.configAssetPath?.let { assetPath ->
+                                runCatching { loadEmbeddedPlugin(assetPath) }.getOrNull()
+                            }
+                            val currentPair = listOfNotNull(cachedPair, embeddedPair)
+                                .maxByOrNull { (configText, _) ->
+                                    runCatching {
+                                        SourcePluginConfig.fromJson(configText).version
+                                    }.getOrDefault(Int.MIN_VALUE)
+                                }
+                            val currentVersion = currentPair?.first?.let { configText ->
+                                runCatching { SourcePluginConfig.fromJson(configText).version }
+                                    .getOrDefault(Int.MIN_VALUE)
+                            } ?: Int.MIN_VALUE
+                            require(remote.config.version >= currentVersion) {
+                                "Refusing to downgrade ${remote.config.name} from " +
+                                    "$currentVersion to ${remote.config.version}."
+                            }
+                            val changed = cachedPair != remotePair
+                            if (changed) {
+                                cachePlugin(remote.config.id, remote.configText, remote.scriptText)
+                                Log.i(
+                                    TAG,
+                                    "Updated source $alias from version $currentVersion " +
+                                        "to ${remote.config.version}; it will be used on next load.",
+                                )
+                            }
+                            Triple(alias, remote.config.version, changed)
+                        }.onFailure { error ->
+                            Log.w(TAG, "Could not update source $alias.", error)
+                        }
+                    }
+                }
+            }.awaitAll()
+        }
+        val successful = outcomes.mapNotNull(Result<Triple<String, Int, Boolean>>::getOrNull)
+        GrayjayPluginUpdateSummary(
+            checked = candidates.size,
+            updatedVersions = successful
+                .filter { it.third }
+                .associate { it.first to it.second },
+            failures = outcomes.count { it.isFailure },
+        )
     }
 
     /**
@@ -2140,32 +2222,34 @@ class GrayjayPluginBackend(context: Context) {
             }
             val (configText, scriptText) = downloadPlugin(configUrl)
             val config = SourcePluginConfig.fromJson(configText, configUrl)
-            when (pluginSignatureState(config.scriptSignature, config.scriptPublicKey)) {
-                PluginSignatureState.Unsigned -> Unit
-                PluginSignatureState.Incomplete -> error(
-                    "Plugin signature metadata is incomplete for ${config.name}.",
-                )
-                PluginSignatureState.Signed -> if (!config.validate(scriptText)) {
-                    pendingUntrustedPlugins.entries.removeAll {
-                        it.value.config.sourceUrl == configUrl
+            if (enforcePluginSignatures) {
+                when (pluginSignatureState(config.scriptSignature, config.scriptPublicKey)) {
+                    PluginSignatureState.Unsigned -> Unit
+                    PluginSignatureState.Incomplete -> error(
+                        "Plugin signature metadata is incomplete for ${config.name}.",
+                    )
+                    PluginSignatureState.Signed -> if (!config.validate(scriptText)) {
+                        pendingUntrustedPlugins.entries.removeAll {
+                            it.value.config.sourceUrl == configUrl
+                        }
+                        val token = UUID.randomUUID().toString()
+                        pendingUntrustedPlugins[token] = PendingUntrustedPlugin(
+                            config = config,
+                            configText = configText,
+                            scriptText = scriptText,
+                        )
+                        throw GrayjaySignatureMismatchException(
+                            GrayjayUntrustedPlugin(
+                                token = token,
+                                pluginId = config.id,
+                                pluginName = config.name,
+                                publisher = config.author,
+                                publisherUrl = config.authorUrl,
+                                configUrl = configUrl,
+                                publicKeyFingerprint = config.scriptPublicKey.orEmpty().fingerprint(),
+                            ),
+                        )
                     }
-                    val token = UUID.randomUUID().toString()
-                    pendingUntrustedPlugins[token] = PendingUntrustedPlugin(
-                        config = config,
-                        configText = configText,
-                        scriptText = scriptText,
-                    )
-                    throw GrayjaySignatureMismatchException(
-                        GrayjayUntrustedPlugin(
-                            token = token,
-                            pluginId = config.id,
-                            pluginName = config.name,
-                            publisher = config.author,
-                            publisherUrl = config.authorUrl,
-                            configUrl = configUrl,
-                            publicKeyFingerprint = config.scriptPublicKey.orEmpty().fingerprint(),
-                        ),
-                    )
                 }
             }
             finishPluginInstallation(config, configText, scriptText)
@@ -2450,6 +2534,13 @@ class GrayjayPluginBackend(context: Context) {
 
     private fun cachedPlugin(id: String): Pair<String, String>? {
         val directory = File(pluginDirectory, id)
+        val atomicPayload = AtomicFile(File(directory, "payload.json"))
+        runCatching {
+            atomicPayload.openRead().bufferedReader().use { reader ->
+                val json = JSONObject(reader.readText())
+                json.getString("config") to json.getString("script")
+            }
+        }.getOrNull()?.let { return it }
         val config = File(directory, "config.json")
         val script = File(directory, "script.js")
         if (!config.isFile || !script.isFile) return null
@@ -2458,8 +2549,29 @@ class GrayjayPluginBackend(context: Context) {
 
     private fun cachePlugin(id: String, config: String, script: String) {
         val directory = File(pluginDirectory, id).apply { mkdirs() }
-        File(directory, "config.json").writeText(config)
-        File(directory, "script.js").writeText(script)
+        val atomicPayload = AtomicFile(File(directory, "payload.json"))
+        val output = atomicPayload.startWrite()
+        try {
+            output.write(
+                JSONObject()
+                    .put("config", config)
+                    .put("script", script)
+                    .toString()
+                    .toByteArray(),
+            )
+            atomicPayload.finishWrite(output)
+        } catch (error: Throwable) {
+            atomicPayload.failWrite(output)
+            throw error
+        }
+        // Keep the legacy files for diagnostics and compatibility with older Grayjoy builds. The
+        // runtime reads the atomically committed payload above, never a half-written pair.
+        runCatching {
+            File(directory, "config.json").writeText(config)
+            File(directory, "script.js").writeText(script)
+        }.onFailure { error ->
+            Log.w(TAG, "Could not update legacy diagnostic files for plugin $id.", error)
+        }
     }
 
     private fun loadPluginSettings(pluginId: String): HashMap<String, String?> {

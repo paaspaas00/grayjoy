@@ -1,170 +1,174 @@
 {
-	"name": "Twitch (Beta)",
-	"description": "One of the biggest livestreaming platforms, owned by Amazon.",
-	"author": "FUTO",
-	"authorUrl": "https://futo.tech",
-	"platformUrl": "https://twitch.tv",
-	"sourceUrl": "https://plugins.grayjay.app/Twitch/TwitchConfig.json",
-	"repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/twitch",
-	"scriptUrl": "./TwitchScript.js",
-	"version": 36,
-	"iconUrl": "./twitch.png",
-	"id": "c0f315f9-0992-4508-a061-f2738724c331",
-	"scriptSignature": "",
-	"scriptPublicKey": "",
-	"packages": [
-		"Http"
-	],
-	"packagesOptional": [
-		"HttpImp"
-	],
-	"allowEval": false,
-	"allowUrls": [
-		"gql.twitch.tv",
-		"twitch.tv",
-		"usher.ttvnw.net",
-		".playlist.ttvnw.net",
-		".hls.ttvnw.net",
-		".live-video.net",
-		"production.assets.clips.twitchcdn.net"
-	],
-	"authentication": {
-		"userAgent": null,
-		"loginUrl": "https://www.twitch.tv/login",
-		"headersToFind": [
-			"Authorization"
-		],
-		"domainHeadersToFind": {
-			".twitch.tv": [
-				"authorization"
-			]
-		}
-	},
-	"authenticationDesktop": {
-		"userAgent": null,
-		"loginUrl": "https://www.twitch.tv/login",
-		"headersToFind": [
-			"Authorization"
-		],
-		"domainHeadersToFind": {
-			".twitch.tv": [
-				"authorization"
-			]
-		},
-		"useMobileEmulation": false
-	},
-	"supportedClaimTypes": [
-		14
-	],
-	"settings": [
-		{
-			"variable": "shouldIncludeChannelClips",
-			"name": "Show channel clips",
-			"description": "",
-			"type": "Boolean",
-			"default": "true"
-		},
-		{
-			"variable": "includeChannelPanels",
-			"name": "Include channel panel links",
-			"description": "Merge links from the channel's About panels (may include sponsored / affiliate links).",
-			"type": "Boolean",
-			"default": "false"
-		},
-		{
-			"variable": "verboseNotifications",
-			"name": "Verbose notifications",
-			"description": "Show toast notifications for plugin trace messages and failed requests (useful for debugging).",
-			"type": "Boolean",
-			"default": "false"
-		},
-		{
-			"variable": "livestreamAdsHeader",
-			"name": "Livestream Ads (Experimental)",
-			"description": "Filter Twitch-inserted commercial breaks from livestreams.",
-			"type": "Header"
-		},
-		{
-			"variable": "useLegacyHlsUrl",
-			"name": "Use Legacy HLS URL",
-			"description": "Fall back to the pre-v2 usher endpoint with sparse query parameters.",
-			"type": "Boolean",
-			"default": "false"
-		},
-		{
-			"variable": "browserImpersonationHeader",
-			"name": "Browser Impersonation (Experimental)",
-			"description": "Route requests through a browser-impersonating HTTP client. Enable if Twitch starts blocking the plugin.",
-			"type": "Header"
-		},
-		{
-			"variable": "impersonateApiRequests",
-			"name": "Impersonate API Requests",
-			"description": "Applies to GraphQL queries and the integrity token endpoint.",
-			"type": "Boolean",
-			"default": "false"
-		},
-		{
-			"variable": "impersonateMediaRequests",
-			"name": "Impersonate Media Requests",
-			"description": "Applies to HLS playlist and segment fetches.",
-			"type": "Boolean",
-			"default": "false"
-		}
-	],
-	"changelog": {
-		"36": [
-			"Fix: Channel pages no longer crash on an unavailable clip;"
-		],
-		"35": [
-			"Fix: Clips now show all available video qualities;",
-			"Fix: Use login webview's own user agent;",
-			"Fix: Increase subscription import from 100 up to 200 followed channels;"
-		],
-		"34": [
-			"Fix: Update thumbnails of livestreams after some time;",
-			"Fix: Bypass Twitch livestream pre-roll;",
-			"Fix: Show a clear error for channels that no longer exist;",
-			"Performance: persist integrity token to state;",
-			"Feature: Show past livestream chats;",
-			"Feature: Support channel panel links in channel About tab (opt-in in plugin settings);",
-			"Feature: Add browser impersonation support (opt-in in plugin settings);"
-		],
-		"33": [
-			"Fix: Channel with query strings;"
-		],
-		"32": [
-			"Fix: Detect subscriber-only VODs and show proper error instead of broken playback;"
-		],
-		"31": [
-			"Fix: Playing clips;",
-			"Improvement: Support subscriber only content;",
-			"Improvement: Remove dead code and improve performance;",
-			"Improvement: Optimize VOD loading from channel pages;"
-		],
-		"30": [
-			"Fix: Playing VODs;"
-		],
-		"29": [
-			"Fix: Home tab;",
-			"Fix: Search;",
-			"Fix: Content Details;",
-			"Fix: Playing saved videos;",
-			"Fix: Content recommendations;"
-		],
-		"28": [
-			"Improvement: Add 1440p stream support for logged-in users in supported regions;"
-		],
-		"27": [
-			"Fix: Channel social links;",
-			"Improvement: Initial content recommendation implementation;",
-			"Improvement: Switch to CBR bitrate to resolve automatic resolution drops"
-		],
-		"26": [
-			"Fix: home error;"
-		],
-		"25": [
-			"Fix: solve playback errors in some clips;"
-		]
-	}
+  "name": "Twitch (Beta)",
+  "description": "One of the biggest livestreaming platforms, owned by Amazon.",
+  "author": "FUTO",
+  "authorUrl": "https://futo.tech",
+  "platformUrl": "https://twitch.tv",
+  "sourceUrl": "https://plugins.grayjay.app/Twitch/TwitchConfig.json",
+  "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/twitch",
+  "scriptUrl": "./TwitchScript.js",
+  "version": 37,
+  "iconUrl": "./twitch.png",
+  "id": "c0f315f9-0992-4508-a061-f2738724c331",
+  "scriptSignature": "RgEYDj4F01RuEfSU+uJWVksJPyMaUGVmk8/qv99bxgnY5om/5r45Ci1Vi3Kg1zIRgIpVOsE3bJZxJfyOcynWc2J42rZfVHZUnUMYarP0gHC7o5nFdhUfkzpEHxUNFDuCo09pm9TH2oQEDvilbbzPETmwUblJ9VkQeJtCEXn58hb88GCfDJ7TW1Y36GCKBx7aixNv8uitSRJ0isiHRK4G4BwyqcjJ16QVPTQeBJAgmihOHloAfZ75xuEoqAQLVO3fVE5ZTYalK8jOfA3XVvRiNhM6svnURgB2HswZ95qM4j0AnDkxNGIzvjTTzAhkE2msOMylM/HYOHuFnMbBb6ud+w==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
+  "packages": [
+    "Http"
+  ],
+  "packagesOptional": [
+    "HttpImp"
+  ],
+  "allowEval": false,
+  "allowUrls": [
+    "gql.twitch.tv",
+    "twitch.tv",
+    "usher.ttvnw.net",
+    ".playlist.ttvnw.net",
+    ".hls.ttvnw.net",
+    ".live-video.net",
+    "production.assets.clips.twitchcdn.net"
+  ],
+  "authentication": {
+    "userAgent": null,
+    "loginUrl": "https://www.twitch.tv/login",
+    "headersToFind": [
+      "Authorization"
+    ],
+    "domainHeadersToFind": {
+      ".twitch.tv": [
+        "authorization"
+      ]
+    }
+  },
+  "authenticationDesktop": {
+    "userAgent": null,
+    "loginUrl": "https://www.twitch.tv/login",
+    "headersToFind": [
+      "Authorization"
+    ],
+    "domainHeadersToFind": {
+      ".twitch.tv": [
+        "authorization"
+      ]
+    },
+    "useMobileEmulation": false
+  },
+  "supportedClaimTypes": [
+    14
+  ],
+  "settings": [
+    {
+      "variable": "shouldIncludeChannelClips",
+      "name": "Show channel clips",
+      "description": "",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "includeChannelPanels",
+      "name": "Include channel panel links",
+      "description": "Merge links from the channel's About panels (may include sponsored / affiliate links).",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "verboseNotifications",
+      "name": "Verbose notifications",
+      "description": "Show toast notifications for plugin trace messages and failed requests (useful for debugging).",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "livestreamAdsHeader",
+      "name": "Livestream Ads (Experimental)",
+      "description": "Filter Twitch-inserted commercial breaks from livestreams.",
+      "type": "Header"
+    },
+    {
+      "variable": "useLegacyHlsUrl",
+      "name": "Use Legacy HLS URL",
+      "description": "Fall back to the pre-v2 usher endpoint with sparse query parameters.",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "browserImpersonationHeader",
+      "name": "Browser Impersonation (Experimental)",
+      "description": "Route requests through a browser-impersonating HTTP client. Enable if Twitch starts blocking the plugin.",
+      "type": "Header"
+    },
+    {
+      "variable": "impersonateApiRequests",
+      "name": "Impersonate API Requests",
+      "description": "Applies to GraphQL queries and the integrity token endpoint.",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "impersonateMediaRequests",
+      "name": "Impersonate Media Requests",
+      "description": "Applies to HLS playlist and segment fetches.",
+      "type": "Boolean",
+      "default": "false"
+    }
+  ],
+  "changelog": {
+    "37": [
+      "Fix: Channels, streams, VODs, search, and chat no longer fail with 'persistedQuery sha256 hash does not match query body';",
+      "Fix: VOD chat replay no longer depends on a rotating persisted query hash;"
+    ],
+    "36": [
+      "Fix: Channel pages no longer crash on an unavailable clip;"
+    ],
+    "35": [
+      "Fix: Clips now show all available video qualities;",
+      "Fix: Use login webview's own user agent;",
+      "Fix: Increase subscription import from 100 up to 200 followed channels;"
+    ],
+    "34": [
+      "Fix: Update thumbnails of livestreams after some time;",
+      "Fix: Bypass Twitch livestream pre-roll;",
+      "Fix: Show a clear error for channels that no longer exist;",
+      "Performance: persist integrity token to state;",
+      "Feature: Show past livestream chats;",
+      "Feature: Support channel panel links in channel About tab (opt-in in plugin settings);",
+      "Feature: Add browser impersonation support (opt-in in plugin settings);"
+    ],
+    "33": [
+      "Fix: Channel with query strings;"
+    ],
+    "32": [
+      "Fix: Detect subscriber-only VODs and show proper error instead of broken playback;"
+    ],
+    "31": [
+      "Fix: Playing clips;",
+      "Improvement: Support subscriber only content;",
+      "Improvement: Remove dead code and improve performance;",
+      "Improvement: Optimize VOD loading from channel pages;"
+    ],
+    "30": [
+      "Fix: Playing VODs;"
+    ],
+    "29": [
+      "Fix: Home tab;",
+      "Fix: Search;",
+      "Fix: Content Details;",
+      "Fix: Playing saved videos;",
+      "Fix: Content recommendations;"
+    ],
+    "28": [
+      "Improvement: Add 1440p stream support for logged-in users in supported regions;"
+    ],
+    "27": [
+      "Fix: Channel social links;",
+      "Improvement: Initial content recommendation implementation;",
+      "Improvement: Switch to CBR bitrate to resolve automatic resolution drops"
+    ],
+    "26": [
+      "Fix: home error;"
+    ],
+    "25": [
+      "Fix: solve playback errors in some clips;"
+    ]
+  }
 }

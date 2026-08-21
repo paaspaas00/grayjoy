@@ -23,6 +23,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -36,12 +38,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import androidx.media3.common.Player
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 @Composable
 fun MiniPlayer(
     video: VideoUiModel,
     isPlaying: Boolean,
     progress: Float,
+    player: Player? = null,
     canSkip: Boolean,
     chromeAlpha: Float,
     onExpand: () -> Unit,
@@ -57,7 +63,10 @@ fun MiniPlayer(
         enabled = normalizedAlpha > 0.95f,
         modifier = modifier
             .fillMaxWidth()
-            .graphicsLayer { alpha = normalizedAlpha }
+            .then(
+                if (normalizedAlpha >= 0.999f) Modifier
+                else Modifier.graphicsLayer { alpha = normalizedAlpha },
+            )
             .then(
                 if (normalizedAlpha <= 0.001f) Modifier.clearAndSetSemantics { }
                 else Modifier.testTag("mini-player"),
@@ -69,6 +78,7 @@ fun MiniPlayer(
             video = video,
             isPlaying = isPlaying,
             progress = progress,
+            player = player,
             canSkip = canSkip,
             onTogglePlayback = onTogglePlayback,
             onSkipToNext = onSkipToNext,
@@ -83,6 +93,7 @@ internal fun MiniPlayerChrome(
     video: VideoUiModel,
     isPlaying: Boolean,
     progress: Float,
+    player: Player? = null,
     canSkip: Boolean,
     onTogglePlayback: () -> Unit,
     onSkipToNext: () -> Unit,
@@ -91,6 +102,26 @@ internal fun MiniPlayerChrome(
     onVideoBoundsChanged: ((Rect) -> Unit)? = null,
     applyTestTags: Boolean = true,
 ) {
+    val displayedProgress by produceState(
+        initialValue = progress.coerceIn(0f, 1f),
+        key1 = player,
+        key2 = video.id,
+        key3 = if (player == null) progress else isPlaying,
+    ) {
+        if (player == null) {
+            value = progress.coerceIn(0f, 1f)
+            return@produceState
+        }
+        while (isActive) {
+            val duration = player.duration
+            value = if (duration > 0L) {
+                (player.currentPosition.toFloat() / duration).coerceIn(0f, 1f)
+            } else {
+                progress.coerceIn(0f, 1f)
+            }
+            delay(if (isPlaying) 500L else 1_500L)
+        }
+    }
     Column(modifier) {
         Row(
             modifier = Modifier
@@ -200,7 +231,7 @@ internal fun MiniPlayerChrome(
             }
         }
         LinearProgressIndicator(
-            progress = { progress.coerceIn(0f, 1f) },
+            progress = { displayedProgress },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(2.dp),

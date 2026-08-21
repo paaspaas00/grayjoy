@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -48,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +67,7 @@ import com.bumptech.glide.Glide
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
+import com.futo.platformplayer.compose.rememberDevicePerformanceProfile
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.delay
@@ -74,6 +77,22 @@ private data class RemoteImageRequestKey(
     val fallbackUrl: String?,
     val placeholderColor: Int,
     val circleCrop: Boolean,
+)
+
+private val YOUTUBE_THUMBNAIL_ID_REGEX = Regex(
+    "/vi(?:_webp)?/([^/?&]+)",
+    RegexOption.IGNORE_CASE,
+)
+private val YOUTUBE_QUERY_ID_REGEX = Regex("[?&]v=([^&#]+)", RegexOption.IGNORE_CASE)
+private val YOUTUBE_PATH_ID_REGEX = Regex(
+    "(?:youtu\\.be/|/shorts/)([^/?&#]+)",
+    RegexOption.IGNORE_CASE,
+)
+private val VIDEO_PLACEHOLDER_GRADIENTS = listOf(
+    listOf(Color(0xFF152A62), Color(0xFF4F91DC)),
+    listOf(Color(0xFF3E1E68), Color(0xFFB05AC4)),
+    listOf(Color(0xFF003A42), Color(0xFF1BACC6)),
+    listOf(Color(0xFF633014), Color(0xFFE08A45)),
 )
 
 /** Avoid restarting an in-flight Glide request whenever the playback clock recomposes the UI. */
@@ -118,11 +137,11 @@ internal fun youtubeThumbnailFallbackUrl(
     thumbnailUrl: String,
 ): String? {
     if (!sourceId.equals("youtube", ignoreCase = true)) return null
-    val youtubeId = Regex("/vi(?:_webp)?/([^/?&]+)", RegexOption.IGNORE_CASE)
+    val youtubeId = YOUTUBE_THUMBNAIL_ID_REGEX
         .find(thumbnailUrl)?.groupValues?.getOrNull(1)
-        ?: Regex("[?&]v=([^&#]+)", RegexOption.IGNORE_CASE)
+        ?: YOUTUBE_QUERY_ID_REGEX
             .find(videoId)?.groupValues?.getOrNull(1)
-        ?: Regex("(?:youtu\\.be/|/shorts/)([^/?&#]+)", RegexOption.IGNORE_CASE)
+        ?: YOUTUBE_PATH_ID_REGEX
             .find(videoId)?.groupValues?.getOrNull(1)
         ?: return null
     return "https://i.ytimg.com/vi/$youtubeId/hqdefault.jpg"
@@ -205,10 +224,11 @@ internal fun CompactVideoCard(
     showProgress: Boolean = false,
     animateEntrance: Boolean = true,
 ) {
+    val performance = rememberDevicePerformanceProfile()
     val entranceModifier = staggeredVideoEntrance(
         index = index,
         videoId = video.id,
-        enabled = animateEntrance,
+        enabled = animateEntrance && performance.allowPerItemLayerAnimations,
     )
     Card(
         modifier = Modifier
@@ -223,10 +243,14 @@ internal fun CompactVideoCard(
                 MaterialTheme.colorScheme.surfaceContainerLow
             },
         ),
+        shape = if (performance.isLowEnd) RectangleShape else MaterialTheme.shapes.medium,
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (performance.isLowEnd) 0.dp else 1.dp,
+        ),
     ) {
         Column {
             Row(
-                modifier = Modifier.padding(10.dp),
+                modifier = Modifier.padding(if (performance.compactContent) 6.dp else 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
             CompactVideoThumbnail(
@@ -234,20 +258,28 @@ internal fun CompactVideoCard(
                 index = index,
                 showWatchProgress = showProgress,
                 modifier = Modifier
-                    .width(184.dp)
+                    .width(if (performance.compactContent) 148.dp else 184.dp)
                     .aspectRatio(16f / 9f)
-                    .clip(MaterialTheme.shapes.medium),
+                    .then(
+                        if (performance.isLowEnd) Modifier
+                        else Modifier.clip(MaterialTheme.shapes.medium),
+                    ),
             )
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = 12.dp, end = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                        .padding(
+                            start = if (performance.compactContent) 8.dp else 12.dp,
+                            end = 4.dp,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(
+                        if (performance.compactContent) 2.dp else 4.dp,
+                    ),
                 ) {
                 Text(
                     text = video.title,
                     style = MaterialTheme.typography.titleSmall,
-                    maxLines = 3,
+                    maxLines = if (performance.compactContent) 2 else 3,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Row(
@@ -257,7 +289,7 @@ internal fun CompactVideoCard(
                     ChannelAvatarImage(
                         name = video.creator,
                         thumbnailUrl = video.authorThumbnailUrl,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(if (performance.compactContent) 20.dp else 24.dp),
                     )
                     Text(
                         text = video.creator,
@@ -271,7 +303,7 @@ internal fun CompactVideoCard(
                     text = metadataText,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall,
-                    maxLines = 2,
+                    maxLines = if (performance.compactContent) 1 else 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 }
@@ -336,6 +368,7 @@ private fun staggeredVideoEntrance(
 ): Modifier {
     if (!enabled) return Modifier
     var entered by rememberSaveable(videoId) { mutableStateOf(false) }
+    var entranceLayerActive by remember(videoId) { mutableStateOf(!entered) }
     val progress by animateFloatAsState(
         targetValue = if (entered) 1f else 0f,
         animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing),
@@ -347,8 +380,11 @@ private fun staggeredVideoEntrance(
         if (!entered) {
             delay((index % 6) * 24L)
             entered = true
+            delay(210L)
         }
+        entranceLayerActive = false
     }
+    if (!entranceLayerActive) return Modifier
     return Modifier.graphicsLayer {
         alpha = progress
         translationY = entranceDistancePx * (1f - progress)
@@ -362,15 +398,14 @@ private fun CompactVideoThumbnail(
     showWatchProgress: Boolean,
     modifier: Modifier,
 ) {
-    val gradients = listOf(
-        listOf(Color(0xFF152A62), Color(0xFF4F91DC)),
-        listOf(Color(0xFF3E1E68), Color(0xFFB05AC4)),
-        listOf(Color(0xFF003A42), Color(0xFF1BACC6)),
-        listOf(Color(0xFF633014), Color(0xFFE08A45)),
-    )
     val placeholderColor = MaterialTheme.colorScheme.surfaceVariant.toArgb()
+    val placeholderBrush = remember(index) {
+        Brush.linearGradient(
+            VIDEO_PLACEHOLDER_GRADIENTS[index % VIDEO_PLACEHOLDER_GRADIENTS.size],
+        )
+    }
     Box(
-        modifier = modifier.background(Brush.linearGradient(gradients[index % gradients.size])),
+        modifier = modifier.background(placeholderBrush),
     ) {
         if (video.thumbnailUrl.isNotBlank()) {
             AndroidView(
@@ -491,10 +526,14 @@ internal fun SourceIconImage(
     accentColor: Color,
     modifier: Modifier,
 ) {
+    val performance = rememberDevicePerformanceProfile()
     val placeholderColor = accentColor.toArgb()
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
+            .then(
+                if (performance.isLowEnd) Modifier
+                else Modifier.clip(RoundedCornerShape(6.dp)),
+            )
             .background(accentColor),
         contentAlignment = Alignment.Center,
     ) {
@@ -566,10 +605,11 @@ internal fun ChannelAvatarImage(
     thumbnailUrl: String,
     modifier: Modifier,
 ) {
+    val performance = rememberDevicePerformanceProfile()
     val placeholderColor = MaterialTheme.colorScheme.tertiaryContainer.toArgb()
     Box(
         modifier = modifier
-            .clip(CircleShape)
+            .then(if (performance.isLowEnd) Modifier else Modifier.clip(CircleShape))
             .background(MaterialTheme.colorScheme.tertiaryContainer),
         contentAlignment = Alignment.Center,
     ) {

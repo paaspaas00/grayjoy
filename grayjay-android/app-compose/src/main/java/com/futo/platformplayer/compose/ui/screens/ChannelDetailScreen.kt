@@ -1,5 +1,6 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import android.content.Intent
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -44,12 +46,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.rememberDevicePerformanceProfile
 import com.futo.platformplayer.compose.ui.ChannelContentTab
 import com.futo.platformplayer.compose.ui.ChannelDetailUiState
 import com.futo.platformplayer.compose.ui.ChannelUiModel
@@ -73,6 +77,7 @@ fun ChannelDetailScreen(
     defaultPlaybackSpeed: Float = 1f,
     onPlaybackSpeedChange: (Float?) -> Unit = {},
 ) {
+    val performance = rememberDevicePerformanceProfile()
     var query by rememberSaveable(channel.id, detail.selectedTab) { mutableStateOf("") }
     var showSpeedSheet by rememberSaveable(channel.id) { mutableStateOf(false) }
     var showSortSheet by rememberSaveable(channel.id, detail.selectedTab) { mutableStateOf(false) }
@@ -99,6 +104,7 @@ fun ChannelDetailScreen(
         onLoadMore = onLoadMore,
     )
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
     val displayedChannel = detail.channel ?: channel
     val currentVideos = when (detail.selectedTab) {
         ChannelContentTab.Videos -> detail.videos
@@ -106,12 +112,21 @@ fun ChannelDetailScreen(
         ChannelContentTab.Live -> detail.liveStreams
         ChannelContentTab.Playlists -> emptyList()
     }
-    val filteredVideos = currentVideos.filter { video ->
-        query.isBlank() || listOf(video.title, video.description, video.metadata)
-            .any { it.contains(query.trim(), ignoreCase = true) }
+    val filteredVideos = remember(currentVideos, query) {
+        val normalizedQuery = query.trim()
+        currentVideos.filter { video ->
+            normalizedQuery.isBlank() ||
+                video.title.contains(normalizedQuery, ignoreCase = true) ||
+                video.description.contains(normalizedQuery, ignoreCase = true) ||
+                video.metadata.contains(normalizedQuery, ignoreCase = true)
+        }
     }
-    val visibleVideos = sortChannelVideos(filteredVideos, sortMode, sortAscending)
-    val visiblePlaylists = sortChannelPlaylists(detail.playlists, sortAscending)
+    val visibleVideos = remember(filteredVideos, sortMode, sortAscending) {
+        sortChannelVideos(filteredVideos, sortMode, sortAscending)
+    }
+    val visiblePlaylists = remember(detail.playlists, sortAscending) {
+        sortChannelPlaylists(detail.playlists, sortAscending)
+    }
     val tabs = channelTabsFor(detail)
     val searchField: @Composable (Modifier) -> Unit = { modifier ->
         OutlinedTextField(
@@ -168,8 +183,12 @@ fun ChannelDetailScreen(
     LazyColumn(
         state = listState,
         modifier = Modifier.testTag("channel-detail-${channel.id}"),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            if (performance.compactContent) 8.dp else 16.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(
+            if (performance.compactContent) 8.dp else 16.dp,
+        ),
     ) {
         item {
             Card(
@@ -179,19 +198,25 @@ fun ChannelDetailScreen(
                 ),
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                    modifier = Modifier.fillMaxWidth().padding(
+                        if (performance.compactContent) 12.dp else 20.dp,
+                    ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     ChannelAvatarImage(
                         name = displayedChannel.name,
                         thumbnailUrl = displayedChannel.thumbnailUrl,
-                        modifier = Modifier.size(96.dp),
+                        modifier = Modifier.size(if (performance.compactContent) 72.dp else 96.dp),
                     )
                     Text(
                         displayedChannel.name,
                         textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = if (performance.compactContent) {
+                            MaterialTheme.typography.titleLarge
+                        } else {
+                            MaterialTheme.typography.headlineMedium
+                        },
                     )
                     Text(
                         "${displayedChannel.source} • ${displayedChannel.followerCount}",
@@ -205,7 +230,8 @@ fun ChannelDetailScreen(
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
-                            maxLines = if (descriptionExpanded) Int.MAX_VALUE else 3,
+                            maxLines = if (descriptionExpanded) Int.MAX_VALUE
+                            else if (performance.compactContent) 2 else 3,
                             overflow = TextOverflow.Ellipsis,
                             onTextLayout = { result ->
                                 if (!descriptionExpanded) {
@@ -238,12 +264,34 @@ fun ChannelDetailScreen(
                             }
                         }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         Button(
                             onClick = { onFollowingChange(!isFollowing) },
                             modifier = Modifier.testTag("channel-follow"),
                         ) {
                             Text(stringResource(if (isFollowing) R.string.following else R.string.follow))
+                        }
+                        Button(
+                            onClick = {
+                                val shareUrl = displayedChannel.id
+                                context.startActivity(
+                                    Intent.createChooser(
+                                        Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_SUBJECT, displayedChannel.name)
+                                            putExtra(Intent.EXTRA_TEXT, shareUrl)
+                                        },
+                                        context.getString(R.string.share),
+                                    ),
+                                )
+                            },
+                            modifier = Modifier.testTag("channel-share"),
+                        ) {
+                            Icon(Icons.Outlined.Share, contentDescription = null)
+                            Text(stringResource(R.string.share))
                         }
                         if (perChannelPlaybackSpeedEnabled) {
                             Button(
@@ -342,11 +390,19 @@ fun ChannelDetailScreen(
                 }
             }
         } else if (detail.selectedTab == ChannelContentTab.Playlists) {
-            items(visiblePlaylists, key = PlaylistUiModel::id) { playlist ->
+            items(
+                items = visiblePlaylists,
+                key = PlaylistUiModel::id,
+                contentType = { "playlist" },
+            ) { playlist ->
                 PlaylistRow(playlist = playlist, onClick = { onPlaylistClick(playlist) })
             }
         } else {
-            itemsIndexed(visibleVideos, key = { _, video -> video.id }) { index, video ->
+            itemsIndexed(
+                visibleVideos,
+                key = { _, video -> video.id },
+                contentType = { _, _ -> "video" },
+            ) { index, video ->
                 CompactVideoCard(
                     video = video,
                     index = index,

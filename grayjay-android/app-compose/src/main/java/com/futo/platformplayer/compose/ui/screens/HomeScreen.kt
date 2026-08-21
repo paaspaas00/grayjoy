@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.rememberDevicePerformanceProfile
 import com.futo.platformplayer.compose.ui.HomeFeedType
 import com.futo.platformplayer.compose.ui.HomeUiState
 import com.futo.platformplayer.compose.ui.PcPlaybackUiModel
@@ -76,6 +77,7 @@ fun HomeScreen(
     onNextComputerPlayback: (String) -> Unit = {},
     onSeekComputerPlayback: (String, Long) -> Unit = { _, _ -> },
 ) {
+    val performance = rememberDevicePerformanceProfile()
     var updateDetailsVisible by rememberSaveable { mutableStateOf(false) }
     val feeds = HomeFeedType.entries
     val pagerState = rememberPagerState(
@@ -153,7 +155,10 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(
+                    horizontal = if (performance.compactContent) 8.dp else 16.dp,
+                    vertical = if (performance.compactContent) 4.dp else 8.dp,
+                ),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             feeds.forEachIndexed { page, feed ->
@@ -175,20 +180,21 @@ fun HomeScreen(
                 .fillMaxWidth()
                 .weight(1f)
                 .testTag("home-feed-pager"),
-            beyondViewportPageCount = 1,
+            beyondViewportPageCount = if (performance.isLowEnd) 0 else 1,
             key = { feeds[it].name },
         ) { page ->
             val feed = feeds[page]
             val isSelectedPage = home.selectedFeed == feed
             val listState = rememberLazyListState()
             val presentedVideoIds = remember(feed) { mutableSetOf<String>() }
+            val latestHomeVideos by rememberUpdatedState(home.videos)
             RequestNextPageEffect(
                 listState = listState,
                 canLoadMore = isSelectedPage && home.hasMore &&
                     !home.isLoading && !home.isLoadingMore,
                 onLoadMore = onLoadMore,
             )
-            LaunchedEffect(listState, isSelectedPage, home.videos) {
+            LaunchedEffect(listState, isSelectedPage) {
                 if (!isSelectedPage) return@LaunchedEffect
                 snapshotFlow { listState.isScrollInProgress }
                     .distinctUntilChanged()
@@ -198,7 +204,7 @@ fun HomeScreen(
                         val visibleVideoIds = listState.layoutInfo.visibleItemsInfo
                             .mapNotNull { it.key as? String }
                             .toSet()
-                        home.videos.asSequence()
+                        latestHomeVideos.asSequence()
                             .filter { it.id in visibleVideoIds }
                             .filter { it.duration.isBlank() && !it.isLive }
                             .forEach { onHydrateVideoMetadata(it.id) }
@@ -217,8 +223,10 @@ fun HomeScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(if (performance.compactContent) 8.dp else 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(
+                        if (performance.compactContent) 8.dp else 16.dp,
+                    ),
                 ) {
                     item {
                         Row(
@@ -275,9 +283,13 @@ fun HomeScreen(
                     }
 
                     if (isSelectedPage) {
-                        itemsIndexed(home.videos, key = { _, video -> video.id }) { index, video ->
+                        itemsIndexed(
+                            home.videos,
+                            key = { _, video -> video.id },
+                            contentType = { _, _ -> "video" },
+                        ) { index, video ->
                             val animateEntrance = remember(video.id) {
-                                presentedVideoIds.add(video.id) && !listState.isScrollInProgress
+                                presentedVideoIds.add(video.id)
                             }
                             VideoCard(
                                 video = video,

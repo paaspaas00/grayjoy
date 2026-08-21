@@ -69,6 +69,10 @@ data class VideoUiModel(
     val playbackAudioOnly: Boolean = false,
 )
 
+/** DRM sources such as Crunchyroll may be streamed but are never offered as offline downloads. */
+fun VideoUiModel.supportsOfflineDownload(): Boolean =
+    !isLive && !isDrmProtected && !sourceId.equals("crunchyroll", ignoreCase = true)
+
 data class StoryboardUiModel(
     val levels: List<StoryboardLevelUiModel>,
 )

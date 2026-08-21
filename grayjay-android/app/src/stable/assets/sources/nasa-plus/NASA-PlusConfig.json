@@ -10,8 +10,8 @@
   "sourceUrl": "https://plugins.grayjay.app/NASA-Plus/NASA-PlusConfig.json",
   "scriptUrl": "./NASA-PlusScript.js",
   "iconUrl": "./NASA-PlusIcon.png",
-  "scriptSignature": "",
-  "scriptPublicKey": "",
+  "scriptSignature": "FZYz4r5H1Hh5pPvRgT5oS009PIrYgaPt6cIN74Ul02H6qcT7Ys1hXmxqvGxfxrLyjvWGrStLEYp44tnuoe8pt+G/byyWH1/E4O5PSfBfgw1S89aVVxIhR6OnPG/J0brp5F4FS+D+rbkzlcYUdqcvLzXM1ZMkEUzDqNicFgf68oz1sDinNJyO18b3CZFkFGxuAGagW3q+Se2jeRqEEbyl3AjocGd0nQumbu6b5v/7H82/iGgB65xB6JUs+L3zW5FBRraF+kHDi0wrk9QXQS3z0jpKBITc0SyCNTLBQohq9RvqtnlRO8B68y8jIHpFB1QgUlAshhvvcGO7Ha16xdao+A==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
   "packages": [
     "Http"
   ],

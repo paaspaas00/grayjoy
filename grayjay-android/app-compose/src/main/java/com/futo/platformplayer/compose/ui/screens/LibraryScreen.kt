@@ -237,7 +237,10 @@ internal fun LibraryScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .testTag("library-filter-pager"),
-                beyondViewportPageCount = 1,
+                // Adjacent pages each contain their own thumbnail-heavy LazyColumn. Pager keeps
+                // the drag target alive while swiping; precomposing another full page only wastes
+                // tablet GPU/bitmap work when the user is not swiping.
+                beyondViewportPageCount = 0,
                 key = { filters[it].name },
             ) { page ->
                 val pageFilter = filters[page]
@@ -326,7 +329,11 @@ internal fun LibraryScreen(
                     onQueryChange = { playlistQuery = it },
                 )
             }
-            items(matchingPlaylists, key = PlaylistUiModel::id) { playlist ->
+            items(
+                items = matchingPlaylists,
+                key = PlaylistUiModel::id,
+                contentType = { "playlist" },
+            ) { playlist ->
                 PlaylistRow(
                     playlist = playlist,
                     selected = playlist.id in selectedPlaylistIds,
@@ -357,6 +364,7 @@ internal fun LibraryScreen(
             itemsIndexed(
                 items = pageVideos,
                 key = { _, video -> video.id },
+                contentType = { _, _ -> "video" },
             ) { index, video ->
                 val watchedMetadata = if (
                     pageFilter == LibraryFilter.History && video.lastWatchedAt > 0L

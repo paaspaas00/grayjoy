@@ -273,6 +273,7 @@ fun SearchScreen(
                 search.suggestions.isNotEmpty() -> items(
                     items = search.suggestions,
                     key = { suggestion -> suggestion.lowercase() },
+                    contentType = { "suggestion" },
                 ) { suggestion ->
                     SuggestionRow(
                         suggestion = suggestion,
@@ -329,7 +330,11 @@ fun SearchScreen(
                     )
                 }
                 else -> when (type) {
-                    SearchContentType.Creators -> items(search.channels, key = ChannelUiModel::id) { channel ->
+                    SearchContentType.Creators -> items(
+                        items = search.channels,
+                        key = ChannelUiModel::id,
+                        contentType = { "creator" },
+                    ) { channel ->
                         ChannelRow(
                             channel = channel,
                             onClick = {
@@ -338,7 +343,11 @@ fun SearchScreen(
                             },
                         )
                     }
-                    SearchContentType.Playlists -> items(search.playlists, key = PlaylistUiModel::id) { playlist ->
+                    SearchContentType.Playlists -> items(
+                        items = search.playlists,
+                        key = PlaylistUiModel::id,
+                        contentType = { "playlist" },
+                    ) { playlist ->
                         PlaylistRow(
                             playlist = playlist,
                             onClick = {
@@ -351,7 +360,11 @@ fun SearchScreen(
                         if (search.videos.isNotEmpty()) {
                             item { SectionHeading(stringResource(R.string.videos)) }
                         }
-                        itemsIndexed(search.videos, key = { _, video -> video.id }) { index, video ->
+                        itemsIndexed(
+                            search.videos,
+                            key = { _, video -> video.id },
+                            contentType = { _, _ -> "video" },
+                        ) { index, video ->
                             CompactVideoCard(
                                 video = video,
                                 index = index,

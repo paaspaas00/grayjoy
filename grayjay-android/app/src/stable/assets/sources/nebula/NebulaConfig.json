@@ -1,81 +1,81 @@
 {
-    "name": "Nebula",
-    "description": "A subscription-based video platform, co-owned by Standard Broadcast LLC and various creators.",
-    "author": "FUTO",
-    "authorUrl": "https://futo.org",
-    "platformUrl": "https://nebula.tv",
-    "sourceUrl": "https://plugins.grayjay.app/Nebula/NebulaConfig.json",
-    "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/nebula",
-    "scriptUrl": "./NebulaScript.js",
-    "version": 18,
-    "iconUrl": "./NebulaIcon.png",
-    "id": "9d703ff5-c556-4962-a990-4f000829cb87",
-    "scriptSignature": "",
-    "scriptPublicKey": "",
-    "packages": [
-        "Http"
+  "name": "Nebula",
+  "description": "A subscription-based video platform, co-owned by Standard Broadcast LLC and various creators.",
+  "author": "FUTO",
+  "authorUrl": "https://futo.org",
+  "platformUrl": "https://nebula.tv",
+  "sourceUrl": "https://plugins.grayjay.app/Nebula/NebulaConfig.json",
+  "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/nebula",
+  "scriptUrl": "./NebulaScript.js",
+  "version": 18,
+  "iconUrl": "./NebulaIcon.png",
+  "id": "9d703ff5-c556-4962-a990-4f000829cb87",
+  "scriptSignature": "qhCcX5zAS/0k/V4t/3r6LZcckZwUSFiNL7TDssHFa+Qn5jMpRKABLXsn2jWuuB9mRn9HuM29rwoFq8PqJF0+NEjA7EZEkixL1ntRUKDigZ2qbByR7dYksJ4ikCLfDWOKiyZEi393/CR/A4Ed2c4++EVd7ZfwqTqh8GVtOkkWpBdaOmvOdv7LC48FW1CL3tOaXSSBeNIxFKSRq4qW+0YPfU/3Fo/mbg8RXRkHFkYbO7DmoJJ9PGL28fRh7G9X9N7E/3ogOtEmipWP+l1dx5owqrcklQVU6CyGxHMUN7rUN/5sFdFS5ZHNJ2fhB9Ji7wQutAHO0/DbWIbCbGPOn/8Hjg==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
+  "packages": [
+    "Http"
+  ],
+  "allowEval": false,
+  "allowUrls": [
+    "nebula.tv",
+    "content.api.nebula.app",
+    "nebula.app",
+    "users.api.nebula.app",
+    "starlight.nebula.tv"
+  ],
+  "authentication": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+    "loginUrl": "https://nebula.tv/login",
+    "headersToFind": [
+      "Authorization"
     ],
-    "allowEval": false,
-    "allowUrls": [
-        "nebula.tv",
-        "content.api.nebula.app",
-        "nebula.app",
-        "users.api.nebula.app",
-        "starlight.nebula.tv"
+    "cookiesToFind": [
+      "nebula_auth.apiToken"
     ],
-    "authentication": {
-        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
-        "loginUrl": "https://nebula.tv/login",
-        "headersToFind": [
-            "Authorization"
-        ],
-        "cookiesToFind": [
-            "nebula_auth.apiToken"
-        ],
-        "completionUrl": "https://users.api.nebula.app/api/v1/authorization/"
-    },
-    "supportedClaimTypes": [
-        19
-    ],
-    "subscriptionRateLimit": 15,
-	"settings": [
-        {
-            "variable": "nebulaActivity",
-            "name": "Provide Nebula Activity",
-            "description": "Tell Nebula what you played",
-            "type": "Boolean",
-            "default": "false"
-        }
-    ],
-    "changelog": {
-        "18": [
-            "Fix: Subtitles;",
-            "Fix: Watch Later and Saved Episodes playlist author;",
-            "Fix: Automatically recover from expired sessions;",
-            "Fix: Minor code improvements;",
-            "Improvement: Faster channel search and subscription import using parallel requests;",
-            "Improvement: Search now includes podcast episodes and series;"
-        ],
-        "17": [
-            "Fix: Playback on desktop;"
-        ],
-        "16": [
-            "Fix: playing content requiring login when already logged-in;",
-            "Fix: Handle channels without banners;",
-            "Fix: Content type detection using API response instead of URL pattern;",
-            "Fix: Podcast episodes;",
-            "Fix: Minor code improvements;"
-        ],
-        "15": [
-            "Fix: Missing audio in some downloads;"
-        ],
-        "14": [
-            "Add support for content recommendations;",
-            "Fix channel links in the channel's About tab;",
-            "Use the channel's banner image or avatar as the thumbnail for channel playlists;"
-        ],
-        "13": [
-            "Fix importing long watch later and saved episodes playlists"
-        ]
+    "completionUrl": "https://users.api.nebula.app/api/v1/authorization/"
+  },
+  "supportedClaimTypes": [
+    19
+  ],
+  "subscriptionRateLimit": 15,
+  "settings": [
+    {
+      "variable": "nebulaActivity",
+      "name": "Provide Nebula Activity",
+      "description": "Tell Nebula what you played",
+      "type": "Boolean",
+      "default": "false"
     }
+  ],
+  "changelog": {
+    "18": [
+      "Fix: Subtitles;",
+      "Fix: Watch Later and Saved Episodes playlist author;",
+      "Fix: Automatically recover from expired sessions;",
+      "Fix: Minor code improvements;",
+      "Improvement: Faster channel search and subscription import using parallel requests;",
+      "Improvement: Search now includes podcast episodes and series;"
+    ],
+    "17": [
+      "Fix: Playback on desktop;"
+    ],
+    "16": [
+      "Fix: playing content requiring login when already logged-in;",
+      "Fix: Handle channels without banners;",
+      "Fix: Content type detection using API response instead of URL pattern;",
+      "Fix: Podcast episodes;",
+      "Fix: Minor code improvements;"
+    ],
+    "15": [
+      "Fix: Missing audio in some downloads;"
+    ],
+    "14": [
+      "Add support for content recommendations;",
+      "Fix channel links in the channel's About tab;",
+      "Use the channel's banner image or avatar as the thumbnail for channel playlists;"
+    ],
+    "13": [
+      "Fix importing long watch later and saved episodes playlists"
+    ]
+  }
 }

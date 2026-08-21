@@ -7,11 +7,11 @@
   "sourceUrl": "https://plugins.grayjay.app/Odysee/OdyseeConfig.json",
   "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/odysee",
   "scriptUrl": "./OdyseeScript.js",
-  "version": 62,
+  "version": 63,
   "iconUrl": "./OdyseeIcon.png",
   "id": "1c05bfc3-08b9-42d0-93d3-6d52e0fd34d8",
-  "scriptSignature": "",
-  "scriptPublicKey": "",
+  "scriptSignature": "HQUH3FdIgg7TO4yyzbzX9fz3VPfcVTQRyqJ3XIm1rnr/hfZ7v+4KR3a8ANsaglsou6zS4MIfydsKd6TTyaKsIZeB6Dc1Qu/oUOmzJmsGVaMS/QXaX1sVqrKACchWCv8+sR6spc/xXs6+HJKHyUzs8bQRdRZ1JkdE4i7rkxj9WaK+4BjL7kE+LWcqh+jrWERhuABRUNV93Mqd5KLlU9Ty5NQ2mEL7DwHTiDMK3HWniA6KoL/oO+NF5px5nz14+wxR3IMXaIT/t2JeA4hYrvymS9C0QhJqQ4dAInqbSbzo7N3WW+t0JyYXTkI1XuFccFzl5s68yvs3T2+n5i7HwLCILA==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
   "packages": [
     "Http"
   ],
@@ -208,6 +208,18 @@
     }
   ],
   "changelog": {
+    "63": [
+      "Fix: Handle special and non-ASCII characters in Odysee links;",
+      "Fix: Channel links resolving to a different channel with the same handle;",
+      "Fix: Creator search failing on unresolvable results;",
+      "Fix: Unresolvable content reported as an unsupported live stream;",
+      "Fix: Newest-first sorting when searching within a channel;",
+      "Fix: Videos with no playable source reported as members-only;",
+      "Fix: Paid videos reported as a generic playback error;",
+      "Fix: Loading comments on members-only videos;",
+      "Fix: Text posts opening in an empty video player (Desktop);",
+      "Fix: Rendering blockquotes, images, links and plain text in posts;"
+    ],
     "62": [
       "Fix: comments pagination issue;"
     ],

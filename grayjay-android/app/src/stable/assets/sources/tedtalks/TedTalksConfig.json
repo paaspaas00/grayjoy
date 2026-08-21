@@ -7,14 +7,27 @@
   "sourceUrl": "https://plugins.grayjay.app/TedTalks/TedTalksConfig.json",
   "scriptUrl": "./TedTalksScript.js",
   "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/tedtalks",
-  "version": 5,
+  "version": 6,
   "iconUrl": "./TedTalksIcon.png",
   "id": "8d029a7f-5507-4e36-8bd8-c19a3b77d383",
-  "scriptSignature": "",
-  "scriptPublicKey": "",
+  "scriptSignature": "sLTdJplnpfF/aS6BfK5XwuZ4A++3z+b8PX33P15S4k+pQ3m/aZ3mPnpekONMi7L/43lKKFGZpFjlyyHuduy4bAWoGUi6EaaNYpWDoDcw3+hAAK6gK/9w6sC1ZzCRQeuD9GlvfbJYzliaxTw0Pbu/21ag2333rIoYxICuHrsS+IiSZb7t0v8YKNcYZIHdYu9fyjktD3k7CrNz3fPO0CVYGW5Ho9vDzbRQYWWYoam2HrEgGD+96mo3cpwW8jitsDa0wNainiEFdcmkfx3tJldWs8kaUgbqlbYJzYsDgmjb5hElVGHKVwCD6eN0e8PhmHTH8JausLJ95jX1IyFPwtrR4A==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
   "maxDownloadParallelism": 1,
   "subscriptionRateLimit": 10,
   "changelog": {
+    "6": [
+      "Fix: Some speakers showing no talks;",
+      "Fix: Missing talks on speakers with more than 50 talks;",
+      "Fix: Missing space in speaker names when searching creators;",
+      "Fix: Unclear error when opening an unavailable talk or playlist;",
+      "Fix: Internal error when opening a speaker without a public profile;",
+      "Fix: Empty Home feed when TED is partly unreachable;",
+      "Fix: Temporary errors shown as if a talk or speaker was removed;",
+      "Fix: Talks wrongly shown as external content when TED is briefly unreachable;",
+      "Fix: Playlist talks not linking to their speaker, and showing a generic image;",
+      "Performance: Faster Home loading;",
+      "Performance: Faster opening of speakers without a public profile;"
+    ],
     "5": [
       "Fix: Home tab pagination;",
       "Improvement: Set HLS as priority source;"

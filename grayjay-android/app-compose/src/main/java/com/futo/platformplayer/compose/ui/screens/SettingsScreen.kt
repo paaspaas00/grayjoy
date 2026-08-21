@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -49,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -56,9 +58,11 @@ import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.BuildConfig
 import com.futo.platformplayer.compose.AppLanguageManager
+import com.futo.platformplayer.compose.rememberDevicePerformanceProfile
 import com.futo.platformplayer.compose.ui.PcLinkUiState
 import com.futo.platformplayer.compose.ui.ThemeMode
 import com.futo.platformplayer.compose.ui.VideoTitleLanguageMode
+import com.futo.platformplayer.compose.ui.SubscriptionFetchMode
 import com.futo.platformplayer.compose.ui.audioLanguageDisplayName
 import com.futo.platformplayer.compose.ui.supportedAudioLanguageCodes
 
@@ -92,6 +96,8 @@ fun SettingsScreen(
     onPreferOriginalAudioChange: (Boolean) -> Unit,
     preferNewPipeForYoutubePlayback: Boolean,
     onPreferNewPipeForYoutubePlaybackChange: (Boolean) -> Unit,
+    subscriptionFetchMode: SubscriptionFetchMode,
+    onSubscriptionFetchModeChange: (SubscriptionFetchMode) -> Unit,
     videoTitleLanguageMode: VideoTitleLanguageMode,
     onVideoTitleLanguageModeChange: (VideoTitleLanguageMode) -> Unit,
     stickyCaptionsEnabled: Boolean,
@@ -114,19 +120,26 @@ fun SettingsScreen(
     onScanPcPairingQr: () -> Unit = {},
     onRemovePairedComputer: (String) -> Unit = {},
 ) {
+    val performance = rememberDevicePerformanceProfile()
     var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showTitleLanguageDialog by rememberSaveable { mutableStateOf(false) }
+    var showYoutubeBackendDialog by rememberSaveable { mutableStateOf(false) }
+    var showSubscriptionFetchDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     var showPairedComputers by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier.testTag("settings-list"),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            if (performance.compactContent) 10.dp else 16.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(
+            if (performance.compactContent) 10.dp else 16.dp,
+        ),
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -249,15 +262,31 @@ fun SettingsScreen(
                     testTag = "prefer-original-audio",
                 )
                 HorizontalDivider()
-                ToggleSetting(
-                    title = stringResource(R.string.prefer_newpipe_youtube_playback),
+                LinkSetting(
+                    title = stringResource(R.string.youtube_backend),
                     description = stringResource(
-                        R.string.prefer_newpipe_youtube_playback_description,
+                        if (preferNewPipeForYoutubePlayback) {
+                            R.string.newpipe_backend
+                        } else {
+                            R.string.grayjay_plugin_backend
+                        },
                     ),
                     icon = Icons.Outlined.SwapHoriz,
-                    checked = preferNewPipeForYoutubePlayback,
-                    onCheckedChange = onPreferNewPipeForYoutubePlaybackChange,
+                    onClick = { showYoutubeBackendDialog = true },
                     testTag = "prefer-newpipe-youtube-playback",
+                )
+                HorizontalDivider()
+                LinkSetting(
+                    title = stringResource(R.string.subscription_fetch_mode),
+                    description = stringResource(
+                        when (subscriptionFetchMode) {
+                            SubscriptionFetchMode.Fast -> R.string.subscription_fetch_fast
+                            SubscriptionFetchMode.Complete -> R.string.subscription_fetch_complete
+                        },
+                    ),
+                    icon = Icons.Outlined.Speed,
+                    onClick = { showSubscriptionFetchDialog = true },
+                    testTag = "subscription-fetch-mode",
                 )
                 HorizontalDivider()
                 LinkSetting(
@@ -549,6 +578,39 @@ fun SettingsScreen(
             },
         )
     }
+
+    if (showSubscriptionFetchDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.subscription_fetch_mode),
+            choices = listOf(
+                SubscriptionFetchMode.Fast to stringResource(R.string.subscription_fetch_fast),
+                SubscriptionFetchMode.Complete to stringResource(
+                    R.string.subscription_fetch_complete,
+                ),
+            ),
+            selected = subscriptionFetchMode,
+            onDismiss = { showSubscriptionFetchDialog = false },
+            onChoose = {
+                onSubscriptionFetchModeChange(it)
+                showSubscriptionFetchDialog = false
+            },
+        )
+    }
+    if (showYoutubeBackendDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.youtube_backend),
+            choices = listOf(
+                true to stringResource(R.string.newpipe_backend),
+                false to stringResource(R.string.grayjay_plugin_backend),
+            ),
+            selected = preferNewPipeForYoutubePlayback,
+            onDismiss = { showYoutubeBackendDialog = false },
+            onChoose = {
+                onPreferNewPipeForYoutubePlaybackChange(it)
+                showYoutubeBackendDialog = false
+            },
+        )
+    }
     if (showDuckVolumeDialog) {
         ChoiceDialog(
             title = stringResource(R.string.reduced_playback_volume),
@@ -620,7 +682,12 @@ private fun SettingsSection(
 
 @Composable
 private fun SettingsCard(content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
+    val lowEnd = rememberDevicePerformanceProfile().isLowEnd
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = if (lowEnd) RectangleShape else MaterialTheme.shapes.medium,
+        elevation = CardDefaults.cardElevation(defaultElevation = if (lowEnd) 0.dp else 1.dp),
+    ) {
         Column(content = { content() })
     }
 }
@@ -634,6 +701,34 @@ private fun ToggleSetting(
     onCheckedChange: (Boolean) -> Unit,
     testTag: String,
 ) {
+    val compact = rememberDevicePerformanceProfile().compactContent
+    if (compact) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onCheckedChange(!checked) }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.labelLarge)
+                Text(
+                    description,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.testTag(testTag),
+            )
+        }
+        return
+    }
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = { Text(description) },
@@ -656,6 +751,35 @@ private fun LinkSetting(
     onClick: () -> Unit,
     testTag: String,
 ) {
+    val compact = rememberDevicePerformanceProfile().compactContent
+    if (compact) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(testTag)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.labelLarge)
+                Text(
+                    description,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Icon(
+                Icons.Outlined.ChevronRight,
+                contentDescription = stringResource(R.string.open_item, title),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        return
+    }
     ListItem(
         modifier = Modifier
             .testTag(testTag)

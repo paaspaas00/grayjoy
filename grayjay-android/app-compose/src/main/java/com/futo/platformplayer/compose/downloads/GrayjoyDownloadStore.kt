@@ -38,6 +38,7 @@ import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.SubtitleUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.ui.supportsOfflineDownload
 import com.futo.platformplayer.views.video.datasources.JSHttpDataSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -491,6 +492,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         preferredAudioBitrate: Int? = null,
     ) {
         require(!video.isLive) { "Live streams cannot be downloaded." }
+        require(video.supportsOfflineDownload()) { "DRM-protected streams cannot be downloaded." }
         removingGroups.remove(DownloadGroupKey(profileId, video.id, mediaType))
         val parts = buildParts(video, mediaType)
         require(parts.isNotEmpty()) {

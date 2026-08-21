@@ -10,8 +10,8 @@
   "version": 16,
   "iconUrl": "./CrunchyrollIcon.png",
   "id": "9bb33039-8580-48d4-9849-21319ae845a4",
-  "scriptSignature": "",
-  "scriptPublicKey": "",
+  "scriptSignature": "reKShcMlR/t8nwYl74okAD8Gl/EpxJEnWO4vHB/uCAZW1BZC9msQh4R1ppBhjl9N6Ndr92mJUKcw70DHBecwA8l3UwXUHTxabirEB+FMvzN/f67yLRcwgMOrT9xG+JivWN40eENy+UJo5ml2f67E0hHb6aOG52DhVA5CPPmhUT+D/Ap2yMxQsej2oQTPrF75uF+4QDBHGBTCHTyQ+Joqp3XqRJjUcceB393Q2Im8fh7rkkZkmNv95nAsI79bDiz/aeXeelGudec0ZsqjzISVy3kCCaYYn85n5it7os2Xw7E++KFeO0762x5PoN/0ijyTcctxTKWNCB/ftzIPIpF8YA==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
   "packages": [
     "Http",
     "Utilities"

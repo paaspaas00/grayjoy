@@ -109,6 +109,11 @@ internal class SharedPreferencesLibraryRepository(
         if (profileId == "main") PROGRESS_FILE_NAME else "${PROGRESS_FILE_NAME}_$profileId",
         Context.MODE_PRIVATE,
     )
+    // Imported libraries are frequently several megabytes. Keep the parsed object graph for the
+    // lifetime of this profile repository instead of reparsing the same JSON for every history,
+    // playlist, download, and progress operation.
+    private var cachedVideos: List<VideoUiModel>? = null
+    private var cachedPlaylists: List<PlaylistUiModel>? = null
 
     override fun load(videos: List<VideoUiModel>): Map<String, LibraryVideoState> {
         val saved = loadSavedVideos().associateBy(VideoUiModel::id)
@@ -217,13 +222,18 @@ internal class SharedPreferencesLibraryRepository(
     override fun setScheduledStart(videoId: String, scheduledStartAtMs: Long) =
         updateVideo(videoId) { it.copy(scheduledStartAtMs = scheduledStartAtMs.coerceAtLeast(0L)) }
 
+    @Synchronized
     override fun setWatchProgress(videoId: String, progress: Float) {
         // The history itself is one large JSON value. Rewriting it every five seconds allocated
         // roughly 70 MB between GCs on a 200-item imported history and caused the visible periodic
         // playback hitch. Keep the frequently changing scalar in its own tiny preferences file;
         // readVideos() overlays it on the imported/stored JSON value for transparent migration.
+        val normalizedProgress = progress.coerceIn(0f, 1f)
+        cachedVideos = readVideos().map { video ->
+            if (video.id == videoId) video.copy(watchProgress = normalizedProgress) else video
+        }
         watchProgressPreferences.edit()
-            .putFloat(videoId, progress.coerceIn(0f, 1f))
+            .putFloat(videoId, normalizedProgress)
             .apply()
     }
 
@@ -432,6 +442,7 @@ internal class SharedPreferencesLibraryRepository(
     }
 
     private fun readVideos(): List<VideoUiModel> {
+        cachedVideos?.let { return it }
         val progressOverrides = watchProgressPreferences.all
         return runCatching {
             preferences.getString(KEY_VIDEOS, null)
@@ -444,22 +455,27 @@ internal class SharedPreferencesLibraryRepository(
                     video.copy(watchProgress = persistedProgress.coerceIn(0f, 1f))
                 }
             }
-        }.getOrDefault(emptyList())
+        }.getOrDefault(emptyList()).also { cachedVideos = it }
     }
 
     private fun writeVideos(videos: List<VideoUiModel>) {
+        cachedVideos = videos
         val json = JSONArray().apply { videos.forEach { put(it.toJson()) } }
         preferences.edit().putString(KEY_VIDEOS, json.toString()).apply()
     }
 
-    private fun readPlaylists(): List<PlaylistUiModel> = runCatching {
-        preferences.getString(KEY_PLAYLISTS, null)
-            ?.let(::JSONArray)
-            ?.toPlaylistList(appContext.getString(R.string.local_playlist_description))
-            .orEmpty()
-    }.getOrDefault(emptyList())
+    private fun readPlaylists(): List<PlaylistUiModel> {
+        cachedPlaylists?.let { return it }
+        return runCatching {
+            preferences.getString(KEY_PLAYLISTS, null)
+                ?.let(::JSONArray)
+                ?.toPlaylistList(appContext.getString(R.string.local_playlist_description))
+                .orEmpty()
+        }.getOrDefault(emptyList()).also { cachedPlaylists = it }
+    }
 
     private fun writePlaylists(playlists: List<PlaylistUiModel>) {
+        cachedPlaylists = playlists
         val json = JSONArray().apply { playlists.forEach { put(it.toJson()) } }
         preferences.edit().putString(KEY_PLAYLISTS, json.toString()).apply()
     }

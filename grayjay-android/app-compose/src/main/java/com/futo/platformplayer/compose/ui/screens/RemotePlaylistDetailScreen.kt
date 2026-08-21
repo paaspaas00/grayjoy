@@ -48,6 +48,7 @@ import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.RemotePlaylistDetailUiState
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.ui.supportsOfflineDownload
 
 internal enum class RemotePlaylistSortMode { PlaylistOrder, Popularity, UploadDate }
 
@@ -112,7 +113,7 @@ fun RemotePlaylistDetailScreen(
         canLoadMore = detail.hasMore && !detail.isLoading && !detail.isLoadingMore && !detail.isLoadingAll,
         onLoadMore = onLoadMore,
     )
-    val downloadableVideos = detail.videos.filterNot(VideoUiModel::isLive)
+    val downloadableVideos = detail.videos.filter(VideoUiModel::supportsOfflineDownload)
     val audioDownloaded = downloadableVideos.count {
         downloads[it.id]?.isComplete(DownloadMediaType.Audio) == true
     }
@@ -256,7 +257,11 @@ fun RemotePlaylistDetailScreen(
         if (detail.isLoading) {
             item { VideoListSkeleton(count = 5, modifier = Modifier.fillMaxWidth()) }
         } else {
-            itemsIndexed(sortedVideos, key = { _, video -> video.id }) { index, video ->
+            itemsIndexed(
+                sortedVideos,
+                key = { _, video -> video.id },
+                contentType = { _, _ -> "video" },
+            ) { index, video ->
                 VideoCard(
                     video = video,
                     index = index,

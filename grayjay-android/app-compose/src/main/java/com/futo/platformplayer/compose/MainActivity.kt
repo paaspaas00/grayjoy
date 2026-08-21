@@ -391,6 +391,7 @@ class MainActivity : FragmentActivity() {
                     onPreferOriginalAudioChange = viewModel::setPreferOriginalAudio,
                     onPreferNewPipeForYoutubePlaybackChange =
                         viewModel::setPreferNewPipeForYoutubePlayback,
+                    onSubscriptionFetchModeChange = viewModel::setSubscriptionFetchMode,
                     onVideoTitleLanguageModeChange = viewModel::setVideoTitleLanguageMode,
                     onStickyCaptionsChange = viewModel::setStickyCaptionsEnabled,
                     onShowRecommendationsChange = viewModel::setShowRecommendations,

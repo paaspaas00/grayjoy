@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -34,8 +35,25 @@ class PcLinkService : Service() {
     override fun onCreate() {
         super.onCreate()
         manager = PcLinkManager.get(this)
+        if (manager.snapshot.value.pairedComputers.isEmpty()) {
+            stopSelf()
+            return
+        }
         createNotificationChannel()
-        startForegroundCompat(buildNotification(manager.snapshot.value.activePlayback))
+        val foregroundStarted = try {
+            startForegroundCompat(buildNotification(manager.snapshot.value.activePlayback))
+            true
+        } catch (error: RuntimeException) {
+            // Android 12+ can reject a foreground-service promotion when a sticky restart or
+            // boot/background launch is no longer eligible. Treat that as an unavailable LAN
+            // session, not an app crash; opening Grayjoy or pairing again starts a fresh service.
+            Log.w(TAG, "PC-link foreground start was not allowed; stopping cleanly.", error)
+            false
+        }
+        if (!foregroundStarted) {
+            stopSelf()
+            return
+        }
         server = PcLinkHttpServer(manager).also { http ->
             runCatching(http::start).onFailure {
                 stopSelf()
@@ -68,7 +86,9 @@ class PcLinkService : Service() {
             ACTION_NEXT -> command(intent, PcRemoteCommandType.Next)
             ACTION_STOP -> stopSelf()
         }
-        return START_STICKY
+        // Sticky restarts can occur while the device is locked, where modern Android refuses the
+        // required connected-device foreground promotion and used to crash the process.
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
@@ -219,14 +239,19 @@ class PcLinkService : Service() {
         private const val ACTION_NEXT = "com.futo.platformplayer.compose.pclink.NEXT"
         private const val ACTION_STOP = "com.futo.platformplayer.compose.pclink.STOP"
         private const val EXTRA_COMPUTER_ID = "computer_id"
+        private const val TAG = "PcLinkService"
 
         fun ensureRunning(context: Context) {
             val manager = PcLinkManager.get(context)
             if (manager.snapshot.value.pairedComputers.isEmpty()) return
-            ContextCompat.startForegroundService(
-                context,
-                Intent(context, PcLinkService::class.java),
-            )
+            runCatching {
+                ContextCompat.startForegroundService(
+                    context,
+                    Intent(context, PcLinkService::class.java),
+                )
+            }.onFailure { error ->
+                Log.w(TAG, "PC-link service could not be scheduled in the background.", error)
+            }
         }
 
         fun stop(context: Context) {

@@ -588,8 +588,15 @@
     <string name="pc_transfer_failed">Could not open the computer playback with the active sources.</string>
     <string name="primary_audio_language">Primary audio language</string>
     <string name="prefer_original_audio">Prefer original audio</string>
-    <string name="prefer_newpipe_youtube_playback">Prefer NewPipe for YouTube playback</string>
-    <string name="prefer_newpipe_youtube_playback_description">Prefer NewPipe Extractor when playing YouTube videos. If either playback engine fails, the other takes over automatically.</string>
+    <string name="prefer_newpipe_youtube_playback">Use NewPipe backend for YouTube</string>
+    <string name="prefer_newpipe_youtube_playback_description">Use NewPipe for YouTube search, subscriptions, channels, playlists, information, comments, and playback. The JavaScript plugin starts only when fallback is needed.</string>
+    <string name="youtube_backend">YouTube backend</string>
+    <string name="newpipe_backend">NewPipe</string>
+    <string name="grayjay_plugin_backend">Grayjay plugin</string>
+    <string name="youtube_backend_fallback_notice">NewPipe could not complete %1$s. Using the Grayjay plugin backend.</string>
+    <string name="subscription_fetch_mode">Subscription loading</string>
+    <string name="subscription_fetch_fast">Fast · lightweight feeds</string>
+    <string name="subscription_fetch_complete">Complete · full channel pages</string>
     <string name="prefer_original_audio_description">Use the video’s original audio track when available, then fall back to the primary language.</string>
     <string name="audio_language">Audio language</string>
     <string name="automatic_with_value">Automatic · %1$s</string>
@@ -618,6 +625,7 @@
     <string name="show_all_queue">Show all (%1$d)</string>
     <string name="play_next">Play next</string>
     <string name="play_next_description">Move this video directly after the current one.</string>
+    <string name="add_to_queue_description">Append this video to the current playback queue.</string>
     <string name="sort_upload_date">Upload date</string>
     <string name="sort_popularity">Popularity</string>
     <string name="sort_name">Name</string>

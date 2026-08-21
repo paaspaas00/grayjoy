@@ -38,8 +38,11 @@ private const val YOUTUBE_WATCH_PREFIX = "https://www.youtube.com/watch?v="
  * Search, feeds, account state, and every other source continue to use Grayjay plugins.
  */
 class NewPipeYoutubePlaybackBackend(
-    private val downloader: Downloader = OkHttpNewPipeDownloader(),
+    private val providedDownloader: Downloader? = null,
 ) {
+    private val downloader: Downloader by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        providedDownloader ?: OkHttpNewPipeDownloader()
+    }
     private val progressiveDataSourceFactory = NewPipeYoutubeHttpDataSource.Factory(
         useRangeParameter = false,
         useRequestNumber = true,
@@ -56,10 +59,16 @@ class NewPipeYoutubePlaybackBackend(
     private val resolveLocks = ConcurrentHashMap<ResolveCacheKey, Mutex>()
     @Volatile
     private var localization = Localization.DEFAULT
+    @Volatile
+    private var initialized = false
 
-    init {
+    fun ensureInitialized() {
+        if (initialized) return
         synchronized(NEWPIPE_INITIALIZATION_LOCK) {
-            NewPipe.init(downloader, localization)
+            if (!initialized) {
+                NewPipe.init(downloader, localization)
+                initialized = true
+            }
         }
     }
 
@@ -71,8 +80,10 @@ class NewPipeYoutubePlaybackBackend(
         )
         if (updated != localization) resolveCache.clear()
         localization = updated
-        synchronized(NEWPIPE_INITIALIZATION_LOCK) {
-            NewPipe.setupLocalization(localization)
+        if (initialized) {
+            synchronized(NEWPIPE_INITIALIZATION_LOCK) {
+                NewPipe.setupLocalization(localization)
+            }
         }
     }
 
@@ -81,6 +92,7 @@ class NewPipeYoutubePlaybackBackend(
         preferredAudioLanguage: String?,
         preferOriginalAudio: Boolean,
     ): GrayjayPlaybackSource = withContext(Dispatchers.IO) {
+        ensureInitialized()
         val cacheKey = ResolveCacheKey(
             contentUrl = contentUrl.toYoutubeWatchUrl(),
             preferredAudioLanguage = preferredAudioLanguage
@@ -288,7 +300,7 @@ class NewPipeYoutubePlaybackBackend(
             authorUrl = uploaderUrl.orEmpty(),
             authorThumbnailUrl = uploaderAvatars.bestImageUrl(),
             authorSubscribers = uploaderSubscriberCount.takeIf { it >= 0L },
-            description = description.content,
+            description = cleanNewPipeDescription(description),
             thumbnailUrl = thumbnails.bestImageUrl(),
             durationSeconds = duration.coerceAtLeast(0L),
             viewCount = viewCount.coerceAtLeast(0L),

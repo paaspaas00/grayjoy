@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose.ui.screens
 import android.content.Context
 import android.content.Intent
 import android.view.LayoutInflater
+import android.view.SurfaceView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -150,6 +151,7 @@ import com.futo.platformplayer.compose.ui.PlaybackUiState
 import com.futo.platformplayer.compose.ui.VideoCommentUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.ui.audioLanguageDisplayName
+import com.futo.platformplayer.compose.ui.supportsOfflineDownload
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
@@ -755,21 +757,28 @@ internal fun PlayerSurface(
             }
             .testTag("media-player"),
     ) {
-        AndroidView(
-            factory = { context ->
-                (LayoutInflater.from(context).inflate(
-                    R.layout.view_compose_player,
-                    null,
-                    false,
-                ) as PlayerView).apply {
-                    useController = false
-                    this.player = player
-                    keepScreenOn = true
-                }
-            },
-            update = { it.player = player },
-            modifier = Modifier.fillMaxSize(),
-        )
+        // Widevine video must bypass HWUI. Feeding a protected decoder buffer into the normal
+        // TextureView makes Android's RenderThread abort with Invalid GrBackendTexture. Recreate
+        // the PlayerView when resolution discovers DRM and use the same SurfaceView path as the
+        // original Grayjay player. Non-DRM playback keeps TextureView so its morph remains smooth.
+        key(video.id, video.isDrmProtected) {
+            AndroidView(
+                factory = { context ->
+                    (LayoutInflater.from(context).inflate(
+                        playerViewLayout(video.isDrmProtected),
+                        null,
+                        false,
+                    ) as PlayerView).apply {
+                        useController = false
+                        (videoSurfaceView as? SurfaceView)?.setSecure(video.isDrmProtected)
+                        this.player = player
+                        keepScreenOn = true
+                    }
+                },
+                update = { it.player = player },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         if (video.playbackFromDownload && video.playbackAudioOnly) {
             AudioOnlySpectrogram(
                 playback = playback,
@@ -1165,6 +1174,13 @@ internal fun PlayerSurface(
             },
         )
     }
+}
+
+@androidx.annotation.LayoutRes
+internal fun playerViewLayout(isDrmProtected: Boolean): Int = if (isDrmProtected) {
+    R.layout.view_compose_secure_player
+} else {
+    R.layout.view_compose_player
 }
 
 @Composable
@@ -2209,7 +2225,7 @@ private fun LazyListScope.videoDetails(
                 }
                 val visibleQueue = if (showFullQueue) queue else queue.take(3)
                 visibleQueue.forEachIndexed { index, queuedVideo ->
-                    item(key = "queue-${queuedVideo.id}") {
+                    item(key = "queue-${queuedVideo.id}", contentType = "video") {
                         Box(Modifier.padding(horizontal = horizontalPadding)) {
                             CompactVideoCard(
                                 video = queuedVideo,
@@ -2252,7 +2268,7 @@ private fun LazyListScope.videoDetails(
                     )
                 }
                 recommendations.forEachIndexed { index, recommendation ->
-                    item(key = "recommended-${recommendation.id}") {
+                    item(key = "recommended-${recommendation.id}", contentType = "video") {
                         Box(Modifier.padding(horizontal = horizontalPadding)) {
                             CompactVideoCard(
                                 video = recommendation,
@@ -2282,7 +2298,10 @@ private fun LazyListScope.videoDetails(
                 }
             } else if (nowPlaying.comments.isNotEmpty()) {
                 nowPlaying.comments.forEachIndexed { index, comment ->
-                    item(key = "comment-$index-${comment.author}") {
+                    item(
+                        key = "comment-$index-${comment.author}",
+                        contentType = "comment",
+                    ) {
                         CommentCard(
                             comment = comment,
                             modifier = Modifier.padding(horizontal = horizontalPadding),
@@ -2374,7 +2393,7 @@ private fun VideoActions(
             },
             progress = if (video.isWatchLater) 1f else 0f,
         )
-        if (!video.isLive) {
+        if (video.supportsOfflineDownload()) {
             DownloadProgressChip(
                 download = download,
                 onClick = { showDownloadOptions = true },
@@ -2395,7 +2414,7 @@ private fun VideoActions(
             iconContentDescription = stringResource(R.string.share_video),
         )
     }
-    if (showDownloadOptions && !video.isLive) {
+    if (showDownloadOptions && video.supportsOfflineDownload()) {
         DownloadOptionsSheet(
             download = download,
             preferredVideoQuality = preferredVideoQuality,
@@ -3016,6 +3035,7 @@ private fun CommentRepliesSheet(
                         key = { index, reply ->
                             reply.id.ifBlank { "reply-$index-${reply.author}" }
                         },
+                        contentType = { _, _ -> "comment" },
                     ) { _, reply ->
                         CommentCard(comment = reply)
                     }

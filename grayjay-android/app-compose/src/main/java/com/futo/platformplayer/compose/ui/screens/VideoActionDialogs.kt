@@ -48,6 +48,7 @@ import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.ui.supportsOfflineDownload
 
 internal fun playlistsMatchingQuery(
     playlists: List<PlaylistUiModel>,
@@ -98,6 +99,7 @@ internal fun VideoActionsSheet(
     onDownloadAudio: () -> Unit,
     onShare: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onAddToQueue: (() -> Unit)? = null,
     onPlayNext: (() -> Unit)? = null,
     onPlayFromHere: (() -> Unit)? = null,
 ) {
@@ -126,6 +128,18 @@ internal fun VideoActionsSheet(
                 )
             }
             HorizontalDivider()
+            onAddToQueue?.let { addToQueue ->
+                VideoAction(
+                    title = stringResource(R.string.enqueue),
+                    subtitle = stringResource(R.string.add_to_queue_description),
+                    icon = { Icon(Icons.Outlined.QueuePlayNext, contentDescription = null) },
+                    tag = "video-action-add-to-queue",
+                    onClick = {
+                        addToQueue()
+                        onDismiss()
+                    },
+                )
+            }
             onPlayNext?.let { playNext ->
                 VideoAction(
                     title = stringResource(R.string.play_next),
@@ -150,7 +164,7 @@ internal fun VideoActionsSheet(
                     },
                 )
             }
-            if (!video.isLive) {
+            if (video.supportsOfflineDownload()) {
                 val audioDownloadComplete = download?.isComplete(DownloadMediaType.Audio) == true
                 val audioDownloadActive = download?.isActive(DownloadMediaType.Audio) == true
                 val audioDownloadFailed = DownloadMediaType.Audio in download?.failedMediaTypes.orEmpty()
@@ -183,7 +197,7 @@ internal fun VideoActionsSheet(
                     },
                 )
             }
-            if (!video.isLive) {
+            if (video.supportsOfflineDownload()) {
                 val videoDownloadComplete = download?.isComplete(DownloadMediaType.Video) == true
                 val videoDownloadActive = download?.isActive(DownloadMediaType.Video) == true
                 val videoDownloadFailed = DownloadMediaType.Video in download?.failedMediaTypes.orEmpty()

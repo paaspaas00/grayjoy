@@ -4,6 +4,8 @@ import android.content.Context
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.ThemeMode
 import com.futo.platformplayer.compose.ui.VideoTitleLanguageMode
+import com.futo.platformplayer.compose.ui.YoutubeBackendMode
+import com.futo.platformplayer.compose.ui.SubscriptionFetchMode
 import com.futo.platformplayer.compose.engine.OtherAudioDuckingController
 import org.json.JSONArray
 import org.json.JSONObject
@@ -110,6 +112,40 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         get() = preferences.getBoolean(KEY_PREFER_NEWPIPE_YOUTUBE_PLAYBACK, true)
         set(value) {
             preferences.edit().putBoolean(KEY_PREFER_NEWPIPE_YOUTUBE_PLAYBACK, value).apply()
+        }
+
+    var youtubeBackendMode: YoutubeBackendMode
+        get() = runCatching {
+            YoutubeBackendMode.valueOf(
+                preferences.getString(KEY_YOUTUBE_BACKEND_MODE, null)
+                    ?: if (preferNewPipeForYoutubePlayback) {
+                        YoutubeBackendMode.NewPipe.name
+                    } else {
+                        YoutubeBackendMode.Grayjay.name
+                    },
+            )
+        }.getOrDefault(YoutubeBackendMode.NewPipe)
+        set(value) {
+            preferences.edit()
+                .putString(KEY_YOUTUBE_BACKEND_MODE, value.name)
+                .putBoolean(
+                    KEY_PREFER_NEWPIPE_YOUTUBE_PLAYBACK,
+                    value == YoutubeBackendMode.NewPipe,
+                )
+                .apply()
+        }
+
+    var subscriptionFetchMode: SubscriptionFetchMode
+        get() = runCatching {
+            SubscriptionFetchMode.valueOf(
+                preferences.getString(
+                    KEY_SUBSCRIPTION_FETCH_MODE,
+                    SubscriptionFetchMode.Fast.name,
+                ).orEmpty(),
+            )
+        }.getOrDefault(SubscriptionFetchMode.Fast)
+        set(value) {
+            preferences.edit().putString(KEY_SUBSCRIPTION_FETCH_MODE, value.name).apply()
         }
 
     var videoTitleLanguageMode: VideoTitleLanguageMode
@@ -322,6 +358,8 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         private const val KEY_PREFER_ORIGINAL_AUDIO = "prefer_original_audio"
         private const val KEY_PREFER_NEWPIPE_YOUTUBE_PLAYBACK =
             "prefer_newpipe_youtube_playback"
+        private const val KEY_YOUTUBE_BACKEND_MODE = "youtube_backend_mode"
+        private const val KEY_SUBSCRIPTION_FETCH_MODE = "subscription_fetch_mode"
         private const val KEY_VIDEO_TITLE_LANGUAGE_MODE = "video_title_language_mode"
         private const val KEY_STICKY_CAPTIONS = "sticky_captions"
         private const val KEY_CAPTIONS_ENABLED = "captions_enabled"

@@ -52,6 +52,7 @@ import com.futo.platformplayer.compose.MainActivity
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.downloads.GrayjoyDownloadStore
 import com.futo.platformplayer.backend.GrayjayPluginBackend
+import com.futo.platformplayer.backend.GrayjayPluginAuthStore
 import com.futo.platformplayer.backend.GrayjayPlaybackSource
 import com.futo.platformplayer.backend.GrayjayChannelDetails
 import com.futo.platformplayer.backend.GrayjayChannelPage
@@ -64,12 +65,17 @@ import com.futo.platformplayer.backend.GrayjaySearchPlaylist
 import com.futo.platformplayer.backend.GrayjaySearchType
 import com.futo.platformplayer.backend.GrayjayStreamType
 import com.futo.platformplayer.backend.GrayjayPluginMetadata
+import com.futo.platformplayer.backend.GrayjayPluginUpdateSummary
+import com.futo.platformplayer.backend.GrayjayPluginSearchResult
+import com.futo.platformplayer.backend.GrayjayVideoPage
 import com.futo.platformplayer.backend.GrayjayUrlKind
 import com.futo.platformplayer.backend.GrayjayUserImportProgress
 import com.futo.platformplayer.backend.GrayjayUserImportSelection
 import com.futo.platformplayer.backend.GrayjayUserImportStage
 import com.futo.platformplayer.backend.PluginEndpoint
 import com.futo.platformplayer.backend.NewPipeYoutubePlaybackBackend
+import com.futo.platformplayer.backend.NewPipeYoutubeContentBackend
+import com.futo.platformplayer.backend.YoutubeSubscriptionFetchMode
 import com.futo.platformplayer.backend.NewPipeYoutubeHttpDataSource
 import com.futo.platformplayer.backend.formatRelativeDate
 import com.futo.platformplayer.api.media.models.playback.IPlaybackTracker
@@ -92,17 +98,24 @@ import com.futo.platformplayer.compose.playback.AudioSpectrumAnalyzer
 import com.futo.platformplayer.views.video.datasources.JSHttpDataSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.net.URI
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 data class SearchCorpus(
@@ -163,6 +176,11 @@ data class EngineCommentPage(
     val comments: List<VideoCommentUiModel> = emptyList(),
     val continuationId: String? = null,
     val hasMore: Boolean = false,
+)
+
+data class EngineBackendNotice(
+    val operation: String,
+    val reason: String?,
 )
 
 data class EngineChannelDetails(
@@ -230,6 +248,14 @@ data class EngineUserImportResult(
 enum class EngineResolvePriority { UserPlayback, Download, BackgroundMetadata }
 
 internal enum class YoutubePlaybackResolver { Grayjay, NewPipe }
+
+private enum class MixedContinuationKind { Search, Home }
+
+private data class MixedContinuation(
+    val kind: MixedContinuationKind,
+    var newPipeId: String?,
+    var pluginId: String?,
+)
 
 internal fun youtubePlaybackResolverOrder(
     preferNewPipe: Boolean,
@@ -302,6 +328,7 @@ internal fun resolvedVideoTitle(
 interface GrayjayEngine {
     val player: Player
     val playback: StateFlow<EnginePlaybackState>
+    val backendNotices: SharedFlow<EngineBackendNotice>
 
     fun sources(fallback: List<SourceUiModel>): List<SourceUiModel>
     fun registerSources(sources: List<SourceUiModel>)
@@ -310,6 +337,7 @@ interface GrayjayEngine {
     fun isSourceAuthenticated(sourceId: String): Boolean
     fun clearSourceAuthentication(sourceId: String)
     suspend fun installSource(configUrl: String): SourceUiModel
+    suspend fun updateSources(): GrayjayPluginUpdateSummary
     suspend fun trustInstallSource(token: String): SourceUiModel
     fun discardUntrustedSource(token: String)
     fun clearSourceCache(sourceId: String)
@@ -355,6 +383,10 @@ interface GrayjayEngine {
     ): VideoUiModel
     fun configureVideoTitleLanguage(preferOriginal: Boolean, languageTag: String)
     fun configureYoutubePlaybackEngine(preferNewPipe: Boolean)
+    fun configureYoutubeBackend(
+        useNewPipe: Boolean,
+        subscriptionFetchMode: YoutubeSubscriptionFetchMode,
+    )
     suspend fun loadStoryboard(video: VideoUiModel): StoryboardUiModel?
     suspend fun loadExtras(video: VideoUiModel): EngineVideoExtras
     suspend fun loadMoreRecommendations(continuationId: String): EngineVideoPage
@@ -387,6 +419,7 @@ interface GrayjayEngine {
 class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private val appContext = context.applicationContext
     private val _playback = MutableStateFlow(EnginePlaybackState())
+    private val _backendNotices = MutableSharedFlow<EngineBackendNotice>(extraBufferCapacity = 8)
     @Volatile
     private var latestAudioSpectrum: List<Float> = emptyList()
     private val audioSpectrumAnalyzer = AudioSpectrumAnalyzer { spectrum ->
@@ -513,12 +546,31 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         .setMediaButtonPreferences(mediaButtonPreferences)
         .build()
     private val sourceCatalog = GrayjaySourceCatalog(appContext)
-    private val pluginBackend = GrayjayPluginBackend(appContext)
+    private var pluginProfileId = "main"
+    private var pluginVideoTitleLanguageTag = "en-US"
+    private val previouslyApprovedPluginIds = ConcurrentHashMap.newKeySet<String>()
+    private val pluginBackendDelegate = lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        Log.i(TAG, "Starting Grayjay JavaScript plugin backend on demand.")
+        GrayjayPluginBackend(appContext).also { backend ->
+            backend.setProfile(pluginProfileId)
+            backend.configureVideoTitleLanguage(
+                preferOriginalVideoTitles,
+                pluginVideoTitleLanguageTag,
+            )
+            previouslyApprovedPluginIds.forEach(backend::rememberPreviouslyApprovedPlugin)
+        }
+    }
+    private val pluginBackend: GrayjayPluginBackend get() = pluginBackendDelegate.value
     private val newPipeYoutubeBackend = NewPipeYoutubePlaybackBackend()
+    private val newPipeYoutubeContentBackend = NewPipeYoutubeContentBackend(
+        newPipeYoutubeBackend::ensureInitialized,
+    )
     private val pluginEndpoints = ConcurrentHashMap<String, PluginEndpoint>().apply {
         putAll(officialPluginEndpoints)
     }
-    private val downloadStore = GrayjoyDownloadStore.get(appContext)
+    private val downloadStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        GrayjoyDownloadStore.get(appContext)
+    }
     private var queueIds: List<String> = emptyList()
     private var lastError: String? = null
     private var captionsEnabled = false
@@ -530,6 +582,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private var preferOriginalVideoTitles = true
     @Volatile
     private var preferNewPipeForYoutubePlayback = true
+    @Volatile
+    private var useNewPipeYoutubeBackend = true
+    @Volatile
+    private var youtubeSubscriptionFetchMode = YoutubeSubscriptionFetchMode.Fast
+    private val mixedContinuations = ConcurrentHashMap<String, MixedContinuation>()
     private val youtubeResolverByVideoId = ConcurrentHashMap<String, YoutubePlaybackResolver>()
     private val youtubeResolveRequestByVideoId =
         ConcurrentHashMap<String, YoutubeResolveRequest>()
@@ -547,6 +604,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override val player: Player = exoPlayer
     override val playback: StateFlow<EnginePlaybackState> = _playback.asStateFlow()
+    override val backendNotices: SharedFlow<EngineBackendNotice> = _backendNotices.asSharedFlow()
 
     init {
         exoPlayer.addListener(
@@ -592,6 +650,36 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 }
             },
         )
+    }
+
+    private suspend fun <T> withYoutubeBackendFallback(
+        operation: String,
+        newPipe: suspend () -> T,
+        grayjay: suspend () -> T,
+    ): T {
+        if (!useNewPipeYoutubeBackend) return grayjay()
+        return try {
+            newPipe()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            Log.w(TAG, "NewPipe YouTube $operation failed; falling back to Grayjay.", error)
+            _backendNotices.tryEmit(EngineBackendNotice(operation, error.localizedMessage))
+            grayjay()
+        }
+    }
+
+    private fun registerMixedContinuation(
+        kind: MixedContinuationKind,
+        newPipeId: String?,
+        pluginId: String?,
+    ): String? {
+        if (newPipeId == null && pluginId == null) return null
+        if (pluginId == null) return newPipeId
+        if (newPipeId == null) return pluginId
+        val id = "mixed:${UUID.randomUUID()}"
+        mixedContinuations[id] = MixedContinuation(kind, newPipeId, pluginId)
+        return id
     }
 
     private fun startYoutubeRuntimeFallback(error: PlaybackException): Boolean {
@@ -662,7 +750,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 (source.pluginConfigUrl.isNotBlank() || !source.pluginConfigPath.isNullOrBlank())
             ) {
                 if (source.isCustom) {
-                    pluginBackend.rememberPreviouslyApprovedPlugin(source.engineId)
+                    previouslyApprovedPluginIds += source.engineId
+                    if (pluginBackendDelegate.isInitialized()) {
+                        pluginBackend.rememberPreviouslyApprovedPlugin(source.engineId)
+                    }
                 }
                 pluginEndpoints[source.id] = PluginEndpoint(
                     pluginId = source.engineId,
@@ -674,7 +765,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         }
     }
 
-    override fun setProfile(profileId: String) = pluginBackend.setProfile(profileId)
+    override fun setProfile(profileId: String) {
+        pluginProfileId = profileId
+        if (pluginBackendDelegate.isInitialized()) pluginBackend.setProfile(profileId)
+    }
 
     override fun reloadSourceAuthentication(sourceId: String) {
         val endpoint = pluginEndpoints[sourceId] ?: return
@@ -683,7 +777,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun isSourceAuthenticated(sourceId: String): Boolean {
         val endpoint = pluginEndpoints[sourceId] ?: return false
-        return pluginBackend.isAuthenticated(endpoint.pluginId)
+        return GrayjayPluginAuthStore.has(
+            appContext,
+            pluginProfileId,
+            endpoint.pluginId,
+        )
     }
 
     override fun clearSourceAuthentication(sourceId: String) {
@@ -695,6 +793,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val normalizedUrl = normalizePluginConfigUrl(configUrl)
         return registerInstalledSource(pluginBackend.installPlugin(normalizedUrl))
     }
+
+    override suspend fun updateSources(): GrayjayPluginUpdateSummary =
+        pluginBackend.updatePlugins(pluginEndpoints.toMap())
 
     override suspend fun trustInstallSource(token: String): SourceUiModel =
         registerInstalledSource(pluginBackend.trustInstallPlugin(token))
@@ -842,10 +943,17 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         corpus: SearchCorpus,
         type: SearchContentType,
     ): EngineSearchResult = withContext(Dispatchers.IO) {
-        val endpoints = enabledSourceIds.mapNotNull { sourceId ->
+        val grayjayType = when (type) {
+            SearchContentType.Videos -> GrayjaySearchType.Videos
+            SearchContentType.Creators -> GrayjaySearchType.Creators
+            SearchContentType.Playlists -> GrayjaySearchType.Playlists
+        }
+        val useNewPipe = useNewPipeYoutubeBackend && "youtube" in enabledSourceIds
+        val pluginSourceIds = if (useNewPipe) enabledSourceIds - "youtube" else enabledSourceIds
+        val endpoints = pluginSourceIds.mapNotNull { sourceId ->
             pluginEndpoints[sourceId]?.let { sourceId to it }
         }.toMap()
-        if (endpoints.isEmpty()) {
+        if (endpoints.isEmpty() && !useNewPipe) {
             val local = searchContent(query, enabledSourceIds, corpus)
             return@withContext when (type) {
                 SearchContentType.Videos -> local.copy(channels = emptyList(), playlists = emptyList())
@@ -854,38 +962,76 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             }
         }
 
-        val result = pluginBackend.search(
-            query = query,
-            enabledSources = endpoints,
-            type = when (type) {
-                SearchContentType.Videos -> GrayjaySearchType.Videos
-                SearchContentType.Creators -> GrayjaySearchType.Creators
-                SearchContentType.Playlists -> GrayjaySearchType.Playlists
-            },
-        )
-        EngineSearchResult(
-            videos = result.videos.map {
-                it.toVideoUiModel(pluginEndpoints[it.sourceId], appContext)
-            },
-            channels = result.channels.map { it.toChannelUiModel(appContext) },
-            playlists = result.playlists.map { it.toPlaylistUiModel(appContext) },
-            continuationId = result.continuationId,
-            hasMore = result.hasMore,
+        val results = coroutineScope {
+            listOfNotNull(
+                async {
+                    if (!useNewPipe) null else withYoutubeBackendFallback(
+                        operation = "search",
+                        newPipe = { newPipeYoutubeContentBackend.search(query, grayjayType) },
+                        grayjay = {
+                            val youtubeEndpoint = pluginEndpoints["youtube"]
+                                ?: return@withYoutubeBackendFallback GrayjayPluginSearchResult()
+                            pluginBackend.search(query, mapOf("youtube" to youtubeEndpoint), grayjayType)
+                        },
+                    )
+                },
+                async {
+                    if (endpoints.isEmpty()) null else pluginBackend.search(query, endpoints, grayjayType)
+                },
+            ).awaitAll().filterNotNull()
+        }
+        mergeSearchResults(
+            results = results,
+            continuationId = registerMixedContinuation(
+                MixedContinuationKind.Search,
+                results.asSequence().mapNotNull(GrayjayPluginSearchResult::continuationId)
+                    .firstOrNull { it.startsWith("np:") },
+                results.asSequence().mapNotNull(GrayjayPluginSearchResult::continuationId)
+                    .firstOrNull { !it.startsWith("np:") },
+            ),
         )
     }
 
     override suspend fun loadMoreSearch(continuationId: String): EngineSearchResult {
-        val result = pluginBackend.loadMoreSearch(continuationId)
-        return EngineSearchResult(
-            videos = result.videos.map {
-                it.toVideoUiModel(pluginEndpoints[it.sourceId], appContext)
-            },
-            channels = result.channels.map { it.toChannelUiModel(appContext) },
-            playlists = result.playlists.map { it.toPlaylistUiModel(appContext) },
-            continuationId = result.continuationId,
-            hasMore = result.hasMore,
-        )
+        val mixed = mixedContinuations[continuationId]
+        if (mixed == null) {
+            val result = if (continuationId.startsWith("np:")) {
+                newPipeYoutubeContentBackend.loadMoreSearch(continuationId)
+            } else {
+                pluginBackend.loadMoreSearch(continuationId)
+            }
+            return mergeSearchResults(listOf(result), result.continuationId)
+        }
+        val results = coroutineScope {
+            listOfNotNull(
+                mixed.newPipeId?.let { id -> async { newPipeYoutubeContentBackend.loadMoreSearch(id) } },
+                mixed.pluginId?.let { id -> async { pluginBackend.loadMoreSearch(id) } },
+            ).awaitAll()
+        }
+        mixed.newPipeId = results.firstOrNull { it.continuationId?.startsWith("np:") == true }
+            ?.continuationId
+        mixed.pluginId = results.firstOrNull { it.continuationId?.startsWith("np:") != true }
+            ?.continuationId
+        if (mixed.newPipeId == null && mixed.pluginId == null) mixedContinuations.remove(continuationId)
+        return mergeSearchResults(results, continuationId.takeIf { mixedContinuations.containsKey(it) })
     }
+
+    private fun mergeSearchResults(
+        results: List<GrayjayPluginSearchResult>,
+        continuationId: String?,
+    ) = EngineSearchResult(
+        videos = results.flatMap(GrayjayPluginSearchResult::videos)
+            .distinctBy(GrayjaySearchItem::url)
+            .map { it.toVideoUiModel(pluginEndpoints[it.sourceId], appContext) },
+        channels = results.flatMap(GrayjayPluginSearchResult::channels)
+            .distinctBy(GrayjaySearchChannel::url)
+            .map { it.toChannelUiModel(appContext) },
+        playlists = results.flatMap(GrayjayPluginSearchResult::playlists)
+            .distinctBy(GrayjaySearchPlaylist::url)
+            .map { it.toPlaylistUiModel(appContext) },
+        continuationId = continuationId,
+        hasMore = continuationId != null,
+    )
 
     override suspend fun loadHome(
         feed: HomeFeedType,
@@ -893,28 +1039,133 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         followedChannels: List<ChannelUiModel>,
         onSubscriptionProgress: (completed: Int, total: Int) -> Unit,
     ): EngineVideoPage {
-        val endpoints = enabledSourceIds.mapNotNull { sourceId ->
+        val useNewPipe = useNewPipeYoutubeBackend && "youtube" in enabledSourceIds
+        val pluginSourceIds = if (useNewPipe) enabledSourceIds - "youtube" else enabledSourceIds
+        val endpoints = pluginSourceIds.mapNotNull { sourceId ->
             pluginEndpoints[sourceId]?.let { sourceId to it }
         }.toMap()
-        if (endpoints.isEmpty()) return EngineVideoPage()
-        val page = if (feed == HomeFeedType.Subscriptions) {
-            pluginBackend.subscriptionFeed(
-                channels = followedChannels.map { channel ->
-                    GrayjayChannelRequest(channel.sourceId, channel.id)
-                },
-                enabledSources = endpoints,
-                onProgress = onSubscriptionProgress,
-            )
+        if (endpoints.isEmpty() && !useNewPipe) return EngineVideoPage()
+        val youtubeChannels = followedChannels.filter { it.sourceId.equals("youtube", true) }
+        val pluginChannels = followedChannels.filterNot { it.sourceId.equals("youtube", true) }
+        val pluginEndpointsForFeed = if (feed == HomeFeedType.Subscriptions) {
+            val subscribedSourceIds = pluginChannels.mapTo(mutableSetOf(), ChannelUiModel::sourceId)
+            endpoints.filterKeys(subscribedSourceIds::contains)
         } else {
-            pluginBackend.home(enabledSources = endpoints)
+            endpoints
         }
-        return page.toEngineVideoPage(feed)
+        val pages = coroutineScope {
+            listOfNotNull(
+                async {
+                    if (!useNewPipe) null else withYoutubeBackendFallback(
+                        operation = if (feed == HomeFeedType.Subscriptions) "subscriptions" else "home",
+                        newPipe = {
+                            if (feed == HomeFeedType.Subscriptions) {
+                                newPipeYoutubeContentBackend.subscriptionFeed(
+                                    requests = youtubeChannels.map {
+                                        GrayjayChannelRequest(
+                                            sourceId = it.sourceId,
+                                            url = it.id,
+                                            name = it.name,
+                                            thumbnailUrl = it.thumbnailUrl,
+                                        )
+                                    },
+                                    mode = youtubeSubscriptionFetchMode,
+                                    onProgress = onSubscriptionProgress,
+                                )
+                            } else {
+                                newPipeYoutubeContentBackend.loadTrending(
+                                    liveOnly = feed == HomeFeedType.Live,
+                                )
+                            }
+                        },
+                        grayjay = {
+                            val youtubeEndpoint = pluginEndpoints["youtube"]
+                                ?: return@withYoutubeBackendFallback GrayjayVideoPage()
+                            if (feed == HomeFeedType.Subscriptions) {
+                                pluginBackend.subscriptionFeed(
+                                    channels = youtubeChannels.map {
+                                        GrayjayChannelRequest(
+                                            sourceId = it.sourceId,
+                                            url = it.id,
+                                            name = it.name,
+                                            thumbnailUrl = it.thumbnailUrl,
+                                        )
+                                    },
+                                    enabledSources = mapOf("youtube" to youtubeEndpoint),
+                                    onProgress = onSubscriptionProgress,
+                                )
+                            } else {
+                                pluginBackend.home(mapOf("youtube" to youtubeEndpoint))
+                            }
+                        },
+                    )
+                },
+                async {
+                    if (pluginEndpointsForFeed.isEmpty()) null
+                    else if (feed == HomeFeedType.Subscriptions) {
+                        pluginBackend.subscriptionFeed(
+                            channels = pluginChannels.map {
+                                GrayjayChannelRequest(
+                                    sourceId = it.sourceId,
+                                    url = it.id,
+                                    name = it.name,
+                                    thumbnailUrl = it.thumbnailUrl,
+                                )
+                            },
+                            enabledSources = pluginEndpointsForFeed,
+                            onProgress = { _, _ -> },
+                        )
+                    } else {
+                        pluginBackend.home(enabledSources = pluginEndpointsForFeed)
+                    }
+                },
+            ).awaitAll().filterNotNull()
+        }
+        val continuationId = registerMixedContinuation(
+            MixedContinuationKind.Home,
+            pages.asSequence().mapNotNull(GrayjayVideoPage::continuationId)
+                .firstOrNull { it.startsWith("np:") },
+            pages.asSequence().mapNotNull(GrayjayVideoPage::continuationId)
+                .firstOrNull { !it.startsWith("np:") },
+        )
+        val merged = GrayjayVideoPage(
+            videos = pages.flatMap(GrayjayVideoPage::videos),
+            continuationId = continuationId,
+            hasMore = continuationId != null,
+        )
+        return merged.toEngineVideoPage(feed)
     }
 
     override suspend fun loadMoreHome(
         feed: HomeFeedType,
         continuationId: String,
-    ): EngineVideoPage = pluginBackend.loadMoreVideos(continuationId).toEngineVideoPage(feed)
+    ): EngineVideoPage {
+        val mixed = mixedContinuations[continuationId]
+        if (mixed == null) {
+            val page = if (continuationId.startsWith("np:")) {
+                newPipeYoutubeContentBackend.loadMoreVideos(continuationId)
+            } else {
+                pluginBackend.loadMoreVideos(continuationId)
+            }
+            return page.toEngineVideoPage(feed)
+        }
+        val pages = coroutineScope {
+            listOfNotNull(
+                mixed.newPipeId?.let { id -> async { newPipeYoutubeContentBackend.loadMoreVideos(id) } },
+                mixed.pluginId?.let { id -> async { pluginBackend.loadMoreVideos(id) } },
+            ).awaitAll()
+        }
+        mixed.newPipeId = pages.firstOrNull { it.continuationId?.startsWith("np:") == true }
+            ?.continuationId
+        mixed.pluginId = pages.firstOrNull { it.continuationId?.startsWith("np:") != true }
+            ?.continuationId
+        if (mixed.newPipeId == null && mixed.pluginId == null) mixedContinuations.remove(continuationId)
+        return GrayjayVideoPage(
+            videos = pages.flatMap(GrayjayVideoPage::videos),
+            continuationId = continuationId.takeIf { mixedContinuations.containsKey(it) },
+            hasMore = mixedContinuations.containsKey(continuationId),
+        ).toEngineVideoPage(feed)
+    }
 
     private fun com.futo.platformplayer.backend.GrayjayVideoPage.toEngineVideoPage(
         feed: HomeFeedType,
@@ -939,20 +1190,42 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         enabledSourceIds: Set<String>,
     ): List<String> {
         if (query.isBlank()) return emptyList()
-        val endpoints = enabledSourceIds.mapNotNull { sourceId ->
+        val useNewPipe = useNewPipeYoutubeBackend && "youtube" in enabledSourceIds
+        val endpoints = (if (useNewPipe) enabledSourceIds - "youtube" else enabledSourceIds).mapNotNull { sourceId ->
             pluginEndpoints[sourceId]?.let { sourceId to it }
         }.toMap()
-        return pluginBackend.suggestions(query, endpoints)
+        return coroutineScope {
+            listOfNotNull(
+                async {
+                    if (!useNewPipe) null else withYoutubeBackendFallback(
+                        "suggestions",
+                        newPipe = { newPipeYoutubeContentBackend.suggestions(query) },
+                        grayjay = {
+                            pluginEndpoints["youtube"]?.let {
+                                pluginBackend.suggestions(query, mapOf("youtube" to it))
+                            }.orEmpty()
+                        },
+                    )
+                },
+                async {
+                    if (endpoints.isEmpty()) null else pluginBackend.suggestions(query, endpoints)
+                },
+            ).awaitAll().filterNotNull().flatten().distinct().take(20)
+        }
     }
 
     override suspend fun loadChannel(channel: ChannelUiModel): EngineChannelDetails {
         val endpoint = pluginEndpoints[channel.sourceId]
             ?: error(appContext.getString(R.string.source_plugin_unavailable, channel.source))
-        val details = pluginBackend.loadChannel(
-            sourceId = channel.sourceId,
-            channelUrl = channel.id,
-            endpoint = endpoint,
-        )
+        val details = if (channel.sourceId.equals("youtube", true) && useNewPipeYoutubeBackend) {
+            withYoutubeBackendFallback(
+                "channel",
+                newPipe = { newPipeYoutubeContentBackend.loadChannel(channel.sourceId, channel.id) },
+                grayjay = { pluginBackend.loadChannel(channel.sourceId, channel.id, endpoint) },
+            )
+        } else {
+            pluginBackend.loadChannel(channel.sourceId, channel.id, endpoint)
+        }
         return details.toEngineChannelDetails(channel, endpoint, appContext)
     }
 
@@ -970,12 +1243,24 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 ?: com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_STREAMS
             ChannelContentTab.Playlists -> GrayjayPluginBackend.CHANNEL_PLAYLISTS_TYPE
         }
-        return pluginBackend.loadChannelPage(channel.sourceId, channel.id, endpoint, type)
-            .toEngineChannelPage(endpoint, appContext)
+        val page = if (channel.sourceId.equals("youtube", true) && useNewPipeYoutubeBackend) {
+            withYoutubeBackendFallback(
+                "channel tab",
+                newPipe = { newPipeYoutubeContentBackend.loadChannelPage(channel.id, type) },
+                grayjay = { pluginBackend.loadChannelPage(channel.sourceId, channel.id, endpoint, type) },
+            )
+        } else {
+            pluginBackend.loadChannelPage(channel.sourceId, channel.id, endpoint, type)
+        }
+        return page.toEngineChannelPage(endpoint, appContext)
     }
 
     override suspend fun loadMoreChannel(continuationId: String): EngineChannelPage {
-        val page = pluginBackend.loadMoreChannelPage(continuationId)
+        val page = if (continuationId.startsWith("np:")) {
+            newPipeYoutubeContentBackend.loadMoreChannelPage(continuationId)
+        } else {
+            pluginBackend.loadMoreChannelPage(continuationId)
+        }
         // A valid pager continuation is allowed to end with an empty page. ConcurrentHashMap
         // rejects null keys, so never infer-and-index the source in one expression here. Items
         // on non-empty pages still carry their own source id and are converted with that endpoint.
@@ -988,7 +1273,16 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override suspend fun loadPlaylist(playlist: PlaylistUiModel): EnginePlaylistDetails {
         val endpoint = pluginEndpoints[playlist.sourceId]
             ?: error(appContext.getString(R.string.source_plugin_unavailable, playlist.sourceId))
-        return pluginBackend.loadPlaylist(playlist.sourceId, playlist.id, endpoint)
+        val details = if (playlist.sourceId.equals("youtube", true) && useNewPipeYoutubeBackend) {
+            withYoutubeBackendFallback(
+                "playlist",
+                newPipe = { newPipeYoutubeContentBackend.loadPlaylist(playlist.sourceId, playlist.id) },
+                grayjay = { pluginBackend.loadPlaylist(playlist.sourceId, playlist.id, endpoint) },
+            )
+        } else {
+            pluginBackend.loadPlaylist(playlist.sourceId, playlist.id, endpoint)
+        }
+        return details
             .toEnginePlaylistDetails(playlist, endpoint, appContext)
     }
 
@@ -997,6 +1291,30 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         enabledSourceIds: Set<String>,
     ): EngineUrlRoute? {
         val preferredSourceId = sourceIdHintForUrl(url)
+        if (
+            preferredSourceId == "youtube" &&
+            "youtube" in enabledSourceIds &&
+            useNewPipeYoutubeBackend
+        ) {
+            val route = withYoutubeBackendFallback(
+                "URL routing",
+                newPipe = { newPipeYoutubeContentBackend.routeUrl(url) },
+                grayjay = {
+                    pluginEndpoints["youtube"]?.let { endpoint ->
+                        pluginBackend.routeUrl(url, mapOf("youtube" to endpoint))
+                    }
+                },
+            ) ?: return null
+            return EngineUrlRoute(
+                url = url,
+                sourceId = route.sourceId,
+                kind = when (route.kind) {
+                    GrayjayUrlKind.Video -> EngineUrlKind.Video
+                    GrayjayUrlKind.Channel -> EngineUrlKind.Channel
+                    GrayjayUrlKind.Playlist -> EngineUrlKind.Playlist
+                },
+            )
+        }
         val orderedSourceIds = enabledSourceIds.sortedWith(
             compareBy<String> { it != preferredSourceId }.thenBy { it },
         )
@@ -1034,7 +1352,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     ): VideoUiModel {
         if (video.playbackUrl.isNotBlank()) return video
         val dualEnginePlayback = video.isYoutubeVideo() &&
-            priority == EngineResolvePriority.UserPlayback
+            (priority == EngineResolvePriority.UserPlayback || useNewPipeYoutubeBackend)
         val source = if (dualEnginePlayback) {
             val resolved = resolveYoutubeWithFallback(
                 video = video,
@@ -1088,6 +1406,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 "YouTube ${order.first().name} resolver failed; " +
                     "continuing with ${result.resolver.name}.",
                 result.primaryError,
+            )
+            _backendNotices.tryEmit(
+                EngineBackendNotice("playback", result.primaryError.localizedMessage),
             )
         }
         return ResolvedYoutubePlayback(result.value, result.resolver)
@@ -1263,7 +1584,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun configureVideoTitleLanguage(preferOriginal: Boolean, languageTag: String) {
         preferOriginalVideoTitles = preferOriginal
-        pluginBackend.configureVideoTitleLanguage(preferOriginal, languageTag)
+        pluginVideoTitleLanguageTag = languageTag
+        if (pluginBackendDelegate.isInitialized()) {
+            pluginBackend.configureVideoTitleLanguage(preferOriginal, languageTag)
+        }
         newPipeYoutubeBackend.configureLanguage(languageTag)
     }
 
@@ -1271,7 +1595,17 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         preferNewPipeForYoutubePlayback = preferNewPipe
     }
 
+    override fun configureYoutubeBackend(
+        useNewPipe: Boolean,
+        subscriptionFetchMode: YoutubeSubscriptionFetchMode,
+    ) {
+        useNewPipeYoutubeBackend = useNewPipe
+        preferNewPipeForYoutubePlayback = useNewPipe
+        youtubeSubscriptionFetchMode = subscriptionFetchMode
+    }
+
     override suspend fun loadStoryboard(video: VideoUiModel): StoryboardUiModel? {
+        if (video.isYoutubeVideo() && useNewPipeYoutubeBackend) return video.storyboard
         val endpoint = pluginEndpoints[video.sourceId] ?: return null
         val contentUrl = video.pluginContentUrlOrNull() ?: return null
         return pluginBackend.loadStoryboard(
@@ -1284,11 +1618,15 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override suspend fun loadExtras(video: VideoUiModel): EngineVideoExtras {
         val endpoint = pluginEndpoints[video.sourceId] ?: return EngineVideoExtras()
         val contentUrl = video.pluginContentUrlOrNull() ?: return EngineVideoExtras()
-        val extras = pluginBackend.loadExtras(
-            sourceId = video.sourceId,
-            contentUrl = contentUrl,
-            endpoint = endpoint,
-        )
+        val extras = if (video.isYoutubeVideo() && useNewPipeYoutubeBackend) {
+            withYoutubeBackendFallback(
+                "video information",
+                newPipe = { newPipeYoutubeContentBackend.loadExtras(contentUrl) },
+                grayjay = { pluginBackend.loadExtras(video.sourceId, contentUrl, endpoint) },
+            )
+        } else {
+            pluginBackend.loadExtras(video.sourceId, contentUrl, endpoint)
+        }
         return EngineVideoExtras(
             recommendations = extras.recommendations.map { item ->
                 item.toVideoUiModel(pluginEndpoints[item.sourceId], appContext)
@@ -1314,7 +1652,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override suspend fun loadMoreRecommendations(continuationId: String): EngineVideoPage {
-        val page = pluginBackend.loadMoreRecommendations(continuationId)
+        val page = if (continuationId.startsWith("np:")) {
+            newPipeYoutubeContentBackend.loadMoreVideos(continuationId)
+        } else {
+            pluginBackend.loadMoreRecommendations(continuationId)
+        }
         return EngineVideoPage(
             videos = page.videos.map { it.toVideoUiModel(pluginEndpoints[it.sourceId], appContext) },
             continuationId = page.continuationId,
@@ -1323,7 +1665,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override suspend fun loadMoreComments(continuationId: String): EngineCommentPage {
-        val page = pluginBackend.loadMoreComments(continuationId)
+        val page = if (continuationId.startsWith("np:")) {
+            newPipeYoutubeContentBackend.loadMoreComments(continuationId)
+        } else {
+            pluginBackend.loadMoreComments(continuationId)
+        }
         return EngineCommentPage(
             comments = page.comments.map { it.toVideoCommentUiModel() },
             continuationId = page.continuationId,
@@ -1332,7 +1678,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override suspend fun loadCommentReplies(commentId: String): EngineCommentPage {
-        val page = pluginBackend.loadCommentReplies(commentId)
+        val page = if (commentId.startsWith("np-comment:")) {
+            newPipeYoutubeContentBackend.loadCommentReplies(commentId)
+        } else {
+            pluginBackend.loadCommentReplies(commentId)
+        }
         return EngineCommentPage(
             comments = page.comments.map { it.toVideoCommentUiModel() },
             continuationId = page.continuationId,
@@ -1981,14 +2331,24 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         activePluginDataSources = emptySet()
         mediaSession.release()
         exoPlayer.release()
-        if (tracker == null) {
-            pluginBackend.release()
-            playbackTrackerScope.cancel()
-        } else {
-            playbackTrackerScope.launch {
-                runCatching(tracker::onConcluded)
-                    .onFailure { Log.w(TAG, "Could not conclude plugin playback tracker.", it) }
-                pluginBackend.release()
+        // JSClient.disable() waits for the V8 busy lock. A plugin callback or manifest generator
+        // can legitimately hold it for many seconds, so teardown must never run in
+        // ViewModel.onCleared()/Activity destruction on the main thread. Android previously
+        // reported this as a PcLinkService ANR because that service start was queued behind the
+        // blocked Activity teardown.
+        playbackTrackerScope.launch {
+            try {
+                tracker?.let { activeTracker ->
+                    runCatching(activeTracker::onConcluded)
+                        .onFailure { Log.w(TAG, "Could not conclude plugin playback tracker.", it) }
+                }
+                // Check inside the teardown worker too: a request that was already unwinding can
+                // finish lazy backend initialization just after release() was entered.
+                if (pluginBackendDelegate.isInitialized()) {
+                    runCatching { pluginBackend.release() }
+                        .onFailure { Log.w(TAG, "Could not release the JS plugin backend.", it) }
+                }
+            } finally {
                 playbackTrackerScope.cancel()
             }
         }
@@ -2000,8 +2360,12 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val tracker = video?.playbackTracker ?: return
         activePlaybackTrackerVideoId = video.id
         activePlaybackTracker = tracker
+        // ExoPlayer is bound to the main looper. Read its state before entering the IO tracker
+        // scope; Crunchyroll uses onInit to register the active stream and this used to fail with
+        // "Player is accessed on the wrong thread", leaving the server-side session unmanaged.
+        val initialPositionSeconds = exoPlayer.currentPosition.coerceAtLeast(0L) / 1_000.0
         playbackTrackerUpdateJob = playbackTrackerScope.launch {
-            runCatching { tracker.onInit(exoPlayer.currentPosition.coerceAtLeast(0L) / 1_000.0) }
+            runCatching { tracker.onInit(initialPositionSeconds) }
                 .onFailure { Log.w(TAG, "Could not initialize playback tracker for ${video.id}.", it) }
         }
     }

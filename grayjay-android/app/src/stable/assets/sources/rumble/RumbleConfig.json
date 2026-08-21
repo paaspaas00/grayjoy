@@ -1,134 +1,139 @@
 {
-	"name": "Rumble",
-	"description": "A plugin that adds Rumble as a source",
-	"author": "FUTO",
-	"authorUrl": "https://futo.org",
-	"platformUrl": "https://rumble.com",
-	"sourceUrl": "https://plugins.grayjay.app/Rumble/RumbleConfig.json",
-	"repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/rumble",
-	"scriptUrl": "./RumbleScript.js",
-	"version": 68,
-	"iconUrl": "./rumble.png",
-	"id": "2ce7b35e-d2b2-4adb-a728-a34a30d30359",
-	"subscriptionRateLimit": 50,
-	"scriptSignature": "",
-	"scriptPublicKey": "",
-	"packages": ["Http","DOMParser"],
-	
-	"allowEval": false,
-	"allowUrls": [
-		"rumble.com",
-		"api.ipify.org"
-	],
-	"settings": [
-		{
-			"variable": "liveChatHeader",
-			"name": "Live Chat",
-			"description": "",
-			"type": "Header"
-		},
-		{
-			"variable": "liveChatHidePinnedMessage",
-			"name": "Hide Live Chat pinned message",
-			"description": "",
-			"type": "Boolean",
-			"default": "false"
-		},
-		{
-			"variable": "RNSCCookie",
-			"name": "RNSC Cookie",
-			"description": "For some regions it's required to send a cookie named RNSC with the value of the client's IP address. Rumble sets the coockie and redirects to the same page but grayjay's client does not add new cookies. This creates the too many requests error. Below you can choose how to handle this.",
-			"type": "Header"
-		},
-		{
-			"variable": "useIpifyForRNSC",
-			"name": "Use ipify.org",
-			"description": "Enable this option to use ipify.org to get the IP address to set RNSC Cookie.",
-			"type": "Boolean",
-			"default": "true"
-		}
-	],
-	
-	"authentication": {
-		"loginUrl": "https://rumble.com/login.php",
-		"userAgent": null,
-		"cookiesToFind": [ "u_s" ]
-	},
-
-	"authenticationDesktop": {
-		"loginUrl": "https://rumble.com/login.php",
-		"userAgent": null,
-		"cookiesToFind": [ "u_s" ],
-        "useMobileEmulation": false
+  "name": "Rumble",
+  "description": "A plugin that adds Rumble as a source",
+  "author": "FUTO",
+  "authorUrl": "https://futo.org",
+  "platformUrl": "https://rumble.com",
+  "sourceUrl": "https://plugins.grayjay.app/Rumble/RumbleConfig.json",
+  "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/rumble",
+  "scriptUrl": "./RumbleScript.js",
+  "version": 68,
+  "iconUrl": "./rumble.png",
+  "id": "2ce7b35e-d2b2-4adb-a728-a34a30d30359",
+  "subscriptionRateLimit": 50,
+  "scriptSignature": "NjtNuVTydvIZZKadYQ8EfzdZ/g+sThABLRAMxcpP5ldz7epV2qog0APVN6i6tU+wJTtvIPiUv47/rAaNb7JsnZUa+eg7jzl43apMur0SZeKeEw58sVJHUn9XwfbfnWqX8r7oSSiKRy1nAV97JQZSb620cxeYdEbvNTAa22D+6FYwcG6mLW1xDsq0bJf074EiCGXSPJJ/wudBJKzxehW+viUraHmS7flYI6QWkva8k7O4f9NzzSIASc2yJuvXZlVgk9nEnTu5a9NEVHwDeW29i1lsXAluu/TWWJhUpMbstNpM/5pNvpx0d/cNPTfQ6CsXW8ZFV6YPTIaDCHum3GTMfw==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
+  "packages": [
+    "Http",
+    "DOMParser"
+  ],
+  "allowEval": false,
+  "allowUrls": [
+    "rumble.com",
+    "api.ipify.org"
+  ],
+  "settings": [
+    {
+      "variable": "liveChatHeader",
+      "name": "Live Chat",
+      "description": "",
+      "type": "Header"
     },
-
-	"captcha": {
-		"userAgent": null,
-		"captchaUrl": null,
-		"cookiesToFind": [
-			"cf_clearance"
-		]
-	},
-	"captchaDesktop": {
-		"userAgent": null,
-		"captchaUrl": null,
-		"cookiesToFind": [
-			"cf_clearance"
-		],
-		"useMobileEmulation": false
-	},
-	"supportedClaimTypes": [4],
-	"changelog": {
-		"52" : [
-			"Fix source list removing bad HLS sources"
-		],
-		"53": [
-			"Improvement: Add plugin setting to hide live chat pinned message;"
-		],
-		"54": [
-			"Improvement: Add channel description and links;",
-			"Improvement: Add recommended videos to video details;",
-			"Fix: Do not duplicate featured video to channel videos and subscriptions tab;",
-			"Fix: Fix Home content pagination;",
-			"Fix: Fix channel videos pagination;"
-		],
-		"55": [
-			"Fix: Home tab not loading in some regions;"
-		],
-		"56": [
-			"Change: Prevent 1081P from displaying as a source name instead of 1080P;"
-		],
-		"57": [
-			"Improvement: Add setting to toggle requests to api.ipify.org for setting the RNSC cookie required in some regions;",
-			"Improvement: Add support for embed URLs;"
-		],
-		"58": [
-			"Improvement: Add support for channel URLs;"
-		],
-		"59": [
-			"Improvement: Add content recommendation for livestreams",
-			"Improvement: Add retry and delay mechanisms;",
-			"Improvement: Add initial captcha support;"
-		],
-		"60": [
-			"Improvement: Return video if searching by a video url;",
-			"Fix: Recommended videos thumbnails;"
-		],
-		"61": [
-			"Improvement: Special characters (HTML entities) now render properly video titles;",
-			"Fix: Comments errors;"
-		],
-		"67": [
-			"Fix: Channel contents;",
-			"Fix: Content recommendations;",
-			"Fix: Comments pagination;",
-			"Fix: Comments replies;"
-		],
-		"68": [
-			"Improvement: Do not force user-agent for captcha and authentication;",
-			"Improvement: Add subscription rate limit;",
-			"Improvement: Skip redundant channel about-page fetch when loading channel videos;",
-			"Improvement: Dispose parsed HTML documents on Android to reduce memory pressure;"
-		]
-	}
+    {
+      "variable": "liveChatHidePinnedMessage",
+      "name": "Hide Live Chat pinned message",
+      "description": "",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "RNSCCookie",
+      "name": "RNSC Cookie",
+      "description": "For some regions it's required to send a cookie named RNSC with the value of the client's IP address. Rumble sets the coockie and redirects to the same page but grayjay's client does not add new cookies. This creates the too many requests error. Below you can choose how to handle this.",
+      "type": "Header"
+    },
+    {
+      "variable": "useIpifyForRNSC",
+      "name": "Use ipify.org",
+      "description": "Enable this option to use ipify.org to get the IP address to set RNSC Cookie.",
+      "type": "Boolean",
+      "default": "true"
+    }
+  ],
+  "authentication": {
+    "loginUrl": "https://rumble.com/login.php",
+    "userAgent": null,
+    "cookiesToFind": [
+      "u_s"
+    ]
+  },
+  "authenticationDesktop": {
+    "loginUrl": "https://rumble.com/login.php",
+    "userAgent": null,
+    "cookiesToFind": [
+      "u_s"
+    ],
+    "useMobileEmulation": false
+  },
+  "captcha": {
+    "userAgent": null,
+    "captchaUrl": null,
+    "cookiesToFind": [
+      "cf_clearance"
+    ]
+  },
+  "captchaDesktop": {
+    "userAgent": null,
+    "captchaUrl": null,
+    "cookiesToFind": [
+      "cf_clearance"
+    ],
+    "useMobileEmulation": false
+  },
+  "supportedClaimTypes": [
+    4
+  ],
+  "changelog": {
+    "52": [
+      "Fix source list removing bad HLS sources"
+    ],
+    "53": [
+      "Improvement: Add plugin setting to hide live chat pinned message;"
+    ],
+    "54": [
+      "Improvement: Add channel description and links;",
+      "Improvement: Add recommended videos to video details;",
+      "Fix: Do not duplicate featured video to channel videos and subscriptions tab;",
+      "Fix: Fix Home content pagination;",
+      "Fix: Fix channel videos pagination;"
+    ],
+    "55": [
+      "Fix: Home tab not loading in some regions;"
+    ],
+    "56": [
+      "Change: Prevent 1081P from displaying as a source name instead of 1080P;"
+    ],
+    "57": [
+      "Improvement: Add setting to toggle requests to api.ipify.org for setting the RNSC cookie required in some regions;",
+      "Improvement: Add support for embed URLs;"
+    ],
+    "58": [
+      "Improvement: Add support for channel URLs;"
+    ],
+    "59": [
+      "Improvement: Add content recommendation for livestreams",
+      "Improvement: Add retry and delay mechanisms;",
+      "Improvement: Add initial captcha support;"
+    ],
+    "60": [
+      "Improvement: Return video if searching by a video url;",
+      "Fix: Recommended videos thumbnails;"
+    ],
+    "61": [
+      "Improvement: Special characters (HTML entities) now render properly video titles;",
+      "Fix: Comments errors;"
+    ],
+    "67": [
+      "Fix: Channel contents;",
+      "Fix: Content recommendations;",
+      "Fix: Comments pagination;",
+      "Fix: Comments replies;"
+    ],
+    "68": [
+      "Improvement: Do not force user-agent for captcha and authentication;",
+      "Improvement: Add subscription rate limit;",
+      "Improvement: Skip redundant channel about-page fetch when loading channel videos;",
+      "Improvement: Dispose parsed HTML documents on Android to reduce memory pressure;"
+    ]
+  }
 }

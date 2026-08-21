@@ -313,6 +313,7 @@ private data class PlaybackPresentation(
     val preferredAudioLanguage: String,
     val preferOriginalAudio: Boolean,
     val preferNewPipeForYoutubePlayback: Boolean,
+    val subscriptionFetchMode: SubscriptionFetchMode,
     val videoTitleLanguageMode: VideoTitleLanguageMode,
     val stickyCaptionsEnabled: Boolean,
     val showRecommendations: Boolean,
@@ -334,6 +335,7 @@ private data class PlaybackPresentation(
     val onPreferredAudioLanguageChange: (String) -> Unit,
     val onPreferOriginalAudioChange: (Boolean) -> Unit,
     val onPreferNewPipeForYoutubePlaybackChange: (Boolean) -> Unit,
+    val onSubscriptionFetchModeChange: (SubscriptionFetchMode) -> Unit,
     val onVideoTitleLanguageModeChange: (VideoTitleLanguageMode) -> Unit,
     val onStickyCaptionsChange: (Boolean) -> Unit,
     val onShowRecommendationsChange: (Boolean) -> Unit,
@@ -403,6 +405,7 @@ private data class SourcePresentation(
     val onSearchQueryChange: (String) -> Unit,
     val onSearchSubmit: (String, SearchContentType, Set<String>) -> Unit,
     val onLoadMoreSearch: () -> Unit,
+    val onSearchVideoLongClick: (VideoUiModel) -> Unit,
 )
 
 @Composable
@@ -508,6 +511,7 @@ fun GrayjayApp(
     onPreferredAudioLanguageChange: (String) -> Unit,
     onPreferOriginalAudioChange: (Boolean) -> Unit,
     onPreferNewPipeForYoutubePlaybackChange: (Boolean) -> Unit,
+    onSubscriptionFetchModeChange: (SubscriptionFetchMode) -> Unit,
     onVideoTitleLanguageModeChange: (VideoTitleLanguageMode) -> Unit,
     onStickyCaptionsChange: (Boolean) -> Unit,
     onShowRecommendationsChange: (Boolean) -> Unit,
@@ -551,6 +555,7 @@ fun GrayjayApp(
     var actionVideoId by rememberSaveable { mutableStateOf<String?>(null) }
     var actionIsRemotePlaylistVideo by rememberSaveable { mutableStateOf(false) }
     var actionIsQueueVideo by rememberSaveable { mutableStateOf(false) }
+    var actionCanAddToQueue by rememberSaveable { mutableStateOf(false) }
     var playlistPickerVideoIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var profileDialogVisible by rememberSaveable { mutableStateOf(false) }
     var chromecastSheetVisible by rememberSaveable { mutableStateOf(false) }
@@ -657,6 +662,7 @@ fun GrayjayApp(
     val onVideoLongClick: (VideoUiModel) -> Unit = {
         actionIsRemotePlaylistVideo = false
         actionIsQueueVideo = false
+        actionCanAddToQueue = false
         actionVideoId = it.id
     }
     val onChannelClick: (ChannelUiModel) -> Unit = {
@@ -897,6 +903,7 @@ fun GrayjayApp(
         preferredAudioLanguage = uiState.preferredAudioLanguage,
         preferOriginalAudio = uiState.preferOriginalAudio,
         preferNewPipeForYoutubePlayback = uiState.preferNewPipeForYoutubePlayback,
+        subscriptionFetchMode = uiState.subscriptionFetchMode,
         videoTitleLanguageMode = uiState.videoTitleLanguageMode,
         stickyCaptionsEnabled = uiState.stickyCaptionsEnabled,
         showRecommendations = uiState.showRecommendations,
@@ -918,6 +925,7 @@ fun GrayjayApp(
         onPreferredAudioLanguageChange = onPreferredAudioLanguageChange,
         onPreferOriginalAudioChange = onPreferOriginalAudioChange,
         onPreferNewPipeForYoutubePlaybackChange = onPreferNewPipeForYoutubePlaybackChange,
+        onSubscriptionFetchModeChange = onSubscriptionFetchModeChange,
         onVideoTitleLanguageModeChange = onVideoTitleLanguageModeChange,
         onStickyCaptionsChange = onStickyCaptionsChange,
         onShowRecommendationsChange = onShowRecommendationsChange,
@@ -978,7 +986,7 @@ fun GrayjayApp(
             playback = uiState.playback,
             isLoading = uiState.nowPlaying.isLoadingPlayback || uiState.playback.isBuffering,
             isFullscreen = false,
-            canGoPrevious = queueIndex > 0 || uiState.playback.positionMs > 5_000L,
+            canGoPrevious = queueIndex > 0 || player.currentPosition > 5_000L,
             canGoNext = queueIndex >= 0 && queueIndex < uiState.playback.queueVideoIds.lastIndex,
             onTogglePlayback = onTogglePlayback,
             onSkipPrevious = onSkipToPrevious,
@@ -1019,6 +1027,12 @@ fun GrayjayApp(
         onSearchQueryChange = onSearchQueryChange,
         onSearchSubmit = onSearchSubmit,
         onLoadMoreSearch = onLoadMoreSearch,
+        onSearchVideoLongClick = { video ->
+            actionIsRemotePlaylistVideo = false
+            actionIsQueueVideo = false
+            actionCanAddToQueue = true
+            actionVideoId = video.id
+        },
     )
 
     LaunchedEffect(selectedVideo?.id) {
@@ -1137,11 +1151,15 @@ fun GrayjayApp(
             onResumeFromHistory = playback.onResumeFromHistory,
             onExitFullscreen = playback.onExitFullscreen,
             portraitFullscreen = portraitFullscreen,
-            modifier = Modifier.graphicsLayer {
-                val progress = navigationBackProgress.coerceIn(0f, 1f)
-                scaleX = 1f - 0.04f * progress
-                scaleY = 1f - 0.04f * progress
-                alpha = 1f - 0.22f * progress
+            modifier = if (navigationBackProgress <= 0f) {
+                Modifier
+            } else {
+                Modifier.graphicsLayer {
+                    val progress = navigationBackProgress.coerceIn(0f, 1f)
+                    scaleX = 1f - 0.04f * progress
+                    scaleY = 1f - 0.04f * progress
+                    alpha = 1f - 0.22f * progress
+                }
             },
         )
     } else if (
@@ -1257,6 +1275,7 @@ fun GrayjayApp(
                 actionVideoId = null
                 actionIsRemotePlaylistVideo = false
                 actionIsQueueVideo = false
+                actionCanAddToQueue = false
             },
             onToggleDownload = { onToggleDownloaded(video.id) },
             onDownloadAudio = { onToggleAudioDownloaded(video.id) },
@@ -1274,6 +1293,9 @@ fun GrayjayApp(
                 )
             },
             onAddToPlaylist = { playlistPickerVideoIds = listOf(video.id) },
+            onAddToQueue = if (actionCanAddToQueue) {
+                { playback.onQueueVideos(listOf(video.id)) }
+            } else null,
             onPlayNext = if (actionIsQueueVideo) {
                 { playback.onPlayNext(video.id) }
             } else null,
@@ -1657,13 +1679,17 @@ private fun GrayjayScaffold(
             0
         },
     )
-    val predictiveBackTransform = Modifier.graphicsLayer {
-        val progress = playback.navigationBackProgress.coerceIn(0f, 1f)
-        transformOrigin = TransformOrigin(0f, 0.5f)
-        translationX = size.width * 0.16f * progress
-        scaleX = 1f - 0.025f * progress
-        scaleY = 1f - 0.025f * progress
-        alpha = 1f - 0.12f * progress
+    val predictiveBackTransform = if (playback.navigationBackProgress <= 0f) {
+        Modifier
+    } else {
+        Modifier.graphicsLayer {
+            val progress = playback.navigationBackProgress.coerceIn(0f, 1f)
+            transformOrigin = TransformOrigin(0f, 0.5f)
+            translationX = size.width * 0.16f * progress
+            scaleX = 1f - 0.025f * progress
+            scaleY = 1f - 0.025f * progress
+            alpha = 1f - 0.12f * progress
+        }
     }
     val dragState = rememberDraggableState { delta ->
         val expanded = expandedPlayerBounds
@@ -1829,6 +1855,7 @@ private fun GrayjayScaffold(
                             } else {
                                 0f
                             },
+                            player = playback.player.takeUnless { playback.state.isCasting },
                             canSkip = playback.queueSize > 1,
                             chromeAlpha = if (transitionActive) 0f else 1f,
                             onExpand = playback.onExpand,
@@ -2015,7 +2042,7 @@ private fun GrayjayScaffold(
                         onSubmit = sourcePresentation.onSearchSubmit,
                         onLoadMore = sourcePresentation.onLoadMoreSearch,
                         onVideoClick = onVideoClick,
-                        onVideoLongClick = playback.onVideoLongClick,
+                        onVideoLongClick = sourcePresentation.onSearchVideoLongClick,
                         onChannelClick = onChannelClick,
                         onPlaylistClick = onPlaylistClick,
                         showNavigationMenuButton = onToggleDrawer != null && !drawerVisible,
@@ -2072,6 +2099,8 @@ private fun GrayjayScaffold(
                             playback.preferNewPipeForYoutubePlayback,
                         onPreferNewPipeForYoutubePlaybackChange =
                             playback.onPreferNewPipeForYoutubePlaybackChange,
+                        subscriptionFetchMode = playback.subscriptionFetchMode,
+                        onSubscriptionFetchModeChange = playback.onSubscriptionFetchModeChange,
                         videoTitleLanguageMode = playback.videoTitleLanguageMode,
                         onVideoTitleLanguageModeChange = playback.onVideoTitleLanguageModeChange,
                         stickyCaptionsEnabled = playback.stickyCaptionsEnabled,
@@ -2125,6 +2154,7 @@ private fun GrayjayScaffold(
                 } else {
                     0f
                 },
+                player = playback.player.takeUnless { playback.state.isCasting },
                 canSkip = playback.queueSize > 1,
                 chromeAlpha = if (transitionActive) 0f else 1f,
                 onExpand = playback.onExpand,
@@ -2392,7 +2422,7 @@ private fun GrayjayScaffold(
                 playback = playback.state,
                 isLoading = playback.nowPlaying.isLoadingPlayback || playback.state.isBuffering,
                 isFullscreen = false,
-                canGoPrevious = queueIndex > 0 || playback.state.positionMs > 5_000L,
+                canGoPrevious = queueIndex > 0 || playback.player.currentPosition > 5_000L,
                 canGoNext = queueIndex >= 0 && queueIndex < playback.state.queueVideoIds.lastIndex,
                 onTogglePlayback = playback.onToggle,
                 onSkipPrevious = playback.onPrevious,
@@ -2482,6 +2512,7 @@ private fun TransitionMiniPlayerChrome(
         } else {
             0f
         },
+        player = playback.player.takeUnless { playback.state.isCasting },
         canSkip = playback.queueSize > 1,
         onTogglePlayback = playback.onToggle,
         onSkipToNext = playback.onNext,

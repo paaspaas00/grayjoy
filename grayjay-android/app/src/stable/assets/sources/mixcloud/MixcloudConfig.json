@@ -10,8 +10,8 @@
   "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/mixcloud",
   "version": 9,
   "id": "84331338-b045-419c-88e4-c86036f4cbf5",
-  "scriptSignature": "",
-  "scriptPublicKey": "",
+  "scriptSignature": "ZIhoip9zTiG0J5QMzLjiazRoKOVxB6c+LijwA0WCBEHiIdUfY18VNEi4OlnXff+OorR6PFD4+Gtrm61aknJdG8eIJoq9qB9iaMOHCoPhYGPXlWxitm9zejHZ5im1X34xL9IGTS3fGfEnSli1j0KAKkpnO8sfcL9D44PsuEtFYwu7GfGlU/zgvSncaPem4LOhp3qfVOajSQ4tbrOqpCKnezjIKQBJH36Uy3/1PaaA5Gtztfb6UmGjfD861dAJuCZDJJ7ePzM9rke5/DdZQwMZ8nJE5Oc63TtVeqECWTUhTvnnjG0itDEQrI+Q94dqLQtS01f3P8OM27SsiaxpRt0AMw==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
   "packages": [
     "Http"
   ],
@@ -68,7 +68,7 @@
       "Fix: Content recommendations for live streams;"
     ],
     "6": [
-     "Improvement: Fix relationship between DJs and Radios in content description;"
+      "Improvement: Fix relationship between DJs and Radios in content description;"
     ],
     "7": [
       "Improvement: Add exclusive subscriber-only content support;"

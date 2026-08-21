@@ -1,96 +1,98 @@
 {
-    "name": "BiliBili (CN)",
-    "description": "BiliBili (CN) is the biggest video platform in China\n\nLogin to access higher video quality, subtitles, and premium content",
-    "author": "FUTO",
-    "authorUrl": "https://futo.tech",
-    "platformUrl": "https://bilibili.com",
-    "sourceUrl": "https://plugins.grayjay.app/Bilibili/BiliBiliConfig.json",
-    "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/bilibili",
-    "scriptUrl": "./BiliBiliScript.js",
-    "version": 34,
-    "iconUrl": "./BiliBiliIcon.png",
-    "id": "cf8ea74d-ad9b-489e-a083-539b6aa8648c",
-    "scriptSignature": "",
-    "scriptPublicKey": "",
-    "packages": [
-        "Http",
-        "Utilities"
+  "name": "BiliBili (CN)",
+  "description": "BiliBili (CN) is the biggest video platform in China\n\nLogin to access higher video quality, subtitles, and premium content",
+  "author": "FUTO",
+  "authorUrl": "https://futo.tech",
+  "platformUrl": "https://bilibili.com",
+  "sourceUrl": "https://plugins.grayjay.app/Bilibili/BiliBiliConfig.json",
+  "repositoryUrl": "https://gitlab.futo.org/videostreaming/plugins/bilibili",
+  "scriptUrl": "./BiliBiliScript.js",
+  "version": 34,
+  "iconUrl": "./BiliBiliIcon.png",
+  "id": "cf8ea74d-ad9b-489e-a083-539b6aa8648c",
+  "scriptSignature": "rGFPPIhtHg2CB96/WNtehmepNGloL3AyEwm1M/OnM5CF1u1rsO7UlHILfoAwCkEOWhDtjpWGheqZi32Pb0TWuZ4e157jF/V2qLoEtYAwIsmwMJMbC9xNJgjsEg1uMbjg0NbGn0/d0TuqTSZZKHsZHcJzmV191hXarP3XHEqxWNFnDhZOp8e+Oy4i7R2yelEG88mIQWHD/ObeDl4UJ3UDqcC2M8KrgWkxPewc9LR4hSybY7/Ci16Bb3jzf5YmEZvHKEYxUi6wnufPmL5I2waUKeXUhphuJHrVAww0Ww8eSkk6wg6UkDYpnK0FV4dENIPboUcQQ9/wxu9cBFMlvIUvHw==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsoFJU4AReDyUnSQI9A99UjLCwkY8OH+1o8cdtf2EjSb+fO2qmP8MGMTAvfvgmq5d2QBJE2XHRkRO3JKcTlcc1j0WlOlU8P9W272DYCeX6oYaavpKNqGKoGEuodp9wtiyNwyH46++JfpU/uIUacZbZKkHv9gIGchmNvpKYZQjFd/8pUqXGpcXZP54tGSC9PLcY+5TozZThK7Oy1+3YEf1bZ44UinRYYATbLk/wNuAfsupvlt6nxZOcJhABhdo9V+gY0FE6Ayg5+1cd1noWhnRtLF+sPdEr3z8Nt15JEK5a/524t25FMhwz8yKxlGW5qW3QLJHSUgLQncL6a1zlZ1s8QIDAQAB",
+  "packages": [
+    "Http",
+    "Utilities"
+  ],
+  "packagesOptional": [
+    "HttpImp"
+  ],
+  "allowEval": false,
+  "allowUrls": [
+    "www.bilibili.com",
+    "api.bilibili.com",
+    "api.live.bilibili.com",
+    "s1.hdslb.com",
+    "live.bilibili.com",
+    "s.search.bilibili.com",
+    "aisubtitle.hdslb.com",
+    "d1--ov-gotcha05.bilivideo.com",
+    "d1--ov-gotcha07.bilivideo.com",
+    ".bilivideo.com",
+    "*.bilivideo.com",
+    "space.bilibili.com",
+    "b23.tv"
+  ],
+  "authentication": {
+    "loginUrl": "https://passport.bilibili.com/h5-app/passport/login",
+    "cookiesToFind": [
+      "SESSDATA"
     ],
-    "packagesOptional": [
-        "HttpImp"
-    ],
-    "allowEval": false,
-    "allowUrls": [
-        "www.bilibili.com",
-        "api.bilibili.com",
-        "api.live.bilibili.com",
-        "s1.hdslb.com",
-        "live.bilibili.com",
-        "s.search.bilibili.com",
-        "aisubtitle.hdslb.com",
-        "d1--ov-gotcha05.bilivideo.com",
-        "d1--ov-gotcha07.bilivideo.com",
-        ".bilivideo.com",
-        "*.bilivideo.com",
-        "space.bilibili.com",
-        "b23.tv"
-    ],
-    "authentication": {
-		"loginUrl": "https://passport.bilibili.com/h5-app/passport/login",
-		"cookiesToFind": ["SESSDATA"],
-		"userAgent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36"
-	},
-    "settings": [
-        {
-            "variable": "verboseNotifications",
-            "name": "Verbose Notifications",
-            "description": "Show toast notifications for plugin trace messages and failed requests.",
-            "type": "Boolean",
-            "default": "false"
-        },
-        {
-            "variable": "multipartNextOnlyRecommendations",
-            "name": "Next Videos Only In Series",
-            "description": "For multi-part videos and videos in a creator's collection, only show later parts/episodes in recommendations and exclude unrelated videos.",
-            "type": "Boolean",
-            "default": "true"
-        }
-    ],
-    "changelog": {
-        "34": [
-            "Fix: Content recommendations in desktop;",
-            "Improvement: Auto-detect when a video is part of a collection and show other episodes as recommendations;"
-        ],
-        "33": [
-            "Fix: Handle subscriptions import pagination and subscription page load failures gracefully;",
-            "Fix: Loading comment replies;",
-            "Improvement: Add multi-part video support as recommendations;",
-            "Improvement: Adjust build system;"
-        ],
-        "32": [
-            "Fix: Loading home content;",
-            "Fix: Improve handling of HTTP 412 errors on channel content loading;",
-            "Fix: Update author URL from futo.org to futo.tech;",
-            "Improvement: Add browser impersonation fallback;",
-            "Improvement: Add notifications setting, and trace logging;"
-        ],
-        "31": [
-            "Fix: loading initial data;"
-        ],
-        "30": [
-            "Improvement: Support openning b23.tv content URLs;",
-            "Fix: Loading channel contents;"
-        ],
-        "29": [
-            "Improvement: Handle videos no longer available;"
-        ],
-        "28": [
-            "Fix: extracting mixin_constant;",
-            "Fix: live videos;",
-            "Improvement: add channel URL as a channel link which can be opened externally;"
-        ],
-        "27" : [
-            "Fix user subscriptions import when the user has more than 20 subscriptions"
-        ]
+    "userAgent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36"
+  },
+  "settings": [
+    {
+      "variable": "verboseNotifications",
+      "name": "Verbose Notifications",
+      "description": "Show toast notifications for plugin trace messages and failed requests.",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "multipartNextOnlyRecommendations",
+      "name": "Next Videos Only In Series",
+      "description": "For multi-part videos and videos in a creator's collection, only show later parts/episodes in recommendations and exclude unrelated videos.",
+      "type": "Boolean",
+      "default": "true"
     }
+  ],
+  "changelog": {
+    "34": [
+      "Fix: Content recommendations in desktop;",
+      "Improvement: Auto-detect when a video is part of a collection and show other episodes as recommendations;"
+    ],
+    "33": [
+      "Fix: Handle subscriptions import pagination and subscription page load failures gracefully;",
+      "Fix: Loading comment replies;",
+      "Improvement: Add multi-part video support as recommendations;",
+      "Improvement: Adjust build system;"
+    ],
+    "32": [
+      "Fix: Loading home content;",
+      "Fix: Improve handling of HTTP 412 errors on channel content loading;",
+      "Fix: Update author URL from futo.org to futo.tech;",
+      "Improvement: Add browser impersonation fallback;",
+      "Improvement: Add notifications setting, and trace logging;"
+    ],
+    "31": [
+      "Fix: loading initial data;"
+    ],
+    "30": [
+      "Improvement: Support openning b23.tv content URLs;",
+      "Fix: Loading channel contents;"
+    ],
+    "29": [
+      "Improvement: Handle videos no longer available;"
+    ],
+    "28": [
+      "Fix: extracting mixin_constant;",
+      "Fix: live videos;",
+      "Improvement: add channel URL as a channel link which can be opened externally;"
+    ],
+    "27": [
+      "Fix user subscriptions import when the user has more than 20 subscriptions"
+    ]
+  }
 }
