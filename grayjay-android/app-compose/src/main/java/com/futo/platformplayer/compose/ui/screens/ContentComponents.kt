@@ -77,6 +77,8 @@ private data class RemoteImageRequestKey(
     val fallbackUrl: String?,
     val placeholderColor: Int,
     val circleCrop: Boolean,
+    val targetWidthPx: Int?,
+    val targetHeightPx: Int?,
 )
 
 private val YOUTUBE_THUMBNAIL_ID_REGEX = Regex(
@@ -101,18 +103,30 @@ private fun ImageView.loadRemoteImage(
     placeholderColor: Int,
     fallbackUrl: String? = null,
     circleCrop: Boolean = false,
+    targetWidthPx: Int? = null,
+    targetHeightPx: Int? = null,
 ) {
-    val key = RemoteImageRequestKey(url, fallbackUrl, placeholderColor, circleCrop)
+    val key = RemoteImageRequestKey(
+        url,
+        fallbackUrl,
+        placeholderColor,
+        circleCrop,
+        targetWidthPx,
+        targetHeightPx,
+    )
     if (getTag(R.id.remote_image_request_key) == key) return
     setTag(R.id.remote_image_request_key, key)
     val manager = Glide.with(this)
     val fallback = fallbackUrl?.let { candidate ->
-        manager.load(candidate)
+        var request = manager.load(candidate)
             .placeholder(ColorDrawable(placeholderColor))
             .error(ColorDrawable(placeholderColor))
-            .let { if (circleCrop) it.circleCrop() else it.centerCrop() }
+        if (targetWidthPx != null && targetHeightPx != null) {
+            request = request.override(targetWidthPx, targetHeightPx)
+        }
+        if (circleCrop) request.circleCrop() else request
     }
-    manager.load(url)
+    var request = manager.load(url)
         .placeholder(ColorDrawable(placeholderColor))
         .let { request ->
             when {
@@ -120,8 +134,10 @@ private fun ImageView.loadRemoteImage(
                 else -> request.error(ColorDrawable(placeholderColor))
             }
         }
-        .let { if (circleCrop) it.circleCrop() else it.centerCrop() }
-        .into(this)
+    if (targetWidthPx != null && targetHeightPx != null) {
+        request = request.override(targetWidthPx, targetHeightPx)
+    }
+    (if (circleCrop) request.circleCrop() else request).into(this)
 }
 
 /** Enable AndroidView pooling in lazy lists and detach the previous Glide request on reuse. */
@@ -230,6 +246,7 @@ internal fun CompactVideoCard(
         videoId = video.id,
         enabled = animateEntrance && performance.allowPerItemLayerAnimations,
     )
+    val thumbnailWidth = if (performance.compactContent) 148.dp else 184.dp
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -257,8 +274,9 @@ internal fun CompactVideoCard(
                 video = video,
                 index = index,
                 showWatchProgress = showProgress,
+                targetWidth = thumbnailWidth,
                 modifier = Modifier
-                    .width(if (performance.compactContent) 148.dp else 184.dp)
+                    .width(thumbnailWidth)
                     .aspectRatio(16f / 9f)
                     .then(
                         if (performance.isLowEnd) Modifier
@@ -396,9 +414,15 @@ private fun CompactVideoThumbnail(
     video: VideoUiModel,
     index: Int,
     showWatchProgress: Boolean,
+    targetWidth: androidx.compose.ui.unit.Dp,
     modifier: Modifier,
 ) {
     val placeholderColor = MaterialTheme.colorScheme.surfaceVariant.toArgb()
+    val density = LocalDensity.current
+    val targetWidthPx = remember(targetWidth, density) {
+        with(density) { targetWidth.roundToPx().coerceIn(1, 384) }
+    }
+    val targetHeightPx = remember(targetWidthPx) { (targetWidthPx * 9 / 16).coerceAtLeast(1) }
     val placeholderBrush = remember(index) {
         Brush.linearGradient(
             VIDEO_PLACEHOLDER_GRADIENTS[index % VIDEO_PLACEHOLDER_GRADIENTS.size],
@@ -423,6 +447,8 @@ private fun CompactVideoThumbnail(
                             videoId = video.id,
                             thumbnailUrl = video.thumbnailUrl,
                         ),
+                        targetWidthPx = targetWidthPx,
+                        targetHeightPx = targetHeightPx,
                     )
                 },
                 onReset = { imageView -> imageView.resetRemoteImage() },

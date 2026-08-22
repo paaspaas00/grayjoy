@@ -2271,6 +2271,12 @@ class GrayjayPluginBackend(
         pendingUntrustedPlugins.remove(token)
     }
 
+    /** Drops pagers/comment handles without disabling clients or interrupting active playback. */
+    fun resetTransientSessions() {
+        pagerSessions.clear()
+        commentHandles.clear()
+    }
+
     fun clearPlugin(alias: String, pluginId: String) {
         runCatching { clients.remove(alias)?.disable() }
         sourceAliases.remove(pluginId)

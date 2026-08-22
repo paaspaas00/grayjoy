@@ -57,6 +57,13 @@ class NewPipeYoutubeContentBackend(
     private val channelTabs = ConcurrentHashMap<String, List<ListLinkHandler>>()
     private val commentHandles = ConcurrentHashMap<String, CommentHandle>()
 
+    /** Continuations belong to one backend generation and must not survive an engine switch. */
+    fun resetTransientSessions() {
+        pagers.clear()
+        channelTabs.clear()
+        commentHandles.clear()
+    }
+
     suspend fun search(query: String, type: GrayjaySearchType): GrayjayPluginSearchResult =
         withContext(Dispatchers.IO) {
             val filter = when (type) {

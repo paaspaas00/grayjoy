@@ -257,6 +257,28 @@ private data class MixedContinuation(
     var pluginId: String?,
 )
 
+internal data class SubscriptionChannelPartition(
+    val newPipeChannels: List<ChannelUiModel>,
+    val pluginChannels: List<ChannelUiModel>,
+)
+
+internal fun partitionSubscriptionChannels(
+    useNewPipe: Boolean,
+    channels: List<ChannelUiModel>,
+): SubscriptionChannelPartition = if (useNewPipe) {
+    SubscriptionChannelPartition(
+        newPipeChannels = channels.filter { it.sourceId.equals("youtube", true) },
+        pluginChannels = channels.filterNot { it.sourceId.equals("youtube", true) },
+    )
+} else {
+    // In Grayjay mode YouTube is a regular JS-plugin source. Excluding it here produced a
+    // misleading completed counter followed by an empty subscription page.
+    SubscriptionChannelPartition(
+        newPipeChannels = emptyList(),
+        pluginChannels = channels,
+    )
+}
+
 internal fun youtubePlaybackResolverOrder(
     preferNewPipe: Boolean,
 ): List<YoutubePlaybackResolver> = if (preferNewPipe) {
@@ -1045,8 +1067,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             pluginEndpoints[sourceId]?.let { sourceId to it }
         }.toMap()
         if (endpoints.isEmpty() && !useNewPipe) return EngineVideoPage()
-        val youtubeChannels = followedChannels.filter { it.sourceId.equals("youtube", true) }
-        val pluginChannels = followedChannels.filterNot { it.sourceId.equals("youtube", true) }
+        val channelPartition = partitionSubscriptionChannels(useNewPipe, followedChannels)
+        val youtubeChannels = channelPartition.newPipeChannels
+        val pluginChannels = channelPartition.pluginChannels
         val pluginEndpointsForFeed = if (feed == HomeFeedType.Subscriptions) {
             val subscribedSourceIds = pluginChannels.mapTo(mutableSetOf(), ChannelUiModel::sourceId)
             endpoints.filterKeys(subscribedSourceIds::contains)
@@ -1113,7 +1136,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                                 )
                             },
                             enabledSources = pluginEndpointsForFeed,
-                            onProgress = { _, _ -> },
+                            onProgress = if (useNewPipe) {
+                                { _, _ -> }
+                            } else {
+                                onSubscriptionProgress
+                            },
                         )
                     } else {
                         pluginBackend.home(enabledSources = pluginEndpointsForFeed)
@@ -1599,6 +1626,15 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         useNewPipe: Boolean,
         subscriptionFetchMode: YoutubeSubscriptionFetchMode,
     ) {
+        val backendChanged = useNewPipeYoutubeBackend != useNewPipe
+        val fetchModeChanged = youtubeSubscriptionFetchMode != subscriptionFetchMode
+        if (backendChanged || fetchModeChanged) {
+            mixedContinuations.clear()
+            newPipeYoutubeContentBackend.resetTransientSessions()
+            if (pluginBackendDelegate.isInitialized()) {
+                pluginBackend.resetTransientSessions()
+            }
+        }
         useNewPipeYoutubeBackend = useNewPipe
         preferNewPipeForYoutubePlayback = useNewPipe
         youtubeSubscriptionFetchMode = subscriptionFetchMode

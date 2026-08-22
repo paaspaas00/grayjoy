@@ -487,6 +487,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val metadataHydrationSemaphore = Semaphore(2)
     private val metadataHydrationJobs = mutableMapOf<String, Job>()
     private val metadataHydrationAttempts = mutableSetOf<String>()
+    private val pendingMetadataDurations = linkedMapOf<String, String>()
+    private var metadataHydrationPublishJob: Job? = null
     private var metadataHydrationSaveJob: Job? = null
     private val downloadPreparationStates = mutableMapOf<String, DownloadUiModel>()
     private val autoRepairedDownloadKeys = mutableSetOf<String>()
@@ -783,6 +785,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setYoutubeBackendMode(mode: YoutubeBackendMode) {
+        if (preferences.youtubeBackendMode == mode) return
         preferences.youtubeBackendMode = mode
         configureYoutubeBackend()
         _uiState.update {
@@ -791,18 +794,61 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 preferNewPipeForYoutubePlayback = mode == YoutubeBackendMode.NewPipe,
             )
         }
-        homeFeedCache.clear()
-        homeContinuationCache.clear()
-        HomeSessionCache.removeFeed(activeProfileId, HomeFeedType.Subscriptions)
+        invalidateBackendDependentContent()
     }
 
     fun setSubscriptionFetchMode(mode: SubscriptionFetchMode) {
+        if (preferences.subscriptionFetchMode == mode) return
         preferences.subscriptionFetchMode = mode
         configureYoutubeBackend()
         _uiState.update { it.copy(subscriptionFetchMode = mode) }
         homeFeedCache.remove(HomeFeedType.Subscriptions)
         homeContinuationCache.remove(HomeFeedType.Subscriptions)
+        homeHasMoreCache.remove(HomeFeedType.Subscriptions)
         HomeSessionCache.removeFeed(activeProfileId, HomeFeedType.Subscriptions)
+        homeCacheRepository.removeFeed(HomeFeedType.Subscriptions)
+        _uiState.update { state -> state.copy(subscriptionVideos = emptyList()) }
+        if (_uiState.value.home.selectedFeed == HomeFeedType.Subscriptions) {
+            loadHome(HomeFeedType.Subscriptions, forceRefresh = true)
+        }
+    }
+
+    private fun invalidateBackendDependentContent() {
+        homeJob?.cancel()
+        homePagingJob?.cancel()
+        homeCacheWriteJob?.cancel()
+        searchJob?.cancel()
+        searchPagingJob?.cancel()
+        suggestionJob?.cancel()
+        homeFeedCache.clear()
+        homeContinuationCache.clear()
+        homeHasMoreCache.clear()
+        HomeFeedType.entries.forEach { feed ->
+            HomeSessionCache.removeFeed(activeProfileId, feed)
+            homeCacheRepository.removeFeed(feed)
+        }
+        val selectedFeed = _uiState.value.home.selectedFeed
+        val searchQuery = _uiState.value.search.query
+        val subscriptionTotal = visibleKnownChannels().count { channel ->
+            channel.id in followedCreatorIds && channel.sourceId in enabledSourceIds
+        }
+        _uiState.update { state ->
+            state.copy(
+                subscriptionVideos = emptyList(),
+                home = HomeUiState(
+                    selectedFeed = selectedFeed,
+                    isLoading = true,
+                    subscriptionsTotal = if (selectedFeed == HomeFeedType.Subscriptions) {
+                        subscriptionTotal
+                    } else {
+                        0
+                    },
+                ),
+                // Results and continuations are backend-owned. Preserve only what the user typed.
+                search = SearchUiState(query = searchQuery),
+            )
+        }
+        loadHome(selectedFeed, forceRefresh = true)
     }
 
     fun setVideoTitleLanguageMode(mode: VideoTitleLanguageMode) {
@@ -1670,31 +1716,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 if (activeProfileId != profileAtStart) return@launch
                 val resolvedDuration = resolved.duration
                 if (resolvedDuration.isBlank()) return@launch
-                homeFeedCache.replaceAll { _, videos ->
-                    videos.map { current ->
-                        if (current.id == videoId) current.copy(duration = resolvedDuration)
-                        else current
-                    }
-                }
-                _uiState.update { state ->
-                    state.copy(
-                        subscriptionVideos = state.subscriptionVideos.map { current ->
-                            if (current.id == videoId) current.copy(duration = resolvedDuration)
-                            else current
-                        },
-                        home = state.home.copy(
-                            videos = state.home.videos.map { current ->
-                                if (current.id == videoId) current.copy(duration = resolvedDuration)
-                                else current
-                            },
-                        ),
-                    )
-                }
-                metadataHydrationSaveJob?.cancel()
-                metadataHydrationSaveJob = viewModelScope.launch {
-                    delay(1_200L)
-                    if (activeProfileId == profileAtStart) saveHomeToSession()
-                }
+                enqueueMetadataDuration(profileAtStart, videoId, resolvedDuration)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -1721,6 +1743,55 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }
         }
     }
+
+    /**
+     * Visible Atom cards often resolve within a few milliseconds of one another. Publishing each
+     * duration separately rebuilt the complete Home state several times just after a scroll
+     * settled. Coalescing the small burst gives Compose one immutable list update instead.
+     */
+    private fun enqueueMetadataDuration(profileId: String, videoId: String, duration: String) {
+        pendingMetadataDurations["$profileId|$videoId"] = duration
+        if (metadataHydrationPublishJob?.isActive == true) return
+        metadataHydrationPublishJob = viewModelScope.launch {
+            delay(120L)
+            while (pendingMetadataDurations.isNotEmpty()) {
+                val currentProfileId = activeProfileId
+                val prefix = "$currentProfileId|"
+                val pendingBatch = pendingMetadataDurations.toMap()
+                pendingMetadataDurations.clear()
+                val durations = pendingBatch.entries
+                    .asSequence()
+                    .filter { (key, _) -> key.startsWith(prefix) }
+                    .associate { (key, value) -> key.removePrefix(prefix) to value }
+                if (durations.isNotEmpty()) {
+                    homeFeedCache.replaceAll { _, videos ->
+                        videos.applyDurations(durations)
+                    }
+                    _uiState.update { state ->
+                        state.copy(
+                            subscriptionVideos = state.subscriptionVideos.applyDurations(durations),
+                            home = state.home.copy(
+                                videos = state.home.videos.applyDurations(durations),
+                            ),
+                        )
+                    }
+                    metadataHydrationSaveJob?.cancel()
+                    metadataHydrationSaveJob = viewModelScope.launch {
+                        delay(1_200L)
+                        if (activeProfileId == currentProfileId) saveHomeToSession()
+                    }
+                }
+                if (pendingMetadataDurations.isNotEmpty()) delay(120L)
+            }
+        }
+    }
+
+    private fun List<VideoUiModel>.applyDurations(durations: Map<String, String>): List<VideoUiModel> =
+        map { video ->
+            durations[video.id]?.let { duration ->
+                if (video.duration == duration) video else video.copy(duration = duration)
+            } ?: video
+        }
 
     private fun publishExternalNavigation(kind: ExternalNavigationKind, contentId: String) {
         externalNavigationRequestId += 1L
