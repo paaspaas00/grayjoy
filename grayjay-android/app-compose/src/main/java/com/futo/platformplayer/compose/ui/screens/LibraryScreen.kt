@@ -25,6 +25,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FileUpload
@@ -126,6 +127,8 @@ internal fun LibraryScreen(
     onPlaylistClick: (PlaylistUiModel) -> Unit,
     onAddSelectionToPlaylist: (List<String>) -> Unit,
     onQueueSelection: (List<String>) -> Unit,
+    onPlayDownloads: (List<String>) -> Unit = {},
+    onPlayDownloadsFrom: (List<String>, String) -> Unit = { _, _ -> },
     onRemoveSelectionFromHistory: (List<String>) -> Unit,
     onRemoveDownloads: (List<String>) -> Unit = {},
     onRemovePlaylists: (List<String>) -> Unit = {},
@@ -153,6 +156,9 @@ internal fun LibraryScreen(
     val activeFilter by rememberUpdatedState(selectedFilter)
     val matchingPlaylists = remember(playlists, playlistQuery) {
         playlistsMatchingQuery(playlists, playlistQuery)
+    }
+    val downloadVideos = remember(videos, downloads) {
+        videosForLibraryFilter(videos, LibraryFilter.Downloads, downloads)
     }
 
     fun leaveSelectionMode() {
@@ -249,8 +255,9 @@ internal fun LibraryScreen(
                 } else {
                     emptyMap()
                 }
-                val pageVideos = remember(videos, pageFilter, relevantDownloads) {
-                    videosForLibraryFilter(videos, pageFilter, relevantDownloads)
+                val pageVideos = remember(videos, pageFilter, relevantDownloads, downloadVideos) {
+                    if (pageFilter == LibraryFilter.Downloads) downloadVideos
+                    else videosForLibraryFilter(videos, pageFilter, relevantDownloads)
                 }
                 val isSelectedPage = pageFilter == selectedFilter
                 val pageListState = rememberLazyListState()
@@ -311,6 +318,14 @@ internal fun LibraryScreen(
                         ),
                     ) {
                         Text(stringResource(R.string.cancel))
+                    }
+                } else if (pageFilter == LibraryFilter.Downloads && pageVideos.isNotEmpty()) {
+                    Button(
+                        onClick = { onPlayDownloads(pageVideos.map(VideoUiModel::id)) },
+                        modifier = Modifier.testTag("downloads-play-all"),
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                        Text(stringResource(R.string.play_all))
                     }
                 }
             }
@@ -485,7 +500,29 @@ internal fun LibraryScreen(
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
                         )
-                        if (selectedFilter == LibraryFilter.History) {
+                        if (
+                            selectedFilter == LibraryFilter.Downloads &&
+                            selectedVideoIds.size == 1
+                        ) {
+                            SelectionTooltip(stringResource(R.string.play_from_here)) {
+                                IconButton(
+                                    onClick = {
+                                        onPlayDownloadsFrom(
+                                            downloadVideos.map(VideoUiModel::id),
+                                            selectedVideoIds.single(),
+                                        )
+                                        leaveSelectionMode()
+                                    },
+                                    modifier = Modifier.testTag("downloads-play-from-here"),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.PlayArrow,
+                                        contentDescription = stringResource(R.string.play_from_here),
+                                    )
+                                }
+                            }
+                        }
+                        if (selectedFilter in setOf(LibraryFilter.History, LibraryFilter.Downloads)) {
                             SelectionTooltip(stringResource(R.string.enqueue)) {
                                 IconButton(
                                     onClick = {
@@ -493,7 +530,13 @@ internal fun LibraryScreen(
                                         leaveSelectionMode()
                                     },
                                     enabled = selectedVideoIds.isNotEmpty(),
-                                    modifier = Modifier.testTag("history-enqueue"),
+                                    modifier = Modifier.testTag(
+                                        if (selectedFilter == LibraryFilter.Downloads) {
+                                            "downloads-enqueue"
+                                        } else {
+                                            "history-enqueue"
+                                        },
+                                    ),
                                 ) {
                                     Icon(
                                         Icons.AutoMirrored.Outlined.PlaylistPlay,
@@ -501,6 +544,8 @@ internal fun LibraryScreen(
                                     )
                                 }
                             }
+                        }
+                        if (selectedFilter == LibraryFilter.History) {
                             SelectionTooltip(stringResource(R.string.add_to_playlist)) {
                                 IconButton(
                                     onClick = { onAddSelectionToPlaylist(selectedVideoIds.toList()) },

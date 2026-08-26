@@ -48,6 +48,7 @@ import androidx.compose.material.icons.automirrored.outlined.MenuOpen
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.outlined.CastConnected
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.DownloadDone
@@ -114,6 +115,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.media3.common.Player
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.playlistQueueFrom
 import com.futo.platformplayer.compose.ui.screens.HomeScreen
 import com.futo.platformplayer.compose.ui.screens.ChannelDetailScreen
 import com.futo.platformplayer.compose.ui.screens.ChromecastSheet
@@ -2057,6 +2059,10 @@ private fun GrayjayScaffold(
                         onPlaylistClick = onPlaylistClick,
                         onAddSelectionToPlaylist = playback.onAddSelectionToPlaylist,
                         onQueueSelection = playback.onQueueVideos,
+                        onPlayDownloads = playback.onPlayQueue,
+                        onPlayDownloadsFrom = { ids, videoId ->
+                            playback.onPlayQueue(playlistQueueFrom(ids, videoId))
+                        },
                         onRemoveSelectionFromHistory = playback.onRemoveSelectionFromHistory,
                         onRemoveDownloads = playback.onRemoveDownloads,
                         onRemovePlaylists = playback.onRemovePlaylists,
@@ -2278,6 +2284,16 @@ private fun GrayjayScaffold(
                                             } else {
                                                 MaterialTheme.colorScheme.onSurfaceVariant
                                             },
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = playback.onClose,
+                                        modifier = Modifier.testTag("now-playing-close"),
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Close,
+                                            contentDescription = stringResource(R.string.close_playback),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
                                 },

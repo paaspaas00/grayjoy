@@ -51,6 +51,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.futo.platformplayer.compose.MainActivity
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.downloads.GrayjoyDownloadStore
+import com.futo.platformplayer.compose.downloads.NetworkMonitor
+import com.futo.platformplayer.compose.downloads.isRecoverableConnectivityFailure
 import com.futo.platformplayer.backend.GrayjayPluginBackend
 import com.futo.platformplayer.backend.GrayjayPluginAuthStore
 import com.futo.platformplayer.backend.GrayjayPlaybackSource
@@ -615,6 +617,12 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private val youtubeRuntimeFallbackAttempted = ConcurrentHashMap.newKeySet<String>()
     private val youtubeFallbackScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var youtubeRuntimeFallbackJob: Job? = null
+    private val networkMonitor = NetworkMonitor(appContext)
+    private val connectivityRecoveryScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var connectivityRecoveryJob: Job? = null
+    private var connectivityRecoveryVideoId: String? = null
+    private var connectivityRecoveryAttempt = 0
+    private var connectivityRecoveryPending = false
     private var activePluginDataSources: Set<JSHttpDataSource.Factory> = emptySet()
     private var openedVideos: List<VideoUiModel> = emptyList()
     private var activeQualityVariantHeight: Int? = null
@@ -631,12 +639,18 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     init {
         exoPlayer.addListener(
             object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) = syncPlayback()
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_READY) resetConnectivityRecovery()
+                    syncPlayback()
+                }
 
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) =
                     syncPlayback()
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    if (mediaItem?.mediaId != connectivityRecoveryVideoId) {
+                        resetConnectivityRecovery()
+                    }
                     updateAudioSpectrumAnalysis(mediaItem?.mediaId)
                     val video = openedVideos.firstOrNull { it.id == mediaItem?.mediaId }
                     switchPlaybackTracker(video)
@@ -658,6 +672,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     syncPlayback()
 
                 override fun onPlayerError(error: PlaybackException) {
+                    if (scheduleConnectivityRecovery(error)) return
+                    resetConnectivityRecovery()
                     if (startYoutubeRuntimeFallback(error)) return
                     val rootCause = generateSequence<Throwable>(error) { it.cause }.last()
                     Log.e(
@@ -672,6 +688,48 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 }
             },
         )
+    }
+
+    private fun scheduleConnectivityRecovery(error: Throwable): Boolean {
+        if (!error.isRecoverableConnectivityFailure()) return false
+        val videoId = exoPlayer.currentMediaItem?.mediaId ?: return false
+        if (openedVideos.none { it.id == videoId }) return false
+        if (connectivityRecoveryVideoId != videoId) connectivityRecoveryAttempt = 0
+        connectivityRecoveryVideoId = videoId
+        val retryAttempt = connectivityRecoveryAttempt++
+        val failurePositionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val rootCause = generateSequence(error) { it.cause }.last()
+        Log.w(
+            TAG,
+            "Temporary network playback failure for $videoId; waiting to retry " +
+                "from ${failurePositionMs}ms (attempt ${retryAttempt + 1}).",
+            rootCause,
+        )
+        connectivityRecoveryJob?.cancel()
+        connectivityRecoveryPending = true
+        lastError = null
+        syncPlayback(videoId)
+        connectivityRecoveryJob = connectivityRecoveryScope.launch {
+            networkMonitor.awaitRecovery(retryAttempt)
+            if (exoPlayer.currentMediaItem?.mediaId != videoId) return@launch
+            Log.i(TAG, "Connectivity recovered; retrying playback for $videoId.")
+            lastError = null
+            // Read these at recovery time so pause/seek commands issued while offline win over
+            // the state captured when the socket failed.
+            exoPlayer.seekTo(exoPlayer.currentPosition.coerceAtLeast(0L))
+            exoPlayer.prepare()
+            PlaybackNotificationService.refresh(appContext)
+            syncPlayback(videoId)
+        }
+        return true
+    }
+
+    private fun resetConnectivityRecovery() {
+        connectivityRecoveryJob?.cancel()
+        connectivityRecoveryJob = null
+        connectivityRecoveryVideoId = null
+        connectivityRecoveryAttempt = 0
+        connectivityRecoveryPending = false
     }
 
     private suspend fun <T> withYoutubeBackendFallback(
@@ -748,6 +806,14 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             } catch (fallbackError: Throwable) {
                 Log.e(TAG, "Both YouTube playback engines failed for $videoId.", fallbackError)
                 if (exoPlayer.currentMediaItem?.mediaId == videoId) {
+                    if (fallbackError.isRecoverableConnectivityFailure()) {
+                        // Resolution itself failed while offline. Retry the current source after
+                        // recovery and allow the alternate resolver to be attempted again if the
+                        // original stream still fails for a non-network reason.
+                        youtubeRuntimeFallbackAttempted.remove(videoId)
+                        scheduleConnectivityRecovery(fallbackError)
+                        return@launch
+                    }
                     lastError = buildString {
                         append(originalCause.localizedMessage ?: error.localizedMessage)
                         fallbackError.localizedMessage?.takeIf(String::isNotBlank)?.let {
@@ -1732,6 +1798,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         currentVideoId: String,
         playWhenReady: Boolean,
     ) {
+        resetConnectivityRecovery()
         val playableVideos = videos.filter {
             it.playbackUrl.isNotBlank() || it.playbackManifest.isNotBlank()
         }
@@ -1799,6 +1866,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun replaceCurrent(video: VideoUiModel, positionMs: Long, playWhenReady: Boolean) {
+        resetConnectivityRecovery()
         val currentIndex = exoPlayer.currentMediaItemIndex.takeIf { it >= 0 }
             ?: openedVideos.indexOfFirst { it.id == video.id }.takeIf { it >= 0 }
             ?: return
@@ -2317,6 +2385,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun retryPlayback() {
+        resetConnectivityRecovery()
         lastError = null
         exoPlayer.prepare()
         exoPlayer.play()
@@ -2324,6 +2393,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun closePlayback() {
+        resetConnectivityRecovery()
         PlaybackNotificationService.dismiss(appContext)
         youtubeRuntimeFallbackJob?.cancel()
         youtubeRuntimeFallbackJob = null
@@ -2355,6 +2425,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun release() {
         PlaybackNotificationService.dismiss(appContext)
+        resetConnectivityRecovery()
+        connectivityRecoveryScope.cancel()
+        networkMonitor.close()
         youtubeRuntimeFallbackJob?.cancel()
         youtubeFallbackScope.cancel()
         val tracker = activePlaybackTracker
@@ -2488,7 +2561,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             currentVideoId = currentVideoId,
             queueVideoIds = queueIds,
             isPlaying = exoPlayer.playWhenReady && exoPlayer.playbackState != Player.STATE_ENDED,
-            isBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING,
+            isBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING ||
+                connectivityRecoveryPending,
             positionMs = exoPlayer.currentPosition.coerceAtLeast(0L),
             durationMs = duration,
             bufferedPercentage = exoPlayer.bufferedPercentage.coerceIn(0, 100),

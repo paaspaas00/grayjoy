@@ -80,6 +80,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -984,6 +985,7 @@ internal fun PlayerSurface(
                 player = player,
                 remotePositionMs = playback.positionMs.takeIf { playback.isCasting },
                 durationMs = playback.durationMs,
+                bufferedPercentage = playback.bufferedPercentage,
                 isFullscreen = isFullscreen,
                 isPortraitFullscreen = isPortraitFullscreen,
                 onSeek = onSeek,
@@ -1234,6 +1236,7 @@ private fun PlayerTimelineRow(
     player: Player,
     remotePositionMs: Long?,
     durationMs: Long,
+    bufferedPercentage: Int,
     isFullscreen: Boolean,
     isPortraitFullscreen: Boolean,
     onSeek: (Float) -> Unit,
@@ -1287,6 +1290,15 @@ private fun PlayerTimelineRow(
     } else {
         currentPositionMs
     }
+    val bufferedProgress by animateFloatAsState(
+        targetValue = if (video.isLive || durationMs <= 0L) {
+            0f
+        } else {
+            (bufferedPercentage.coerceIn(0, 100) / 100f).coerceAtLeast(positionProgress)
+        },
+        animationSpec = tween(durationMillis = 220),
+        label = "player-buffered-progress",
+    )
 
     Row(
         modifier = modifier,
@@ -1321,6 +1333,31 @@ private fun PlayerTimelineRow(
                     targetWidthPx = with(density) { storyboardWidth.roundToPx() },
                 )
             }
+            Canvas(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
+                    .height(4.dp)
+                    .testTag("player-buffered-track"),
+            ) {
+                val y = size.height / 2f
+                val strokeWidth = size.height.coerceAtLeast(1f)
+                drawLine(
+                    color = Color.White.copy(alpha = 0.22f),
+                    start = androidx.compose.ui.geometry.Offset(0f, y),
+                    end = androidx.compose.ui.geometry.Offset(size.width, y),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = Color.White.copy(alpha = 0.52f),
+                    start = androidx.compose.ui.geometry.Offset(0f, y),
+                    end = androidx.compose.ui.geometry.Offset(size.width * bufferedProgress, y),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+            }
             Slider(
                 value = displayedProgress,
                 enabled = !video.isLive && durationMs > 0L,
@@ -1339,6 +1376,10 @@ private fun PlayerTimelineRow(
                     isSeeking = false
                     onSeekingChanged(false)
                 },
+                colors = SliderDefaults.colors(
+                    inactiveTrackColor = Color.Transparent,
+                    disabledInactiveTrackColor = Color.Transparent,
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
             if (isSeeking) {
