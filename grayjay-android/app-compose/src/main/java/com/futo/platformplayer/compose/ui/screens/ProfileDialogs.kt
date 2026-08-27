@@ -49,6 +49,7 @@ fun ProfileSwitcherDialogs(
     onSwitch: (String) -> Unit,
     onCreate: (String, String) -> Unit,
     onVerifyPin: (String, String) -> Boolean,
+    bypassProtection: Boolean = false,
 ) {
     if (!visible) return
     val context = LocalContext.current
@@ -152,6 +153,7 @@ fun ProfileSwitcherDialogs(
                             .clickable {
                                 when {
                                     profile.id == activeProfileId -> onDismiss()
+                                    bypassProtection -> switchAfterUnlock(profile.id)
                                     profile.protection == ProfileProtection.None -> switchAfterUnlock(profile.id)
                                     profile.protection == ProfileProtection.DeviceCredential -> authenticateDevice(profile)
                                     else -> {

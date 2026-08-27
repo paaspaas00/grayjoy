@@ -115,6 +115,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.media3.common.Player
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.BuildConfig
 import com.futo.platformplayer.compose.playlistQueueFrom
 import com.futo.platformplayer.compose.ui.screens.HomeScreen
 import com.futo.platformplayer.compose.ui.screens.ChannelDetailScreen
@@ -386,8 +387,12 @@ private class PlayerTransitionState(initialProgress: Float) {
 
 private data class SourcePresentation(
     val sources: List<SourceUiModel>,
+    val filterSelections: Map<String, Map<String, String>>,
+    val onFilterSelectionChange: (String, String, String) -> Unit,
     val home: HomeUiState,
     val onHomeFeedSelected: (HomeFeedType) -> Unit,
+    val onHomeBrowseTabSelected: (String, String) -> Unit,
+    val onHomeBrowseOptionSelected: (String, String, String) -> Unit,
     val onRefreshHome: () -> Unit,
     val onLoadMoreHome: () -> Unit,
     val onEnabledChange: (String, Boolean) -> Unit,
@@ -426,6 +431,8 @@ fun GrayjayApp(
     onLoadChannel: (ChannelUiModel) -> Unit,
     onChannelTabSelected: (ChannelContentTab) -> Unit = {},
     onHomeFeedSelected: (HomeFeedType) -> Unit,
+    onHomeBrowseTabSelected: (String, String) -> Unit = { _, _ -> },
+    onHomeBrowseOptionSelected: (String, String, String) -> Unit = { _, _, _ -> },
     onRefreshHome: () -> Unit,
     onLoadMoreHome: () -> Unit = {},
     onPlayQueue: (List<String>) -> Unit,
@@ -478,6 +485,7 @@ fun GrayjayApp(
     onDismissYoutubeImport: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onSearchSubmit: (String, SearchContentType, Set<String>) -> Unit,
+    onSourceFilterSelectionChange: (String, String, String) -> Unit = { _, _, _ -> },
     onLoadMoreSearch: () -> Unit = {},
     onLoadMoreChannel: () -> Unit = {},
     onLoadRemotePlaylist: (PlaylistUiModel) -> Unit = {},
@@ -1008,8 +1016,12 @@ fun GrayjayApp(
     }
     val sources = SourcePresentation(
         sources = visibleSourcesForQuery(uiState.sources, ""),
+        filterSelections = uiState.sourceFilterSelections,
+        onFilterSelectionChange = onSourceFilterSelectionChange,
         home = uiState.home,
         onHomeFeedSelected = onHomeFeedSelected,
+        onHomeBrowseTabSelected = onHomeBrowseTabSelected,
+        onHomeBrowseOptionSelected = onHomeBrowseOptionSelected,
         onRefreshHome = onRefreshHome,
         onLoadMoreHome = onLoadMoreHome,
         onEnabledChange = onSourceEnabledChange,
@@ -1336,6 +1348,7 @@ fun GrayjayApp(
         onSwitch = onSwitchProfile,
         onCreate = onCreateProfile,
         onVerifyPin = onVerifyProfilePin,
+        bypassProtection = BuildConfig.DEBUG && context.packageName.endsWith(".graytest"),
     )
     if (chromecastSheetVisible) {
         ChromecastSheet(
@@ -2005,6 +2018,7 @@ private fun GrayjayScaffold(
                     when (animatedDestination) {
                     GrayjayDestination.Home -> HomeScreen(
                         home = sourcePresentation.home,
+                        sources = sourcePresentation.sources,
                         availableUpdate = playback.availableUpdate.takeIf {
                             RELEASE_UPDATE_CHECK_ENABLED
                         },
@@ -2013,6 +2027,8 @@ private fun GrayjayScaffold(
                         onCancelUpdateDownload = playback.onCancelUpdateDownload,
                         onHydrateVideoMetadata = playback.onHydrateVideoMetadata,
                         onFeedSelected = sourcePresentation.onHomeFeedSelected,
+                        onBrowseTabSelected = sourcePresentation.onHomeBrowseTabSelected,
+                        onBrowseOptionSelected = sourcePresentation.onHomeBrowseOptionSelected,
                         onRefresh = sourcePresentation.onRefreshHome,
                         onLoadMore = sourcePresentation.onLoadMoreHome,
                         onVideoClick = onVideoClick,
@@ -2040,6 +2056,8 @@ private fun GrayjayScaffold(
                     GrayjayDestination.Search -> SearchScreen(
                         search = sourcePresentation.search,
                         sources = sourcePresentation.sources,
+                        filterSelections = sourcePresentation.filterSelections,
+                        onFilterSelectionChange = sourcePresentation.onFilterSelectionChange,
                         onQueryChange = sourcePresentation.onSearchQueryChange,
                         onSubmit = sourcePresentation.onSearchSubmit,
                         onLoadMore = sourcePresentation.onLoadMoreSearch,

@@ -64,6 +64,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.model.GlideUrl
+import com.bumptech.glide.load.model.LazyHeaders
+import com.bumptech.glide.request.RequestListener
+import com.bumptech.glide.load.engine.GlideException
+import com.bumptech.glide.load.DataSource
+import com.bumptech.glide.request.target.Target
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
@@ -79,6 +85,7 @@ private data class RemoteImageRequestKey(
     val circleCrop: Boolean,
     val targetWidthPx: Int?,
     val targetHeightPx: Int?,
+    val requestHeaders: Map<String, String>,
 )
 
 private val YOUTUBE_THUMBNAIL_ID_REGEX = Regex(
@@ -105,6 +112,7 @@ private fun ImageView.loadRemoteImage(
     circleCrop: Boolean = false,
     targetWidthPx: Int? = null,
     targetHeightPx: Int? = null,
+    requestHeaders: Map<String, String> = emptyMap(),
 ) {
     val key = RemoteImageRequestKey(
         url,
@@ -113,12 +121,14 @@ private fun ImageView.loadRemoteImage(
         circleCrop,
         targetWidthPx,
         targetHeightPx,
+        requestHeaders,
     )
     if (getTag(R.id.remote_image_request_key) == key) return
     setTag(R.id.remote_image_request_key, key)
     val manager = Glide.with(this)
+    val requestModel: Any = url.withHeaders(requestHeaders)
     val fallback = fallbackUrl?.let { candidate ->
-        var request = manager.load(candidate)
+        var request = manager.load(candidate.withHeaders(requestHeaders))
             .placeholder(ColorDrawable(placeholderColor))
             .error(ColorDrawable(placeholderColor))
         if (targetWidthPx != null && targetHeightPx != null) {
@@ -126,7 +136,7 @@ private fun ImageView.loadRemoteImage(
         }
         if (circleCrop) request.circleCrop() else request
     }
-    var request = manager.load(url)
+    var request = manager.load(requestModel)
         .placeholder(ColorDrawable(placeholderColor))
         .let { request ->
             when {
@@ -137,7 +147,37 @@ private fun ImageView.loadRemoteImage(
     if (targetWidthPx != null && targetHeightPx != null) {
         request = request.override(targetWidthPx, targetHeightPx)
     }
+    val targetView = this
+    request = request.listener(
+        object : RequestListener<android.graphics.drawable.Drawable> {
+            override fun onLoadFailed(
+                e: GlideException?,
+                model: Any?,
+                target: Target<android.graphics.drawable.Drawable>,
+                isFirstResource: Boolean,
+            ): Boolean {
+                targetView.setTag(R.id.remote_image_request_key, null)
+                return false
+            }
+
+            override fun onResourceReady(
+                resource: android.graphics.drawable.Drawable,
+                model: Any,
+                target: Target<android.graphics.drawable.Drawable>?,
+                dataSource: DataSource,
+                isFirstResource: Boolean,
+            ): Boolean = false
+        },
+    )
     (if (circleCrop) request.circleCrop() else request).into(this)
+}
+
+private fun String.withHeaders(headers: Map<String, String>): Any {
+    if (headers.isEmpty()) return this
+    val lazyHeaders = LazyHeaders.Builder().apply {
+        headers.forEach { (name, value) -> addHeader(name, value) }
+    }.build()
+    return GlideUrl(this, lazyHeaders)
 }
 
 /** Enable AndroidView pooling in lazy lists and detach the previous Glide request on reuse. */
@@ -449,6 +489,7 @@ private fun CompactVideoThumbnail(
                         ),
                         targetWidthPx = targetWidthPx,
                         targetHeightPx = targetHeightPx,
+                        requestHeaders = video.thumbnailRequestHeaders,
                     )
                 },
                 onReset = { imageView -> imageView.resetRemoteImage() },

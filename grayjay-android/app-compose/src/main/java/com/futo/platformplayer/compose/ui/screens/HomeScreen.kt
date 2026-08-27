@@ -49,6 +49,9 @@ import com.futo.platformplayer.compose.ui.HomeFeedType
 import com.futo.platformplayer.compose.ui.HomeUiState
 import com.futo.platformplayer.compose.ui.PcPlaybackUiModel
 import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
+import com.futo.platformplayer.compose.ui.SourceAvailability
+import com.futo.platformplayer.compose.ui.SourceFilterOptionUiModel
+import com.futo.platformplayer.compose.ui.SourceUiModel
 import com.futo.platformplayer.compose.ui.UpdateDownloadUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import kotlinx.coroutines.delay
@@ -56,11 +59,22 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
+private data class HomeBrowseTab(
+    val id: String,
+    val sourceId: String,
+    val groupId: String,
+    val label: String,
+    val options: List<SourceFilterOptionUiModel>,
+)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     home: HomeUiState,
+    sources: List<SourceUiModel> = emptyList(),
     onFeedSelected: (HomeFeedType) -> Unit,
+    onBrowseTabSelected: (String, String) -> Unit = { _, _ -> },
+    onBrowseOptionSelected: (String, String, String) -> Unit = { _, _, _ -> },
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onVideoClick: (VideoUiModel) -> Unit,
@@ -80,24 +94,66 @@ fun HomeScreen(
     val performance = rememberDevicePerformanceProfile()
     var updateDetailsVisible by rememberSaveable { mutableStateOf(false) }
     val feeds = HomeFeedType.entries
+    val browseTabs = remember(sources) {
+        sources.asSequence()
+            .filter {
+                it.isEnabled && it.availability != SourceAvailability.MissingPlugin
+            }
+            .flatMap { source ->
+                source.filterGroups.asSequence()
+                    .filter { "home" in it.scopes && it.options.isNotEmpty() }
+                    .map { group ->
+                        HomeBrowseTab(
+                            id = "${source.id}:${group.id}",
+                            sourceId = source.id,
+                            groupId = group.id,
+                            label = group.label,
+                            options = group.options,
+                        )
+                    }
+            }
+            .toList()
+    }
+    val pageKeys = remember(browseTabs) {
+        feeds.map { "feed:${it.name}" } + browseTabs.map { "browse:${it.id}" }
+    }
+    val selectedBrowsePage = browseTabs.indexOfFirst {
+        it.sourceId == home.browseSourceId && it.groupId == home.browseGroupId
+    }.takeIf { it >= 0 }?.plus(feeds.size)
     val pagerState = rememberPagerState(
-        initialPage = feeds.indexOf(home.selectedFeed).coerceAtLeast(0),
-        pageCount = feeds::size,
+        initialPage = selectedBrowsePage
+            ?: feeds.indexOf(home.selectedFeed).coerceAtLeast(0),
+        pageCount = pageKeys::size,
     )
     val coroutineScope = rememberCoroutineScope()
     val activeFeed by rememberUpdatedState(home.selectedFeed)
+    val activeBrowseSourceId by rememberUpdatedState(home.browseSourceId)
+    val activeBrowseGroupId by rememberUpdatedState(home.browseGroupId)
 
-    LaunchedEffect(pagerState) {
+    LaunchedEffect(pagerState, browseTabs) {
         snapshotFlow { pagerState.settledPage }
             .distinctUntilChanged()
             .collect { page ->
-                feeds.getOrNull(page)
-                    ?.takeIf { it != activeFeed }
-                    ?.let(onFeedSelected)
+                val browseTab = browseTabs.getOrNull(page - feeds.size)
+                if (browseTab != null) {
+                    if (
+                        activeBrowseSourceId != browseTab.sourceId ||
+                        activeBrowseGroupId != browseTab.groupId
+                    ) {
+                        onBrowseTabSelected(browseTab.sourceId, browseTab.groupId)
+                    }
+                } else {
+                    feeds.getOrNull(page)
+                        ?.takeIf { activeBrowseSourceId != null || it != activeFeed }
+                        ?.let(onFeedSelected)
+                }
             }
     }
-    LaunchedEffect(home.selectedFeed) {
-        val selectedPage = feeds.indexOf(home.selectedFeed)
+    LaunchedEffect(home.selectedFeed, home.browseSourceId, home.browseGroupId, browseTabs) {
+        val selectedPage = browseTabs.indexOfFirst {
+            it.sourceId == home.browseSourceId && it.groupId == home.browseGroupId
+        }.takeIf { it >= 0 }?.plus(feeds.size)
+            ?: feeds.indexOf(home.selectedFeed)
         if (
             selectedPage >= 0 && selectedPage != pagerState.currentPage &&
             !pagerState.isScrollInProgress
@@ -163,13 +219,31 @@ fun HomeScreen(
         ) {
             feeds.forEachIndexed { page, feed ->
                 FilterChip(
-                    selected = home.selectedFeed == feed,
+                    selected = home.browseSourceId == null && home.selectedFeed == feed,
                     onClick = {
-                        if (home.selectedFeed != feed) onFeedSelected(feed)
+                        if (home.browseSourceId != null || home.selectedFeed != feed) {
+                            onFeedSelected(feed)
+                        }
                         coroutineScope.launch { pagerState.animateScrollToPage(page) }
                     },
                     label = { Text(stringResource(feed.labelRes)) },
                     modifier = Modifier.testTag("home-feed-${feed.name.lowercase()}"),
+                )
+            }
+            browseTabs.forEachIndexed { index, tab ->
+                val page = feeds.size + index
+                val selected = home.browseSourceId == tab.sourceId &&
+                    home.browseGroupId == tab.groupId
+                FilterChip(
+                    selected = selected,
+                    onClick = {
+                        if (!selected || home.browseOptionValue != null) {
+                            onBrowseTabSelected(tab.sourceId, tab.groupId)
+                        }
+                        coroutineScope.launch { pagerState.animateScrollToPage(page) }
+                    },
+                    label = { Text(tab.label) },
+                    modifier = Modifier.testTag("home-browse-${tab.id}"),
                 )
             }
         }
@@ -181,10 +255,68 @@ fun HomeScreen(
                 .weight(1f)
                 .testTag("home-feed-pager"),
             beyondViewportPageCount = if (performance.isLowEnd) 0 else 1,
-            key = { feeds[it].name },
+            key = { pageKeys[it] },
         ) { page ->
-            val feed = feeds[page]
-            val isSelectedPage = home.selectedFeed == feed
+            val browseTab = browseTabs.getOrNull(page - feeds.size)
+            if (
+                browseTab != null &&
+                home.browseSourceId == browseTab.sourceId &&
+                home.browseGroupId == browseTab.groupId &&
+                home.browseOptionValue == null
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag("home-browse-options"),
+                    contentPadding = PaddingValues(
+                        if (performance.compactContent) 8.dp else 16.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(
+                        if (performance.compactContent) 8.dp else 12.dp,
+                    ),
+                ) {
+                    item {
+                        Text(
+                            text = browseTab.label,
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    }
+                    itemsIndexed(
+                        browseTab.options,
+                        key = { _, option -> option.id },
+                        contentType = { _, _ -> "browse-option" },
+                    ) { _, option ->
+                        Card(
+                            onClick = {
+                                onBrowseOptionSelected(
+                                    browseTab.sourceId,
+                                    browseTab.groupId,
+                                    option.value,
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            ),
+                        ) {
+                            Text(
+                                text = option.label,
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    }
+                }
+                return@HorizontalPager
+            }
+            val feed = browseTab?.let { HomeFeedType.ForYou } ?: feeds[page]
+            val isSelectedPage = if (browseTab != null) {
+                home.browseSourceId == browseTab.sourceId &&
+                    home.browseGroupId == browseTab.groupId &&
+                    home.browseOptionValue != null
+            } else {
+                home.browseSourceId == null && home.selectedFeed == feed
+            }
             val listState = rememberLazyListState()
             val presentedVideoIds = remember(feed) { mutableSetOf<String>() }
             val latestHomeVideos by rememberUpdatedState(home.videos)
@@ -234,7 +366,9 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = when (feed) {
+                                text = browseTab?.let {
+                                    home.browseOptionLabel ?: it.label
+                                } ?: when (feed) {
                                     HomeFeedType.Subscriptions ->
                                         stringResource(R.string.latest_from_subscriptions)
                                     HomeFeedType.ForYou -> stringResource(R.string.feed_for_you)

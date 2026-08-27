@@ -421,6 +421,18 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var engineSources = (
         baseEngineSources + sourceRepository.loadCustomSources()
         ).distinctBy { it.engineId }.also(engine::registerSources)
+    private val sourceFilterSelections = mutableMapOf<String, MutableMap<String, String>>().apply {
+        engineSources.forEach { source ->
+            if (source.filterGroups.isNotEmpty()) {
+                put(
+                    source.id,
+                    source.filterGroups.associateTo(mutableMapOf()) { group ->
+                        group.id to group.defaultValue
+                    },
+                )
+            }
+        }
+    }
     private var followedCreatorIds = preferences.initializeFollowedCreators(
         content.channels.map(ChannelUiModel::id).toSet(),
     )
@@ -517,6 +529,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     isAuthenticated = engine.isSourceAuthenticated(it.id),
                 )
             },
+            sourceFilterSelections = sourceFilterSelections.snapshot(),
             dynamicColorsEnabled = preferences.dynamicColorsEnabled,
             themeMode = preferences.themeMode,
             privateSessionEnabled = preferences.privateSessionEnabled,
@@ -1215,8 +1228,82 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshHome() {
-        loadHome(_uiState.value.home.selectedFeed, forceRefresh = true)
+        val home = _uiState.value.home
+        val sourceId = home.browseSourceId
+        val groupId = home.browseGroupId
+        val optionValue = home.browseOptionValue
+        if (sourceId != null && groupId != null && optionValue != null) {
+            loadHomeBrowse(sourceId, groupId, optionValue, forceRefresh = true)
+        } else if (sourceId == null) {
+            loadHome(home.selectedFeed, forceRefresh = true)
+        }
     }
+
+    fun selectHomeBrowseTab(sourceId: String, groupId: String) {
+        val source = _uiState.value.sources.firstOrNull {
+            it.id == sourceId && it.isEnabled
+        } ?: return
+        val group = source.filterGroups.firstOrNull {
+            it.id == groupId && "home" in it.scopes
+        } ?: return
+        homeJob?.cancel()
+        homePagingJob?.cancel()
+        _uiState.update { state ->
+            state.copy(
+                home = HomeUiState(
+                    selectedFeed = HomeFeedType.ForYou,
+                    browseSourceId = source.id,
+                    browseGroupId = group.id,
+                ),
+            )
+        }
+    }
+
+    fun selectHomeBrowseOption(sourceId: String, groupId: String, value: String) {
+        val source = _uiState.value.sources.firstOrNull {
+            it.id == sourceId && it.isEnabled
+        } ?: return
+        val group = source.filterGroups.firstOrNull {
+            it.id == groupId && "home" in it.scopes
+        } ?: return
+        val option = group.options.firstOrNull { it.value == value } ?: return
+        sourceFilterSelections.getOrPut(sourceId) { mutableMapOf() }[groupId] = value
+        _uiState.update {
+            it.copy(sourceFilterSelections = sourceFilterSelections.snapshot())
+        }
+        loadHomeBrowse(sourceId, groupId, value, forceRefresh = false, option.label)
+    }
+
+    fun setSourceFilterSelection(sourceId: String, groupId: String, value: String) {
+        val source = _uiState.value.sources.firstOrNull { it.id == sourceId } ?: return
+        val group = source.filterGroups.firstOrNull { it.id == groupId } ?: return
+        if (group.options.none { it.value == value }) return
+        sourceFilterSelections.getOrPut(sourceId) { mutableMapOf() }[groupId] = value
+        _uiState.update {
+            it.copy(sourceFilterSelections = sourceFilterSelections.snapshot())
+        }
+    }
+
+    private fun selectedSourceFilters(
+        scope: String,
+        sourceIds: Set<String>,
+    ): Map<String, Map<String, List<String>>> = _uiState.value.sources
+        .asSequence()
+        .filter { it.id in sourceIds }
+        .mapNotNull { source ->
+            val selected = source.filterGroups
+                .filter { scope in it.scopes }
+                .associate { group ->
+                    val value = sourceFilterSelections[source.id]?.get(group.id)
+                        ?: group.defaultValue
+                    group.id to listOf(value)
+                }
+            source.id.takeIf { selected.isNotEmpty() }?.let { it to selected }
+        }
+        .toMap()
+
+    private fun Map<String, MutableMap<String, String>>.snapshot(): Map<String, Map<String, String>> =
+        mapValues { (_, values) -> values.toMap() }
 
     private fun loadHome(feed: HomeFeedType, forceRefresh: Boolean) {
         if (forceRefresh) {
@@ -1292,6 +1379,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                             }
                         }
                     },
+                    sourceFilters = selectedSourceFilters("home", enabledSourceIds),
                 )
                 val previousById = cached.associateBy(VideoUiModel::id)
                 val videos = page.videos.map { fresh ->
@@ -1342,11 +1430,108 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun loadHomeBrowse(
+        sourceId: String,
+        groupId: String,
+        optionValue: String,
+        forceRefresh: Boolean,
+        optionLabelOverride: String? = null,
+    ) {
+        val source = _uiState.value.sources.firstOrNull {
+            it.id == sourceId && it.isEnabled
+        } ?: return
+        val group = source.filterGroups.firstOrNull {
+            it.id == groupId && "home" in it.scopes
+        } ?: return
+        val option = group.options.firstOrNull { it.value == optionValue } ?: return
+        homeJob?.cancel()
+        homePagingJob?.cancel()
+        val loadGeneration = ++homeLoadGeneration
+        val existing = _uiState.value.home
+        val retainedVideos = existing.videos.takeIf {
+            existing.browseSourceId == sourceId &&
+                existing.browseGroupId == groupId &&
+                existing.browseOptionValue == optionValue
+        }.orEmpty()
+        _uiState.update { state ->
+            state.copy(
+                home = HomeUiState(
+                    selectedFeed = HomeFeedType.ForYou,
+                    browseSourceId = sourceId,
+                    browseGroupId = groupId,
+                    browseOptionValue = optionValue,
+                    browseOptionLabel = optionLabelOverride ?: option.label,
+                    videos = retainedVideos,
+                    isLoading = retainedVideos.isEmpty(),
+                    isRefreshing = forceRefresh && retainedVideos.isNotEmpty(),
+                ),
+            )
+        }
+        homeJob = viewModelScope.launch {
+            try {
+                val page = engine.loadHome(
+                    feed = HomeFeedType.ForYou,
+                    enabledSourceIds = setOf(sourceId),
+                    followedChannels = emptyList(),
+                    sourceFilters = mapOf(
+                        sourceId to mapOf(groupId to listOf(optionValue)),
+                    ),
+                )
+                val videos = page.videos
+                    .map { it.withPersistedLibraryState() }
+                    .withKnownChannelPresentation()
+                videos.forEach { remoteVideos[it.id] = it }
+                videos.forEach(::registerRemoteChannel)
+                _uiState.update { state ->
+                    val home = state.home
+                    if (
+                        homeLoadGeneration != loadGeneration ||
+                        home.browseSourceId != sourceId ||
+                        home.browseGroupId != groupId ||
+                        home.browseOptionValue != optionValue
+                    ) state else state.copy(
+                        channels = visibleKnownChannels(),
+                        home = home.copy(
+                            videos = videos,
+                            isLoading = false,
+                            isRefreshing = false,
+                            continuationId = page.continuationId,
+                            hasMore = page.hasMore,
+                            errorMessage = null,
+                        ),
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update { state ->
+                    val home = state.home
+                    if (
+                        homeLoadGeneration != loadGeneration ||
+                        home.browseSourceId != sourceId ||
+                        home.browseGroupId != groupId ||
+                        home.browseOptionValue != optionValue
+                    ) state else state.copy(
+                        home = home.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            errorMessage = error.localizedMessage
+                                ?: text(R.string.home_feed_refresh_failed),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     fun loadMoreHome() {
         val current = _uiState.value.home
         val continuationId = current.continuationId
         if (!current.hasMore || current.isLoading || current.isLoadingMore || continuationId == null) return
         val feed = current.selectedFeed
+        val browseSourceId = current.browseSourceId
+        val browseGroupId = current.browseGroupId
+        val browseOptionValue = current.browseOptionValue
         homePagingJob?.cancel()
         _uiState.update { it.copy(home = it.home.copy(isLoadingMore = true)) }
         homePagingJob = viewModelScope.launch {
@@ -1358,12 +1543,20 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 newVideos.forEach { remoteVideos[it.id] = it }
                 newVideos.forEach(::registerRemoteChannel)
                 _uiState.update { state ->
-                    if (state.home.selectedFeed != feed || state.home.continuationId != continuationId) state
+                    if (
+                        state.home.selectedFeed != feed ||
+                        state.home.continuationId != continuationId ||
+                        state.home.browseSourceId != browseSourceId ||
+                        state.home.browseGroupId != browseGroupId ||
+                        state.home.browseOptionValue != browseOptionValue
+                    ) state
                     else {
                         val videos = (state.home.videos + newVideos).distinctBy(VideoUiModel::id)
-                        homeFeedCache[feed] = videos
-                        homeContinuationCache[feed] = page.continuationId
-                        homeHasMoreCache[feed] = page.hasMore
+                        if (browseSourceId == null) {
+                            homeFeedCache[feed] = videos
+                            homeContinuationCache[feed] = page.continuationId
+                            homeHasMoreCache[feed] = page.hasMore
+                        }
                         state.copy(
                             channels = visibleKnownChannels(),
                             subscriptionVideos = if (feed == HomeFeedType.Subscriptions) {
@@ -1380,12 +1573,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         )
                     }
                 }
-                saveHomeToSession(feed)
+                if (browseSourceId == null) saveHomeToSession(feed)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
                 _uiState.update { state ->
-                    if (state.home.selectedFeed != feed) state else state.copy(
+                    if (
+                        state.home.selectedFeed != feed ||
+                        state.home.browseSourceId != browseSourceId ||
+                        state.home.browseGroupId != browseGroupId ||
+                        state.home.browseOptionValue != browseOptionValue
+                    ) state else state.copy(
                         home = state.home.copy(
                             isLoadingMore = false,
                             errorMessage = error.localizedMessage ?: text(R.string.home_feed_refresh_failed),
@@ -1465,6 +1663,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         engineSources = (baseEngineSources + sourceRepository.loadCustomSources())
             .distinctBy { it.engineId }
             .also(engine::registerSources)
+        sourceFilterSelections.clear()
+        engineSources.forEach { source ->
+            if (source.filterGroups.isNotEmpty()) {
+                sourceFilterSelections[source.id] = source.filterGroups.associateTo(mutableMapOf()) {
+                    it.id to it.defaultValue
+                }
+            }
+        }
         enabledSourceIds = sourceRepository.loadEnabledSourceIds(engineSources)
             .filterTo(mutableSetOf()) { sourceId ->
                 engineSources.any {
@@ -1498,6 +1704,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     isAuthenticated = engine.isSourceAuthenticated(it.id),
                 )
             },
+            sourceFilterSelections = sourceFilterSelections.snapshot(),
             dynamicColorsEnabled = preferences.dynamicColorsEnabled,
             themeMode = preferences.themeMode,
             privateSessionEnabled = preferences.privateSessionEnabled,
@@ -3515,6 +3722,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         playlists = content.playlists,
                     ),
                     type = type,
+                    sourceFilters = selectedSourceFilters("search", searchSourceIds),
                 )
                 val resultVideos = result.videos.map { it.withPersistedLibraryState() }
                 resultVideos.forEach { remoteVideos[it.id] = it }
@@ -4611,12 +4819,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
         engine.removeSource(sourceId)
         sourceRepository.removeCustomSource(sourceId)
+        sourceFilterSelections.remove(sourceId)
         enabledSourceIds -= sourceId
         remoteVideos.entries.removeAll { it.value.sourceId == sourceId }
         remoteChannels.entries.removeAll { it.value.sourceId == sourceId }
         _uiState.update { state ->
             state.copy(
                 sources = state.sources.filterNot { it.id == sourceId },
+                sourceFilterSelections = sourceFilterSelections.snapshot(),
                 channels = state.channels.filterNot { it.sourceId == sourceId },
                 search = state.search.copy(
                     videos = state.search.videos.filterNot { it.sourceId == sourceId },
@@ -5010,12 +5220,20 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         sourceRepository.setEnabled(source.id, true)
         enabledSourceIds += source.id
         engine.registerSources(listOf(source))
+        val previousSelections = sourceFilterSelections[source.id].orEmpty()
+        sourceFilterSelections[source.id] = source.filterGroups.associateTo(mutableMapOf()) { group ->
+            val retained = previousSelections[group.id]
+                ?.takeIf { value -> group.options.any { it.value == value } }
+            group.id to (retained ?: group.defaultValue)
+        }
+        if (source.filterGroups.isEmpty()) sourceFilterSelections.remove(source.id)
         _uiState.update { state ->
             state.copy(
                 sources = state.sources
                     .filterNot { it.id == source.id || it.engineId == source.engineId }
                     .plus(source)
                     .sortedBy { it.name.lowercase() },
+                sourceFilterSelections = sourceFilterSelections.snapshot(),
                 sourceOperationInProgress = false,
                 sourceTrustRequest = null,
                 sourceOperationMessage = if (announce) {

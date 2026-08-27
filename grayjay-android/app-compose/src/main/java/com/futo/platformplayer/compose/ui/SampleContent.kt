@@ -49,6 +49,7 @@ data class VideoUiModel(
     val playbackDataSourceFactory: HttpDataSource.Factory? = null,
     val contentUrl: String = "",
     val thumbnailUrl: String = "",
+    val thumbnailRequestHeaders: Map<String, String> = emptyMap(),
     val description: String = "",
     val shareUrl: String = "",
     val authorUrl: String = "",
@@ -160,6 +161,22 @@ data class SourceUiModel(
     val isCustom: Boolean = false,
     val availability: SourceAvailability = SourceAvailability.PluginAvailable,
     val isAuthenticated: Boolean = false,
+    val filterGroups: List<SourceFilterGroupUiModel> = emptyList(),
+    val imageRequestHeaders: Map<String, String> = emptyMap(),
+)
+
+data class SourceFilterGroupUiModel(
+    val id: String,
+    val label: String,
+    val scopes: Set<String>,
+    val defaultValue: String,
+    val options: List<SourceFilterOptionUiModel>,
+)
+
+data class SourceFilterOptionUiModel(
+    val id: String,
+    val label: String,
+    val value: String,
 )
 
 enum class SourceAvailability {

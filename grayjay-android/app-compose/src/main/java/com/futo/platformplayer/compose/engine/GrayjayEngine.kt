@@ -86,6 +86,8 @@ import com.futo.platformplayer.compose.ui.ChannelContentTab
 import com.futo.platformplayer.compose.ui.HomeFeedType
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.SourceUiModel
+import com.futo.platformplayer.compose.ui.SourceFilterGroupUiModel
+import com.futo.platformplayer.compose.ui.SourceFilterOptionUiModel
 import com.futo.platformplayer.compose.ui.SearchContentType
 import com.futo.platformplayer.compose.ui.SubtitleUiModel
 import com.futo.platformplayer.compose.ui.StoryboardLevelUiModel
@@ -379,6 +381,7 @@ interface GrayjayEngine {
         enabledSourceIds: Set<String>,
         corpus: SearchCorpus,
         type: SearchContentType = SearchContentType.Videos,
+        sourceFilters: Map<String, Map<String, List<String>>> = emptyMap(),
     ): EngineSearchResult
     suspend fun loadMoreSearch(continuationId: String): EngineSearchResult
 
@@ -387,6 +390,7 @@ interface GrayjayEngine {
         enabledSourceIds: Set<String>,
         followedChannels: List<ChannelUiModel>,
         onSubscriptionProgress: (completed: Int, total: Int) -> Unit = { _, _ -> },
+        sourceFilters: Map<String, Map<String, List<String>>> = emptyMap(),
     ): EngineVideoPage
     suspend fun loadMoreHome(feed: HomeFeedType, continuationId: String): EngineVideoPage
     suspend fun suggestions(query: String, enabledSourceIds: Set<String>): List<String>
@@ -848,6 +852,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     configUrl = source.pluginConfigUrl,
                     iconUrl = source.iconUrl,
                     configAssetPath = source.pluginConfigPath,
+                    imageRequestHeaders = source.imageRequestHeaders,
                 )
             }
         }
@@ -907,6 +912,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             pluginId = metadata.pluginId,
             configUrl = metadata.configUrl,
             iconUrl = metadata.iconUrl,
+            imageRequestHeaders = metadata.imageRequestHeaders,
         )
         return SourceUiModel(
             id = sourceId,
@@ -920,6 +926,22 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             pluginConfigUrl = metadata.configUrl,
             iconUrl = metadata.iconUrl,
             isCustom = sourceId !in officialPluginEndpoints,
+            filterGroups = metadata.filterGroups.map { group ->
+                SourceFilterGroupUiModel(
+                    id = group.id,
+                    label = group.label,
+                    scopes = group.scopes,
+                    defaultValue = group.defaultValue,
+                    options = group.options.map { option ->
+                        SourceFilterOptionUiModel(
+                            id = option.id,
+                            label = option.label,
+                            value = option.value,
+                        )
+                    },
+                )
+            },
+            imageRequestHeaders = metadata.imageRequestHeaders,
         )
     }
 
@@ -1030,6 +1052,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         enabledSourceIds: Set<String>,
         corpus: SearchCorpus,
         type: SearchContentType,
+        sourceFilters: Map<String, Map<String, List<String>>>,
     ): EngineSearchResult = withContext(Dispatchers.IO) {
         val grayjayType = when (type) {
             SearchContentType.Videos -> GrayjaySearchType.Videos
@@ -1064,7 +1087,12 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     )
                 },
                 async {
-                    if (endpoints.isEmpty()) null else pluginBackend.search(query, endpoints, grayjayType)
+                    if (endpoints.isEmpty()) null else pluginBackend.search(
+                        query = query,
+                        enabledSources = endpoints,
+                        type = grayjayType,
+                        filtersBySource = sourceFilters,
+                    )
                 },
             ).awaitAll().filterNotNull()
         }
@@ -1126,6 +1154,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         enabledSourceIds: Set<String>,
         followedChannels: List<ChannelUiModel>,
         onSubscriptionProgress: (completed: Int, total: Int) -> Unit,
+        sourceFilters: Map<String, Map<String, List<String>>>,
     ): EngineVideoPage {
         val useNewPipe = useNewPipeYoutubeBackend && "youtube" in enabledSourceIds
         val pluginSourceIds = if (useNewPipe) enabledSourceIds - "youtube" else enabledSourceIds
@@ -1184,7 +1213,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                                     onProgress = onSubscriptionProgress,
                                 )
                             } else {
-                                pluginBackend.home(mapOf("youtube" to youtubeEndpoint))
+                                pluginBackend.home(
+                                    enabledSources = mapOf("youtube" to youtubeEndpoint),
+                                    filtersBySource = sourceFilters,
+                                )
                             }
                         },
                     )
@@ -1209,7 +1241,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                             },
                         )
                     } else {
-                        pluginBackend.home(enabledSources = pluginEndpointsForFeed)
+                        pluginBackend.home(
+                            enabledSources = pluginEndpointsForFeed,
+                            filtersBySource = sourceFilters,
+                        )
                     }
                 },
             ).awaitAll().filterNotNull()
@@ -2621,6 +2656,7 @@ private fun GrayjaySearchItem.toVideoUiModel(endpoint: PluginEndpoint?, context:
     authorUrl = authorUrl,
     authorThumbnailUrl = authorThumbnailUrl.orEmpty(),
     thumbnailUrl = thumbnailUrl.orEmpty(),
+    thumbnailRequestHeaders = endpoint?.imageRequestHeaders.orEmpty(),
     sourceName = sourceId.toDisplayName(),
     sourceIconUrl = endpoint?.iconUrl.orEmpty(),
 )

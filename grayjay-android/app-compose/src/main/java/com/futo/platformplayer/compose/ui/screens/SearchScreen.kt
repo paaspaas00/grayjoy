@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -65,6 +67,8 @@ import com.futo.platformplayer.compose.ui.VideoUiModel
 fun SearchScreen(
     search: SearchUiState,
     sources: List<SourceUiModel>,
+    filterSelections: Map<String, Map<String, String>> = emptyMap(),
+    onFilterSelectionChange: (String, String, String) -> Unit = { _, _, _ -> },
     onQueryChange: (String) -> Unit,
     onSubmit: (String, SearchContentType, Set<String>) -> Unit,
     onLoadMore: () -> Unit,
@@ -80,11 +84,27 @@ fun SearchScreen(
     var selectedSourceIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var sourcesInitialized by rememberSaveable { mutableStateOf(false) }
     var showSourcePicker by rememberSaveable { mutableStateOf(false) }
+    var showFilterPicker by rememberSaveable { mutableStateOf(false) }
     val type = SearchContentType.valueOf(typeName)
     val activeSources = sources.filter {
         it.isEnabled && it.availability != SourceAvailability.MissingPlugin
     }
     val selectedSources = selectedSourceIds.toSet().intersect(activeSources.map(SourceUiModel::id).toSet())
+    val filterSources = activeSources.filter { source ->
+        source.id in selectedSources && source.filterGroups.any { "search" in it.scopes }
+    }
+    val activeFilterLabels = filterSources.flatMap { source ->
+        source.filterGroups
+            .asSequence()
+            .filter { "search" in it.scopes }
+            .mapNotNull { group ->
+                val selectedValue = filterSelections[source.id]?.get(group.id)
+                    ?: group.defaultValue
+                if (selectedValue == group.defaultValue) null
+                else group.options.firstOrNull { it.value == selectedValue }?.label
+            }
+            .toList()
+    }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -252,6 +272,15 @@ fun SearchScreen(
                     label = { Text(stringResource(R.string.sources_with_count, selectedSources.size)) },
                     modifier = Modifier.testTag("search-source-picker"),
                 )
+                if (filterSources.isNotEmpty()) {
+                    FilterChip(
+                        selected = showFilterPicker || activeFilterLabels.isNotEmpty(),
+                        onClick = { showFilterPicker = true },
+                        leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
+                        label = { Text(stringResource(R.string.plugin_filters)) },
+                        modifier = Modifier.testTag("search-plugin-filters"),
+                    )
+                }
             }
         }
 
@@ -306,15 +335,50 @@ fun SearchScreen(
                     }
                 }
             }
-            item {
-                Text(
-                    if (search.isLoading && !search.hasSearched) {
-                        stringResource(R.string.searching)
-                    } else {
-                        pluralStringResource(R.plurals.result_count, resultCount, resultCount)
-                    },
-                    style = MaterialTheme.typography.titleLarge,
-                )
+            if (search.errorMessage == null) {
+                item {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (search.isLoading && !search.hasSearched) {
+                                stringResource(R.string.searching)
+                            } else {
+                                pluralStringResource(R.plurals.result_count, resultCount, resultCount)
+                            },
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                        if (activeFilterLabels.isNotEmpty()) {
+                            FilterChip(
+                                selected = true,
+                                onClick = { showFilterPicker = true },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Outlined.Tune,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        if (activeFilterLabels.size == 1) {
+                                            activeFilterLabels.single()
+                                        } else {
+                                            pluralStringResource(
+                                                R.plurals.active_filter_count,
+                                                activeFilterLabels.size,
+                                                activeFilterLabels.size,
+                                            )
+                                        },
+                                        maxLines = 1,
+                                    )
+                                },
+                                modifier = Modifier.testTag("search-active-filter-badge"),
+                            )
+                        }
+                    }
+                }
             }
             when {
                 search.errorMessage != null -> item {
@@ -436,6 +500,75 @@ fun SearchScreen(
                         selectedSourceIds = activeSources.map(SourceUiModel::id)
                     },
                 ) { Text(stringResource(R.string.select_all)) }
+            }
+        }
+    }
+    if (showFilterPicker) {
+        SourceFilterSheet(
+            sources = filterSources,
+            scope = "search",
+            selections = filterSelections,
+            onSelectionChange = onFilterSelectionChange,
+            onDismiss = {
+                showFilterPicker = false
+                if (search.hasSearched && search.query.isNotBlank() && selectedSources.isNotEmpty()) {
+                    onSubmit(search.query, type, selectedSources)
+                }
+            },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SourceFilterSheet(
+    sources: List<SourceUiModel>,
+    scope: String,
+    selections: Map<String, Map<String, String>>,
+    onSelectionChange: (String, String, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        contentWindowInsets = { grayjoySheetInsets() },
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 640.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item {
+                Text(stringResource(R.string.plugin_filters), style = MaterialTheme.typography.titleLarge)
+            }
+            sources.forEach { source ->
+                val groups = source.filterGroups.filter { scope in it.scopes }
+                if (sources.size > 1 && groups.isNotEmpty()) {
+                    item(key = "source-${source.id}") {
+                        Text(source.name, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                groups.forEach { group ->
+                    item(key = "group-${source.id}-${group.id}") {
+                        Text(group.label, style = MaterialTheme.typography.titleSmall)
+                    }
+                    items(
+                        items = group.options,
+                        key = { option -> "${source.id}-${group.id}-${option.id}" },
+                    ) { option ->
+                        FilterChip(
+                            selected = selections[source.id]?.get(group.id)
+                                ?.let { it == option.value }
+                                ?: (group.defaultValue == option.value),
+                            onClick = {
+                                onSelectionChange(source.id, group.id, option.value)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(option.label) },
+                        )
+                    }
+                }
             }
         }
     }

@@ -45,6 +45,7 @@ import com.futo.platformplayer.engine.exceptions.ScriptLoginRequiredException
 import com.futo.platformplayer.states.StateApp
 import com.futo.platformplayer.states.StatePlugins
 import com.futo.platformplayer.views.video.datasources.JSHttpDataSource
+import com.google.gson.JsonParser
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.CancellationException
@@ -60,8 +61,10 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import org.jsoup.Jsoup
 import java.io.File
 import java.io.StringReader
+import java.net.URI
 import java.security.MessageDigest
 import java.time.OffsetDateTime
 import java.time.Duration
@@ -429,7 +432,122 @@ data class GrayjayPluginMetadata(
     val iconUrl: String,
     val version: Int,
     val warnings: List<String>,
+    val filterGroups: List<GrayjayPluginFilterGroup> = emptyList(),
+    val imageRequestHeaders: Map<String, String> = emptyMap(),
 )
+
+data class GrayjayPluginFilterGroup(
+    val id: String,
+    val label: String,
+    val scopes: Set<String>,
+    val defaultValue: String,
+    val options: List<GrayjayPluginFilterOption>,
+)
+
+data class GrayjayPluginFilterOption(
+    val id: String,
+    val label: String,
+    val value: String,
+)
+
+internal fun parseFilterGroups(text: String): List<GrayjayPluginFilterGroup> = runCatching {
+    val root = JsonParser.parseString(text).asJsonObject
+    if (root.get("version")?.asInt != 1) return@runCatching emptyList()
+    val groups = root.getAsJsonArray("filters") ?: return@runCatching emptyList()
+    buildList {
+        groups.take(12).forEach { groupElement ->
+            val group = groupElement.asJsonObject
+            val id = group.get("id")?.asString.orEmpty().trim()
+            val label = group.get("label")?.asString.orEmpty().trim()
+            if (!id.matches(Regex("[A-Za-z0-9_.-]{1,64}")) || label.isBlank()) return@forEach
+            val scopes = group.getAsJsonArray("scopes")
+                ?.mapNotNull { it.asString.trim().lowercase().takeIf { scope ->
+                    scope == "home" || scope == "search"
+                } }
+                ?.toSet()
+                .orEmpty()
+            if (scopes.isEmpty()) return@forEach
+            val rawOptions = group.getAsJsonArray("options") ?: return@forEach
+            val options = rawOptions.take(256).mapNotNull { optionElement ->
+                val option = optionElement.asJsonObject
+                val optionId = option.get("id")?.asString.orEmpty().trim()
+                val optionLabel = option.get("label")?.asString.orEmpty().trim()
+                if (
+                    optionId.matches(Regex("[A-Za-z0-9_.-]{1,64}")) &&
+                    optionLabel.isNotBlank()
+                ) {
+                    GrayjayPluginFilterOption(
+                        id = optionId,
+                        label = optionLabel,
+                        value = option.get("value")?.asString.orEmpty(),
+                    )
+                } else {
+                    null
+                }
+            }.distinctBy(GrayjayPluginFilterOption::id)
+            if (options.isEmpty()) return@forEach
+            val requestedDefault = group.get("default")?.asString.orEmpty()
+            add(
+                GrayjayPluginFilterGroup(
+                    id = id,
+                    label = label,
+                    scopes = scopes,
+                    defaultValue = requestedDefault.takeIf { requested ->
+                        options.any { it.value == requested }
+                    } ?: options.first().value,
+                    options = options,
+                ),
+            )
+        }
+    }.distinctBy(GrayjayPluginFilterGroup::id)
+}.getOrDefault(emptyList())
+
+internal fun parseImageRequestHeaders(text: String): Map<String, String> = runCatching {
+    val headers = JsonParser.parseString(text).asJsonObject.getAsJsonObject("imageRequestHeaders")
+        ?: return@runCatching emptyMap()
+    headers.entrySet()
+        .asSequence()
+        .take(16)
+        .mapNotNull { (name, value) ->
+            val normalizedName = name.trim()
+            val normalizedValue = value.asString.trim().take(1_024)
+            if (
+                normalizedName.matches(Regex("[A-Za-z0-9-]{1,64}")) &&
+                normalizedValue.isNotBlank()
+            ) normalizedName to normalizedValue else null
+        }
+        .toMap()
+}.getOrDefault(emptyMap())
+
+internal fun cleanPluginDescription(value: String?): String {
+    val text = value.orEmpty().trim()
+    if (text.isBlank()) return text
+    val containsMarkup = Regex("<[/a-zA-Z][^>]*>").containsMatchIn(text) ||
+        Regex("&(?:#[0-9]+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]+);").containsMatchIn(text)
+    if (!containsMarkup) return text
+    val document = Jsoup.parseBodyFragment(text)
+    document.select("br").after("\\n")
+    document.select("li").forEach { item -> item.prepend("• ") }
+    document.select("p,div,li,h1,h2,h3,h4,blockquote").forEach { element ->
+        element.before("\\n")
+        element.after("\\n")
+    }
+    document.select("a[href]").forEach { link ->
+        val href = link.attr("href").trim()
+        if (href.isNotBlank() && !link.text().contains(href)) link.after(" ($href)")
+    }
+    return document.wholeText()
+        .replace("\\n", "\n")
+        .lineSequence()
+        .map(String::trim)
+        .fold(mutableListOf<String>()) { lines, line ->
+            if (line.isNotBlank() || lines.lastOrNull()?.isNotBlank() == true) lines += line
+            lines
+        }
+        .joinToString("\n")
+        .replace(Regex("(?m)(^• [^\n]+)\n{2,}(?=• )"), "$1\n")
+        .trim()
+}
 
 data class GrayjayPluginUpdateSummary(
     val checked: Int,
@@ -597,6 +715,7 @@ class GrayjayPluginBackend(
         enabledSources: Map<String, PluginEndpoint>,
         type: GrayjaySearchType = GrayjaySearchType.Videos,
         pageSize: Int = 30,
+        filtersBySource: Map<String, Map<String, List<String>>> = emptyMap(),
     ): GrayjayPluginSearchResult = withContext(Dispatchers.IO) {
         val outcomes = coroutineScope {
             enabledSources.entries.map { (alias, endpoint) ->
@@ -604,7 +723,10 @@ class GrayjayPluginBackend(
                     runCatching {
                         val plugin = getOrLoad(alias, endpoint)
                         val pager = when (type) {
-                            GrayjaySearchType.Videos -> plugin.search(query)
+                            GrayjaySearchType.Videos -> filtersBySource[alias]
+                                ?.takeIf(Map<*, *>::isNotEmpty)
+                                ?.let { plugin.search(query, filters = it) }
+                                ?: plugin.search(query)
                             GrayjaySearchType.Creators -> if (plugin.capabilities.hasChannelSearch) {
                                 plugin.searchChannelsAsContent(query)
                             } else null
@@ -882,14 +1004,21 @@ class GrayjayPluginBackend(
     suspend fun home(
         enabledSources: Map<String, PluginEndpoint>,
         pageSize: Int = 30,
+        filtersBySource: Map<String, Map<String, List<String>>> = emptyMap(),
     ): GrayjayVideoPage = withContext(Dispatchers.IO) {
         val outcomes = coroutineScope {
             enabledSources.entries.map { (sourceId, endpoint) ->
                 async {
                     runCatching {
                         val plugin = getOrLoad(sourceId, endpoint)
-                        if (!plugin.enableInHome) return@runCatching null
-                        SourcePagerSession(sourceId, plugin.id, plugin.getHome())
+                        val filters = filtersBySource[sourceId].orEmpty()
+                        if (!plugin.enableInHome && filters.isEmpty()) return@runCatching null
+                        val pager = if (filters.isEmpty()) {
+                            plugin.getHome()
+                        } else {
+                            plugin.search("", filters = filters)
+                        }
+                        SourcePagerSession(sourceId, plugin.id, pager)
                     }.onFailure { error ->
                         Log.e(TAG, "Home failed for source $sourceId (${endpoint.pluginId}).", error)
                     }
@@ -1191,7 +1320,7 @@ class GrayjayPluginBackend(
             thumbnailUrl = channel.thumbnail,
             bannerUrl = channel.banner,
             subscribers = channel.subscribers,
-            description = channel.description,
+            description = cleanPluginDescription(channel.description),
             links = channel.links,
             videos = page.videos,
             continuationId = page.continuationId,
@@ -1939,7 +2068,7 @@ class GrayjayPluginBackend(
             authorUrl = details.author.url,
             authorThumbnailUrl = details.author.thumbnail,
             authorSubscribers = details.author.subscribers,
-            description = details.description,
+            description = cleanPluginDescription(details.description),
             thumbnailUrl = details.thumbnails.getHQThumbnail(),
             durationSeconds = details.duration,
             viewCount = details.viewCount,
@@ -2033,6 +2162,8 @@ class GrayjayPluginBackend(
                     commentLimit,
                 )
             } ?: PagerBatch()
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to load comments for source $sourceId.", error)
         }.getOrDefault(PagerBatch())
 
         GrayjayContentExtras(
@@ -2497,9 +2628,9 @@ class GrayjayPluginBackend(
     }
 
     private fun downloadPlugin(configUrl: String): Pair<String, String> {
-        val configText = executeText(configUrl)
+        val configText = executeFreshText(configUrl)
         val config = SourcePluginConfig.fromJson(configText, configUrl)
-        return configText to executeText(config.absoluteScriptUrl)
+        return configText to executeFreshText(config.absoluteScriptUrl)
     }
 
     private fun finishPluginInstallation(
@@ -2517,6 +2648,7 @@ class GrayjayPluginBackend(
         sourceAliases.remove(config.id)?.let { alias ->
             runCatching { clients.remove(alias)?.disable() }
         }
+        val companionConfiguration = loadOptionalCompanionConfiguration(config.sourceUrl.orEmpty())
         return GrayjayPluginMetadata(
             pluginId = config.id,
             name = config.name,
@@ -2527,7 +2659,32 @@ class GrayjayPluginBackend(
             warnings = config.getWarnings(scriptText).map { (title, detail) ->
                 "$title: $detail"
             },
+            filterGroups = companionConfiguration?.let(::parseFilterGroups).orEmpty(),
+            imageRequestHeaders = companionConfiguration
+                ?.let(::parseImageRequestHeaders)
+                .orEmpty(),
         )
+    }
+
+    private fun loadOptionalCompanionConfiguration(configUrl: String): String? {
+        if (configUrl.isBlank()) return null
+        val companionUrl = runCatching { URI(configUrl).resolve("grayjoy.conf").toString() }
+            .getOrNull()
+            ?: return null
+        val response = runCatching {
+            client.newCall(
+                Request.Builder()
+                    .url(cacheBustedUrl(companionUrl))
+                    .header("Cache-Control", "no-cache, no-store")
+                    .header("Pragma", "no-cache")
+                    .get()
+                    .build(),
+            ).execute()
+        }.getOrNull() ?: return null
+        return response.use {
+            if (!it.isSuccessful) return@use null
+            it.body.string()
+        }
     }
 
     private fun executeText(url: String): String {
@@ -2536,6 +2693,28 @@ class GrayjayPluginBackend(
             if (!it.isSuccessful) error("Plugin request failed (${it.code}) for $url")
             return it.body.string()
         }
+    }
+
+    private fun executeFreshText(url: String): String {
+        val request = Request.Builder()
+            .url(cacheBustedUrl(url))
+            .header("Cache-Control", "no-cache, no-store")
+            .header("Pragma", "no-cache")
+            .get()
+            .build()
+        val response = client.newCall(request).execute()
+        response.use {
+            if (!it.isSuccessful) error("Plugin request failed (${it.code}) for $url")
+            return it.body.string()
+        }
+    }
+
+    private fun cacheBustedUrl(url: String): String {
+        val fragmentIndex = url.indexOf('#')
+        val base = if (fragmentIndex >= 0) url.substring(0, fragmentIndex) else url
+        val fragment = if (fragmentIndex >= 0) url.substring(fragmentIndex) else ""
+        val separator = if ('?' in base) '&' else '?'
+        return "$base${separator}_grayjoy=${System.currentTimeMillis()}$fragment"
     }
 
     private fun cachedPlugin(id: String): Pair<String, String>? {
@@ -2876,6 +3055,7 @@ data class PluginEndpoint(
     val configUrl: String,
     val iconUrl: String = "",
     val configAssetPath: String? = null,
+    val imageRequestHeaders: Map<String, String> = emptyMap(),
 )
 
 private fun IRating.counts(): Pair<Long?, Long?> = when (this) {

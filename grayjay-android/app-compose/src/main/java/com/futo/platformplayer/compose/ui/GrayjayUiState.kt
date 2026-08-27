@@ -9,6 +9,7 @@ data class GrayjayUiState(
     val channels: List<ChannelUiModel> = emptyList(),
     val playlists: List<PlaylistUiModel> = emptyList(),
     val sources: List<SourceUiModel> = emptyList(),
+    val sourceFilterSelections: Map<String, Map<String, String>> = emptyMap(),
     val dynamicColorsEnabled: Boolean = true,
     val themeMode: ThemeMode = ThemeMode.System,
     val privateSessionEnabled: Boolean = false,
@@ -236,6 +237,10 @@ enum class HomeFeedType(@param:StringRes val labelRes: Int) {
 
 data class HomeUiState(
     val selectedFeed: HomeFeedType = HomeFeedType.Subscriptions,
+    val browseSourceId: String? = null,
+    val browseGroupId: String? = null,
+    val browseOptionValue: String? = null,
+    val browseOptionLabel: String? = null,
     val videos: List<VideoUiModel> = emptyList(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,

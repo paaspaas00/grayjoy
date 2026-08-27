@@ -4,6 +4,8 @@ import android.content.Context
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.SourceUiModel
+import com.futo.platformplayer.compose.ui.SourceFilterGroupUiModel
+import com.futo.platformplayer.compose.ui.SourceFilterOptionUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import org.json.JSONArray
 import org.json.JSONObject
@@ -64,6 +66,9 @@ internal class SharedPreferencesSourceRepository(
                         pluginConfigUrl = configUrl,
                         iconUrl = json.optString("iconUrl"),
                         isCustom = true,
+                        filterGroups = json.optJSONArray("filterGroups").toSourceFilterGroups(),
+                        imageRequestHeaders = json.optJSONObject("imageRequestHeaders")
+                            .toStringMap(),
                     ),
                 )
             }
@@ -94,6 +99,13 @@ internal class SharedPreferencesSourceRepository(
                         put("accentColor", source.accentColor)
                         put("pluginConfigUrl", source.pluginConfigUrl)
                         put("iconUrl", source.iconUrl)
+                        put("filterGroups", source.filterGroups.toJsonArray())
+                        put(
+                            "imageRequestHeaders",
+                            JSONObject().apply {
+                                source.imageRequestHeaders.forEach { (name, value) -> put(name, value) }
+                            },
+                        )
                     },
                 )
             }
@@ -105,6 +117,76 @@ internal class SharedPreferencesSourceRepository(
         const val FILE_NAME = "grayjay_compose_sources"
         const val KEY_ENABLED_SOURCE_IDS = "enabled_source_ids"
         const val KEY_CUSTOM_SOURCES = "custom_sources"
+    }
+}
+
+private fun JSONObject?.toStringMap(): Map<String, String> {
+    val json = this ?: return emptyMap()
+    return json.keys().asSequence().associateWith(json::optString)
+}
+
+private fun JSONArray?.toSourceFilterGroups(): List<SourceFilterGroupUiModel> {
+    val array = this ?: return emptyList()
+    return buildList {
+        for (index in 0 until array.length()) {
+            val group = array.optJSONObject(index) ?: continue
+            val options = group.optJSONArray("options")?.let { optionArray ->
+                buildList {
+                    for (optionIndex in 0 until optionArray.length()) {
+                        val option = optionArray.optJSONObject(optionIndex) ?: continue
+                        add(
+                            SourceFilterOptionUiModel(
+                                id = option.optString("id"),
+                                label = option.optString("label"),
+                                value = option.optString("value"),
+                            ),
+                        )
+                    }
+                }
+            }.orEmpty()
+            add(
+                SourceFilterGroupUiModel(
+                    id = group.optString("id"),
+                    label = group.optString("label"),
+                    scopes = group.optJSONArray("scopes")?.let { scopeArray ->
+                        buildSet {
+                            for (scopeIndex in 0 until scopeArray.length()) {
+                                scopeArray.optString(scopeIndex).takeIf(String::isNotBlank)?.let(::add)
+                            }
+                        }
+                    }.orEmpty(),
+                    defaultValue = group.optString("defaultValue"),
+                    options = options,
+                ),
+            )
+        }
+    }
+}
+
+private fun List<SourceFilterGroupUiModel>.toJsonArray() = JSONArray().apply {
+    forEach { group ->
+        put(
+            JSONObject().apply {
+                put("id", group.id)
+                put("label", group.label)
+                put("scopes", JSONArray(group.scopes.toList()))
+                put("defaultValue", group.defaultValue)
+                put(
+                    "options",
+                    JSONArray().apply {
+                        group.options.forEach { option ->
+                            put(
+                                JSONObject().apply {
+                                    put("id", option.id)
+                                    put("label", option.label)
+                                    put("value", option.value)
+                                },
+                            )
+                        }
+                    },
+                )
+            },
+        )
     }
 }
 

@@ -647,4 +647,9 @@
     <string name="video_scheduled_badge">Programmato</string>
     <string name="video_scheduled_title">Diretta programmata</string>
     <string name="video_scheduled_message">Questa diretta è programmata per %1$s. Sarà riproducibile quando inizierà.</string>
+    <string name="plugin_filters">Filtri plugin</string>
+    <plurals name="active_filter_count">
+        <item quantity="one">%d filtro</item>
+        <item quantity="other">%d filtri</item>
+    </plurals>
 </resources>
