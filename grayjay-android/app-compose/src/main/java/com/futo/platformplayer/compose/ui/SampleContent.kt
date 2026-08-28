@@ -16,6 +16,7 @@ data class VideoUiModel(
     val channelId: String = "",
     val sourceId: String = "youtube",
     val isLive: Boolean = false,
+    val isShort: Boolean = false,
     val isAvailable: Boolean = true,
     val scheduledStartAtMs: Long = 0L,
     val isDrmProtected: Boolean = false,

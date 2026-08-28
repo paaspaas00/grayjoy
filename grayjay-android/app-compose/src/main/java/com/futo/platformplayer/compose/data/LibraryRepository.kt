@@ -590,6 +590,7 @@ private fun VideoUiModel.mergeImported(
         channelId = preferCurrent(channelId, imported.channelId),
         sourceId = if (sourceId.isBlank()) imported.sourceId else sourceId,
         isLive = isLive || imported.isLive,
+        isShort = isShort || imported.isShort,
         isAvailable = isAvailable && imported.isAvailable,
         scheduledStartAtMs = maxOf(scheduledStartAtMs, imported.scheduledStartAtMs),
         watchProgress = if (importedHistoryIsNewer) imported.watchProgress else watchProgress,
@@ -626,6 +627,7 @@ internal fun VideoUiModel.toJson() = JSONObject().apply {
     put("channelId", channelId)
     put("sourceId", sourceId)
     put("isLive", isLive)
+    put("isShort", isShort)
     put("isAvailable", isAvailable)
     put("scheduledStartAtMs", scheduledStartAtMs)
     put("watchProgress", watchProgress.toDouble())
@@ -687,6 +689,8 @@ internal fun JSONArray.toVideoList(): List<VideoUiModel> = buildList {
                 channelId = json.optString("channelId"),
                 sourceId = json.optString("sourceId", "youtube"),
                 isLive = json.optBoolean("isLive"),
+                isShort = json.optBoolean("isShort") ||
+                    id.contains("/shorts/", ignoreCase = true),
                 isAvailable = json.optBoolean("isAvailable", true),
                 scheduledStartAtMs = json.optLong("scheduledStartAtMs", 0L),
                 watchProgress = json.optDouble("watchProgress", 0.0).toFloat(),

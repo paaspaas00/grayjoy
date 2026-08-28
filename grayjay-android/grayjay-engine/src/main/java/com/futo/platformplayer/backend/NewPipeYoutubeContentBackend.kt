@@ -119,6 +119,7 @@ class NewPipeYoutubeContentBackend(
         onProgress: (Int, Int) -> Unit,
         perChannelLimit: Int = 5,
         resultLimit: Int = 80,
+        shortsOnly: Boolean = false,
     ): GrayjayVideoPage = withContext(Dispatchers.IO) {
         if (requests.isEmpty()) return@withContext GrayjayVideoPage()
         onProgress(0, requests.size)
@@ -131,9 +132,17 @@ class NewPipeYoutubeContentBackend(
                         runCatching {
                             when (mode) {
                                 YoutubeSubscriptionFetchMode.Fast ->
-                                    loadAtomFeed(request).take(perChannelLimit)
+                                    loadAtomFeed(request)
+                                        .let { videos ->
+                                            if (shortsOnly) videos.filter(GrayjaySearchItem::isShort)
+                                            else videos
+                                        }
+                                        .take(perChannelLimit)
                                 YoutubeSubscriptionFetchMode.Complete ->
-                                    loadCompleteChannelFeed(request).take(perChannelLimit)
+                                    loadCompleteChannelFeed(
+                                        request,
+                                        if (shortsOnly) ChannelTabs.SHORTS else ChannelTabs.VIDEOS,
+                                    ).take(perChannelLimit)
                             }
                         }.getOrDefault(emptyList())
                     }
@@ -410,6 +419,7 @@ class NewPipeYoutubeContentBackend(
         viewCount = viewCount.coerceAtLeast(0L),
         datetime = uploadDate?.offsetDateTime(),
         isLive = isLiveStream(),
+        isShort = isShortFormContent || url.contains("/shorts/", ignoreCase = true),
     )
 
     private fun ChannelInfoItem.toGrayjayChannel() = GrayjaySearchChannel(
@@ -463,9 +473,12 @@ class NewPipeYoutubeContentBackend(
         else -> ChannelTabs.VIDEOS
     }
 
-    private fun loadCompleteChannelFeed(request: GrayjayChannelRequest): List<GrayjaySearchItem> {
+    private fun loadCompleteChannelFeed(
+        request: GrayjayChannelRequest,
+        contentType: String = ChannelTabs.VIDEOS,
+    ): List<GrayjaySearchItem> {
         val info = ChannelInfo.getInfo(service, request.url)
-        val handler = info.tabs.firstOrNull { it.contentFilter() == ChannelTabs.VIDEOS }
+        val handler = info.tabs.firstOrNull { it.contentFilter() == contentType }
             ?: return emptyList()
         val extractor = service.getChannelTabExtractor(handler)
         extractor.fetchPage()
@@ -553,6 +566,7 @@ class NewPipeYoutubeContentBackend(
                                 viewCount = views,
                                 datetime = published,
                                 isLive = false,
+                                isShort = url.contains("/shorts/", ignoreCase = true),
                             )
                         }
                     }

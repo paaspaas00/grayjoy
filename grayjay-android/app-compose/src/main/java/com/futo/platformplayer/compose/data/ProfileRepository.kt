@@ -75,6 +75,54 @@ internal class ProfileRepository(context: Context) {
         )
     }
 
+    fun renameProfile(profileId: String, name: String): ProfileUiModel {
+        val normalizedName = name.trim().take(40)
+        require(normalizedName.isNotBlank()) { appContext.getString(R.string.enter_profile_name) }
+        val profiles = readProfiles()
+        val index = profiles.indexOfFirst { it.id == profileId }
+        require(index >= 0) { appContext.getString(R.string.unknown_profile) }
+        val updated = profiles[index].copy(name = normalizedName, customName = true)
+        writeProfiles(profiles.toMutableList().apply { this[index] = updated })
+        return toUiModel(updated)
+    }
+
+    fun setDeviceCredentialProtection(
+        profileId: String,
+        enabled: Boolean,
+    ): ProfileUiModel {
+        val profiles = readProfiles()
+        val index = profiles.indexOfFirst { it.id == profileId }
+        require(index >= 0) { appContext.getString(R.string.unknown_profile) }
+        val updated = profiles[index].copy(
+            protection = if (enabled) {
+                ProfileProtection.DeviceCredential
+            } else {
+                ProfileProtection.None
+            },
+            salt = "",
+            pinHash = "",
+        )
+        writeProfiles(profiles.toMutableList().apply { this[index] = updated })
+        return toUiModel(updated)
+    }
+
+    fun deleteProfile(profileId: String): Boolean {
+        val profiles = readProfiles()
+        val profile = profiles.firstOrNull { it.id == profileId } ?: return false
+        if (profile.builtIn || profileId == activeProfileId()) return false
+        writeProfiles(profiles.filterNot { it.id == profileId })
+        listOf(
+            "grayjay_compose_preferences_$profileId",
+            "grayjay_compose_library_v2_$profileId",
+            "grayjay_compose_watch_progress_v1_$profileId",
+            "grayjay_compose_sources_$profileId",
+            "grayjoy_home_cache_v1_$profileId",
+        ).forEach { name ->
+            appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().apply()
+        }
+        return true
+    }
+
     private fun readProfiles(): List<StoredProfile> = runCatching {
         val array = JSONArray(preferences.getString(KEY_PROFILES, "[]"))
         buildList {
@@ -90,6 +138,7 @@ internal class ProfileRepository(context: Context) {
                             ProfileProtection.valueOf(json.optString("protection"))
                         }.getOrDefault(ProfileProtection.Pin),
                         builtIn = json.optBoolean("builtIn"),
+                        customName = json.optBoolean("customName"),
                         salt = json.optString("salt"),
                         pinHash = json.optString("pinHash"),
                     ),
@@ -109,6 +158,7 @@ internal class ProfileRepository(context: Context) {
                         put("name", profile.name)
                         put("protection", profile.protection.name)
                         put("builtIn", profile.builtIn)
+                        put("customName", profile.customName)
                         put("salt", profile.salt)
                         put("pinHash", profile.pinHash)
                     },
@@ -121,6 +171,7 @@ internal class ProfileRepository(context: Context) {
     private fun toUiModel(profile: StoredProfile): ProfileUiModel = ProfileUiModel(
         id = profile.id,
         name = when {
+            profile.customName -> profile.name
             profile.builtIn && profile.id == MAIN_ID -> appContext.getString(R.string.profile_main)
             profile.builtIn && profile.id == PRIVATE_ID -> appContext.getString(R.string.profile_private)
             else -> profile.name
@@ -134,6 +185,7 @@ internal class ProfileRepository(context: Context) {
         val name: String,
         val protection: ProfileProtection,
         val builtIn: Boolean = false,
+        val customName: Boolean = false,
         val salt: String = "",
         val pinHash: String = "",
     )

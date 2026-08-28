@@ -648,6 +648,13 @@
     <string name="video_scheduled_title">Diretta programmata</string>
     <string name="video_scheduled_message">Questa diretta è programmata per %1$s. Sarà riproducibile quando inizierà.</string>
     <string name="plugin_filters">Filtri plugin</string>
+    <string name="manage_profile">Gestisci profilo</string>
+    <string name="protect_profile_with_device">Proteggi con impronta o blocco dispositivo</string>
+    <string name="protect_profile_with_device_description">Richiedi l’autenticazione biometrica o del dispositivo Android prima di aprire questo profilo.</string>
+    <string name="delete_profile">Elimina profilo</string>
+    <string name="delete_profile_confirmation">Eliminare “%1$s”? Il profilo non sarà più disponibile.</string>
+    <string name="built_in_profile_cannot_be_deleted">I profili integrati non possono essere eliminati.</string>
+    <string name="active_profile_cannot_be_deleted">Passa a un altro profilo prima di eliminare questo.</string>
     <plurals name="active_filter_count">
         <item quantity="one">%d filtro</item>
         <item quantity="other">%d filtri</item>

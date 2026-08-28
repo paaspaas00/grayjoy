@@ -4,12 +4,15 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.AlertDialog
@@ -40,6 +43,7 @@ import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.ProfileProtection
 import com.futo.platformplayer.compose.ui.ProfileUiModel
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ProfileSwitcherDialogs(
     profiles: List<ProfileUiModel>,
@@ -49,6 +53,9 @@ fun ProfileSwitcherDialogs(
     onSwitch: (String) -> Unit,
     onCreate: (String, String) -> Unit,
     onVerifyPin: (String, String) -> Boolean,
+    onRename: (String, String) -> Unit = { _, _ -> },
+    onSetDeviceCredentialProtection: (String, Boolean) -> Unit = { _, _ -> },
+    onDelete: (String) -> Unit = {},
     bypassProtection: Boolean = false,
 ) {
     if (!visible) return
@@ -68,7 +75,9 @@ fun ProfileSwitcherDialogs(
     var pinProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var pin by rememberSaveable { mutableStateOf("") }
     var pinError by rememberSaveable { mutableStateOf<String?>(null) }
+    var pinOpensManagement by rememberSaveable { mutableStateOf(false) }
     var showCreate by rememberSaveable { mutableStateOf(false) }
+    var manageProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var unlockError by rememberSaveable { mutableStateOf<String?>(null) }
 
     fun switchAfterUnlock(profileId: String) {
@@ -76,7 +85,7 @@ fun ProfileSwitcherDialogs(
         onDismiss()
     }
 
-    fun authenticateDevice(profile: ProfileUiModel) {
+    fun authenticateDevice(profile: ProfileUiModel, onSuccess: () -> Unit) {
         unlockError = null
         val activity = context.findFragmentActivity()
         if (activity == null) {
@@ -107,7 +116,7 @@ fun ProfileSwitcherDialogs(
                 ContextCompat.getMainExecutor(context),
                 object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        switchAfterUnlock(profile.id)
+                        onSuccess()
                     }
 
                     override fun onAuthenticationFailed() {
@@ -141,6 +150,23 @@ fun ProfileSwitcherDialogs(
         }
     }
 
+    fun openManagement(profile: ProfileUiModel) {
+        when {
+            bypassProtection || profile.protection == ProfileProtection.None -> {
+                manageProfileId = profile.id
+            }
+            profile.protection == ProfileProtection.DeviceCredential -> {
+                authenticateDevice(profile) { manageProfileId = profile.id }
+            }
+            else -> {
+                pinProfileId = profile.id
+                pinOpensManagement = true
+                pin = ""
+                pinError = null
+            }
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.profiles)) },
@@ -150,19 +176,27 @@ fun ProfileSwitcherDialogs(
                     ListItem(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                when {
-                                    profile.id == activeProfileId -> onDismiss()
-                                    bypassProtection -> switchAfterUnlock(profile.id)
-                                    profile.protection == ProfileProtection.None -> switchAfterUnlock(profile.id)
-                                    profile.protection == ProfileProtection.DeviceCredential -> authenticateDevice(profile)
-                                    else -> {
-                                        pinProfileId = profile.id
-                                        pin = ""
-                                        pinError = null
+                            .combinedClickable(
+                                onClick = {
+                                    when {
+                                        profile.id == activeProfileId -> onDismiss()
+                                        bypassProtection -> switchAfterUnlock(profile.id)
+                                        profile.protection == ProfileProtection.None ->
+                                            switchAfterUnlock(profile.id)
+                                        profile.protection == ProfileProtection.DeviceCredential ->
+                                            authenticateDevice(profile) {
+                                                switchAfterUnlock(profile.id)
+                                            }
+                                        else -> {
+                                            pinProfileId = profile.id
+                                            pinOpensManagement = false
+                                            pin = ""
+                                            pinError = null
+                                        }
                                     }
-                                }
-                            }
+                                },
+                                onLongClick = { openManagement(profile) },
+                            )
                             .testTag("profile-${profile.id}"),
                         headlineContent = { Text(profile.name) },
                         supportingContent = {
@@ -207,7 +241,10 @@ fun ProfileSwitcherDialogs(
     pinProfileId?.let { profileId ->
         val profile = profiles.firstOrNull { it.id == profileId }
         AlertDialog(
-            onDismissRequest = { pinProfileId = null },
+            onDismissRequest = {
+                pinProfileId = null
+                pinOpensManagement = false
+            },
             title = {
                 Text(
                     stringResource(
@@ -233,7 +270,12 @@ fun ProfileSwitcherDialogs(
                     onClick = {
                         if (onVerifyPin(profileId, pin)) {
                             pinProfileId = null
-                            switchAfterUnlock(profileId)
+                            if (pinOpensManagement) {
+                                pinOpensManagement = false
+                                manageProfileId = profileId
+                            } else {
+                                switchAfterUnlock(profileId)
+                            }
                         } else {
                             pinError = incorrectPin
                         }
@@ -242,9 +284,32 @@ fun ProfileSwitcherDialogs(
                 ) { Text(stringResource(R.string.unlock)) }
             },
             dismissButton = {
-                TextButton(onClick = { pinProfileId = null }) { Text(stringResource(R.string.cancel)) }
+                TextButton(
+                    onClick = {
+                        pinProfileId = null
+                        pinOpensManagement = false
+                    },
+                ) { Text(stringResource(R.string.cancel)) }
             },
         )
+    }
+
+    manageProfileId?.let { profileId ->
+        profiles.firstOrNull { it.id == profileId }?.let { profile ->
+            ManageProfileDialog(
+                profile = profile,
+                isActive = profile.id == activeProfileId,
+                onDismiss = { manageProfileId = null },
+                onRename = { name -> onRename(profile.id, name) },
+                onSetDeviceCredentialProtection = { enabled ->
+                    onSetDeviceCredentialProtection(profile.id, enabled)
+                },
+                onDelete = {
+                    onDelete(profile.id)
+                    manageProfileId = null
+                },
+            )
+        }
     }
 
     if (showCreate) {
@@ -254,6 +319,127 @@ fun ProfileSwitcherDialogs(
                 showCreate = false
                 onCreate(name, newPin)
                 onDismiss()
+            },
+        )
+    }
+}
+
+@Composable
+private fun ManageProfileDialog(
+    profile: ProfileUiModel,
+    isActive: Boolean,
+    onDismiss: () -> Unit,
+    onRename: (String) -> Unit,
+    onSetDeviceCredentialProtection: (Boolean) -> Unit,
+    onDelete: () -> Unit,
+) {
+    val context = LocalContext.current
+    val authenticators = BiometricManager.Authenticators.BIOMETRIC_WEAK or
+        BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    val deviceProtectionAvailable = BiometricManager.from(context)
+        .canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS
+    var name by rememberSaveable(profile.id) { mutableStateOf(profile.name) }
+    var deviceProtected by rememberSaveable(profile.id) {
+        mutableStateOf(profile.protection == ProfileProtection.DeviceCredential)
+    }
+    var protectionChanged by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable(profile.id) { mutableStateOf(false) }
+    val canDelete = !profile.isBuiltIn && !isActive
+    val normalizedName = name.trim()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.manage_profile)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(40) },
+                    label = { Text(stringResource(R.string.profile_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                ListItem(
+                    headlineContent = {
+                        Text(stringResource(R.string.protect_profile_with_device))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.protect_profile_with_device_description))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = deviceProtected,
+                            enabled = deviceProtectionAvailable,
+                            onCheckedChange = { enabled ->
+                                deviceProtected = enabled
+                                protectionChanged = true
+                            },
+                        )
+                    },
+                    modifier = Modifier.clickable(enabled = deviceProtectionAvailable) {
+                        deviceProtected = !deviceProtected
+                        protectionChanged = true
+                    },
+                )
+                if (!deviceProtectionAvailable) {
+                    Text(
+                        stringResource(R.string.device_auth_unavailable),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                TextButton(
+                    onClick = { confirmDelete = true },
+                    enabled = canDelete,
+                    modifier = Modifier.testTag("delete-profile-${profile.id}"),
+                ) {
+                    Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
+                    Text(stringResource(R.string.delete_profile))
+                }
+                if (!canDelete) {
+                    Text(
+                        stringResource(
+                            if (profile.isBuiltIn) {
+                                R.string.built_in_profile_cannot_be_deleted
+                            } else {
+                                R.string.active_profile_cannot_be_deleted
+                            },
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (normalizedName != profile.name) onRename(normalizedName)
+                    if (protectionChanged) {
+                        onSetDeviceCredentialProtection(deviceProtected)
+                    }
+                    onDismiss()
+                },
+                enabled = normalizedName.isNotBlank(),
+            ) { Text(stringResource(R.string.save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(stringResource(R.string.delete_profile)) },
+            text = { Text(stringResource(R.string.delete_profile_confirmation, profile.name)) },
+            confirmButton = {
+                Button(onClick = onDelete) { Text(stringResource(R.string.delete_profile)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
             },
         )
     }

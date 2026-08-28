@@ -147,6 +147,11 @@ private object HomeSessionCache {
         if (remaining.isEmpty()) profiles.remove(profileId)
         else profiles[profileId] = current.copy(pages = remaining)
     }
+
+    @Synchronized
+    fun clear(profileId: String) {
+        profiles.remove(profileId)
+    }
 }
 
 private const val QUEUE_LOOKAHEAD = 2
@@ -815,14 +820,20 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         preferences.subscriptionFetchMode = mode
         configureYoutubeBackend()
         _uiState.update { it.copy(subscriptionFetchMode = mode) }
-        homeFeedCache.remove(HomeFeedType.Subscriptions)
-        homeContinuationCache.remove(HomeFeedType.Subscriptions)
-        homeHasMoreCache.remove(HomeFeedType.Subscriptions)
-        HomeSessionCache.removeFeed(activeProfileId, HomeFeedType.Subscriptions)
-        homeCacheRepository.removeFeed(HomeFeedType.Subscriptions)
+        invalidateSubscriptionFeedCaches()
         _uiState.update { state -> state.copy(subscriptionVideos = emptyList()) }
-        if (_uiState.value.home.selectedFeed == HomeFeedType.Subscriptions) {
-            loadHome(HomeFeedType.Subscriptions, forceRefresh = true)
+        if (_uiState.value.home.selectedFeed.isSubscriptionBased()) {
+            loadHome(_uiState.value.home.selectedFeed, forceRefresh = true)
+        }
+    }
+
+    private fun invalidateSubscriptionFeedCaches() {
+        listOf(HomeFeedType.Subscriptions, HomeFeedType.Shorts).forEach { feed ->
+            homeFeedCache.remove(feed)
+            homeContinuationCache.remove(feed)
+            homeHasMoreCache.remove(feed)
+            HomeSessionCache.removeFeed(activeProfileId, feed)
+            homeCacheRepository.removeFeed(feed)
         }
     }
 
@@ -871,8 +882,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         configureVideoTitleLanguage()
         // Existing cached titles reflect the old request locale. Keep the current screen stable,
         // and make the next explicit feed/search/channel load use the selected policy.
-        HomeSessionCache.removeFeed(activeProfileId, HomeFeedType.Subscriptions)
-        homeFeedCache.remove(HomeFeedType.Subscriptions)
+        invalidateSubscriptionFeedCaches()
     }
 
     private fun configureVideoTitleLanguage() {
@@ -1165,7 +1175,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 subscriptionVideos = homeFeedCache[HomeFeedType.Subscriptions].orEmpty(),
                 home = HomeUiState(
                     selectedFeed = selectedFeed,
-                    videos = homeFeedCache[selectedFeed].orEmpty(),
+                    videos = videosForHomeFeed(
+                        selectedFeed,
+                        homeFeedCache[selectedFeed].orEmpty(),
+                    ),
                     continuationId = page.continuationId,
                     hasMore = page.hasMore,
                     subscriptionsLoaded = subscriptionCount,
@@ -1213,7 +1226,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 it.copy(
                     home = HomeUiState(
                         selectedFeed = feed,
-                        videos = presentedCache,
+                        videos = videosForHomeFeed(feed, presentedCache),
                         continuationId = homeContinuationCache[feed],
                         hasMore = homeHasMoreCache[feed] == true,
                         subscriptionsLoaded = cachedSubscriptionCount,
@@ -1313,10 +1326,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         homeJob?.cancel()
         homePagingJob?.cancel()
         val loadGeneration = ++homeLoadGeneration
-        val cached = homeFeedCache[feed].orEmpty()
-        val subscriptionTotal = if (feed == HomeFeedType.Subscriptions) {
+        val cachedFeed = homeFeedCache[feed].orEmpty()
+        val cached = videosForHomeFeed(feed, cachedFeed)
+        val subscriptionTotal = if (feed.isSubscriptionBased()) {
             visibleKnownChannels().count { channel ->
-                channel.id in followedCreatorIds && channel.sourceId in enabledSourceIds
+                channel.id in followedCreatorIds && channel.sourceId in enabledSourceIds &&
+                    (feed != HomeFeedType.Shorts || channel.sourceId.equals("youtube", true))
             }
         } else {
             0
@@ -1337,11 +1352,18 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         homeJob = viewModelScope.launch {
             try {
                 val followedChannels = visibleKnownChannels().filter { channel ->
-                    channel.id in followedCreatorIds
+                    channel.id in followedCreatorIds &&
+                        (feed != HomeFeedType.Shorts || channel.sourceId.equals("youtube", true))
                 }
                 val page = engine.loadHome(
                     feed = feed,
-                    enabledSourceIds = enabledSourceIds,
+                    enabledSourceIds = if (feed == HomeFeedType.Shorts) {
+                        enabledSourceIds.filterTo(mutableSetOf()) {
+                            it.equals("youtube", ignoreCase = true)
+                        }
+                    } else {
+                        enabledSourceIds
+                    },
                     followedChannels = followedChannels,
                     onSubscriptionProgress = { completed, total ->
                         val effectiveTotal = maxOf(subscriptionTotal, total)
@@ -1363,7 +1385,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         _uiState.update { state ->
                             if (
                                 homeLoadGeneration != loadGeneration ||
-                                state.home.selectedFeed != HomeFeedType.Subscriptions
+                                state.home.selectedFeed != feed
                             ) {
                                 state
                             } else {
@@ -1381,21 +1403,22 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     },
                     sourceFilters = selectedSourceFilters("home", enabledSourceIds),
                 )
-                val previousById = cached.associateBy(VideoUiModel::id)
-                val videos = page.videos.map { fresh ->
+                val previousById = cachedFeed.associateBy(VideoUiModel::id)
+                val feedVideos = page.videos.map { fresh ->
                     fresh.withPresentationFallback(previousById[fresh.id])
                         .withPersistedLibraryState()
                 }.withKnownChannelPresentation(followedChannels)
-                videos.forEach { remoteVideos[it.id] = it }
-                videos.forEach(::registerRemoteChannel)
-                homeFeedCache[feed] = videos
+                val videos = videosForHomeFeed(feed, feedVideos)
+                feedVideos.forEach { remoteVideos[it.id] = it }
+                feedVideos.forEach(::registerRemoteChannel)
+                homeFeedCache[feed] = feedVideos
                 homeContinuationCache[feed] = page.continuationId
                 homeHasMoreCache[feed] = page.hasMore
                 _uiState.update { state ->
                     if (homeLoadGeneration != loadGeneration || state.home.selectedFeed != feed) state else state.copy(
                         channels = visibleKnownChannels(),
                         subscriptionVideos = if (feed == HomeFeedType.Subscriptions) {
-                            videos
+                            feedVideos
                         } else {
                             state.subscriptionVideos
                         },
@@ -1404,7 +1427,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                             videos = videos,
                             continuationId = page.continuationId,
                             hasMore = page.hasMore,
-                            subscriptionsLoaded = if (feed == HomeFeedType.Subscriptions) {
+                            subscriptionsLoaded = if (feed.isSubscriptionBased()) {
                                 state.home.subscriptionsTotal
                             } else {
                                 state.home.subscriptionsLoaded
@@ -1537,11 +1560,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         homePagingJob = viewModelScope.launch {
             try {
                 val page = engine.loadMoreHome(feed, continuationId)
-                val newVideos = page.videos
+                val newFeedVideos = page.videos
                     .map { it.withPersistedLibraryState() }
                     .withKnownChannelPresentation()
-                newVideos.forEach { remoteVideos[it.id] = it }
-                newVideos.forEach(::registerRemoteChannel)
+                val newVideos = videosForHomeFeed(feed, newFeedVideos)
+                newFeedVideos.forEach { remoteVideos[it.id] = it }
+                newFeedVideos.forEach(::registerRemoteChannel)
                 _uiState.update { state ->
                     if (
                         state.home.selectedFeed != feed ||
@@ -1553,14 +1577,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     else {
                         val videos = (state.home.videos + newVideos).distinctBy(VideoUiModel::id)
                         if (browseSourceId == null) {
-                            homeFeedCache[feed] = videos
+                            homeFeedCache[feed] = (
+                                homeFeedCache[feed].orEmpty() + newFeedVideos
+                                ).distinctBy(VideoUiModel::id)
                             homeContinuationCache[feed] = page.continuationId
                             homeHasMoreCache[feed] = page.hasMore
                         }
                         state.copy(
                             channels = visibleKnownChannels(),
                             subscriptionVideos = if (feed == HomeFeedType.Subscriptions) {
-                                videos
+                                (state.subscriptionVideos + newFeedVideos)
+                                    .distinctBy(VideoUiModel::id)
                             } else {
                                 state.subscriptionVideos
                             },
@@ -1748,6 +1775,32 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun verifyProfilePin(profileId: String, pin: String): Boolean =
         profileRepository.verifyPin(profileId, pin)
+
+    fun renameProfile(profileId: String, name: String) {
+        profileRepository.renameProfile(profileId, name)
+        _uiState.update { it.copy(profiles = profileRepository.profiles()) }
+    }
+
+    fun setProfileDeviceCredentialProtection(profileId: String, enabled: Boolean) {
+        profileRepository.setDeviceCredentialProtection(profileId, enabled)
+        _uiState.update { it.copy(profiles = profileRepository.profiles()) }
+    }
+
+    fun deleteProfile(profileId: String) {
+        if (!profileRepository.deleteProfile(profileId)) return
+        HomeSessionCache.clear(profileId)
+        _uiState.update { it.copy(profiles = profileRepository.profiles()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            engine.clearProfileData(profileId)
+            downloadQueue.all(profileId).forEach { queued ->
+                downloadQueue.remove(profileId, queued.videoId, queued.mediaType)
+            }
+            offlinePlaylistStore.all(profileId).toList().forEach(offlinePlaylistStore::remove)
+            downloadStore.snapshotsFor(profileId).keys.forEach { videoId ->
+                downloadStore.remove(profileId, videoId)
+            }
+        }
+    }
 
     fun setAppForeground(foreground: Boolean) {
         appIsForeground = foreground
@@ -2137,10 +2190,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     savedVideos = importedSnapshot.first,
                     playlists = importedSnapshot.second,
                 )
-                HomeSessionCache.removeFeed(activeProfileId, HomeFeedType.Subscriptions)
-                homeFeedCache.remove(HomeFeedType.Subscriptions)
-                homeContinuationCache.remove(HomeFeedType.Subscriptions)
-                homeHasMoreCache.remove(HomeFeedType.Subscriptions)
+                invalidateSubscriptionFeedCaches()
                 _uiState.update { state ->
                     state.copy(
                         channels = visibleKnownChannels(),
@@ -3059,12 +3109,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 },
             )
         }
-        homeFeedCache.remove(HomeFeedType.Subscriptions)
-        homeContinuationCache.remove(HomeFeedType.Subscriptions)
-        homeHasMoreCache.remove(HomeFeedType.Subscriptions)
-        HomeSessionCache.removeFeed(activeProfileId, HomeFeedType.Subscriptions)
-        homeCacheRepository.removeFeed(HomeFeedType.Subscriptions)
-        if (_uiState.value.home.selectedFeed == HomeFeedType.Subscriptions) refreshHome()
+        invalidateSubscriptionFeedCaches()
+        if (_uiState.value.home.selectedFeed.isSubscriptionBased()) refreshHome()
     }
 
     fun loadChannel(channel: ChannelUiModel) {
@@ -6233,6 +6279,22 @@ private fun youtubeVideoId(value: String): String? = runCatching {
 
 internal fun VideoUiModel.resumePositionFraction(): Float? = watchProgress
     .takeIf { progress -> !isLive && progress >= 0.002f && progress < 0.95f }
+
+private fun HomeFeedType.isSubscriptionBased(): Boolean =
+    this == HomeFeedType.Subscriptions || this == HomeFeedType.Shorts
+
+internal fun videosForHomeFeed(
+    feed: HomeFeedType,
+    videos: List<VideoUiModel>,
+): List<VideoUiModel> = when (feed) {
+    HomeFeedType.Subscriptions -> videos.filterNot { video ->
+        video.sourceId.equals("youtube", ignoreCase = true) && video.isShort
+    }
+    HomeFeedType.Shorts -> videos.filter { video ->
+        video.sourceId.equals("youtube", ignoreCase = true) && video.isShort
+    }
+    else -> videos
+}
 
 internal fun pluginUrlFromQrContent(content: String): String? {
     val value = content.trim()

@@ -80,6 +80,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
@@ -88,6 +89,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -122,6 +124,7 @@ import com.futo.platformplayer.compose.ui.screens.ChannelDetailScreen
 import com.futo.platformplayer.compose.ui.screens.ChromecastSheet
 import com.futo.platformplayer.compose.ui.screens.LibraryScreen
 import com.futo.platformplayer.compose.ui.screens.LibraryFilter
+import com.futo.platformplayer.compose.ui.screens.LocalVideoCreatorClick
 import com.futo.platformplayer.compose.ui.screens.MiniPlayer
 import com.futo.platformplayer.compose.ui.screens.MiniPlayerChrome
 import com.futo.platformplayer.compose.ui.screens.PlaylistDetailScreen
@@ -513,6 +516,9 @@ fun GrayjayApp(
     onSwitchProfile: (String) -> Unit,
     onCreateProfile: (String, String) -> Unit,
     onVerifyProfilePin: (String, String) -> Boolean,
+    onRenameProfile: (String, String) -> Unit = { _, _ -> },
+    onSetProfileDeviceCredentialProtection: (String, Boolean) -> Unit = { _, _ -> },
+    onDeleteProfile: (String) -> Unit = {},
     onDefaultPlaybackSpeedChange: (Float) -> Unit,
     onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
     onHoldToSpeedChange: (Boolean) -> Unit = {},
@@ -681,6 +687,33 @@ fun GrayjayApp(
         selectedPlaylistId = null
         selectedVideoId = null
         playerTransition.snapTo(1f)
+    }
+    val latestChannels by rememberUpdatedState(uiState.channels)
+    val latestSources by rememberUpdatedState(uiState.sources)
+    val latestOnChannelClick by rememberUpdatedState(onChannelClick)
+    val onVideoCreatorClick: (VideoUiModel) -> Unit = remember(context) {
+        { video ->
+            val candidateIds = setOf(
+                video.authorUrl,
+                video.channelId,
+                "${video.sourceId}:${video.creator}",
+            ).filter(String::isNotBlank).toSet()
+            val channel = latestChannels.firstOrNull { it.id in candidateIds }
+                ?: ChannelUiModel(
+                    id = video.authorUrl.ifBlank {
+                        video.channelId.ifBlank { "${video.sourceId}:${video.creator}" }
+                    },
+                    name = video.creator,
+                    sourceId = video.sourceId,
+                    source = latestSources.firstOrNull { it.id == video.sourceId }?.name
+                        ?: video.sourceName.ifBlank { video.sourceId },
+                    unreadCount = 0,
+                    followerCount = context.getString(R.string.creator),
+                    description = "",
+                    thumbnailUrl = video.authorThumbnailUrl,
+                )
+            latestOnChannelClick(channel)
+        }
     }
     val onPlaylistClick: (PlaylistUiModel) -> Unit = {
         if (it.sourceId.isNotBlank()) onLoadRemotePlaylist(it)
@@ -1186,7 +1219,10 @@ fun GrayjayApp(
         // Keep that hand-off opaque so ordinary app chrome is never drawn or visibly rotated
         // inside the temporary landscape viewport.
         Box(Modifier.fillMaxSize().background(Color.Black))
-    } else BoxWithConstraints(Modifier.fillMaxSize()) {
+    } else CompositionLocalProvider(
+        LocalVideoCreatorClick provides onVideoCreatorClick,
+    ) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
         when (navigationLayoutFor(maxWidth.value.toInt())) {
             NavigationLayout.BottomBar -> BottomNavigationLayout(
                 selected = selected,
@@ -1280,6 +1316,7 @@ fun GrayjayApp(
             )
         }
     }
+    }
 
     actionVideoId?.let(availableVideosById::get)?.let { video ->
         VideoActionsSheet(
@@ -1348,6 +1385,9 @@ fun GrayjayApp(
         onSwitch = onSwitchProfile,
         onCreate = onCreateProfile,
         onVerifyPin = onVerifyProfilePin,
+        onRename = onRenameProfile,
+        onSetDeviceCredentialProtection = onSetProfileDeviceCredentialProtection,
+        onDelete = onDeleteProfile,
         bypassProtection = BuildConfig.DEBUG && context.packageName.endsWith(".graytest"),
     )
     if (chromecastSheetVisible) {

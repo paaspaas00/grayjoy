@@ -648,6 +648,13 @@
     <string name="video_scheduled_title">Scheduled live stream</string>
     <string name="video_scheduled_message">This live stream is scheduled for %1$s. It will become playable when it starts.</string>
     <string name="plugin_filters">Plugin filters</string>
+    <string name="manage_profile">Manage profile</string>
+    <string name="protect_profile_with_device">Protect with fingerprint or device lock</string>
+    <string name="protect_profile_with_device_description">Require Android biometric or device authentication before opening this profile.</string>
+    <string name="delete_profile">Delete profile</string>
+    <string name="delete_profile_confirmation">Delete “%1$s”? Its profile entry will no longer be available.</string>
+    <string name="built_in_profile_cannot_be_deleted">Built-in profiles cannot be deleted.</string>
+    <string name="active_profile_cannot_be_deleted">Switch to another profile before deleting this one.</string>
     <plurals name="active_filter_count">
         <item quantity="one">%d filter</item>
         <item quantity="other">%d filters</item>

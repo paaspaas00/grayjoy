@@ -359,6 +359,7 @@ interface GrayjayEngine {
     fun sources(fallback: List<SourceUiModel>): List<SourceUiModel>
     fun registerSources(sources: List<SourceUiModel>)
     fun setProfile(profileId: String)
+    fun clearProfileData(profileId: String)
     fun reloadSourceAuthentication(sourceId: String)
     fun isSourceAuthenticated(sourceId: String): Boolean
     fun clearSourceAuthentication(sourceId: String)
@@ -863,6 +864,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         if (pluginBackendDelegate.isInitialized()) pluginBackend.setProfile(profileId)
     }
 
+    override fun clearProfileData(profileId: String) {
+        pluginBackend.clearProfileData(profileId)
+    }
+
     override fun reloadSourceAuthentication(sourceId: String) {
         val endpoint = pluginEndpoints[sourceId] ?: return
         pluginBackend.reloadAuthentication(sourceId, endpoint.pluginId)
@@ -1156,6 +1161,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         onSubscriptionProgress: (completed: Int, total: Int) -> Unit,
         sourceFilters: Map<String, Map<String, List<String>>>,
     ): EngineVideoPage {
+        val subscriptionBased = feed == HomeFeedType.Subscriptions ||
+            feed == HomeFeedType.Shorts
         val useNewPipe = useNewPipeYoutubeBackend && "youtube" in enabledSourceIds
         val pluginSourceIds = if (useNewPipe) enabledSourceIds - "youtube" else enabledSourceIds
         val endpoints = pluginSourceIds.mapNotNull { sourceId ->
@@ -1165,7 +1172,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val channelPartition = partitionSubscriptionChannels(useNewPipe, followedChannels)
         val youtubeChannels = channelPartition.newPipeChannels
         val pluginChannels = channelPartition.pluginChannels
-        val pluginEndpointsForFeed = if (feed == HomeFeedType.Subscriptions) {
+        val pluginEndpointsForFeed = if (subscriptionBased) {
             val subscribedSourceIds = pluginChannels.mapTo(mutableSetOf(), ChannelUiModel::sourceId)
             endpoints.filterKeys(subscribedSourceIds::contains)
         } else {
@@ -1175,9 +1182,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             listOfNotNull(
                 async {
                     if (!useNewPipe) null else withYoutubeBackendFallback(
-                        operation = if (feed == HomeFeedType.Subscriptions) "subscriptions" else "home",
+                        operation = if (subscriptionBased) "subscriptions" else "home",
                         newPipe = {
-                            if (feed == HomeFeedType.Subscriptions) {
+                            if (subscriptionBased) {
                                 newPipeYoutubeContentBackend.subscriptionFeed(
                                     requests = youtubeChannels.map {
                                         GrayjayChannelRequest(
@@ -1189,6 +1196,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                                     },
                                     mode = youtubeSubscriptionFetchMode,
                                     onProgress = onSubscriptionProgress,
+                                    shortsOnly = feed == HomeFeedType.Shorts,
                                 )
                             } else {
                                 newPipeYoutubeContentBackend.loadTrending(
@@ -1199,7 +1207,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                         grayjay = {
                             val youtubeEndpoint = pluginEndpoints["youtube"]
                                 ?: return@withYoutubeBackendFallback GrayjayVideoPage()
-                            if (feed == HomeFeedType.Subscriptions) {
+                            if (subscriptionBased) {
                                 pluginBackend.subscriptionFeed(
                                     channels = youtubeChannels.map {
                                         GrayjayChannelRequest(
@@ -1211,6 +1219,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                                     },
                                     enabledSources = mapOf("youtube" to youtubeEndpoint),
                                     onProgress = onSubscriptionProgress,
+                                    shortsOnly = feed == HomeFeedType.Shorts,
                                 )
                             } else {
                                 pluginBackend.home(
@@ -1223,7 +1232,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 },
                 async {
                     if (pluginEndpointsForFeed.isEmpty()) null
-                    else if (feed == HomeFeedType.Subscriptions) {
+                    else if (subscriptionBased) {
                         pluginBackend.subscriptionFeed(
                             channels = pluginChannels.map {
                                 GrayjayChannelRequest(
@@ -1239,6 +1248,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                             } else {
                                 onSubscriptionProgress
                             },
+                            shortsOnly = feed == HomeFeedType.Shorts,
                         )
                     } else {
                         pluginBackend.home(
@@ -1301,6 +1311,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val items = videos
         val visibleItems = when (feed) {
             HomeFeedType.Subscriptions, HomeFeedType.ForYou -> items
+            HomeFeedType.Shorts -> items.filter { item ->
+                item.sourceId.equals("youtube", ignoreCase = true) && item.isShort
+            }
             HomeFeedType.Trending -> items.sortedByDescending(GrayjaySearchItem::viewCount)
             HomeFeedType.Live -> items.filter(GrayjaySearchItem::isLive)
         }
@@ -2651,6 +2664,7 @@ private fun GrayjaySearchItem.toVideoUiModel(endpoint: PluginEndpoint?, context:
     channelId = authorUrl,
     sourceId = sourceId,
     isLive = isLive,
+    isShort = isShort,
     contentUrl = url,
     shareUrl = url,
     authorUrl = authorUrl,

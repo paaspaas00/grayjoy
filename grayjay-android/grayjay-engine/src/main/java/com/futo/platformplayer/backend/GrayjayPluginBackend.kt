@@ -92,6 +92,7 @@ data class GrayjaySearchItem(
     val viewCount: Long,
     val datetime: OffsetDateTime?,
     val isLive: Boolean,
+    val isShort: Boolean = false,
     val playbackTimeSeconds: Long = -1,
     val playbackDate: OffsetDateTime? = null,
 )
@@ -1043,6 +1044,7 @@ class GrayjayPluginBackend(
         perChannelLimit: Int = 12,
         resultLimit: Int = 80,
         onProgress: (completed: Int, total: Int) -> Unit = { _, _ -> },
+        shortsOnly: Boolean = false,
     ): GrayjayVideoPage = withContext(Dispatchers.IO) {
         val requests = channels
             .filter { it.url.isNotBlank() && it.sourceId in enabledSources }
@@ -1061,9 +1063,13 @@ class GrayjayPluginBackend(
                         val endpoint = requireNotNull(enabledSources[request.sourceId])
                         if (
                             endpoint.pluginId == YOUTUBE_PLUGIN_ID &&
-                            preferOriginalVideoTitles
+                            (preferOriginalVideoTitles || shortsOnly)
                         ) {
                             loadYouTubeSubscriptionFeed(request, endpoint)
+                                .let { videos ->
+                                    if (shortsOnly) videos.filter(GrayjaySearchItem::isShort)
+                                    else videos
+                                }
                                 .takeIf(List<GrayjaySearchItem>::isNotEmpty)
                                 ?.let { videos ->
                                     directRequests.incrementAndGet()
@@ -1084,6 +1090,7 @@ class GrayjayPluginBackend(
                         val canUseOriginalTitleFeed =
                             endpoint.pluginId != YOUTUBE_PLUGIN_ID || preferOriginalVideoTitles
                         val peekType = if (
+                            !shortsOnly &&
                             canUseOriginalTitleFeed &&
                             basePlugin.capabilities.hasPeekChannelContents
                         ) {
@@ -1110,7 +1117,14 @@ class GrayjayPluginBackend(
                             PlatformContentPager(peekContents, perChannelLimit.coerceAtLeast(1))
                         } else {
                             fullRequests.incrementAndGet()
-                            plugin.getChannelContents(request.url)
+                            if (shortsOnly) {
+                                plugin.getChannelContents(
+                                    request.url,
+                                    ResultCapabilities.TYPE_SHORTS,
+                                )
+                            } else {
+                                plugin.getChannelContents(request.url)
+                            }
                         }
                         SubscriptionLoadOutcome(
                             sourcePager = SourcePagerSession(
@@ -1152,6 +1166,9 @@ class GrayjayPluginBackend(
         }
         GrayjayVideoPage(
             videos = (successful.flatMap(SubscriptionLoadOutcome::directVideos) + pluginPage.videos)
+                .let { videos ->
+                    if (shortsOnly) videos.filter(GrayjaySearchItem::isShort) else videos
+                }
                 .distinctBy(GrayjaySearchItem::url)
                 .sortedByDescending { it.datetime }
                 .take(resultLimit),
@@ -1252,6 +1269,7 @@ class GrayjayPluginBackend(
                                     viewCount = views,
                                     datetime = published,
                                     isLive = false,
+                                    isShort = resolvedUrl.contains("/shorts/", ignoreCase = true),
                                 )
                             }
                         }
@@ -2440,6 +2458,15 @@ class GrayjayPluginBackend(
         this.profileId = profileId
     }
 
+    fun clearProfileData(targetProfileId: String) {
+        if (targetProfileId.isBlank() || targetProfileId == profileId) return
+        GrayjayPluginAuthStore.clearProfile(appContext, targetProfileId)
+        val prefix = "$targetProfileId:"
+        pluginSettings.edit().apply {
+            pluginSettings.all.keys.filter { it.startsWith(prefix) }.forEach(::remove)
+        }.apply()
+    }
+
     fun reloadAuthentication(alias: String, pluginId: String) {
         runCatching { clients.remove(alias)?.disable() }
         sourceAliases.remove(pluginId)
@@ -2824,6 +2851,7 @@ class GrayjayPluginBackend(
         viewCount = viewCount,
         datetime = datetime,
         isLive = isLive,
+        isShort = isShort || url.contains("/shorts/", ignoreCase = true),
         playbackTimeSeconds = playbackTime,
         playbackDate = playbackDate,
     )

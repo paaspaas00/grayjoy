@@ -2266,7 +2266,7 @@ private fun LazyListScope.videoDetails(
                 }
                 val visibleQueue = if (showFullQueue) queue else queue.take(3)
                 visibleQueue.forEachIndexed { index, queuedVideo ->
-                    item(key = "queue-${queuedVideo.id}", contentType = "video") {
+                    item(key = lazyVideoItemKey("queue", index, queuedVideo.id), contentType = "video") {
                         Box(Modifier.padding(horizontal = horizontalPadding)) {
                             CompactVideoCard(
                                 video = queuedVideo,
@@ -2309,7 +2309,10 @@ private fun LazyListScope.videoDetails(
                     )
                 }
                 recommendations.forEachIndexed { index, recommendation ->
-                    item(key = "recommended-${recommendation.id}", contentType = "video") {
+                    item(
+                        key = lazyVideoItemKey("recommended", index, recommendation.id),
+                        contentType = "video",
+                    ) {
                         Box(Modifier.padding(horizontal = horizontalPadding)) {
                             CompactVideoCard(
                                 video = recommendation,
@@ -2392,6 +2395,9 @@ private fun VideoPrimaryInfo(
 
 internal fun exactCommentCount(loadedCount: Int, hasMore: Boolean): Int? =
     loadedCount.takeIf { it > 0 && !hasMore }
+
+internal fun lazyVideoItemKey(prefix: String, index: Int, videoId: String): String =
+    "$prefix-$index-$videoId"
 
 @Composable
 private fun VideoActions(

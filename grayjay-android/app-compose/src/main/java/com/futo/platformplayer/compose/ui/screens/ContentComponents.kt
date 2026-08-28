@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -38,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -103,6 +103,8 @@ private val VIDEO_PLACEHOLDER_GRADIENTS = listOf(
     listOf(Color(0xFF003A42), Color(0xFF1BACC6)),
     listOf(Color(0xFF633014), Color(0xFFE08A45)),
 )
+
+internal val LocalVideoCreatorClick = compositionLocalOf<(VideoUiModel) -> Unit> { {} }
 
 /** Avoid restarting an in-flight Glide request whenever the playback clock recomposes the UI. */
 private fun ImageView.loadRemoteImage(
@@ -287,6 +289,8 @@ internal fun CompactVideoCard(
         enabled = animateEntrance && performance.allowPerItemLayerAnimations,
     )
     val thumbnailWidth = if (performance.compactContent) 148.dp else 184.dp
+    val thumbnailHeight = (thumbnailWidth.value * 9f / 16f).dp
+    val onCreatorClick = LocalVideoCreatorClick.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -308,62 +312,86 @@ internal fun CompactVideoCard(
         Column {
             Row(
                 modifier = Modifier.padding(if (performance.compactContent) 6.dp else 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
-            CompactVideoThumbnail(
-                video = video,
-                index = index,
-                showWatchProgress = showProgress,
-                targetWidth = thumbnailWidth,
-                modifier = Modifier
-                    .width(thumbnailWidth)
-                    .aspectRatio(16f / 9f)
-                    .then(
-                        if (performance.isLowEnd) Modifier
-                        else Modifier.clip(MaterialTheme.shapes.medium),
-                    ),
-            )
+                CompactVideoThumbnail(
+                    video = video,
+                    index = index,
+                    showWatchProgress = showProgress,
+                    targetWidth = thumbnailWidth,
+                    modifier = Modifier
+                        .width(thumbnailWidth)
+                        .height(thumbnailHeight)
+                        .then(
+                            if (performance.isLowEnd) Modifier
+                            else Modifier.clip(MaterialTheme.shapes.medium),
+                        ),
+                )
                 Column(
                     modifier = Modifier
                         .weight(1f)
+                        .height(thumbnailHeight)
                         .padding(
                             start = if (performance.compactContent) 8.dp else 12.dp,
                             end = 4.dp,
                         ),
-                    verticalArrangement = Arrangement.spacedBy(
-                        if (performance.compactContent) 2.dp else 4.dp,
-                    ),
+                    verticalArrangement = Arrangement.SpaceBetween,
                 ) {
-                Text(
-                    text = video.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = if (performance.compactContent) 2 else 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ChannelAvatarImage(
-                        name = video.creator,
-                        thumbnailUrl = video.authorThumbnailUrl,
-                        modifier = Modifier.size(if (performance.compactContent) 20.dp else 24.dp),
-                    )
-                    Text(
-                        text = video.creator,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Text(
-                    text = metadataText,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = if (performance.compactContent) 1 else 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(
+                            if (performance.compactContent) 1.dp else 3.dp,
+                        ),
+                    ) {
+                        Text(
+                            text = video.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (metadataText.isNotBlank()) {
+                            Text(
+                                text = metadataText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    Surface(
+                        onClick = { onCreatorClick(video) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("video-channel-footer-${video.id}"),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        shape = MaterialTheme.shapes.small,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(
+                                horizontal = if (performance.compactContent) 7.dp else 9.dp,
+                                vertical = if (performance.compactContent) 4.dp else 5.dp,
+                            ),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            ChannelAvatarImage(
+                                name = video.creator,
+                                thumbnailUrl = video.authorThumbnailUrl,
+                                requestHeaders = video.thumbnailRequestHeaders,
+                                modifier = Modifier.size(
+                                    if (performance.compactContent) 20.dp else 24.dp,
+                                ),
+                            )
+                            Text(
+                                text = video.creator,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 }
             }
             download?.takeUnless { it.status == DownloadStatus.Completed }?.let { state ->
@@ -671,6 +699,7 @@ internal fun ChannelAvatarImage(
     name: String,
     thumbnailUrl: String,
     modifier: Modifier,
+    requestHeaders: Map<String, String> = emptyMap(),
 ) {
     val performance = rememberDevicePerformanceProfile()
     val placeholderColor = MaterialTheme.colorScheme.tertiaryContainer.toArgb()
@@ -696,6 +725,7 @@ internal fun ChannelAvatarImage(
                         url = thumbnailUrl,
                         placeholderColor = placeholderColor,
                         circleCrop = true,
+                        requestHeaders = requestHeaders,
                     )
                 },
                 onReset = { imageView -> imageView.resetRemoteImage() },

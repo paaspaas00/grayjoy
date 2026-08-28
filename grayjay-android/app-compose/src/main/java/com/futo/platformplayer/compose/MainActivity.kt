@@ -385,6 +385,10 @@ class MainActivity : FragmentActivity() {
                     onSwitchProfile = viewModel::switchProfile,
                     onCreateProfile = viewModel::createProfile,
                     onVerifyProfilePin = viewModel::verifyProfilePin,
+                    onRenameProfile = viewModel::renameProfile,
+                    onSetProfileDeviceCredentialProtection =
+                        viewModel::setProfileDeviceCredentialProtection,
+                    onDeleteProfile = viewModel::deleteProfile,
                     onDefaultPlaybackSpeedChange = viewModel::setDefaultPlaybackSpeed,
                     onPerChannelPlaybackSpeedChange = viewModel::setPerChannelPlaybackSpeedEnabled,
                     onHoldToSpeedChange = viewModel::setHoldToSpeedEnabled,

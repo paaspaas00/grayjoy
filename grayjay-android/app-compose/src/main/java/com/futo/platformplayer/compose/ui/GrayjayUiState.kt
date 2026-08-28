@@ -230,6 +230,7 @@ enum class ThemeMode { System, Light, Dark }
 
 enum class HomeFeedType(@param:StringRes val labelRes: Int) {
     Subscriptions(R.string.feed_subscriptions),
+    Shorts(R.string.shorts),
     ForYou(R.string.feed_for_you),
     Trending(R.string.feed_trending),
     Live(R.string.feed_live),

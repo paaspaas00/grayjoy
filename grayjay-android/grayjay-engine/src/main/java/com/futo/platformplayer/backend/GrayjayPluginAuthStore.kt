@@ -45,6 +45,14 @@ object GrayjayPluginAuthStore {
             .apply()
     }
 
+    fun clearProfile(context: Context, profileId: String) {
+        val preferences = context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
+        val prefix = "$profileId:"
+        preferences.edit().apply {
+            preferences.all.keys.filter { it.startsWith(prefix) }.forEach(::remove)
+        }.apply()
+    }
+
     fun has(context: Context, profileId: String, pluginId: String): Boolean =
         load(context, profileId, pluginId) != null
 

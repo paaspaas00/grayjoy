@@ -93,7 +93,15 @@ fun HomeScreen(
 ) {
     val performance = rememberDevicePerformanceProfile()
     var updateDetailsVisible by rememberSaveable { mutableStateOf(false) }
-    val feeds = HomeFeedType.entries
+    val youtubeEnabled = sources.any { source ->
+        source.id.equals("youtube", ignoreCase = true) && source.isEnabled &&
+            source.availability != SourceAvailability.MissingPlugin
+    }
+    val feeds = remember(youtubeEnabled) {
+        HomeFeedType.entries.filter { feed ->
+            feed != HomeFeedType.Shorts || youtubeEnabled
+        }
+    }
     val browseTabs = remember(sources) {
         sources.asSequence()
             .filter {
@@ -129,6 +137,12 @@ fun HomeScreen(
     val activeFeed by rememberUpdatedState(home.selectedFeed)
     val activeBrowseSourceId by rememberUpdatedState(home.browseSourceId)
     val activeBrowseGroupId by rememberUpdatedState(home.browseGroupId)
+
+    LaunchedEffect(youtubeEnabled, home.selectedFeed) {
+        if (!youtubeEnabled && home.selectedFeed == HomeFeedType.Shorts) {
+            onFeedSelected(HomeFeedType.Subscriptions)
+        }
+    }
 
     LaunchedEffect(pagerState, browseTabs) {
         snapshotFlow { pagerState.settledPage }
@@ -371,6 +385,7 @@ fun HomeScreen(
                                 } ?: when (feed) {
                                     HomeFeedType.Subscriptions ->
                                         stringResource(R.string.latest_from_subscriptions)
+                                    HomeFeedType.Shorts -> stringResource(R.string.shorts)
                                     HomeFeedType.ForYou -> stringResource(R.string.feed_for_you)
                                     HomeFeedType.Trending -> stringResource(R.string.trending_now)
                                     HomeFeedType.Live -> stringResource(R.string.live_now)
@@ -407,6 +422,7 @@ fun HomeScreen(
                                 when (feed) {
                                     HomeFeedType.Subscriptions ->
                                         stringResource(R.string.home_empty_subscriptions)
+                                    HomeFeedType.Shorts -> stringResource(R.string.home_empty_feed)
                                     HomeFeedType.Live -> stringResource(R.string.home_empty_live)
                                     else -> stringResource(R.string.home_empty_feed)
                                 },
@@ -428,7 +444,8 @@ fun HomeScreen(
                             VideoCard(
                                 video = video,
                                 index = index,
-                                showProgress = feed == HomeFeedType.Subscriptions,
+                                showProgress = feed == HomeFeedType.Subscriptions ||
+                                    feed == HomeFeedType.Shorts,
                                 animateEntrance = animateEntrance,
                                 onClick = { onVideoClick(video) },
                                 onLongClick = { onVideoLongClick(video) },

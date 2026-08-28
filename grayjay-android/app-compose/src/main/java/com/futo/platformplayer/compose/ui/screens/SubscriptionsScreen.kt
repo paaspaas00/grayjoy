@@ -97,7 +97,7 @@ fun SubscriptionsScreen(
         channels.filter { it.id in followedCreatorIds }
     }
     val followedVideos = remember(videos, followedCreatorIds) {
-        videosForFollowedCreators(videos, followedCreatorIds)
+        videosForFollowedCreators(videos, followedCreatorIds).distinctBy(VideoUiModel::id)
     }
     val newVideoCounts = remember(followedVideos, followedChannels) {
         newVideoCountsByCreator(followedVideos, followedChannels)
@@ -241,6 +241,7 @@ fun SubscriptionsScreen(
                 video = video,
                 index = index + 1,
                 selected = video.id in selectedVideoIds,
+                showProgress = true,
                 onClick = {
                     if (videoSelectionMode) {
                         if (video.id in selectedVideoIds) selectedVideoIds.remove(video.id)
