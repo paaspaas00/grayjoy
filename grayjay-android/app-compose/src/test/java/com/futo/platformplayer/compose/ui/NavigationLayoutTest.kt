@@ -19,4 +19,11 @@ class NavigationLayoutTest {
     fun largeScreenUsesPermanentDrawer() {
         assertEquals(NavigationLayout.PermanentDrawer, navigationLayoutFor(1_200))
     }
+
+    @Test
+    fun collapsedTransitionHitSurfaceMatchesMiniPlayerHeight() {
+        assertEquals(72f, transitionOverlayHeightPx(2_000f, 72f, 1f))
+        assertEquals(2_000f, transitionOverlayHeightPx(2_000f, 72f, 0f))
+        assertEquals(1_036f, transitionOverlayHeightPx(2_000f, 72f, 0.5f))
+    }
 }

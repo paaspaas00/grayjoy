@@ -142,15 +142,6 @@ fun SettingsScreen(
         ),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(stringResource(R.string.settings_tagline), style = MaterialTheme.typography.headlineMedium)
-                Text(
-                    stringResource(R.string.settings_description),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        item {
             SettingsSection(stringResource(R.string.settings_appearance)) {
                 val systemLanguageLabel = stringResource(R.string.system_default_language)
                 LinkSetting(

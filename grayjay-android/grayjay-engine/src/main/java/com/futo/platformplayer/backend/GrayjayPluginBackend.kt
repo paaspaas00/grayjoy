@@ -1045,6 +1045,7 @@ class GrayjayPluginBackend(
         resultLimit: Int = 80,
         onProgress: (completed: Int, total: Int) -> Unit = { _, _ -> },
         shortsOnly: Boolean = false,
+        forceComplete: Boolean = false,
     ): GrayjayVideoPage = withContext(Dispatchers.IO) {
         val requests = channels
             .filter { it.url.isNotBlank() && it.sourceId in enabledSources }
@@ -1063,6 +1064,7 @@ class GrayjayPluginBackend(
                         val endpoint = requireNotNull(enabledSources[request.sourceId])
                         if (
                             endpoint.pluginId == YOUTUBE_PLUGIN_ID &&
+                            !forceComplete &&
                             (preferOriginalVideoTitles || shortsOnly)
                         ) {
                             loadYouTubeSubscriptionFeed(request, endpoint)
@@ -1091,6 +1093,7 @@ class GrayjayPluginBackend(
                             endpoint.pluginId != YOUTUBE_PLUGIN_ID || preferOriginalVideoTitles
                         val peekType = if (
                             !shortsOnly &&
+                            !forceComplete &&
                             canUseOriginalTitleFeed &&
                             basePlugin.capabilities.hasPeekChannelContents
                         ) {
@@ -1384,6 +1387,32 @@ class GrayjayPluginBackend(
             pageSize,
         )
         page.toChannelPage()
+    }
+
+    suspend fun searchChannelPage(
+        sourceId: String,
+        channelUrl: String,
+        endpoint: PluginEndpoint,
+        query: String,
+        type: String,
+        pageSize: Int = 30,
+    ): GrayjayChannelPage? = withContext(Dispatchers.IO) {
+        val plugin = getOrLoad(sourceId, endpoint)
+        if (!plugin.capabilities.hasSearchChannelContents) return@withContext null
+        val pager = plugin.searchChannelContents(
+            channelUrl,
+            query,
+            type,
+            null,
+            null,
+        )
+        readNewSession(
+            PagerSession(
+                kind = PagerContentKind.Videos,
+                sources = listOf(SourcePagerSession(sourceId, plugin.id, pager)),
+            ),
+            pageSize,
+        ).toChannelPage()
     }
 
     suspend fun loadPlaylist(

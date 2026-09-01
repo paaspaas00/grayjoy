@@ -29,4 +29,17 @@ class VideoTitleSelectionTest {
             ),
         )
     }
+
+    @Test
+    fun `external url without a feed title uses the resolved real title`() {
+        assertEquals(
+            "The real video title",
+            resolvedVideoTitle(
+                feedTitle = "",
+                sourceTitle = "The real video title",
+                sourceId = "youtube",
+                preferOriginal = true,
+            ),
+        )
+    }
 }

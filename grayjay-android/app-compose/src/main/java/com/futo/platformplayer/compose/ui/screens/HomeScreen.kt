@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -232,8 +234,13 @@ fun HomeScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             feeds.forEachIndexed { page, feed ->
+                val selected = home.browseSourceId == null && home.selectedFeed == feed
+                val bringIntoViewRequester = remember(feed) { BringIntoViewRequester() }
+                LaunchedEffect(selected) {
+                    if (selected) bringIntoViewRequester.bringIntoView()
+                }
                 FilterChip(
-                    selected = home.browseSourceId == null && home.selectedFeed == feed,
+                    selected = selected,
                     onClick = {
                         if (home.browseSourceId != null || home.selectedFeed != feed) {
                             onFeedSelected(feed)
@@ -241,13 +248,19 @@ fun HomeScreen(
                         coroutineScope.launch { pagerState.animateScrollToPage(page) }
                     },
                     label = { Text(stringResource(feed.labelRes)) },
-                    modifier = Modifier.testTag("home-feed-${feed.name.lowercase()}"),
+                    modifier = Modifier
+                        .bringIntoViewRequester(bringIntoViewRequester)
+                        .testTag("home-feed-${feed.name.lowercase()}"),
                 )
             }
             browseTabs.forEachIndexed { index, tab ->
                 val page = feeds.size + index
                 val selected = home.browseSourceId == tab.sourceId &&
                     home.browseGroupId == tab.groupId
+                val bringIntoViewRequester = remember(tab.id) { BringIntoViewRequester() }
+                LaunchedEffect(selected) {
+                    if (selected) bringIntoViewRequester.bringIntoView()
+                }
                 FilterChip(
                     selected = selected,
                     onClick = {
@@ -257,7 +270,9 @@ fun HomeScreen(
                         coroutineScope.launch { pagerState.animateScrollToPage(page) }
                     },
                     label = { Text(tab.label) },
-                    modifier = Modifier.testTag("home-browse-${tab.id}"),
+                    modifier = Modifier
+                        .bringIntoViewRequester(bringIntoViewRequester)
+                        .testTag("home-browse-${tab.id}"),
                 )
             }
         }

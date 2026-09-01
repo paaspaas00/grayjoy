@@ -3,9 +3,11 @@ package com.futo.platformplayer.compose.ui.screens
 import android.net.Uri
 import android.text.format.DateUtils
 import androidx.annotation.StringRes
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,8 +30,10 @@ import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
@@ -41,6 +45,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
@@ -49,6 +54,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -60,8 +66,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -71,6 +84,7 @@ import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
@@ -95,6 +109,20 @@ internal fun videosForLibraryFilter(
     LibraryFilter.History -> videos
         .filter { it.lastWatchedAt > 0L || it.watchProgress > 0f }
         .sortedByDescending(VideoUiModel::lastWatchedAt)
+}
+
+internal fun videosMatchingLibraryQuery(
+    videos: List<VideoUiModel>,
+    query: String,
+): List<VideoUiModel> {
+    val normalizedQuery = query.trim()
+    if (normalizedQuery.isEmpty()) return videos
+    return videos.filter { video ->
+        video.title.contains(normalizedQuery, ignoreCase = true) ||
+            video.creator.contains(normalizedQuery, ignoreCase = true) ||
+            video.description.contains(normalizedQuery, ignoreCase = true) ||
+            video.metadata.contains(normalizedQuery, ignoreCase = true)
+    }
 }
 
 internal data class DownloadExportAvailability(
@@ -144,6 +172,8 @@ internal fun LibraryScreen(
     var pendingExportMediaType by rememberSaveable { mutableStateOf<DownloadMediaType?>(null) }
     var renamingPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
     var playlistQuery by rememberSaveable { mutableStateOf("") }
+    var historyQuery by rememberSaveable { mutableStateOf("") }
+    var focusedSearchFilter by remember { mutableStateOf<LibraryFilter?>(null) }
     val selectedVideoIds = remember { mutableStateListOf<String>() }
     val selectedPlaylistIds = remember { mutableStateListOf<String>() }
     val filters = LibraryFilter.entries
@@ -153,6 +183,8 @@ internal fun LibraryScreen(
     )
     val filterListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val activeFilter by rememberUpdatedState(selectedFilter)
     val matchingPlaylists = remember(playlists, playlistQuery) {
         playlistsMatchingQuery(playlists, playlistQuery)
@@ -184,6 +216,9 @@ internal fun LibraryScreen(
             .collect { page ->
                 filters.getOrNull(page)?.let { filter ->
                     if (filter != activeFilter) {
+                        keyboardController?.hide()
+                        focusManager.clearFocus(force = true)
+                        focusedSearchFilter = null
                         onSelectedFilterChange(filter)
                         leaveSelectionMode()
                     }
@@ -192,24 +227,45 @@ internal fun LibraryScreen(
     }
     LaunchedEffect(selectedFilter) {
         val page = filters.indexOf(selectedFilter)
+        if (selectedFilter !in setOf(LibraryFilter.History, LibraryFilter.Playlists)) {
+            keyboardController?.hide()
+            focusManager.clearFocus(force = true)
+            focusedSearchFilter = null
+        }
         if (page >= 0) filterListState.animateScrollToItem(page)
         if (page >= 0 && page != pagerState.currentPage && !pagerState.isScrollInProgress) {
             pagerState.animateScrollToPage(page)
         }
     }
+    BackHandler(enabled = focusedSearchFilter != null) {
+        keyboardController?.hide()
+        focusManager.clearFocus(force = true)
+        focusedSearchFilter = null
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            keyboardController?.hide()
+            focusManager.clearFocus(force = true)
+        }
+    }
+    val searchHeaderScrollConnection = remember(focusManager, keyboardController) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (
+                    source == NestedScrollSource.UserInput &&
+                    available.y > 0f &&
+                    focusedSearchFilter != null
+                ) {
+                    keyboardController?.hide()
+                    focusManager.clearFocus(force = true)
+                    focusedSearchFilter = null
+                }
+                return Offset.Zero
+            }
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(stringResource(R.string.library_tagline), style = MaterialTheme.typography.headlineMedium)
-            Text(
-                stringResource(R.string.library_description),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyLarge,
-            )
-        }
         LazyRow(
             state = filterListState,
             modifier = Modifier.fillMaxWidth(),
@@ -255,9 +311,21 @@ internal fun LibraryScreen(
                 } else {
                     emptyMap()
                 }
-                val pageVideos = remember(videos, pageFilter, relevantDownloads, downloadVideos) {
+                val unfilteredPageVideos = remember(
+                    videos,
+                    pageFilter,
+                    relevantDownloads,
+                    downloadVideos,
+                ) {
                     if (pageFilter == LibraryFilter.Downloads) downloadVideos
                     else videosForLibraryFilter(videos, pageFilter, relevantDownloads)
+                }
+                val pageVideos = remember(unfilteredPageVideos, pageFilter, historyQuery) {
+                    if (pageFilter != LibraryFilter.History || historyQuery.isBlank()) {
+                        unfilteredPageVideos
+                    } else {
+                        videosMatchingLibraryQuery(unfilteredPageVideos, historyQuery)
+                    }
                 }
                 val isSelectedPage = pageFilter == selectedFilter
                 val pageListState = rememberLazyListState()
@@ -266,10 +334,17 @@ internal fun LibraryScreen(
                 } else {
                     pageListState
                 }
+                LaunchedEffect(focusedSearchFilter, pageFilter) {
+                    if (focusedSearchFilter == pageFilter) {
+                        delay(120L)
+                        listState.animateScrollToItem(LIBRARY_SEARCH_FOCUSED_SCROLL_INDEX)
+                    }
+                }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
+                        .nestedScroll(searchHeaderScrollConnection)
                         .testTag(
                             if (isSelectedPage) "library-list"
                             else "library-list-${pageFilter.name.lowercase()}",
@@ -333,17 +408,40 @@ internal fun LibraryScreen(
         item {
             LibrarySummary(
                 filter = pageFilter,
-                videos = pageVideos,
+                videos = unfilteredPageVideos,
                 playlistCount = playlists.size,
             )
         }
-        if (pageFilter == LibraryFilter.Playlists) {
-            item(key = "playlist-search") {
-                PlaylistSearchField(
-                    query = playlistQuery,
-                    onQueryChange = { playlistQuery = it },
+        if (pageFilter in setOf(LibraryFilter.History, LibraryFilter.Playlists)) {
+            stickyHeader(key = "library-search-${pageFilter.name}") {
+                LibrarySearchField(
+                    query = if (pageFilter == LibraryFilter.History) historyQuery else playlistQuery,
+                    onQueryChange = { value ->
+                        if (pageFilter == LibraryFilter.History) historyQuery = value
+                        else playlistQuery = value
+                    },
+                    labelRes = if (pageFilter == LibraryFilter.History) {
+                        R.string.search_watched_history
+                    } else {
+                        R.string.search_playlists
+                    },
+                    testTag = if (pageFilter == LibraryFilter.History) {
+                        "history-search"
+                    } else {
+                        "playlist-search"
+                    },
+                    onFocusChange = { focused ->
+                        focusedSearchFilter = if (focused) pageFilter
+                        else focusedSearchFilter.takeUnless { it == pageFilter }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)
+                        .padding(vertical = 6.dp),
                 )
             }
+        }
+        if (pageFilter == LibraryFilter.Playlists) {
             items(
                 items = matchingPlaylists,
                 key = PlaylistUiModel::id,
@@ -431,12 +529,29 @@ internal fun LibraryScreen(
         }
         if (
             (pageFilter == LibraryFilter.Playlists && playlists.isEmpty()) ||
-            (pageFilter != LibraryFilter.Playlists && pageVideos.isEmpty())
+            (pageFilter != LibraryFilter.Playlists &&
+                pageVideos.isEmpty() &&
+                !(pageFilter == LibraryFilter.History && historyQuery.isNotBlank()))
         ) {
             item {
                 Text(
                     stringResource(R.string.nothing_here_yet),
                     modifier = Modifier.padding(vertical = 32.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        }
+        if (
+            pageFilter == LibraryFilter.History &&
+            historyQuery.isNotBlank() &&
+            unfilteredPageVideos.isNotEmpty() &&
+            pageVideos.isEmpty()
+        ) {
+            item(key = "no-history-search-results") {
+                Text(
+                    stringResource(R.string.no_matches),
+                    modifier = Modifier.padding(vertical = 24.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyLarge,
                 )
@@ -666,6 +781,37 @@ internal fun LibraryScreen(
     }
 }
 
+@Composable
+private fun LibrarySearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    @StringRes labelRes: Int,
+    testTag: String,
+    onFocusChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = { onQueryChange(it.take(100)) },
+        modifier = modifier
+            .onFocusChanged { onFocusChange(it.isFocused) }
+            .testTag(testTag),
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+        trailingIcon = if (query.isNotEmpty()) {
+            {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(
+                        Icons.Outlined.Close,
+                        contentDescription = stringResource(R.string.clear_search),
+                    )
+                }
+            }
+        } else null,
+        label = { Text(stringResource(labelRes)) },
+    )
+}
+
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectionTooltip(label: String, content: @Composable () -> Unit) {
@@ -676,6 +822,8 @@ private fun SelectionTooltip(label: String, content: @Composable () -> Unit) {
         content = content,
     )
 }
+
+private const val LIBRARY_SEARCH_FOCUSED_SCROLL_INDEX = 2
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable

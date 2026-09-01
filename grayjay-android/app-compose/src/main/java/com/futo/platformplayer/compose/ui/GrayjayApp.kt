@@ -90,7 +90,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -234,6 +236,12 @@ private data class PlaybackPresentation(
     val player: Player,
     val state: PlaybackUiState,
     val followedCreatorIds: Set<String>,
+    val followingVideos: List<VideoUiModel>,
+    val followingFeedLoaded: Boolean,
+    val followingFeedLoading: Boolean,
+    val followingFeedCompleted: Int,
+    val followingFeedTotal: Int,
+    val followingFeedError: String?,
     val downloads: Map<String, DownloadUiModel>,
     val activePlaylistDownloads: Set<PlaylistDownloadBatchUiModel>,
     val isPlaying: Boolean,
@@ -266,6 +274,9 @@ private data class PlaybackPresentation(
     val onLoadChannel: (ChannelUiModel) -> Unit,
     val onChannelTabSelected: (ChannelContentTab) -> Unit,
     val onLoadMoreChannel: () -> Unit,
+    val onChannelSearchQueryChange: (String) -> Unit,
+    val onLoadMoreChannelSearch: () -> Unit,
+    val onLoadFollowingComplete: () -> Unit,
     val onLoadRemotePlaylist: (PlaylistUiModel) -> Unit,
     val onLoadMoreRemotePlaylist: () -> Unit,
     val onPlayRemotePlaylist: () -> Unit,
@@ -416,6 +427,8 @@ private data class SourcePresentation(
     val onSearchSubmit: (String, SearchContentType, Set<String>) -> Unit,
     val onLoadMoreSearch: () -> Unit,
     val onSearchVideoLongClick: (VideoUiModel) -> Unit,
+    val searchAutoFocusRequested: Boolean,
+    val onSearchAutoFocusConsumed: () -> Unit,
 )
 
 @Composable
@@ -491,6 +504,9 @@ fun GrayjayApp(
     onSourceFilterSelectionChange: (String, String, String) -> Unit = { _, _, _ -> },
     onLoadMoreSearch: () -> Unit = {},
     onLoadMoreChannel: () -> Unit = {},
+    onChannelSearchQueryChange: (String) -> Unit = {},
+    onLoadMoreChannelSearch: () -> Unit = {},
+    onLoadFollowingComplete: () -> Unit = {},
     onLoadRemotePlaylist: (PlaylistUiModel) -> Unit = {},
     onLoadMoreRemotePlaylist: () -> Unit = {},
     onPlayRemotePlaylist: () -> Unit = {},
@@ -563,6 +579,7 @@ fun GrayjayApp(
     var selectedVideoId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedChannelId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
+    var searchAutoFocusRequested by rememberSaveable { mutableStateOf(false) }
     var libraryFilterName by rememberSaveable { mutableStateOf(LibraryFilter.History.name) }
     val libraryPlaylistListState = rememberLazyListState()
     var nestedBackDestinationName by rememberSaveable { mutableStateOf<String?>(null) }
@@ -625,6 +642,21 @@ fun GrayjayApp(
         uiState.nowPlaying.isLoadingPlayback || it.id == uiState.playback.currentVideoId
     } ?: availableVideosById[uiState.playback.currentVideoId]
     val playerTransition = remember { PlayerTransitionState(1f) }
+    LaunchedEffect(playerTransition) {
+        snapshotFlow {
+            Triple(
+                playerTransition.target,
+                playerTransition.progress,
+                playerTransition.isSettling,
+            )
+        }.collect { (target, progress, isSettling) ->
+            // A lifecycle interruption can cancel the final animation callback after its last
+            // frame was drawn. Never leave the transition overlay alive over navigation chrome.
+            if (!isSettling && target >= 0.999f && progress >= 0.999f) {
+                selectedVideoId = null
+            }
+        }
+    }
     var navigationBackProgress by remember { mutableFloatStateOf(0f) }
     val playerTransitionScope = rememberCoroutineScope()
     var playerTransitionJob by remember { mutableStateOf<Job?>(null) }
@@ -662,6 +694,8 @@ fun GrayjayApp(
             .mapNotNull(availableVideosById::get)
     }
     val onSelect: (GrayjayDestination) -> Unit = {
+        searchAutoFocusRequested = it == GrayjayDestination.Search &&
+            selected != GrayjayDestination.Search
         destinationName = it.name
         selectedVideoId = null
         playerTransition.snapTo(1f)
@@ -670,6 +704,7 @@ fun GrayjayApp(
         nestedBackDestinationName = null
     }
     val onVideoClick: (VideoUiModel) -> Unit = {
+        searchAutoFocusRequested = false
         onOpenVideo(it.id)
         if (it.isAvailable && it.scheduledStartAtMs <= System.currentTimeMillis()) {
             settlePlayer(0f, it.id)
@@ -682,6 +717,7 @@ fun GrayjayApp(
         actionVideoId = it.id
     }
     val onChannelClick: (ChannelUiModel) -> Unit = {
+        searchAutoFocusRequested = false
         onLoadChannel(it)
         selectedChannelId = it.id
         selectedPlaylistId = null
@@ -716,6 +752,7 @@ fun GrayjayApp(
         }
     }
     val onPlaylistClick: (PlaylistUiModel) -> Unit = {
+        searchAutoFocusRequested = false
         if (it.sourceId.isNotBlank()) onLoadRemotePlaylist(it)
         if (it.sourceId.isBlank()) {
             destinationName = GrayjayDestination.Library.name
@@ -809,6 +846,12 @@ fun GrayjayApp(
         player = player,
         state = uiState.playback,
         followedCreatorIds = uiState.followedCreatorIds,
+        followingVideos = uiState.followingVideos,
+        followingFeedLoaded = uiState.followingFeedLoaded,
+        followingFeedLoading = uiState.followingFeedLoading,
+        followingFeedCompleted = uiState.followingFeedCompleted,
+        followingFeedTotal = uiState.followingFeedTotal,
+        followingFeedError = uiState.followingFeedError,
         downloads = uiState.downloads,
         activePlaylistDownloads = uiState.activePlaylistDownloads,
         isPlaying = uiState.playback.isPlaying,
@@ -859,6 +902,9 @@ fun GrayjayApp(
         onLoadChannel = onLoadChannel,
         onChannelTabSelected = onChannelTabSelected,
         onLoadMoreChannel = onLoadMoreChannel,
+        onChannelSearchQueryChange = onChannelSearchQueryChange,
+        onLoadMoreChannelSearch = onLoadMoreChannelSearch,
+        onLoadFollowingComplete = onLoadFollowingComplete,
         onLoadRemotePlaylist = onLoadRemotePlaylist,
         onLoadMoreRemotePlaylist = onLoadMoreRemotePlaylist,
         onPlayRemotePlaylist = {
@@ -1080,6 +1126,8 @@ fun GrayjayApp(
             actionCanAddToQueue = true
             actionVideoId = video.id
         },
+        searchAutoFocusRequested = searchAutoFocusRequested,
+        onSearchAutoFocusConsumed = { searchAutoFocusRequested = false },
     )
 
     LaunchedEffect(selectedVideo?.id) {
@@ -1314,6 +1362,21 @@ fun GrayjayApp(
                 channels = uiState.channels,
                 playlists = uiState.playlists,
             )
+        }
+    }
+    LaunchedEffect(
+        playerTransition.progress,
+        playerTransition.target,
+        playerTransition.isSettling,
+        selectedVideoId,
+    ) {
+        if (
+            selectedVideoId != null &&
+            !playerTransition.isSettling &&
+            playerTransition.target >= 0.999f &&
+            playerTransition.progress >= 0.999f
+        ) {
+            selectedVideoId = null
         }
     }
     }
@@ -1718,6 +1781,7 @@ private fun GrayjayScaffold(
     var rootTopPx by remember { mutableFloatStateOf(0f) }
     var appBottomBarHeightPx by remember { mutableFloatStateOf(0f) }
     var isTransitionDragging by remember { mutableStateOf(false) }
+    val pageStateHolder = rememberSaveableStateHolder()
     val transitionVideo = selectedVideo ?: playback.video
     val transitionActive = transitionVideo != null && selectedVideo != null
     val isRootSearch = selected == GrayjayDestination.Search &&
@@ -1963,6 +2027,7 @@ private fun GrayjayScaffold(
                     modifier = Modifier.fillMaxSize(),
                     label = "app-page-transition",
                 ) { animatedPageKey ->
+                pageStateHolder.SaveableStateProvider(animatedPageKey) {
                 val animatedChannel = animatedPageKey
                     .takeIf { it.startsWith("channel:") }
                     ?.substringAfter("channel:")
@@ -1984,6 +2049,8 @@ private fun GrayjayScaffold(
                     channel = animatedChannel,
                     detail = playback.channelDetail,
                     onLoadMore = playback.onLoadMoreChannel,
+                    onSearchQueryChange = playback.onChannelSearchQueryChange,
+                    onLoadMoreSearch = playback.onLoadMoreChannelSearch,
                     onTabSelected = playback.onChannelTabSelected,
                     onPlaylistClick = onPlaylistClick,
                     isFollowing = animatedChannel.id in playback.followedCreatorIds,
@@ -2083,9 +2150,15 @@ private fun GrayjayScaffold(
                     GrayjayDestination.Subscriptions -> SubscriptionsScreen(
                         channels = channels,
                         videos = (
-                            videos + playback.nowPlaying.recommendations +
+                            playback.followingVideos + playback.nowPlaying.recommendations +
                                 listOfNotNull(playback.nowPlaying.video)
                             ).distinctBy(VideoUiModel::id),
+                        completeFeedLoaded = playback.followingFeedLoaded,
+                        completeFeedLoading = playback.followingFeedLoading,
+                        completeFeedCompleted = playback.followingFeedCompleted,
+                        completeFeedTotal = playback.followingFeedTotal,
+                        completeFeedError = playback.followingFeedError,
+                        onRequestCompleteFeed = playback.onLoadFollowingComplete,
                         followedCreatorIds = playback.followedCreatorIds,
                         onFollowedChange = playback.onCreatorFollowedChange,
                         onVideoClick = onVideoClick,
@@ -2105,6 +2178,8 @@ private fun GrayjayScaffold(
                         onVideoLongClick = sourcePresentation.onSearchVideoLongClick,
                         onChannelClick = onChannelClick,
                         onPlaylistClick = onPlaylistClick,
+                        autoFocus = sourcePresentation.searchAutoFocusRequested,
+                        onAutoFocusConsumed = sourcePresentation.onSearchAutoFocusConsumed,
                         showNavigationMenuButton = onToggleDrawer != null && !drawerVisible,
                         onNavigationMenuClick = onToggleDrawer ?: {},
                     )
@@ -2206,6 +2281,7 @@ private fun GrayjayScaffold(
                     }
                 }
                 }
+                }
             }
         }
 
@@ -2247,22 +2323,23 @@ private fun GrayjayScaffold(
             val expandedTop = expanded?.top ?: 0f
             val minimizedTop = minimized?.top ?: 0f
             val minimizedHeight = minimized?.height
+            val overlayHeightPx = transitionOverlayHeightPx(
+                rootHeightPx = rootHeightPx,
+                minimizedHeightPx = minimizedHeight,
+                progress = playback.transition.progress,
+            )
             val expandedSurfaceColor = MaterialTheme.colorScheme.surface
             val minimizedSurfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .height(with(density) { overlayHeightPx.toDp() })
                     .graphicsLayer {
                         translationY = minimizedTop * playback.transition.progress
                     }
                     .drawWithContent {
                         val transitionProgress = playback.transition.progress.coerceIn(0f, 1f)
-                        val overlayHeight = if (rootHeightPx > 0f && minimizedHeight != null) {
-                            lerp(rootHeightPx, minimizedHeight, transitionProgress)
-                        } else {
-                            rootHeightPx.coerceAtLeast(1f)
-                        }
-                        clipRect(bottom = overlayHeight) {
+                        clipRect(bottom = size.height) {
                             drawRect(
                                 androidx.compose.ui.graphics.lerp(
                                     expandedSurfaceColor,
@@ -2604,6 +2681,16 @@ private fun TransitionMiniPlayerChrome(
 
 private fun lerp(start: Float, end: Float, progress: Float): Float =
     start + (end - start) * progress
+
+internal fun transitionOverlayHeightPx(
+    rootHeightPx: Float,
+    minimizedHeightPx: Float?,
+    progress: Float,
+): Float {
+    val root = rootHeightPx.coerceAtLeast(1f)
+    val minimized = minimizedHeightPx?.coerceAtLeast(1f) ?: root
+    return lerp(root, minimized, progress.coerceIn(0f, 1f)).coerceAtLeast(1f)
+}
 
 private fun VideoUiModel.playbackChannelKey(): String = authorUrl.ifBlank {
     channelId.ifBlank { "$sourceId:$creator" }

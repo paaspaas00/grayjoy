@@ -34,6 +34,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,6 +77,8 @@ fun SearchScreen(
     onVideoLongClick: (VideoUiModel) -> Unit,
     onChannelClick: (ChannelUiModel) -> Unit,
     onPlaylistClick: (PlaylistUiModel) -> Unit,
+    autoFocus: Boolean = false,
+    onAutoFocusConsumed: () -> Unit = {},
     showNavigationMenuButton: Boolean = false,
     onNavigationMenuClick: () -> Unit = {},
 ) {
@@ -155,9 +158,19 @@ fun SearchScreen(
         keyboardController?.show()
     }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboardController?.show()
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) {
+            focusRequester.requestFocus()
+            keyboardController?.show()
+            onAutoFocusConsumed()
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        }
     }
 
     LaunchedEffect(search.query) {

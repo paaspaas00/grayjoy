@@ -60,6 +60,29 @@ class LibraryFilterTest {
         )
     }
 
+    @Test
+    fun historySearchMatchesVideoAndCreatorMetadataWithoutReordering() {
+        val history = listOf(
+            video("one").copy(title = "A Kotlin talk", creator = "Alice"),
+            video("two").copy(title = "Road trip", creator = "Bob", description = "Dolomites"),
+            video("three").copy(title = "Music", creator = "Carla", metadata = "Live session"),
+        )
+
+        assertEquals(history, videosMatchingLibraryQuery(history, "  "))
+        assertEquals(
+            listOf("one"),
+            videosMatchingLibraryQuery(history, "alice").map(VideoUiModel::id),
+        )
+        assertEquals(
+            listOf("two"),
+            videosMatchingLibraryQuery(history, "DOLOMITES").map(VideoUiModel::id),
+        )
+        assertEquals(
+            listOf("three"),
+            videosMatchingLibraryQuery(history, "session").map(VideoUiModel::id),
+        )
+    }
+
     private fun idsFor(filter: LibraryFilter) =
         videosForLibraryFilter(videos, filter).map(VideoUiModel::id)
 

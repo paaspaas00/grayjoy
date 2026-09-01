@@ -392,6 +392,7 @@ interface GrayjayEngine {
         followedChannels: List<ChannelUiModel>,
         onSubscriptionProgress: (completed: Int, total: Int) -> Unit = { _, _ -> },
         sourceFilters: Map<String, Map<String, List<String>>> = emptyMap(),
+        forceCompleteSubscriptions: Boolean = false,
     ): EngineVideoPage
     suspend fun loadMoreHome(feed: HomeFeedType, continuationId: String): EngineVideoPage
     suspend fun suggestions(query: String, enabledSourceIds: Set<String>): List<String>
@@ -402,6 +403,12 @@ interface GrayjayEngine {
         contentType: String? = null,
     ): EngineChannelPage
     suspend fun loadMoreChannel(continuationId: String): EngineChannelPage
+    suspend fun searchChannel(
+        channel: ChannelUiModel,
+        tab: ChannelContentTab,
+        query: String,
+        contentType: String? = null,
+    ): EngineChannelPage?
     suspend fun loadPlaylist(playlist: PlaylistUiModel): EnginePlaylistDetails
     suspend fun routeUrl(url: String, enabledSourceIds: Set<String>): EngineUrlRoute?
     suspend fun resolve(
@@ -524,6 +531,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
     private val mediaSession = MediaSession.Builder(appContext, exoPlayer)
+        // Activity recreation can briefly overlap the previous ViewModel/session teardown. Media3
+        // rejects two sessions with its default empty ID in the same process, crashing before the
+        // Activity can resume. Each engine owns an independent token, so give it an independent ID.
+        .setId("grayjoy-${UUID.randomUUID()}")
         .setCallback(
             object : MediaSession.Callback {
                 override fun onConnect(
@@ -613,6 +624,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private var preferNewPipeForYoutubePlayback = true
     @Volatile
     private var useNewPipeYoutubeBackend = true
+    private var youtubeChannelSearchFallbackNotified = false
     @Volatile
     private var youtubeSubscriptionFetchMode = YoutubeSubscriptionFetchMode.Fast
     private val mixedContinuations = ConcurrentHashMap<String, MixedContinuation>()
@@ -1141,13 +1153,13 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         results: List<GrayjayPluginSearchResult>,
         continuationId: String?,
     ) = EngineSearchResult(
-        videos = results.flatMap(GrayjayPluginSearchResult::videos)
+        videos = interleaveBackendResults(results.map(GrayjayPluginSearchResult::videos))
             .distinctBy(GrayjaySearchItem::url)
             .map { it.toVideoUiModel(pluginEndpoints[it.sourceId], appContext) },
-        channels = results.flatMap(GrayjayPluginSearchResult::channels)
+        channels = interleaveBackendResults(results.map(GrayjayPluginSearchResult::channels))
             .distinctBy(GrayjaySearchChannel::url)
             .map { it.toChannelUiModel(appContext) },
-        playlists = results.flatMap(GrayjayPluginSearchResult::playlists)
+        playlists = interleaveBackendResults(results.map(GrayjayPluginSearchResult::playlists))
             .distinctBy(GrayjaySearchPlaylist::url)
             .map { it.toPlaylistUiModel(appContext) },
         continuationId = continuationId,
@@ -1160,6 +1172,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         followedChannels: List<ChannelUiModel>,
         onSubscriptionProgress: (completed: Int, total: Int) -> Unit,
         sourceFilters: Map<String, Map<String, List<String>>>,
+        forceCompleteSubscriptions: Boolean,
     ): EngineVideoPage {
         val subscriptionBased = feed == HomeFeedType.Subscriptions ||
             feed == HomeFeedType.Shorts
@@ -1194,7 +1207,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                                             thumbnailUrl = it.thumbnailUrl,
                                         )
                                     },
-                                    mode = youtubeSubscriptionFetchMode,
+                                    mode = if (forceCompleteSubscriptions) {
+                                        YoutubeSubscriptionFetchMode.Complete
+                                    } else {
+                                        youtubeSubscriptionFetchMode
+                                    },
                                     onProgress = onSubscriptionProgress,
                                     shortsOnly = feed == HomeFeedType.Shorts,
                                 )
@@ -1220,6 +1237,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                                     enabledSources = mapOf("youtube" to youtubeEndpoint),
                                     onProgress = onSubscriptionProgress,
                                     shortsOnly = feed == HomeFeedType.Shorts,
+                                    forceComplete = forceCompleteSubscriptions,
                                 )
                             } else {
                                 pluginBackend.home(
@@ -1249,6 +1267,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                                 onSubscriptionProgress
                             },
                             shortsOnly = feed == HomeFeedType.Shorts,
+                            forceComplete = forceCompleteSubscriptions,
                         )
                     } else {
                         pluginBackend.home(
@@ -1409,6 +1428,44 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             ?: page.playlists.firstOrNull()?.sourceId
         val endpoint = pageSourceId?.let(pluginEndpoints::get)
         return page.toEngineChannelPage(endpoint, appContext)
+    }
+
+    override suspend fun searchChannel(
+        channel: ChannelUiModel,
+        tab: ChannelContentTab,
+        query: String,
+        contentType: String?,
+    ): EngineChannelPage? {
+        if (query.isBlank() || tab == ChannelContentTab.Playlists) return null
+        val endpoint = pluginEndpoints[channel.sourceId]
+            ?: error(appContext.getString(R.string.source_plugin_unavailable, channel.source))
+        if (
+            channel.sourceId.equals("youtube", ignoreCase = true) &&
+            useNewPipeYoutubeBackend &&
+            !youtubeChannelSearchFallbackNotified
+        ) {
+            // NewPipe Extractor does not expose a channel-scoped search endpoint. This is a
+            // capability fallback (not a failed request), but it still starts the JS backend and
+            // therefore must be visible to users who selected the NewPipe-only path.
+            youtubeChannelSearchFallbackNotified = true
+            _backendNotices.tryEmit(EngineBackendNotice("channel search", null))
+        }
+        val type = when (tab) {
+            ChannelContentTab.Videos ->
+                com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_VIDEOS
+            ChannelContentTab.Shorts ->
+                com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_SHORTS
+            ChannelContentTab.Live -> contentType
+                ?: com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_STREAMS
+            ChannelContentTab.Playlists -> return null
+        }
+        return pluginBackend.searchChannelPage(
+            sourceId = channel.sourceId,
+            channelUrl = channel.id,
+            endpoint = endpoint,
+            query = query,
+            type = type,
+        )?.toEngineChannelPage(endpoint, appContext)
     }
 
     override suspend fun loadPlaylist(playlist: PlaylistUiModel): EnginePlaylistDetails {
@@ -1750,6 +1807,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             }
         }
         useNewPipeYoutubeBackend = useNewPipe
+        if (backendChanged) youtubeChannelSearchFallbackNotified = false
         preferNewPipeForYoutubePlayback = useNewPipe
         youtubeSubscriptionFetchMode = subscriptionFetchMode
     }
@@ -2644,6 +2702,15 @@ private fun com.futo.platformplayer.backend.GrayjayStoryboard.toUiModel() = Stor
         )
     },
 )
+
+internal fun <T> interleaveBackendResults(results: List<List<T>>): List<T> {
+    val largest = results.maxOfOrNull(List<T>::size) ?: return emptyList()
+    return buildList(results.sumOf(List<T>::size)) {
+        repeat(largest) { index ->
+            results.forEach { source -> source.getOrNull(index)?.let(::add) }
+        }
+    }
+}
 
 private fun GrayjaySearchItem.toVideoUiModel(endpoint: PluginEndpoint?, context: Context) = VideoUiModel(
     id = url,

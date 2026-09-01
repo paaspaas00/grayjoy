@@ -24,24 +24,43 @@ class SubscriptionsFilterTest {
     }
 
     @Test
-    fun newBadgeCountsOnlyUnwatchedVideosForThatCreator() {
-        val channel = ChannelUiModel(
-            id = "creator-url",
-            name = "Creator",
-            sourceId = "youtube",
-            source = "YouTube",
-            unreadCount = 0,
-            followerCount = "",
-            description = "",
-        )
+    fun uploadFilterKeepsOnlyTheSelectedChannel() {
         val videos = listOf(
-            video("new-1", authorUrl = channel.id),
-            video("new-2", authorUrl = channel.id),
-            video("watched", authorUrl = channel.id).copy(lastWatchedAt = 1L),
+            video("new-1", authorUrl = "creator-url"),
+            video("new-2", authorUrl = "creator-url"),
             video("other", authorUrl = "someone-else"),
         )
 
-        assertEquals(2, newVideoCountsByCreator(videos, listOf(channel))[channel.id])
+        assertEquals(videos, uploadsFromChannel(videos, null))
+        assertEquals(
+            listOf("new-1", "new-2"),
+            uploadsFromChannel(videos, "creator-url").map(VideoUiModel::id),
+        )
+    }
+
+    @Test
+    fun managementSearchSourceAndSortComposePredictably() {
+        val channels = listOf(
+            channel("z", "Zulu", "youtube", "YouTube"),
+            channel("a", "Alpha", "nebula", "Nebula"),
+            channel("b", "Beta", "youtube", "YouTube"),
+        )
+
+        assertEquals(
+            listOf("a", "b", "z"),
+            managedFollowedChannels(channels, "", null, ascending = true)
+                .map(ChannelUiModel::id),
+        )
+        assertEquals(
+            listOf("z", "b"),
+            managedFollowedChannels(channels, "", "youtube", ascending = false)
+                .map(ChannelUiModel::id),
+        )
+        assertEquals(
+            listOf("a"),
+            managedFollowedChannels(channels, "neb", null, ascending = true)
+                .map(ChannelUiModel::id),
+        )
     }
 
     private fun video(
@@ -58,5 +77,20 @@ class SubscriptionsFilterTest {
         sourceId = "youtube",
         authorUrl = authorUrl,
         channelId = channelId,
+    )
+
+    private fun channel(
+        id: String,
+        name: String,
+        sourceId: String,
+        source: String,
+    ) = ChannelUiModel(
+        id = id,
+        name = name,
+        sourceId = sourceId,
+        source = source,
+        unreadCount = 0,
+        followerCount = "",
+        description = "",
     )
 }

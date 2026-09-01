@@ -1,6 +1,9 @@
 package com.futo.platformplayer.compose.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,8 +49,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -59,8 +70,9 @@ import com.futo.platformplayer.compose.ui.ChannelDetailUiState
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChannelDetailScreen(
     channel: ChannelUiModel,
@@ -70,6 +82,8 @@ fun ChannelDetailScreen(
     onTabSelected: (ChannelContentTab) -> Unit,
     onPlaylistClick: (PlaylistUiModel) -> Unit,
     onLoadMore: () -> Unit,
+    onSearchQueryChange: (String) -> Unit = {},
+    onLoadMoreSearch: () -> Unit = {},
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
     perChannelPlaybackSpeedEnabled: Boolean = true,
@@ -78,11 +92,12 @@ fun ChannelDetailScreen(
     onPlaybackSpeedChange: (Float?) -> Unit = {},
 ) {
     val performance = rememberDevicePerformanceProfile()
-    var query by rememberSaveable(channel.id, detail.selectedTab) { mutableStateOf("") }
+    val query = detail.searchQuery
     var showSpeedSheet by rememberSaveable(channel.id) { mutableStateOf(false) }
     var showSortSheet by rememberSaveable(channel.id, detail.selectedTab) { mutableStateOf(false) }
     var descriptionExpanded by rememberSaveable(channel.id) { mutableStateOf(false) }
     var descriptionOverflows by remember(channel.id) { mutableStateOf(false) }
+    var searchFocused by remember(channel.id, detail.selectedTab) { mutableStateOf(false) }
     var sortModeName by rememberSaveable(channel.id, detail.selectedTab) {
         mutableStateOf(
             if (detail.selectedTab == ChannelContentTab.Playlists) {
@@ -98,13 +113,47 @@ fun ChannelDetailScreen(
     val sortMode = runCatching { ChannelSortMode.valueOf(sortModeName) }
         .getOrDefault(ChannelSortMode.UploadDate)
     val listState = rememberLazyListState()
+    LaunchedEffect(searchFocused, channel.id, detail.selectedTab) {
+        if (searchFocused && detail.selectedTab != ChannelContentTab.Playlists) {
+            // Let the IME begin its inset animation, then keep the tabs and search controls at
+            // the top while the large channel summary scrolls out of the available viewport.
+            delay(120L)
+            listState.animateScrollToItem(CHANNEL_SEARCH_FOCUSED_SCROLL_INDEX)
+        }
+    }
     RequestNextPageEffect(
         listState = listState,
-        canLoadMore = query.isBlank() && detail.hasMore && !detail.isLoading && !detail.isLoadingMore,
-        onLoadMore = onLoadMore,
+        canLoadMore = if (query.isBlank()) {
+            detail.hasMore && !detail.isLoading && !detail.isLoadingMore
+        } else {
+            detail.searchIsRemote && detail.searchHasMore &&
+                !detail.isSearching && !detail.isSearchLoadingMore
+        },
+        onLoadMore = if (query.isBlank()) onLoadMore else onLoadMoreSearch,
     )
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    BackHandler(enabled = searchFocused) {
+        keyboardController?.hide()
+        focusManager.clearFocus(force = true)
+    }
+    val searchHeaderScrollConnection = remember(focusManager, keyboardController) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (
+                    source == NestedScrollSource.UserInput &&
+                    available.y > 0f &&
+                    searchFocused
+                ) {
+                    keyboardController?.hide()
+                    focusManager.clearFocus(force = true)
+                }
+                return Offset.Zero
+            }
+        }
+    }
     val displayedChannel = detail.channel ?: channel
     val currentVideos = when (detail.selectedTab) {
         ChannelContentTab.Videos -> detail.videos
@@ -121,8 +170,13 @@ fun ChannelDetailScreen(
                 video.metadata.contains(normalizedQuery, ignoreCase = true)
         }
     }
-    val visibleVideos = remember(filteredVideos, sortMode, sortAscending) {
-        sortChannelVideos(filteredVideos, sortMode, sortAscending)
+    val searchBaseVideos = if (query.isNotBlank() && detail.searchIsRemote) {
+        detail.searchVideos
+    } else {
+        filteredVideos
+    }
+    val visibleVideos = remember(searchBaseVideos, sortMode, sortAscending) {
+        sortChannelVideos(searchBaseVideos, sortMode, sortAscending)
     }
     val visiblePlaylists = remember(detail.playlists, sortAscending) {
         sortChannelPlaylists(detail.playlists, sortAscending)
@@ -131,13 +185,15 @@ fun ChannelDetailScreen(
     val searchField: @Composable (Modifier) -> Unit = { modifier ->
         OutlinedTextField(
             value = query,
-            onValueChange = { query = it },
-            modifier = modifier.testTag("channel-video-search"),
+            onValueChange = onSearchQueryChange,
+            modifier = modifier
+                .onFocusChanged { state -> searchFocused = state.isFocused }
+                .testTag("channel-video-search"),
             singleLine = true,
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
             trailingIcon = {
                 if (query.isNotEmpty()) {
-                    IconButton(onClick = { query = "" }) {
+                    IconButton(onClick = { onSearchQueryChange("") }) {
                         Icon(
                             Icons.Outlined.Close,
                             contentDescription = stringResource(R.string.clear_video_search),
@@ -182,7 +238,9 @@ fun ChannelDetailScreen(
 
     LazyColumn(
         state = listState,
-        modifier = Modifier.testTag("channel-detail-${channel.id}"),
+        modifier = Modifier
+            .nestedScroll(searchHeaderScrollConnection)
+            .testTag("channel-detail-${channel.id}"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             if (performance.compactContent) 8.dp else 16.dp,
         ),
@@ -310,46 +368,53 @@ fun ChannelDetailScreen(
             }
         }
 
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+        stickyHeader(key = "channel-search-header") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(vertical = if (performance.compactContent) 4.dp else 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                tabs.forEach { tab ->
-                    FilterChip(
-                        selected = detail.selectedTab == tab,
-                        onClick = { onTabSelected(tab) },
-                        label = { Text(stringResource(tab.labelRes)) },
-                        modifier = Modifier.testTag("channel-tab-${tab.name.lowercase()}"),
-                    )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    tabs.forEach { tab ->
+                        FilterChip(
+                            selected = detail.selectedTab == tab,
+                            onClick = { onTabSelected(tab) },
+                            label = { Text(stringResource(tab.labelRes)) },
+                            modifier = Modifier.testTag("channel-tab-${tab.name.lowercase()}"),
+                        )
+                    }
                 }
-            }
-        }
-
-        item {
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                if (channelSearchUsesStackedLayout(maxWidth.value)) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (detail.selectedTab != ChannelContentTab.Playlists) {
-                            searchField(Modifier.fillMaxWidth())
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    if (channelSearchUsesStackedLayout(maxWidth.value)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (detail.selectedTab != ChannelContentTab.Playlists) {
+                                searchField(Modifier.fillMaxWidth())
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                sortChip()
+                            }
                         }
+                    } else {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            if (detail.selectedTab != ChannelContentTab.Playlists) {
+                                searchField(Modifier.weight(1f))
+                            }
                             sortChip()
                         }
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (detail.selectedTab != ChannelContentTab.Playlists) {
-                            searchField(Modifier.weight(1f))
-                        }
-                        sortChip()
                     }
                 }
             }
@@ -379,7 +444,7 @@ fun ChannelDetailScreen(
             )
         }
 
-        if (detail.isLoading) {
+        if (detail.isLoading || (detail.isSearching && visibleVideos.isEmpty())) {
             item {
                 Box(Modifier.testTag("channel-loading")) {
                     if (detail.selectedTab == ChannelContentTab.Playlists) {
@@ -412,7 +477,7 @@ fun ChannelDetailScreen(
             }
         }
 
-        if (detail.isLoadingMore) {
+        if (detail.isLoadingMore || detail.isSearchLoadingMore) {
             item {
                 if (detail.selectedTab == ChannelContentTab.Playlists) {
                     SuggestionListSkeleton(count = 2)
@@ -421,8 +486,12 @@ fun ChannelDetailScreen(
                 }
             }
         }
-        if (!detail.isLoading && currentVideos.isEmpty() &&
-            (detail.selectedTab != ChannelContentTab.Playlists || detail.playlists.isEmpty())
+        if (!detail.isLoading && !detail.isSearching &&
+            (if (detail.selectedTab == ChannelContentTab.Playlists) {
+                detail.playlists.isEmpty()
+            } else {
+                visibleVideos.isEmpty()
+            })
         ) {
             item {
                 Text(
@@ -559,6 +628,8 @@ fun ChannelDetailScreen(
         }
     }
 }
+
+private const val CHANNEL_SEARCH_FOCUSED_SCROLL_INDEX = 1
 
 private val playbackSpeedChoices =
     listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)

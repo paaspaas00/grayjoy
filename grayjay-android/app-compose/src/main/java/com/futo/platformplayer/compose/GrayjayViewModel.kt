@@ -460,11 +460,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var storyboardJob: Job? = null
     private var audioLanguageJob: Job? = null
     private var channelJob: Job? = null
+    private var channelSearchJob: Job? = null
     private var homeJob: Job? = null
+    private var followingFeedJob: Job? = null
     private var searchPagingJob: Job? = null
     private var homePagingJob: Job? = null
     private var homeCacheWriteJob: Job? = null
     private var channelPagingJob: Job? = null
+    private var channelSearchPagingJob: Job? = null
     private var remotePlaylistJob: Job? = null
     private var remotePlaylistPagingJob: Job? = null
     private var extrasPagingJob: Job? = null
@@ -838,6 +841,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun invalidateBackendDependentContent() {
+        invalidateFollowingFeed()
         homeJob?.cancel()
         homePagingJob?.cancel()
         homeCacheWriteJob?.cancel()
@@ -1117,10 +1121,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             ?: return false
         val source = _uiState.value.sources.firstOrNull { it.id == route.sourceId }
         val sourceName = source?.name ?: route.sourceId.replaceFirstChar(Char::uppercase)
-        val video = VideoUiModel(
+        val seedVideo = VideoUiModel(
             id = route.url,
             title = playback.videoTitle.ifBlank {
-                playback.title.ifBlank { externalContentLabel(route.url) }
+                playback.title
             },
             creator = sourceName,
             metadata = "",
@@ -1131,10 +1135,15 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             sourceName = sourceName,
             sourceIconUrl = source?.iconUrl.orEmpty(),
         )
+        val video = if (seedVideo.title.isBlank()) {
+            resolveForPlayback(seedVideo, activeProfileId)
+        } else {
+            seedVideo
+        }
         remoteVideos[video.id] = video
         pendingPcHandoffSeek = video.id to playback.positionMs
-        openVideo(video.id)
         publishExternalNavigation(ExternalNavigationKind.Video, video.id)
+        openVideoInternal(video.id, publishNavigationWhenResolved = false)
         return true
     }
 
@@ -1249,6 +1258,82 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             loadHomeBrowse(sourceId, groupId, optionValue, forceRefresh = true)
         } else if (sourceId == null) {
             loadHome(home.selectedFeed, forceRefresh = true)
+        }
+    }
+
+    fun loadFollowingComplete() {
+        val state = _uiState.value
+        if (state.followingFeedLoaded || state.followingFeedLoading) return
+        val followedChannels = visibleKnownChannels().filter { channel ->
+            channel.id in followedCreatorIds && channel.sourceId in enabledSourceIds
+        }
+        followingFeedJob?.cancel()
+        _uiState.update {
+            it.copy(
+                followingFeedLoading = true,
+                followingFeedCompleted = 0,
+                followingFeedTotal = followedChannels.size,
+                followingFeedError = null,
+            )
+        }
+        followingFeedJob = viewModelScope.launch {
+            try {
+                val page = engine.loadHome(
+                    feed = HomeFeedType.Subscriptions,
+                    enabledSourceIds = enabledSourceIds,
+                    followedChannels = followedChannels,
+                    onSubscriptionProgress = { completed, total ->
+                        _uiState.update { current ->
+                            if (!current.followingFeedLoading) current else current.copy(
+                                followingFeedCompleted = completed,
+                                followingFeedTotal = maxOf(total, followedChannels.size),
+                            )
+                        }
+                    },
+                    forceCompleteSubscriptions = true,
+                )
+                val videos = page.videos
+                    .map { it.withPersistedLibraryState() }
+                    .withKnownChannelPresentation(followedChannels)
+                    .distinctBy(VideoUiModel::id)
+                videos.forEach { remoteVideos[it.id] = it }
+                videos.forEach(::registerRemoteChannel)
+                _uiState.update {
+                    it.copy(
+                        channels = visibleKnownChannels(),
+                        followingVideos = videos,
+                        followingFeedLoaded = true,
+                        followingFeedLoading = false,
+                        followingFeedCompleted = followedChannels.size,
+                        followingFeedTotal = followedChannels.size,
+                        followingFeedError = null,
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        followingFeedLoading = false,
+                        followingFeedError = error.localizedMessage
+                            ?: text(R.string.home_feed_refresh_failed),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun invalidateFollowingFeed() {
+        followingFeedJob?.cancel()
+        _uiState.update {
+            it.copy(
+                followingVideos = emptyList(),
+                followingFeedLoaded = false,
+                followingFeedLoading = false,
+                followingFeedCompleted = 0,
+                followingFeedTotal = 0,
+                followingFeedError = null,
+            )
         }
     }
 
@@ -1648,11 +1733,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         extrasPagingJob?.cancel()
         channelJob?.cancel()
         channelPagingJob?.cancel()
+        channelSearchJob?.cancel()
+        channelSearchPagingJob?.cancel()
         remotePlaylistJob?.cancel()
         remotePlaylistPagingJob?.cancel()
         resumePromptJob?.cancel()
         homeJob?.cancel()
         homePagingJob?.cancel()
+        followingFeedJob?.cancel()
         searchJob?.cancel()
         searchPagingJob?.cancel()
         suggestionJob?.cancel()
@@ -1859,9 +1947,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     ?: route.sourceId.replaceFirstChar(Char::uppercase)
                 when (route.kind) {
                     EngineUrlKind.Video -> {
-                        val video = findVideo(route.url) ?: VideoUiModel(
+                        val profileAtStart = activeProfileId
+                        val seedVideo = findVideo(route.url) ?: VideoUiModel(
                             id = route.url,
-                            title = externalContentLabel(route.url),
+                            // A watch URL has no title in its path. Leaving this blank lets the
+                            // resolver's real creator-supplied title win even in original-title mode.
+                            title = "",
                             creator = sourceName,
                             metadata = "",
                             duration = "",
@@ -1871,9 +1962,19 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                             sourceName = sourceName,
                             sourceIconUrl = source?.iconUrl.orEmpty(),
                         )
+                        val video = if (
+                            seedVideo.title.isBlank() ||
+                            seedVideo.title.equals("watch", ignoreCase = true)
+                        ) {
+                            resolveForPlayback(seedVideo, profileAtStart)
+                        } else {
+                            seedVideo
+                        }
+                        if (profileAtStart != activeProfileId) return@launch
                         remoteVideos[video.id] = video
-                        openVideo(video.id)
+                        registerRemoteChannel(video)
                         publishExternalNavigation(ExternalNavigationKind.Video, video.id)
+                        openVideoInternal(video.id, publishNavigationWhenResolved = false)
                     }
                     EngineUrlKind.Channel -> {
                         val channel = ChannelUiModel(
@@ -2243,7 +2344,15 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(youtubeImport = YoutubeImportUiState()) }
     }
 
-    fun openVideo(videoId: String) {
+    fun openVideo(videoId: String) = openVideoInternal(
+        videoId = videoId,
+        publishNavigationWhenResolved = true,
+    )
+
+    private fun openVideoInternal(
+        videoId: String,
+        publishNavigationWhenResolved: Boolean,
+    ) {
         val video = findVideo(videoId) ?: return
         if (video.scheduledStartAtMs > System.currentTimeMillis()) {
             showScheduledVideoDialog(video)
@@ -2323,7 +2432,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
                 scheduleResumePromptDismiss(resolved.id, resumePositionFraction)
-                publishExternalNavigation(ExternalNavigationKind.Video, resolved.id)
+                if (publishNavigationWhenResolved) {
+                    publishExternalNavigation(ExternalNavigationKind.Video, resolved.id)
+                }
                 openLocallyOrCast(
                     video = resolved,
                     playWhenReady = resolved.playbackFromDownload || resolved.contentUrl.isNotBlank(),
@@ -3110,6 +3221,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         invalidateSubscriptionFeedCaches()
+        invalidateFollowingFeed()
         if (_uiState.value.home.selectedFeed.isSubscriptionBased()) refreshHome()
     }
 
@@ -3123,6 +3235,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val initialChannel = registerRemoteChannel(channel)
         channelJob?.cancel()
         channelPagingJob?.cancel()
+        channelSearchJob?.cancel()
+        channelSearchPagingJob?.cancel()
         _uiState.update { state ->
             state.copy(
                 channels = visibleKnownChannels(),
@@ -3189,6 +3303,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (tab == ChannelContentTab.Shorts && !current.supportsShorts) return
         if (tab == ChannelContentTab.Playlists && !current.supportsPlaylists) return
         if (tab == ChannelContentTab.Live && current.liveContentType == null) return
+        channelSearchJob?.cancel()
+        channelSearchPagingJob?.cancel()
         _uiState.update {
             it.copy(
                 channelDetail = it.channelDetail.copy(
@@ -3198,12 +3314,22 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     errorMessage = null,
                     continuationId = it.channelDetail.continuationIds[tab],
                     hasMore = tab in it.channelDetail.tabsWithMore,
+                    searchQuery = "",
+                    searchVideos = emptyList(),
+                    isSearching = false,
+                    searchIsRemote = false,
+                    isSearchLoadingMore = false,
+                    searchContinuationId = null,
+                    searchHasMore = false,
+                    searchErrorMessage = null,
                 ),
             )
         }
         if (tab in current.loadedTabs) return
         channelJob?.cancel()
         channelPagingJob?.cancel()
+        channelSearchJob?.cancel()
+        channelSearchPagingJob?.cancel()
         channelJob = viewModelScope.launch {
             try {
                 val page = engine.loadChannelPage(
@@ -3256,6 +3382,129 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         channelDetail = state.channelDetail.copy(
                             isLoading = false,
                             errorMessage = error.localizedMessage ?: text(R.string.creator_load_failed),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun setChannelSearchQuery(value: String) {
+        val query = value.take(160)
+        val current = _uiState.value.channelDetail
+        val channel = current.channel ?: return
+        val tab = current.selectedTab
+        channelSearchJob?.cancel()
+        channelSearchPagingJob?.cancel()
+        _uiState.update { state ->
+            if (state.channelDetail.channelId != channel.id) state else state.copy(
+                channelDetail = state.channelDetail.copy(
+                    searchQuery = query,
+                    searchVideos = emptyList(),
+                    isSearching = query.isNotBlank(),
+                    searchIsRemote = false,
+                    isSearchLoadingMore = false,
+                    searchContinuationId = null,
+                    searchHasMore = false,
+                    searchErrorMessage = null,
+                ),
+            )
+        }
+        if (query.isBlank() || tab == ChannelContentTab.Playlists) return
+        channelSearchJob = viewModelScope.launch {
+            delay(250L)
+            try {
+                val page = engine.searchChannel(
+                    channel = channel,
+                    tab = tab,
+                    query = query.trim(),
+                    contentType = current.liveContentType.takeIf {
+                        tab == ChannelContentTab.Live
+                    },
+                )
+                val videos = page?.videos.orEmpty().map { it.withPersistedLibraryState() }
+                videos.forEach { remoteVideos[it.id] = it }
+                videos.forEach(::registerRemoteChannel)
+                _uiState.update { state ->
+                    if (
+                        state.channelDetail.channelId != channel.id ||
+                        state.channelDetail.selectedTab != tab ||
+                        state.channelDetail.searchQuery != query
+                    ) state else state.copy(
+                        channels = visibleKnownChannels(),
+                        channelDetail = state.channelDetail.copy(
+                            searchVideos = videos,
+                            isSearching = false,
+                            searchIsRemote = page != null,
+                            searchContinuationId = page?.continuationId,
+                            searchHasMore = page?.hasMore == true,
+                            searchErrorMessage = null,
+                        ),
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.w("GrayjayViewModel", "Remote channel search failed; using local results.", error)
+                _uiState.update { state ->
+                    if (
+                        state.channelDetail.channelId != channel.id ||
+                        state.channelDetail.searchQuery != query
+                    ) state else state.copy(
+                        channelDetail = state.channelDetail.copy(
+                            isSearching = false,
+                            searchIsRemote = false,
+                            searchErrorMessage = error.localizedMessage,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadMoreChannelSearch() {
+        val current = _uiState.value.channelDetail
+        val channelId = current.channelId ?: return
+        val query = current.searchQuery
+        val continuationId = current.searchContinuationId ?: return
+        if (
+            query.isBlank() || !current.searchIsRemote || !current.searchHasMore ||
+            current.isSearching || current.isSearchLoadingMore
+        ) return
+        channelSearchPagingJob?.cancel()
+        _uiState.update {
+            it.copy(channelDetail = it.channelDetail.copy(isSearchLoadingMore = true))
+        }
+        channelSearchPagingJob = viewModelScope.launch {
+            try {
+                val page = engine.loadMoreChannel(continuationId)
+                val videos = page.videos.map { it.withPersistedLibraryState() }
+                videos.forEach { remoteVideos[it.id] = it }
+                videos.forEach(::registerRemoteChannel)
+                _uiState.update { state ->
+                    if (
+                        state.channelDetail.channelId != channelId ||
+                        state.channelDetail.searchQuery != query ||
+                        state.channelDetail.searchContinuationId != continuationId
+                    ) state else state.copy(
+                        channels = visibleKnownChannels(),
+                        channelDetail = state.channelDetail.copy(
+                            searchVideos = (state.channelDetail.searchVideos + videos)
+                                .distinctBy(VideoUiModel::id),
+                            isSearchLoadingMore = false,
+                            searchContinuationId = page.continuationId,
+                            searchHasMore = page.hasMore,
+                        ),
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update { state ->
+                    if (state.channelDetail.channelId != channelId) state else state.copy(
+                        channelDetail = state.channelDetail.copy(
+                            isSearchLoadingMore = false,
+                            searchErrorMessage = error.localizedMessage,
                         ),
                     )
                 }
@@ -4751,6 +5000,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         homeFeedCache.clear()
+        invalidateFollowingFeed()
         refreshHome()
     }
 
@@ -5230,11 +5480,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         extrasPagingJob?.cancel()
         channelJob?.cancel()
         channelPagingJob?.cancel()
+        channelSearchJob?.cancel()
+        channelSearchPagingJob?.cancel()
         remotePlaylistJob?.cancel()
         remotePlaylistPagingJob?.cancel()
         resumePromptJob?.cancel()
         homeJob?.cancel()
         homePagingJob?.cancel()
+        followingFeedJob?.cancel()
         // viewModelScope is cancelled as this method returns, so a newly scheduled debounced write
         // would never run. A final synchronous write here is safe and preserves the last position.
         watchProgressWriteJob?.cancel()

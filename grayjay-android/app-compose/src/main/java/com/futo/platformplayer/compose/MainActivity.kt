@@ -15,7 +15,6 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import android.util.Rational
-import android.view.OrientationEventListener
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -64,7 +63,6 @@ class MainActivity : FragmentActivity() {
     private var pendingDatabaseImportUri by mutableStateOf<Uri?>(null)
     private var pendingExternalContentUrl by mutableStateOf<String?>(null)
     private var pendingPcPairingUrl by mutableStateOf<String?>(null)
-    private var deviceIsLandscape by mutableStateOf(false)
     private var pictureInPictureMode by mutableStateOf(false)
     private var pictureInPictureEntryPending = false
     private var pictureInPictureSourceRect: Rect? = null
@@ -79,17 +77,6 @@ class MainActivity : FragmentActivity() {
     ) {
         installPendingUpdateIfAllowed()
     }
-    private val deviceOrientationListener by lazy {
-        object : OrientationEventListener(this) {
-            override fun onOrientationChanged(orientation: Int) {
-                automaticFullscreenPosture(
-                    autoRotateEnabled = isSystemAutoRotateEnabled(),
-                    orientation = orientation,
-                )?.let { deviceIsLandscape = it }
-            }
-        }
-    }
-
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLanguageManager.localizedContext(newBase))
     }
@@ -270,7 +257,9 @@ class MainActivity : FragmentActivity() {
                     isDarkTheme = darkTheme,
                     onDarkThemeChange = viewModel::setDarkThemeEnabled,
                     onThemeModeChange = viewModel::setThemeMode,
-                    deviceIsLandscape = deviceIsLandscape,
+                    // Physical device rotation must never navigate or toggle Grayjoy fullscreen.
+                    // Fullscreen remains an explicit, app-local player action.
+                    deviceIsLandscape = false,
                     onFullscreenPresentationChanged = ::setFullscreenPresentation,
                     onDynamicColorsChange = viewModel::setDynamicColorsEnabled,
                     onPrivateSessionChange = viewModel::setPrivateSessionEnabled,
@@ -364,6 +353,9 @@ class MainActivity : FragmentActivity() {
                     onSourceFilterSelectionChange = viewModel::setSourceFilterSelection,
                     onLoadMoreSearch = viewModel::loadMoreSearch,
                     onLoadMoreChannel = viewModel::loadMoreChannel,
+                    onChannelSearchQueryChange = viewModel::setChannelSearchQuery,
+                    onLoadMoreChannelSearch = viewModel::loadMoreChannelSearch,
+                    onLoadFollowingComplete = viewModel::loadFollowingComplete,
                     onLoadMoreRecommendations = viewModel::loadMoreRecommendations,
                     onLoadMoreComments = viewModel::loadMoreComments,
                     onOpenCommentReplies = viewModel::openCommentReplies,
@@ -446,10 +438,6 @@ class MainActivity : FragmentActivity() {
         if (!isInPictureInPictureMode) pictureInPictureMode = false
         applyPlayerStatusBarVisibility()
         grayjayViewModel.setAppForeground(true)
-        if (!isSystemAutoRotateEnabled()) deviceIsLandscape = false
-        if (deviceOrientationListener.canDetectOrientation()) {
-            deviceOrientationListener.enable()
-        }
         window.decorView.post {
             capturePictureInPictureSourceRect()
             updatePictureInPictureParams()
@@ -458,7 +446,6 @@ class MainActivity : FragmentActivity() {
 
     override fun onPause() {
         grayjayViewModel.setAppForeground(false)
-        deviceOrientationListener.disable()
         if (!pictureInPictureEntryPending && !pictureInPictureMode && !isInPictureInPictureMode) {
             WindowCompat.getInsetsController(window, window.decorView)
                 .show(WindowInsetsCompat.Type.statusBars())
@@ -591,14 +578,6 @@ class MainActivity : FragmentActivity() {
         getSharedPreferences(NOTIFICATION_PERMISSION_PREFERENCES, MODE_PRIVATE)
     }
 
-    private fun isSystemAutoRotateEnabled(): Boolean = runCatching {
-        Settings.System.getInt(
-            contentResolver,
-            Settings.System.ACCELEROMETER_ROTATION,
-            0,
-        ) == 1
-    }.getOrDefault(false)
-
     private fun setFullscreenPresentation(fullscreen: Boolean, portraitVideo: Boolean) {
         playerFullscreen = fullscreen
         playerLandscapeFullscreen = fullscreen && !portraitVideo
@@ -730,18 +709,6 @@ internal fun shouldEnterPictureInPicture(
     isLoading: Boolean,
     isCasting: Boolean = false,
 ): Boolean = enabled && hasVideo && !audioOnly && !isCasting
-
-internal fun physicalLandscapeAt(orientation: Int): Boolean? = when {
-    orientation == OrientationEventListener.ORIENTATION_UNKNOWN -> null
-    orientation in 60..120 || orientation in 240..300 -> true
-    orientation in 0..30 || orientation in 150..210 || orientation in 330..359 -> false
-    else -> null
-}
-
-internal fun automaticFullscreenPosture(
-    autoRotateEnabled: Boolean,
-    orientation: Int,
-): Boolean? = if (autoRotateEnabled) physicalLandscapeAt(orientation) else false
 
 internal fun fullscreenPlayerOrientation(
     fullscreen: Boolean,

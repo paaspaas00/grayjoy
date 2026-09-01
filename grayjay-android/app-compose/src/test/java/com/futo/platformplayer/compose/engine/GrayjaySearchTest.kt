@@ -57,6 +57,19 @@ class GrayjaySearchTest {
         assertTrue(result.videos.isEmpty())
     }
 
+    @Test
+    fun federatedBackendResultsAreInterleaved() {
+        assertEquals(
+            listOf("youtube-1", "plugin-1", "youtube-2", "plugin-2", "youtube-3"),
+            interleaveBackendResults(
+                listOf(
+                    listOf("youtube-1", "youtube-2", "youtube-3"),
+                    listOf("plugin-1", "plugin-2"),
+                ),
+            ),
+        )
+    }
+
     private fun video(id: String, title: String, sourceId: String) = VideoUiModel(
         id = id,
         title = title,
