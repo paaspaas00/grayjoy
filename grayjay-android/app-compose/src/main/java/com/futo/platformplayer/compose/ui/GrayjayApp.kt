@@ -2319,11 +2319,14 @@ private fun GrayjayScaffold(
                         scaffoldTopInRoot = rootTopPx,
                     )
                 },
-                modifier = transitionDragModifier
+                modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    // This inset belongs outside every pointer-input modifier: the
+                    // navigation bar/IME beneath it must not become part of the drag target.
                     .padding(
                         bottom = with(density) { searchMiniplayerBottomPx.toDp() },
                     )
+                    .then(transitionDragModifier)
                     .zIndex(2f),
             )
         }

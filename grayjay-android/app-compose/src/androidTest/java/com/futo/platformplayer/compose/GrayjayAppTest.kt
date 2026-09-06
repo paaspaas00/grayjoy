@@ -8,6 +8,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -21,6 +23,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.futo.platformplayer.compose.ui.GrayjayApp
 import com.futo.platformplayer.compose.ui.GrayjayUiState
 import com.futo.platformplayer.compose.ui.CastProtocolUi
@@ -372,6 +375,32 @@ class GrayjayAppTest {
         }
         composeRule.onNodeWithText("Now playing").assertIsDisplayed()
         composeRule.onNodeWithTag("mini-player").assertDoesNotExist()
+    }
+
+    @Test
+    fun searchMiniPlayerDoesNotInterceptNavigationBarTaps() {
+        composeRule.runOnIdle { openVideo("real-video-one") }
+        composeRule.onNodeWithTag("mini-player").assertIsDisplayed()
+        for (retainNowPlaying in listOf(false, true)) {
+            if (retainNowPlaying) {
+                composeRule.onNodeWithTag("mini-player").performClick()
+                composeRule.onNodeWithTag("now-playing-close").assertIsDisplayed()
+                composeRule.onNodeWithContentDescription(
+                    composeRule.activity.getString(R.string.back),
+                ).performClick()
+            }
+            for (destination in listOf("home", "subscriptions", "library", "settings")) {
+                composeRule.onNodeWithTag("nav-search").performClick()
+                closeSoftKeyboard()
+                composeRule.waitForIdle()
+
+                // Semantics performClick bypasses hit testing and would miss a transparent
+                // draggable layer covering the visible navigation buttons.
+                composeRule.onNodeWithTag("nav-$destination").performTouchInput { click(center) }
+                composeRule.onNodeWithTag("nav-$destination").assertIsSelected()
+                composeRule.onNodeWithTag("mini-player").assertIsDisplayed()
+            }
+        }
     }
 
     @Test
