@@ -79,7 +79,7 @@ jobs:
           GRAYJOY_RELEASE_STORE_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_STORE_PASSWORD }}
           GRAYJOY_RELEASE_KEY_ALIAS: ${{ secrets.GRAYJOY_RELEASE_KEY_ALIAS }}
           GRAYJOY_RELEASE_KEY_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon :app-compose:assembleDebug :app-compose:assembleRelease
+        run: ./gradlew --no-daemon :app-compose:testDebugUnitTest :grayjay-engine:testDebugUnitTest :app-compose:assembleDebug :app-compose:assembleRelease
 
       - name: Verify APK signatures and signing identity
         shell: bash
@@ -162,7 +162,8 @@ jobs:
               protocol.js \
               README.md \
               vendor/qrcode.js \
-              vendor/qrcode-generator-LICENSE.txt
+              vendor/qrcode-generator-LICENSE.txt \
+              icons/*.png
           )
 
           checksum_path="release/Grayjoy-${version}-SHA256SUMS.txt"
