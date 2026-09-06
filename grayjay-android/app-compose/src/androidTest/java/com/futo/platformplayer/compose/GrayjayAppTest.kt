@@ -70,6 +70,9 @@ class GrayjayAppTest {
                     uiState = state.value,
                     player = player,
                     onDynamicColorsChange = {},
+                    onPreferNewPipeForYoutubePlaybackChange = {},
+                    onSubscriptionFetchModeChange = {},
+                    onVideoTitleLanguageModeChange = {},
                     onPrivateSessionChange = { enabled ->
                         state.value = state.value.copy(privateSessionEnabled = enabled)
                     },

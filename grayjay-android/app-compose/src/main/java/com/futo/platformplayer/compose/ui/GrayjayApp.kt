@@ -99,7 +99,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -107,7 +106,6 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
@@ -2341,29 +2339,13 @@ private fun GrayjayScaffold(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clipToBounds()
-                    .layout { measurable, constraints ->
-                        // Keep the expensive detail subtree at its expanded constraints. Only
-                        // the enclosing viewport changes during the morph, so text, lazy lists
-                        // and the player placeholder are not remeasured on every frame.
-                        val expandedHeight = rootHeightPx.roundToInt().coerceAtLeast(1)
-                        val placeable = measurable.measure(
-                            constraints.copy(
-                                minHeight = expandedHeight,
-                                maxHeight = expandedHeight,
-                            ),
-                        )
-                        val viewportHeight = if (!transitionActive) 0 else transitionOverlayHeightPx(
-                            rootHeightPx,
-                            minimizedHeight,
-                            playback.transition.progress,
-                        ).roundToInt().coerceAtLeast(1)
-                        layout(placeable.width, viewportHeight) { placeable.place(0, 0) }
-                    }
-                    .graphicsLayer {
-                        alpha = if (transitionActive) 1f else 0f
-                        translationY = minimizedTop * playback.transition.progress
-                    }
+                    .playerMorphViewport(
+                        expandedHeightPx = rootHeightPx,
+                        minimizedHeightPx = minimizedHeight,
+                        minimizedTopPx = minimizedTop,
+                        isActive = transitionActive,
+                        progress = { playback.transition.progress },
+                    )
                     .then(if (transitionActive) Modifier else Modifier.clearAndSetSemantics { })
                     .drawWithContent {
                         val transitionProgress = playback.transition.progress.coerceIn(0f, 1f)
