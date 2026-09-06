@@ -362,6 +362,7 @@ fun SubscriptionsScreen(
                         video = video,
                         index = index + 1,
                         selected = video.id in selectedVideoIds,
+                        selectionMode = videoSelectionMode,
                         showProgress = true,
                         onClick = {
                             if (videoSelectionMode) {

@@ -300,6 +300,7 @@ fun PlaylistDetailScreen(
                     index = index,
                     download = downloads[video.id],
                     selected = video.id in selectedVideoIds,
+                    selectionMode = selectionMode,
                     onClick = {
                         if (selectionMode) {
                             if (video.id in selectedVideoIds) selectedVideoIds.remove(video.id)

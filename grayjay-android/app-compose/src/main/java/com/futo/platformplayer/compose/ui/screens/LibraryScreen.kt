@@ -494,6 +494,9 @@ internal fun LibraryScreen(
                     index = index,
                     download = downloads[video.id],
                     metadataText = watchedMetadata,
+                    selectionMode = selectionMode && pageFilter in setOf(
+                        LibraryFilter.History, LibraryFilter.Downloads,
+                    ),
                     selected = pageFilter in setOf(
                         LibraryFilter.History,
                         LibraryFilter.Downloads,

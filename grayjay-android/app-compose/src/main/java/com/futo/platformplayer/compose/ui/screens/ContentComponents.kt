@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,6 +56,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -254,6 +256,7 @@ internal fun VideoCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     selected: Boolean = false,
+    selectionMode: Boolean = false,
     showProgress: Boolean = false,
     animateEntrance: Boolean = true,
 ) {
@@ -265,6 +268,7 @@ internal fun VideoCard(
         onClick = onClick,
         onLongClick = onLongClick,
         selected = selected,
+        selectionMode = selectionMode,
         showProgress = showProgress,
         animateEntrance = animateEntrance,
     )
@@ -280,6 +284,7 @@ internal fun CompactVideoCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     selected: Boolean = false,
+    selectionMode: Boolean = false,
     showProgress: Boolean = false,
     animateEntrance: Boolean = true,
 ) {
@@ -360,9 +365,17 @@ internal fun CompactVideoCard(
                         }
                     }
                     Surface(
-                        onClick = { onCreatorClick(video) },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .minimumInteractiveComponentSize()
+                            .clip(MaterialTheme.shapes.small)
+                            .combinedClickable(
+                                role = Role.Button,
+                                onClick = {
+                                    if (selectionMode) onClick() else onCreatorClick(video)
+                                },
+                                onLongClick = onLongClick,
+                            )
                             .testTag("video-channel-footer-${video.id}"),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,

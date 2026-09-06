@@ -2,6 +2,8 @@ package com.futo.platformplayer.compose
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +68,7 @@ class GrayjayAppTest {
     private var confirmedImport: DatabaseImportSelection? = null
     private var trustedUnverifiedSource = false
     private var rejectedUnverifiedSource = false
+    private var channelOpenRequests = 0
 
     @Before
     fun setUp() {
@@ -86,7 +89,7 @@ class GrayjayAppTest {
                         state.value = state.value.copy(privateSessionEnabled = enabled)
                     },
                     onOpenVideo = ::openVideo,
-                    onLoadChannel = {},
+                    onLoadChannel = { channelOpenRequests++ },
                     onHomeFeedSelected = {},
                     onRefreshHome = {},
                     onPlayQueue = { ids -> ids.firstOrNull()?.let(::openVideo) },
@@ -229,6 +232,55 @@ class GrayjayAppTest {
             assertEquals("Research", state.value.playlists.single().title)
             assertEquals(2, state.value.playlists.single().videoIds.size)
         }
+    }
+
+    @Test
+    fun channelFooterUsesCardSelectionGesturesAndRestoresNormalNavigation() {
+        composeRule.onNodeWithTag("nav-library").performClick()
+        val first = composeRule.onNodeWithTag("video-channel-footer-real-video-one", useUnmergedTree = true)
+        val second = composeRule.onNodeWithTag("video-channel-footer-real-video-two", useUnmergedTree = true)
+        first.performScrollTo().performTouchInput { click(center) }
+        composeRule.runOnIdle { assertEquals(1, channelOpenRequests) }
+        composeRule.onNodeWithTag("nav-library").performClick()
+
+        first.performScrollTo().performTouchInput { longClick() }
+        composeRule.onNodeWithTag("history-selection-bar").assertIsDisplayed()
+        second.performScrollTo().performTouchInput { click(center) }
+        assertSelectedVideoCount(2)
+        first.performScrollTo().performTouchInput { click(center) }
+        assertSelectedVideoCount(1)
+        second.performScrollTo().performTouchInput { click(center) }
+        composeRule.onNodeWithTag("history-selection-bar").assertDoesNotExist()
+        composeRule.runOnIdle { assertEquals(1, channelOpenRequests) }
+
+        first.performScrollTo().performTouchInput { click(center) }
+        composeRule.runOnIdle { assertEquals(2, channelOpenRequests) }
+    }
+
+    @Test
+    fun playlistChannelFootersSelectUnselectedVideosWithoutOpeningChannels() {
+        composeRule.runOnIdle {
+            state.value = state.value.copy(playlists = listOf(
+                PlaylistUiModel("footer-test", "Footer test", "", listOf("real-video-one", "real-video-two")),
+            ))
+        }
+        composeRule.onNodeWithTag("nav-library").performClick()
+        composeRule.onNodeWithTag("library-filter-playlists").performClick()
+        composeRule.onNodeWithTag("playlist-footer-test").performScrollTo().performClick()
+        composeRule.onNodeWithTag("video-channel-footer-real-video-one", useUnmergedTree = true)
+            .performScrollTo().performTouchInput { longClick() }
+        composeRule.onNodeWithTag("playlist-selection-bar").assertIsDisplayed()
+        composeRule.onNodeWithTag("video-channel-footer-real-video-two", useUnmergedTree = true)
+            .performScrollTo().performTouchInput { click(center) }
+        assertSelectedVideoCount(2, "playlist-selection-bar")
+        composeRule.runOnIdle { assertEquals(0, channelOpenRequests) }
+    }
+
+    private fun assertSelectedVideoCount(count: Int, barTag: String = "history-selection-bar") {
+        composeRule.onNode(
+            hasText(composeRule.activity.resources.getQuantityString(R.plurals.selected_count, count, count)) and
+                hasAnyAncestor(hasTestTag(barTag)),
+        ).assertIsDisplayed()
     }
 
     @Test
