@@ -81,14 +81,21 @@ internal class HomeCacheRepository(context: Context, profileId: String) {
     }
 
     @Synchronized
-    fun removeFeed(feed: HomeFeedType) {
-        val current = load() ?: return
-        val remaining = current.pages - feed
-        if (remaining.isEmpty()) {
+    fun removeFeeds(feeds: Set<HomeFeedType>) {
+        if (feeds.containsAll(HomeFeedType.entries)) {
             preferences.edit().remove(KEY_SNAPSHOT).apply()
-        } else {
-            save(current.copy(pages = remaining))
+            return
         }
+        // Invalidation does not need thousands of VideoUiModels or a full re-encode.
+        val root = runCatching {
+            preferences.getString(KEY_SNAPSHOT, null)?.let(::JSONObject)
+        }.getOrNull() ?: return
+        val pages = root.optJSONObject("pages") ?: return
+        feeds.forEach { pages.remove(it.name) }
+        preferences.edit().apply {
+            if (pages.length() == 0) remove(KEY_SNAPSHOT)
+            else putString(KEY_SNAPSHOT, root.toString())
+        }.apply()
     }
 
     private companion object {

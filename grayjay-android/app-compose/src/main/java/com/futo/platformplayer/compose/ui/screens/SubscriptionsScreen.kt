@@ -81,7 +81,9 @@ internal fun videosForFollowedCreators(
     videos: List<VideoUiModel>,
     followedCreatorIds: Set<String>,
 ): List<VideoUiModel> = videos.filter { video ->
-    followedCreatorIds.any { channelId -> videoBelongsToFollowedChannel(video, channelId) }
+    video.authorUrl in followedCreatorIds ||
+        video.channelId in followedCreatorIds ||
+        "${video.sourceId}:${video.creator}" in followedCreatorIds
 }
 
 internal fun uploadsFromChannel(
@@ -248,6 +250,7 @@ fun SubscriptionsScreen(
     } else {
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
+                state = rememberContentListState(),
                 contentPadding = PaddingValues(
                     start = if (performance.compactContent) 8.dp else 16.dp,
                     top = if (performance.compactContent) 8.dp else 16.dp,

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.filled.PlayArrow
@@ -86,7 +85,7 @@ fun RemotePlaylistDetailScreen(
     onLoadMore: () -> Unit,
 ) {
     val playlist = detail.playlist ?: return
-    val listState = rememberLazyListState()
+    val listState = rememberContentListState()
     var showCreateSheet by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var showSortSheet by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var sortModeName by rememberSaveable(playlist.id) {

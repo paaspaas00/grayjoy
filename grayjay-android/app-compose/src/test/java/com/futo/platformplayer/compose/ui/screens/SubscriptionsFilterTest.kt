@@ -7,6 +7,23 @@ import org.junit.Test
 
 class SubscriptionsFilterTest {
     @Test
+    fun subscriptionMembershipDoesNotScanEveryFollowedChannelForEveryVideo() {
+        val ids = (0 until 2_000).mapTo(hashSetOf()) { "channel-$it" }
+        var probes = 0
+        val countedIds = object : Set<String> by ids {
+            override fun contains(element: String): Boolean {
+                probes++
+                return ids.contains(element)
+            }
+            override fun iterator(): Iterator<String> =
+                error("Subscription filtering must use set membership, not a nested scan")
+        }
+        val videos = List(10_000) { video("video-$it", authorUrl = "channel-${it % 2_000}") }
+        assertEquals(10_000, videosForFollowedCreators(videos, countedIds).size)
+        assertEquals(10_000, probes)
+    }
+
+    @Test
     fun matchesSubscriptionsAcrossPluginCreatorIdentifiers() {
         val videos = listOf(
             video("author", authorUrl = "creator-url"),

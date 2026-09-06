@@ -328,7 +328,7 @@ internal fun LibraryScreen(
                     }
                 }
                 val isSelectedPage = pageFilter == selectedFilter
-                val pageListState = rememberLazyListState()
+                val pageListState = rememberContentListState()
                 val listState = if (pageFilter == LibraryFilter.Playlists) {
                     playlistListState
                 } else {

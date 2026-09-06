@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
@@ -15,9 +16,24 @@ data class DevicePerformanceProfile(
 
 @Composable
 fun rememberDevicePerformanceProfile(): DevicePerformanceProfile {
-    val context = LocalContext.current
-    return remember(context) { detectDevicePerformanceProfile(context) }
+    val supplied = LocalDevicePerformanceProfile.current
+    if (supplied != null) return supplied
+    val context = LocalContext.current.applicationContext
+    return remember(context) { devicePerformanceProfile(context) }
 }
+
+val LocalDevicePerformanceProfile = staticCompositionLocalOf<DevicePerformanceProfile?> { null }
+
+@Volatile
+private var cachedDevicePerformanceProfile: DevicePerformanceProfile? = null
+
+internal fun devicePerformanceProfile(context: Context): DevicePerformanceProfile =
+    cachedDevicePerformanceProfile ?: synchronized(DevicePerformanceProfile::class.java) {
+        cachedDevicePerformanceProfile
+            ?: detectDevicePerformanceProfile(context.applicationContext).also {
+                cachedDevicePerformanceProfile = it
+            }
+    }
 
 internal fun detectDevicePerformanceProfile(context: Context): DevicePerformanceProfile {
     val activityManager = context.getSystemService(ActivityManager::class.java)

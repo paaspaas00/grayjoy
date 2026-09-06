@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -82,7 +81,7 @@ fun SearchScreen(
     showNavigationMenuButton: Boolean = false,
     onNavigationMenuClick: () -> Unit = {},
 ) {
-    val listState = rememberLazyListState()
+    val listState = rememberContentListState()
     var typeName by rememberSaveable { mutableStateOf(SearchContentType.Videos.name) }
     var selectedSourceIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var sourcesInitialized by rememberSaveable { mutableStateOf(false) }

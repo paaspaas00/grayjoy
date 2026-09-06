@@ -8,8 +8,13 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.futo.platformplayer.compose.LocalDevicePerformanceProfile
+import com.futo.platformplayer.compose.devicePerformanceProfile
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFF405DB1),
@@ -48,19 +53,25 @@ fun GrayjayTheme(
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
-    val colors = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && darkTheme ->
-            dynamicDarkColorScheme(context)
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            dynamicLightColorScheme(context)
-        darkTheme -> DarkColors
-        else -> LightColors
+    val configuration = LocalConfiguration.current
+    val colors = remember(context, configuration, dynamicColor, darkTheme) {
+        when {
+            dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && darkTheme ->
+                dynamicDarkColorScheme(context)
+            dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+                dynamicLightColorScheme(context)
+            darkTheme -> DarkColors
+            else -> LightColors
+        }
     }
+    val performance = remember(context) { devicePerformanceProfile(context) }
 
-    MaterialTheme(
-        colorScheme = colors,
-        typography = GrayjayTypography,
-        shapes = GrayjayShapes,
-        content = content,
-    )
+    CompositionLocalProvider(LocalDevicePerformanceProfile provides performance) {
+        MaterialTheme(
+            colorScheme = colors,
+            typography = GrayjayTypography,
+            shapes = GrayjayShapes,
+            content = content,
+        )
+    }
 }

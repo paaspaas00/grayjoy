@@ -85,6 +85,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -213,6 +214,7 @@ fun VideoDetailScreen(
     onLoadMoreCommentReplies: () -> Unit = {},
     onResumeFromHistory: () -> Unit = {},
     renderPlayer: Boolean = true,
+    isActive: Boolean = true,
     allowSideBySideLayout: Boolean = false,
     onPlayerBoundsChanged: (Rect) -> Unit = {},
 ) {
@@ -266,7 +268,7 @@ fun VideoDetailScreen(
     }
     RequestNextPageEffect(
         listState = detailListState,
-        canLoadMore = when (selectedSection) {
+        canLoadMore = isActive && when (selectedSection) {
             DetailSection.UpNext -> nowPlaying.hasMoreRecommendations &&
                 !nowPlaying.isLoadingMoreRecommendations
             DetailSection.Comments -> nowPlaying.hasMoreComments && !nowPlaying.isLoadingMoreComments
@@ -701,11 +703,14 @@ internal fun PlayerSurface(
     val previousAvailable = canGoPrevious || player.currentPosition > 5_000L
     val showControls = !controlsLocked &&
         (controlsVisible || playback.errorMessage != null)
-    val controlsVisibilityAlpha by animateFloatAsState(
+    val controlsVisibilityAlpha = animateFloatAsState(
         targetValue = if (showControls) 1f else 0f,
         animationSpec = tween(durationMillis = 180),
         label = "player-controls-visibility",
     )
+    val controlsAreDrawn by remember {
+        derivedStateOf { controlsVisibilityAlpha.value > 0.01f }
+    }
 
     LaunchedEffect(
         controlsVisible,
@@ -843,11 +848,11 @@ internal fun PlayerSurface(
             }
         }
 
-        if (controlsVisibilityAlpha > 0.01f) {
+        if (controlsAreDrawn) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer { alpha = controlsVisibilityAlpha }
+                    .graphicsLayer { alpha = controlsVisibilityAlpha.value }
                     .then(
                         if (isFullscreen) {
                             Modifier.windowInsetsPadding(WindowInsets.navigationBars)
@@ -1322,13 +1327,14 @@ private fun PlayerTimelineRow(
             val density = LocalDensity.current
             val storyboardWidth = if (isFullscreen) 240.dp else 128.dp
             val storyboardFrame = remember(
+                isSeeking,
                 video.storyboard,
                 displayedPositionMs,
                 storyboardWidth,
                 density,
                 storyboardUnavailable,
             ) {
-                if (storyboardUnavailable) null else video.storyboard?.frameAt(
+                if (!isSeeking || storyboardUnavailable) null else video.storyboard?.frameAt(
                     positionMs = displayedPositionMs,
                     targetWidthPx = with(density) { storyboardWidth.roundToPx() },
                 )

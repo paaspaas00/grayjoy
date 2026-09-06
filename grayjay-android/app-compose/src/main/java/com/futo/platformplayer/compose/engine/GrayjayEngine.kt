@@ -1324,9 +1324,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         ).toEngineVideoPage(feed)
     }
 
-    private fun com.futo.platformplayer.backend.GrayjayVideoPage.toEngineVideoPage(
+    private suspend fun com.futo.platformplayer.backend.GrayjayVideoPage.toEngineVideoPage(
         feed: HomeFeedType,
-    ): EngineVideoPage {
+    ): EngineVideoPage = withContext(Dispatchers.Default) {
         val items = videos
         val visibleItems = when (feed) {
             HomeFeedType.Subscriptions, HomeFeedType.ForYou -> items
@@ -1336,7 +1336,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             HomeFeedType.Trending -> items.sortedByDescending(GrayjaySearchItem::viewCount)
             HomeFeedType.Live -> items.filter(GrayjaySearchItem::isLive)
         }
-        return EngineVideoPage(
+        EngineVideoPage(
             videos = visibleItems
                 .distinctBy(GrayjaySearchItem::url)
                 .map { it.toVideoUiModel(pluginEndpoints[it.sourceId], appContext) },
@@ -1386,7 +1386,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         } else {
             pluginBackend.loadChannel(channel.sourceId, channel.id, endpoint)
         }
-        return details.toEngineChannelDetails(channel, endpoint, appContext)
+        return withContext(Dispatchers.Default) {
+            details.toEngineChannelDetails(channel, endpoint, appContext)
+        }
     }
 
     override suspend fun loadChannelPage(
@@ -1480,8 +1482,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         } else {
             pluginBackend.loadPlaylist(playlist.sourceId, playlist.id, endpoint)
         }
-        return details
-            .toEnginePlaylistDetails(playlist, endpoint, appContext)
+        return withContext(Dispatchers.Default) {
+            details.toEnginePlaylistDetails(playlist, endpoint, appContext)
+        }
     }
 
     override suspend fun routeUrl(
@@ -1532,15 +1535,15 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         )
     }
 
-    private fun GrayjayChannelPage.toEngineChannelPage(
+    private suspend fun GrayjayChannelPage.toEngineChannelPage(
         endpoint: PluginEndpoint?,
         context: Context,
-    ) = EngineChannelPage(
+    ) = withContext(Dispatchers.Default) { EngineChannelPage(
         videos = videos.map { it.toVideoUiModel(endpoint ?: pluginEndpoints[it.sourceId], context) },
         playlists = playlists.map { it.toPlaylistUiModel(context) },
         continuationId = continuationId,
         hasMore = hasMore,
-    )
+    ) }
 
     override suspend fun resolve(
         video: VideoUiModel,

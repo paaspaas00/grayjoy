@@ -26,7 +26,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -233,7 +232,7 @@ class MainActivity : FragmentActivity() {
                 ThemeMode.Light -> false
                 ThemeMode.Dark -> true
             }
-            SideEffect {
+            LaunchedEffect(darkTheme) {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = !darkTheme
                     isAppearanceLightNavigationBars = !darkTheme
@@ -246,7 +245,9 @@ class MainActivity : FragmentActivity() {
                 GrayjayApp(
                     uiState = uiState,
                     player = viewModel.player,
-                    uiLanguageTag = AppLanguageManager.selectedLanguageTag(this@MainActivity),
+                    uiLanguageTag = remember {
+                        AppLanguageManager.selectedLanguageTag(this@MainActivity)
+                    },
                     onUiLanguageChange = { languageTag ->
                         if (languageTag != AppLanguageManager.selectedLanguageTag(this@MainActivity)) {
                             AppLanguageManager.setSelectedLanguageTag(this@MainActivity, languageTag)

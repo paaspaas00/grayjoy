@@ -1,6 +1,7 @@
 package com.futo.platformplayer.compose
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -466,6 +467,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var searchPagingJob: Job? = null
     private var homePagingJob: Job? = null
     private var homeCacheWriteJob: Job? = null
+    private var homeRestoreJob: Job? = null
+    private val homeCacheDispatcher = Dispatchers.IO.limitedParallelism(1)
     private var channelPagingJob: Job? = null
     private var channelSearchPagingJob: Job? = null
     private var remotePlaylistJob: Job? = null
@@ -485,7 +488,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var pcHandoffJob: Job? = null
     private var libraryLoadJob: Job? = null
     private var pluginUpdateJob: Job? = null
-    private var lastPluginUpdateCheckMs = 0L
+    private val pluginUpdatePreferences = application.getSharedPreferences(
+        "grayjoy_source_update_checks", Context.MODE_PRIVATE,
+    )
+    private var lastPluginUpdateCheckMs = pluginUpdatePreferences.getLong("last_check", 0L)
     private val historyWriteJobs = mutableMapOf<String, Job>()
     private var homeLoadGeneration = 0L
     private var playbackGeneration = 0L
@@ -729,9 +735,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
         restoreDownloadQueue()
         scheduleOfflinePlaylistSync()
-        if (!restoreHomeFromSession()) {
-            loadHome(HomeFeedType.Subscriptions, forceRefresh = false)
-        }
+        restoreCachedHome()
     }
 
     fun setDynamicColorsEnabled(enabled: Boolean) {
@@ -836,8 +840,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             homeContinuationCache.remove(feed)
             homeHasMoreCache.remove(feed)
             HomeSessionCache.removeFeed(activeProfileId, feed)
-            homeCacheRepository.removeFeed(feed)
         }
+        removeHomeDiskCache(setOf(HomeFeedType.Subscriptions, HomeFeedType.Shorts))
     }
 
     private fun invalidateBackendDependentContent() {
@@ -853,8 +857,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         homeHasMoreCache.clear()
         HomeFeedType.entries.forEach { feed ->
             HomeSessionCache.removeFeed(activeProfileId, feed)
-            homeCacheRepository.removeFeed(feed)
         }
+        removeHomeDiskCache(HomeFeedType.entries.toSet())
         val selectedFeed = _uiState.value.home.selectedFeed
         val searchQuery = _uiState.value.search.query
         val subscriptionTotal = visibleKnownChannels().count { channel ->
@@ -1147,11 +1151,26 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         return true
     }
 
-    private fun restoreHomeFromSession(): Boolean {
+    private fun restoreCachedHome() {
+        homeRestoreJob?.cancel()
+        val session = HomeSessionCache.get(activeProfileId)
+        if (session != null && restoreHomeFromSession(session)) return
+        val profile = activeProfileId
+        val repository = homeCacheRepository
+        val generation = homeLoadGeneration
+        _uiState.update { it.copy(home = it.home.copy(isLoading = true)) }
+        homeRestoreJob = viewModelScope.launch {
+            val snapshot = withContext(homeCacheDispatcher) { repository.load() }
+            if (profile != activeProfileId || generation != homeLoadGeneration) return@launch
+            if (snapshot == null || !restoreHomeFromSession(snapshot)) {
+                loadHome(HomeFeedType.Subscriptions, forceRefresh = false)
+            }
+        }
+    }
+
+    private fun restoreHomeFromSession(snapshot: CachedHomeSnapshot): Boolean {
         val sessionSnapshot = HomeSessionCache.get(activeProfileId)
-        val snapshot = sessionSnapshot
-            ?: homeCacheRepository.load()?.also { HomeSessionCache.put(activeProfileId, it) }
-            ?: return false
+        HomeSessionCache.put(activeProfileId, snapshot)
         val selectedFeed = sessionSnapshot?.selectedFeed?.takeIf(snapshot.pages::containsKey)
             ?: HomeFeedType.Subscriptions.takeIf(snapshot.pages::containsKey)
             ?: snapshot.selectedFeed.takeIf(snapshot.pages::containsKey)
@@ -1213,12 +1232,21 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         HomeSessionCache.put(activeProfileId, snapshot)
         val repository = homeCacheRepository
         homeCacheWriteJob?.cancel()
-        homeCacheWriteJob = viewModelScope.launch(Dispatchers.IO) {
+        homeCacheWriteJob = viewModelScope.launch(homeCacheDispatcher) {
+            // Coalesce rapid paging/metadata updates before encoding the full snapshot.
+            delay(600L)
             repository.save(snapshot)
         }
     }
 
+    private fun removeHomeDiskCache(feeds: Set<HomeFeedType>) {
+        homeCacheWriteJob?.cancel()
+        val repository = homeCacheRepository
+        viewModelScope.launch(homeCacheDispatcher) { repository.removeFeeds(feeds) }
+    }
+
     fun selectHomeFeed(feed: HomeFeedType) {
+        homeRestoreJob?.cancel()
         if (_uiState.value.home.selectedFeed == feed && !_uiState.value.home.isLoading) return
         val cached = homeFeedCache[feed]
         if (cached != null) {
@@ -1243,7 +1271,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     ),
                 )
             }
-            saveHomeToSession(feed)
+            // A tab selection changes no cached videos. Avoid serializing all feeds just to
+            // remember a navigation choice; the in-process snapshot is sufficient here.
+            HomeSessionCache.get(activeProfileId)?.let { snapshot ->
+                HomeSessionCache.put(activeProfileId, snapshot.copy(selectedFeed = feed))
+            }
         } else {
             loadHome(feed, forceRefresh = false)
         }
@@ -1284,7 +1316,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     followedChannels = followedChannels,
                     onSubscriptionProgress = { completed, total ->
                         _uiState.update { current ->
-                            if (!current.followingFeedLoading) current else current.copy(
+                            val step = (total / 24).coerceAtLeast(1)
+                            if (!current.followingFeedLoading ||
+                                (completed < total && completed - current.followingFeedCompleted < step)
+                            ) current else current.copy(
                                 followingFeedCompleted = completed,
                                 followingFeedTotal = maxOf(total, followedChannels.size),
                             )
@@ -1406,7 +1441,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private fun loadHome(feed: HomeFeedType, forceRefresh: Boolean) {
         if (forceRefresh) {
             HomeSessionCache.removeFeed(activeProfileId, feed)
-            homeCacheRepository.removeFeed(feed)
+            removeHomeDiskCache(setOf(feed))
         }
         homeJob?.cancel()
         homePagingJob?.cancel()
@@ -1738,6 +1773,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         remotePlaylistJob?.cancel()
         remotePlaylistPagingJob?.cancel()
         resumePromptJob?.cancel()
+        homeRestoreJob?.cancel()
         homeJob?.cancel()
         homePagingJob?.cancel()
         followingFeedJob?.cancel()
@@ -1795,7 +1831,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         followedCreatorIds = preferences.initializeFollowedCreators(
             content.channels.map(ChannelUiModel::id).toSet(),
         )
-        allVideos = libraryRepository.loadSavedVideos()
+        val loadedLibrary = withContext(Dispatchers.IO) {
+            libraryRepository.loadSavedVideos() to libraryRepository.loadPlaylists()
+        }
+        allVideos = loadedLibrary.first
         savedVideosById = allVideos.associateBy(VideoUiModel::id)
         remoteVideos.clear()
         remoteChannels.clear()
@@ -1812,7 +1851,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             videos = visible.videos,
             libraryVideos = allVideos,
             channels = visibleKnownChannels(),
-            playlists = libraryRepository.loadPlaylists(),
+            playlists = loadedLibrary.second,
             sources = engineSources.map {
                 it.copy(
                     isEnabled = it.id in enabledSourceIds,
@@ -1850,9 +1889,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         )
         restoreDownloadQueue()
         scheduleOfflinePlaylistSync()
-        if (!restoreHomeFromSession()) {
-            loadHome(HomeFeedType.Subscriptions, forceRefresh = false)
-        }
+        restoreCachedHome()
     }
 
     fun createProfile(name: String, pin: String) {
@@ -1905,9 +1942,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val now = System.currentTimeMillis()
         if (
             pluginUpdateJob?.isActive == true ||
-            now - lastPluginUpdateCheckMs < PLUGIN_UPDATE_CHECK_INTERVAL_MS
+            (now >= lastPluginUpdateCheckMs &&
+                now - lastPluginUpdateCheckMs < PLUGIN_UPDATE_CHECK_INTERVAL_MS)
         ) return
         lastPluginUpdateCheckMs = now
+        pluginUpdatePreferences.edit().putLong("last_check", now).apply()
         pluginUpdateJob = viewModelScope.launch(Dispatchers.IO) {
             delay(STARTUP_BACKGROUND_WORK_DELAY_MS)
             val summary = runCatching { engine.updateSources() }
@@ -2148,7 +2187,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun List<VideoUiModel>.applyDurations(durations: Map<String, String>): List<VideoUiModel> =
-        map { video ->
+        mapIfChanged { video ->
             durations[video.id]?.let { duration ->
                 if (video.duration == duration) video else video.copy(duration = duration)
             } ?: video
@@ -2401,8 +2440,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 }
                 val generation = invalidatePlaybackQueue()
                 activePlaylistId = null
-                libraryRepository.setAvailable(video.id, true)
-                libraryRepository.setScheduledStart(video.id, 0L)
+                // recordHistory below persists the resolved availability and schedule together.
+                // Two standalone mutations here rewrote the whole library before the first frame.
                 remoteVideos[resolved.id] = resolved
                 registerRemoteChannel(resolved)
                 recordHistory(resolved)
@@ -4951,7 +4990,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { state ->
             if (state.privateSessionEnabled) state else {
                 updateVideoEverywhere(state, videoId) {
-                    it.copy(watchProgress = normalizedProgress)
+                    if (it.watchProgress == normalizedProgress) it
+                    else it.copy(watchProgress = normalizedProgress)
                 }
             }
         }
@@ -5922,6 +5962,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         // search/home/channel result (80 full parses after a typical subscription refresh) and
         // twice while opening a video.
         val saved = savedVideosById[id] ?: return this
+        if (
+            isWatchLater == saved.isWatchLater && isDownloaded == saved.isDownloaded &&
+            watchProgress == saved.watchProgress && isLiked == saved.isLiked &&
+            isAvailable == saved.isAvailable && scheduledStartAtMs == saved.scheduledStartAtMs &&
+            lastWatchedAt == saved.lastWatchedAt && playlistNames == saved.playlistNames
+        ) return this
         return copy(
             isWatchLater = saved.isWatchLater,
             isDownloaded = saved.isDownloaded,
@@ -5953,7 +5999,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private fun List<VideoUiModel>.withKnownChannelPresentation(
         extraChannels: List<ChannelUiModel> = emptyList(),
     ): List<VideoUiModel> {
-        if (isEmpty()) return this
+        if (isEmpty() || all { it.authorThumbnailUrl.isNotBlank() }) return this
         val knownChannels = sequenceOf(
             extraChannels.asSequence(),
             content.channels.asSequence(),
@@ -5974,8 +6020,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
         }
-        return map { video ->
-            if (video.authorThumbnailUrl.isNotBlank()) return@map video
+        return mapIfChanged { video ->
+            if (video.authorThumbnailUrl.isNotBlank()) return@mapIfChanged video
             val channel = sequenceOf(video.authorUrl, video.channelId)
                 .mapNotNull { creatorReferenceKey(video.sourceId, it) }
                 .mapNotNull(byReference::get)
@@ -6262,7 +6308,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val saved = allVideos.associateBy(VideoUiModel::id)
         savedVideosById = saved
         fun merge(video: VideoUiModel): VideoUiModel = saved[video.id]?.let { stored ->
-            video.copy(
+            if (
+                video.isWatchLater == stored.isWatchLater &&
+                video.isDownloaded == stored.isDownloaded &&
+                video.isLiked == stored.isLiked &&
+                video.watchProgress == stored.watchProgress &&
+                video.lastWatchedAt == stored.lastWatchedAt &&
+                video.playlistNames == stored.playlistNames
+            ) video else video.copy(
                 isWatchLater = stored.isWatchLater,
                 isDownloaded = stored.isDownloaded,
                 isLiked = stored.isLiked,
@@ -6272,26 +6325,28 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             )
         } ?: video
         remoteVideos.replaceAll { _, video -> merge(video) }
-        homeFeedCache.replaceAll { _, videos -> videos.map(::merge) }
+        homeFeedCache.replaceAll { _, videos -> videos.mapIfChanged(::merge) }
         _uiState.update { state ->
             state.copy(
-                videos = state.videos.map(::merge),
-                subscriptionVideos = state.subscriptionVideos.map(::merge),
-                home = state.home.copy(videos = state.home.videos.map(::merge)),
+                videos = state.videos.mapIfChanged(::merge),
+                subscriptionVideos = state.subscriptionVideos.mapIfChanged(::merge),
+                followingVideos = state.followingVideos.mapIfChanged(::merge),
+                home = state.home.copy(videos = state.home.videos.mapIfChanged(::merge)),
                 libraryVideos = allVideos,
                 playlists = playlists,
-                search = state.search.copy(videos = state.search.videos.map(::merge)),
+                search = state.search.copy(videos = state.search.videos.mapIfChanged(::merge)),
                 channelDetail = state.channelDetail.copy(
-                    videos = state.channelDetail.videos.map(::merge),
-                    shorts = state.channelDetail.shorts.map(::merge),
-                    liveStreams = state.channelDetail.liveStreams.map(::merge),
+                    videos = state.channelDetail.videos.mapIfChanged(::merge),
+                    shorts = state.channelDetail.shorts.mapIfChanged(::merge),
+                    liveStreams = state.channelDetail.liveStreams.mapIfChanged(::merge),
+                    searchVideos = state.channelDetail.searchVideos.mapIfChanged(::merge),
                 ),
                 remotePlaylistDetail = state.remotePlaylistDetail.copy(
-                    videos = state.remotePlaylistDetail.videos.map(::merge),
+                    videos = state.remotePlaylistDetail.videos.mapIfChanged(::merge),
                 ),
                 nowPlaying = state.nowPlaying.copy(
                     video = state.nowPlaying.video?.let(::merge),
-                    recommendations = state.nowPlaying.recommendations.map(::merge),
+                    recommendations = state.nowPlaying.recommendations.mapIfChanged(::merge),
                 ),
             )
         }
@@ -6302,47 +6357,53 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         videoId: String,
         transform: (VideoUiModel) -> VideoUiModel,
     ): GrayjayUiState {
-        allVideos = allVideos.map { if (it.id == videoId) transform(it) else it }
+        allVideos = allVideos.mapIfChanged { if (it.id == videoId) transform(it) else it }
         savedVideosById = allVideos.associateBy(VideoUiModel::id)
         remoteVideos[videoId]?.let { remoteVideos[videoId] = transform(it) }
         homeFeedCache.replaceAll { _, videos ->
-            videos.map { if (it.id == videoId) transform(it) else it }
+            videos.mapIfChanged { if (it.id == videoId) transform(it) else it }
         }
         return state.copy(
-            videos = state.videos.map { if (it.id == videoId) transform(it) else it },
-            subscriptionVideos = state.subscriptionVideos.map {
+            videos = state.videos.mapIfChanged { if (it.id == videoId) transform(it) else it },
+            subscriptionVideos = state.subscriptionVideos.mapIfChanged {
+                if (it.id == videoId) transform(it) else it
+            },
+            followingVideos = state.followingVideos.mapIfChanged {
                 if (it.id == videoId) transform(it) else it
             },
             home = state.home.copy(
-                videos = state.home.videos.map {
+                videos = state.home.videos.mapIfChanged {
                     if (it.id == videoId) transform(it) else it
                 },
             ),
-            libraryVideos = state.libraryVideos.map {
+            libraryVideos = state.libraryVideos.mapIfChanged {
                 if (it.id == videoId) transform(it) else it
             },
             search = state.search.copy(
-                videos = state.search.videos.map { if (it.id == videoId) transform(it) else it },
+                videos = state.search.videos.mapIfChanged { if (it.id == videoId) transform(it) else it },
             ),
             channelDetail = state.channelDetail.copy(
-                videos = state.channelDetail.videos.map {
+                videos = state.channelDetail.videos.mapIfChanged {
                     if (it.id == videoId) transform(it) else it
                 },
-                shorts = state.channelDetail.shorts.map {
+                shorts = state.channelDetail.shorts.mapIfChanged {
                     if (it.id == videoId) transform(it) else it
                 },
-                liveStreams = state.channelDetail.liveStreams.map {
+                liveStreams = state.channelDetail.liveStreams.mapIfChanged {
+                    if (it.id == videoId) transform(it) else it
+                },
+                searchVideos = state.channelDetail.searchVideos.mapIfChanged {
                     if (it.id == videoId) transform(it) else it
                 },
             ),
             remotePlaylistDetail = state.remotePlaylistDetail.copy(
-                videos = state.remotePlaylistDetail.videos.map {
+                videos = state.remotePlaylistDetail.videos.mapIfChanged {
                     if (it.id == videoId) transform(it) else it
                 },
             ),
             nowPlaying = state.nowPlaying.copy(
                 video = state.nowPlaying.video?.let { if (it.id == videoId) transform(it) else it },
-                recommendations = state.nowPlaying.recommendations.map {
+                recommendations = state.nowPlaying.recommendations.mapIfChanged {
                     if (it.id == videoId) transform(it) else it
                 },
             ),

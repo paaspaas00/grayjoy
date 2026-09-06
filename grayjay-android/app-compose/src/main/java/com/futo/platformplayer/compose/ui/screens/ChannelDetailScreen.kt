@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Sort
@@ -112,7 +111,7 @@ fun ChannelDetailScreen(
     }
     val sortMode = runCatching { ChannelSortMode.valueOf(sortModeName) }
         .getOrDefault(ChannelSortMode.UploadDate)
-    val listState = rememberLazyListState()
+    val listState = rememberContentListState()
     LaunchedEffect(searchFocused, channel.id, detail.selectedTab) {
         if (searchFocused && detail.selectedTab != ChannelContentTab.Playlists) {
             // Let the IME begin its inset animation, then keep the tabs and search controls at

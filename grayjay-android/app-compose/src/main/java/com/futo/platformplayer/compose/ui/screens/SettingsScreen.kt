@@ -133,6 +133,7 @@ fun SettingsScreen(
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     var showPairedComputers by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
+        state = rememberContentListState(),
         modifier = Modifier.testTag("settings-list"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             if (performance.compactContent) 10.dp else 16.dp,

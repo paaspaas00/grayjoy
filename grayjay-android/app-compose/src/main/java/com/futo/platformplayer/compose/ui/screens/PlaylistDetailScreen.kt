@@ -114,6 +114,7 @@ fun PlaylistDetailScreen(
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
+            state = rememberContentListState(),
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("playlist-detail-${playlist.id}"),

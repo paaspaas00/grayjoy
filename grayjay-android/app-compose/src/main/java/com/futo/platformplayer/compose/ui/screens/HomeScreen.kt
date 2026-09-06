@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +30,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -124,7 +125,7 @@ fun HomeScreen(
             }
             .toList()
     }
-    val pageKeys = remember(browseTabs) {
+    val pageKeys = remember(feeds, browseTabs) {
         feeds.map { "feed:${it.name}" } + browseTabs.map { "browse:${it.id}" }
     }
     val selectedBrowsePage = browseTabs.indexOfFirst {
@@ -136,6 +137,14 @@ fun HomeScreen(
         pageCount = pageKeys::size,
     )
     val coroutineScope = rememberCoroutineScope()
+    // Retain visited page content while swiping. Substituting loading skeletons for the
+    // outgoing page forced a complete lazy-list rebuild halfway through the gesture.
+    val presentedPages = remember(sources) { mutableStateMapOf<HomeFeedType, HomeUiState>() }
+    SideEffect {
+        if (home.browseSourceId == null && !home.isLoading) {
+            presentedPages[home.selectedFeed] = home
+        }
+    }
     val activeFeed by rememberUpdatedState(home.selectedFeed)
     val activeBrowseSourceId by rememberUpdatedState(home.browseSourceId)
     val activeBrowseGroupId by rememberUpdatedState(home.browseGroupId)
@@ -283,7 +292,7 @@ fun HomeScreen(
                 .fillMaxWidth()
                 .weight(1f)
                 .testTag("home-feed-pager"),
-            beyondViewportPageCount = if (performance.isLowEnd) 0 else 1,
+            beyondViewportPageCount = 0,
             key = { pageKeys[it] },
         ) { page ->
             val browseTab = browseTabs.getOrNull(page - feeds.size)
@@ -346,7 +355,10 @@ fun HomeScreen(
             } else {
                 home.browseSourceId == null && home.selectedFeed == feed
             }
-            val listState = rememberLazyListState()
+            val listState = rememberContentListState()
+            val pageHome = if (isSelectedPage) home else {
+                presentedPages[feed] ?: HomeUiState(selectedFeed = feed, isLoading = true)
+            }
             val presentedVideoIds = remember(feed) { mutableSetOf<String>() }
             val latestHomeVideos by rememberUpdatedState(home.videos)
             RequestNextPageEffect(
@@ -396,7 +408,7 @@ fun HomeScreen(
                         ) {
                             Text(
                                 text = browseTab?.let {
-                                    home.browseOptionLabel ?: it.label
+                                    pageHome.browseOptionLabel ?: it.label
                                 } ?: when (feed) {
                                     HomeFeedType.Subscriptions ->
                                         stringResource(R.string.latest_from_subscriptions)
@@ -407,22 +419,22 @@ fun HomeScreen(
                                 },
                                 style = MaterialTheme.typography.titleLarge,
                             )
-                            if (feed == HomeFeedType.Subscriptions && home.subscriptionsTotal > 0) {
+                            if (feed == HomeFeedType.Subscriptions && pageHome.subscriptionsTotal > 0) {
                                 SubscriptionLoadProgress(
-                                    completed = home.subscriptionsLoaded,
-                                    total = home.subscriptionsTotal,
+                                    completed = pageHome.subscriptionsLoaded,
+                                    total = pageHome.subscriptionsTotal,
                                 )
                             }
                         }
                     }
 
-                    if (!isSelectedPage || home.isLoading) {
+                    if (pageHome.isLoading && pageHome.videos.isEmpty()) {
                         item { VideoListSkeleton(count = 5, modifier = Modifier.fillMaxWidth()) }
-                    } else if (home.errorMessage != null && home.videos.isEmpty()) {
+                    } else if (pageHome.errorMessage != null && pageHome.videos.isEmpty()) {
                         item {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text(
-                                    home.errorMessage,
+                                    pageHome.errorMessage,
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
@@ -431,7 +443,7 @@ fun HomeScreen(
                                 }
                             }
                         }
-                    } else if (home.videos.isEmpty()) {
+                    } else if (pageHome.videos.isEmpty()) {
                         item {
                             Text(
                                 when (feed) {
@@ -447,9 +459,9 @@ fun HomeScreen(
                         }
                     }
 
-                    if (isSelectedPage) {
+                    if (pageHome.videos.isNotEmpty()) {
                         itemsIndexed(
-                            home.videos,
+                            pageHome.videos,
                             key = { _, video -> video.id },
                             contentType = { _, _ -> "video" },
                         ) { index, video ->

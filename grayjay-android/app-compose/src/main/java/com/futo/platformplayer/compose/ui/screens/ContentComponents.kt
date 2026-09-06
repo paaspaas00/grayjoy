@@ -139,6 +139,7 @@ private fun ImageView.loadRemoteImage(
         if (circleCrop) request.circleCrop() else request
     }
     var request = manager.load(requestModel)
+        .dontAnimate()
         .placeholder(ColorDrawable(placeholderColor))
         .let { request ->
             when {
@@ -455,7 +456,7 @@ private fun staggeredVideoEntrance(
     if (!enabled) return Modifier
     var entered by rememberSaveable(videoId) { mutableStateOf(false) }
     var entranceLayerActive by remember(videoId) { mutableStateOf(!entered) }
-    val progress by animateFloatAsState(
+    val progress = animateFloatAsState(
         targetValue = if (entered) 1f else 0f,
         animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing),
         label = "video-card-entrance",
@@ -472,8 +473,8 @@ private fun staggeredVideoEntrance(
     }
     if (!entranceLayerActive) return Modifier
     return Modifier.graphicsLayer {
-        alpha = progress
-        translationY = entranceDistancePx * (1f - progress)
+        alpha = progress.value
+        translationY = entranceDistancePx * (1f - progress.value)
     }
 }
 
@@ -521,6 +522,7 @@ private fun CompactVideoThumbnail(
                     )
                 },
                 onReset = { imageView -> imageView.resetRemoteImage() },
+                onRelease = { imageView -> imageView.resetRemoteImage() },
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -647,6 +649,7 @@ internal fun SourceIconImage(
                     imageView.loadRemoteImage(iconUrl, placeholderColor)
                 },
                 onReset = { imageView -> imageView.resetRemoteImage() },
+                onRelease = { imageView -> imageView.resetRemoteImage() },
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -729,6 +732,7 @@ internal fun ChannelAvatarImage(
                     )
                 },
                 onReset = { imageView -> imageView.resetRemoteImage() },
+                onRelease = { imageView -> imageView.resetRemoteImage() },
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -775,6 +779,7 @@ internal fun PlaylistRow(
                         imageView.loadRemoteImage(playlist.thumbnailUrl, placeholderColor)
                     },
                     onReset = { imageView -> imageView.resetRemoteImage() },
+                    onRelease = { imageView -> imageView.resetRemoteImage() },
                     modifier = Modifier
                         .width(112.dp)
                         .height(64.dp)

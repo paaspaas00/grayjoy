@@ -396,10 +396,12 @@ internal class SharedPreferencesLibraryRepository(
 
     @Synchronized
     private fun updateVideo(videoId: String, transform: (VideoUiModel) -> VideoUiModel) {
-        val videos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
-        val video = videos[videoId] ?: return
-        videos[videoId] = transform(video)
-        writeVideos(videos.values.toList())
+        val videos = readVideos()
+        val index = videos.indexOfFirst { it.id == videoId }
+        if (index < 0) return
+        val updated = transform(videos[index])
+        if (updated == videos[index]) return
+        writeVideos(videos.toMutableList().apply { this[index] = updated })
     }
 
     private fun persistPlaylistMutation(
