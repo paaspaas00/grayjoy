@@ -15,7 +15,15 @@ internal data class CachedHomePage(
 internal data class CachedHomeSnapshot(
     val selectedFeed: HomeFeedType,
     val pages: Map<HomeFeedType, CachedHomePage>,
+    val pagerSessionId: String? = null,
 )
+
+/** Pager handles refer to live engine objects, not durable network cursors. */
+internal fun CachedHomeSnapshot.forPagerSession(sessionId: String): CachedHomeSnapshot =
+    if (pagerSessionId == sessionId) this else copy(
+        pagerSessionId = sessionId,
+        pages = pages.mapValues { (_, page) -> page.copy(continuationId = null) },
+    )
 
 /** A last-successful-response cache. Home is refreshed only by an explicit user/data change. */
 internal class HomeCacheRepository(context: Context, profileId: String) {

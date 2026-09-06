@@ -669,6 +669,11 @@ fun GrayjayApp(
     val navigationBackProgress = remember { mutableFloatStateOf(0f) }
     val playerTransitionScope = rememberCoroutineScope()
     var playerTransitionJob by remember { mutableStateOf<Job?>(null) }
+    val snapPlayerTransition: (Float) -> Unit = { value ->
+        // A navigation reset must also stop the old completion callback from reopening the player.
+        playerTransitionJob?.cancel()
+        playerTransition.snapTo(value)
+    }
     val settlePlayer: (Float, String?) -> Unit = { target, videoId ->
         playerTransitionJob?.cancel()
         if (target == 0f) {
@@ -709,7 +714,7 @@ fun GrayjayApp(
             selected != GrayjayDestination.Search
         destinationName = it.name
         selectedVideoId = null
-        playerTransition.snapTo(1f)
+        snapPlayerTransition(1f)
         selectedChannelId = null
         selectedPlaylistId = null
         nestedBackDestinationName = null
@@ -733,7 +738,7 @@ fun GrayjayApp(
         selectedChannelId = it.id
         selectedPlaylistId = null
         selectedVideoId = null
-        playerTransition.snapTo(1f)
+        snapPlayerTransition(1f)
     }
     val latestChannels by rememberUpdatedState(uiState.channels)
     val latestSources by rememberUpdatedState(uiState.sources)
@@ -773,7 +778,7 @@ fun GrayjayApp(
         selectedPlaylistId = it.id
         selectedChannelId = null
         selectedVideoId = null
-        playerTransition.snapTo(1f)
+        snapPlayerTransition(1f)
     }
     LaunchedEffect(uiState.externalNavigation?.requestId) {
         val request = uiState.externalNavigation ?: return@LaunchedEffect
@@ -788,13 +793,13 @@ fun GrayjayApp(
                 selectedChannelId = request.contentId
                 selectedVideoId = null
                 selectedPlaylistId = null
-                playerTransition.snapTo(1f)
+                snapPlayerTransition(1f)
             }
             ExternalNavigationKind.Playlist -> {
                 selectedPlaylistId = request.contentId
                 selectedVideoId = null
                 selectedChannelId = null
-                playerTransition.snapTo(1f)
+                snapPlayerTransition(1f)
             }
         }
         onExternalNavigationHandled(request.requestId)
@@ -840,7 +845,7 @@ fun GrayjayApp(
         nestedBackDestinationName = selected.name
         destinationName = GrayjayDestination.Sources.name
         selectedVideoId = null
-        playerTransition.snapTo(1f)
+        snapPlayerTransition(1f)
         selectedChannelId = null
         selectedPlaylistId = null
     }
@@ -937,8 +942,7 @@ fun GrayjayApp(
         onDismissCommentReplies = onDismissCommentReplies,
         onLoadMoreCommentReplies = onLoadMoreCommentReplies,
         onClose = {
-            playerTransitionJob?.cancel()
-            playerTransition.snapTo(1f)
+            snapPlayerTransition(1f)
             selectedVideoId = null
             onClosePlayback()
         },
@@ -1057,8 +1061,7 @@ fun GrayjayApp(
 
     LaunchedEffect(uiState.playback.currentVideoId, uiState.nowPlaying.video?.id) {
         if (uiState.playback.currentVideoId == null && uiState.nowPlaying.video == null) {
-            playerTransitionJob?.cancel()
-            playerTransition.snapTo(1f)
+            snapPlayerTransition(1f)
             selectedVideoId = null
         }
         if (selectedVideoId != null && !uiState.nowPlaying.isLoadingPlayback) {
@@ -1070,8 +1073,7 @@ fun GrayjayApp(
         if (pictureInPictureMode && playbackVideo != null) {
             // Match legacy Grayjay: returning from PiP always expands the same player back into
             // Now Playing instead of revealing both the internal mini-player and the detail view.
-            playerTransitionJob?.cancel()
-            playerTransition.snapTo(0f)
+            snapPlayerTransition(0f)
             selectedVideoId = playbackVideo.id
             fullscreenEnteredByRotation = false
             isFullscreen = false

@@ -360,11 +360,11 @@ internal class CastHttpServer {
         val bytes = java.io.ByteArrayOutputStream()
         while (bytes.size() < MAX_HEADER_LINE) {
             val value = read()
-            if (value == -1) return if (bytes.size() == 0) null else bytes.toString(StandardCharsets.US_ASCII)
+            if (value == -1) return if (bytes.size() == 0) null else bytes.toString(StandardCharsets.US_ASCII.name())
             if (value == '\n'.code) break
             if (value != '\r'.code) bytes.write(value)
         }
-        return bytes.toString(StandardCharsets.US_ASCII)
+        return bytes.toString(StandardCharsets.US_ASCII.name())
     }
 
     private companion object {

@@ -136,6 +136,9 @@ class PlaybackNotificationService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        // Detaching Media3 can synchronously report cancellation. Do not enqueue a
+        // notification restore against this service after its destruction has begun.
+        closingFromNotification = true
         mainHandler.removeCallbacks(restoreNotification)
         descriptionAdapter.clearArtworkRequest()
         playerNotificationManager.setPlayer(null)

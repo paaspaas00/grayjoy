@@ -138,9 +138,11 @@ class PackageBridge : V8Package {
     @V8Function
     fun setTimeout(func: V8ValueFunction, timeout: Long): Int {
         val id = timeoutCounter++;
+        val scope = StateApp.instance.scopeOrNull ?: return id
         val funcClone = func.toClone<V8ValueFunction>()
-
-        StateApp.instance.scopeOrNull?.launch(Dispatchers.IO) {
+        // Publish ownership before dispatch: a zero-delay callback may start immediately.
+        timeoutMap[id] = true
+        scope.launch(Dispatchers.IO) {
             delay(timeout);
             if (_plugin.isStopped) {
                 closeTimeoutCloneSafely(funcClone, id)
@@ -158,7 +160,6 @@ class PackageBridge : V8Package {
                 closeTimeoutCloneSafely(funcClone, id)
             }
         };
-        timeoutMap.put(id, true);
         return id;
     }
 

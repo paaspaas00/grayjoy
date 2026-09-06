@@ -7,6 +7,7 @@ import android.util.Log
 import android.widget.Toast
 import android.provider.OpenableColumns
 import java.net.URI
+import java.util.UUID
 import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
@@ -15,6 +16,7 @@ import com.futo.platformplayer.compose.data.ContentRepository
 import com.futo.platformplayer.compose.data.CachedHomePage
 import com.futo.platformplayer.compose.data.CachedHomeSnapshot
 import com.futo.platformplayer.compose.data.HomeCacheRepository
+import com.futo.platformplayer.compose.data.forPagerSession
 import com.futo.platformplayer.compose.data.LibraryRepository
 import com.futo.platformplayer.compose.data.LegacyBackupPasswordRequiredException
 import com.futo.platformplayer.compose.data.LegacyGrayjayBackup
@@ -494,6 +496,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var lastPluginUpdateCheckMs = pluginUpdatePreferences.getLong("last_check", 0L)
     private val historyWriteJobs = mutableMapOf<String, Job>()
     private var homeLoadGeneration = 0L
+    private var homePagerSessionId = UUID.randomUUID().toString()
     private var playbackGeneration = 0L
     private var videoOpenRequestGeneration = 0L
     private var youtubeImportGeneration = 0L
@@ -1168,7 +1171,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun restoreHomeFromSession(snapshot: CachedHomeSnapshot): Boolean {
+    private fun restoreHomeFromSession(cachedSnapshot: CachedHomeSnapshot): Boolean {
+        val snapshot = cachedSnapshot.forPagerSession(homePagerSessionId)
         val sessionSnapshot = HomeSessionCache.get(activeProfileId)
         HomeSessionCache.put(activeProfileId, snapshot)
         val selectedFeed = sessionSnapshot?.selectedFeed?.takeIf(snapshot.pages::containsKey)
@@ -1221,6 +1225,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (homeFeedCache.isEmpty()) return
         val snapshot = CachedHomeSnapshot(
                 selectedFeed = selectedFeed,
+                pagerSessionId = homePagerSessionId,
                 pages = homeFeedCache.mapValues { (feed, videos) ->
                     CachedHomePage(
                         videos = videos,
@@ -1438,7 +1443,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private fun Map<String, MutableMap<String, String>>.snapshot(): Map<String, Map<String, String>> =
         mapValues { (_, values) -> values.toMap() }
 
-    private fun loadHome(feed: HomeFeedType, forceRefresh: Boolean) {
+    private fun loadHome(feed: HomeFeedType, forceRefresh: Boolean, preserveCachedItems: Boolean = false) {
         if (forceRefresh) {
             HomeSessionCache.removeFeed(activeProfileId, feed)
             removeHomeDiskCache(setOf(feed))
@@ -1463,6 +1468,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     videos = cached,
                     isLoading = cached.isEmpty(),
                     isRefreshing = forceRefresh && cached.isNotEmpty(),
+                    isLoadingMore = preserveCachedItems && cached.isNotEmpty(),
                     subscriptionsLoaded = 0,
                     subscriptionsTotal = subscriptionTotal,
                 ),
@@ -1524,10 +1530,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     sourceFilters = selectedSourceFilters("home", enabledSourceIds),
                 )
                 val previousById = cachedFeed.associateBy(VideoUiModel::id)
-                val feedVideos = page.videos.map { fresh ->
+                val freshFeedVideos = page.videos.map { fresh ->
                     fresh.withPresentationFallback(previousById[fresh.id])
                         .withPersistedLibraryState()
                 }.withKnownChannelPresentation(followedChannels)
+                // Recreate an expired pager without replacing the visible cached list. Subsequent
+                // pages are deduplicated normally until the live pager reaches its previous end.
+                val feedVideos = if (preserveCachedItems && cachedFeed.isNotEmpty()) {
+                    val freshById = freshFeedVideos.associateBy(VideoUiModel::id)
+                    cachedFeed.mapIfChanged { freshById[it.id] ?: it }
+                } else freshFeedVideos
                 val videos = videosForHomeFeed(feed, feedVideos)
                 feedVideos.forEach { remoteVideos[it.id] = it }
                 feedVideos.forEach(::registerRemoteChannel)
@@ -1565,6 +1577,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         home = state.home.copy(
                             isLoading = false,
                             isRefreshing = false,
+                            isLoadingMore = false,
                             errorMessage = error.localizedMessage ?: text(R.string.home_feed_refresh_failed),
                         ),
                     )
@@ -1670,7 +1683,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun loadMoreHome() {
         val current = _uiState.value.home
         val continuationId = current.continuationId
-        if (!current.hasMore || current.isLoading || current.isLoadingMore || continuationId == null) return
+        if (!current.hasMore || current.isLoading || current.isLoadingMore) return
+        if (continuationId == null) {
+            if (current.browseSourceId == null) {
+                loadHome(current.selectedFeed, forceRefresh = false, preserveCachedItems = true)
+            }
+            return
+        }
         val feed = current.selectedFeed
         val browseSourceId = current.browseSourceId
         val browseGroupId = current.browseGroupId
@@ -1802,6 +1821,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         withContext(Dispatchers.IO) {
             engine.setProfile(profileId)
         }
+        homePagerSessionId = UUID.randomUUID().toString()
         activeProfileId = profileId
         profileRepository.setActiveProfile(profileId)
         val application = getApplication<Application>()

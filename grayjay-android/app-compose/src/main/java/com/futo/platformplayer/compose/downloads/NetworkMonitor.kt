@@ -25,27 +25,33 @@ import java.net.UnknownHostException
 internal class NetworkMonitor(context: Context) : Closeable {
     private val connectivityManager = context.applicationContext
         .getSystemService(ConnectivityManager::class.java)
-    private val _available = MutableStateFlow(queryAvailability())
+    private val availability = connectivityManager.activeNetwork.let { network ->
+        NetworkAvailabilityTracker(network, network?.let {
+            connectivityManager.getNetworkCapabilities(it)?.hasValidatedInternet()
+        } == true)
+    }
     private val callback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = refresh()
-        override fun onLost(network: Network) = refresh()
+        override fun onAvailable(network: Network) = availability.onAvailable(network)
+        override fun onLost(network: Network) = availability.onLost(network)
 
         override fun onCapabilitiesChanged(
             network: Network,
             networkCapabilities: NetworkCapabilities,
-        ) = refresh()
+        ) = availability.onCapabilitiesChanged(network, networkCapabilities.hasValidatedInternet())
+
+        override fun onBlockedStatusChanged(network: Network, blocked: Boolean) =
+            availability.onBlockedStatusChanged(network, blocked)
     }
 
     init {
         connectivityManager.registerDefaultNetworkCallback(callback)
-        refresh()
     }
 
-    fun isAvailable(): Boolean = queryAvailability().also { _available.value = it }
+    fun isAvailable(): Boolean = availability.available.value
 
     suspend fun awaitAvailable() {
         if (isAvailable()) return
-        _available.filter { it }.first()
+        availability.available.filter { it }.first()
     }
 
     /** Briefly backs off transient socket failures even if Android already reports recovery. */
@@ -57,19 +63,54 @@ internal class NetworkMonitor(context: Context) : Closeable {
         }
     }
 
-    private fun refresh() {
-        _available.value = queryAvailability()
-    }
-
-    private fun queryAvailability(): Boolean {
-        val activeNetwork = connectivityManager.activeNetwork ?: return false
-        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-    }
-
     override fun close() {
         runCatching { connectivityManager.unregisterNetworkCallback(callback) }
+    }
+}
+
+private fun NetworkCapabilities.hasValidatedInternet(): Boolean =
+    hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+        hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+
+/** Callback arguments are ordered; querying ConnectivityManager inside them can return stale data. */
+internal class NetworkAvailabilityTracker<N>(initialNetwork: N? = null, initiallyValidated: Boolean = false) {
+    private var currentNetwork = initialNetwork
+    private var validated = initiallyValidated
+    private var blocked = false
+    val available = MutableStateFlow(initialNetwork != null && initiallyValidated)
+
+    @Synchronized
+    fun onAvailable(network: N) {
+        currentNetwork = network
+        validated = false
+        blocked = false
+        publish()
+    }
+
+    @Synchronized
+    fun onCapabilitiesChanged(network: N, hasValidatedInternet: Boolean) {
+        if (network != currentNetwork) return
+        validated = hasValidatedInternet
+        publish()
+    }
+
+    @Synchronized
+    fun onBlockedStatusChanged(network: N, isBlocked: Boolean) {
+        if (network != currentNetwork) return
+        blocked = isBlocked
+        publish()
+    }
+
+    @Synchronized
+    fun onLost(network: N) {
+        if (network != currentNetwork) return
+        currentNetwork = null
+        validated = false
+        publish()
+    }
+
+    private fun publish() {
+        available.value = currentNetwork != null && validated && !blocked
     }
 }
 
