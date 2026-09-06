@@ -430,7 +430,7 @@ interface GrayjayEngine {
     suspend fun loadCommentReplies(commentId: String): EngineCommentPage
     fun open(videos: List<VideoUiModel>, currentVideoId: String, playWhenReady: Boolean)
     fun replaceCurrent(video: VideoUiModel, positionMs: Long, playWhenReady: Boolean)
-    fun appendToQueue(videos: List<VideoUiModel>)
+    fun appendToQueue(videos: List<VideoUiModel>, orderedVideoIds: List<String> = emptyList())
     fun moveQueueItemNext(videoId: String)
     fun togglePlayback()
     fun pausePlayback()
@@ -1962,6 +1962,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             trackParameters.setPreferredAudioLanguages(requireNotNull(selectedAudioLanguage))
         }
         exoPlayer.trackSelectionParameters = trackParameters.build()
+        exoPlayer.shuffleModeEnabled = false
         exoPlayer.setMediaSources(mediaSources, currentIndex, 0L)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = playWhenReady
@@ -2004,7 +2005,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     @UnstableApi
-    override fun appendToQueue(videos: List<VideoUiModel>) {
+    override fun appendToQueue(videos: List<VideoUiModel>, orderedVideoIds: List<String>) {
         if (exoPlayer.mediaItemCount == 0) return
         val existingIds = openedVideos.mapTo(mutableSetOf(), VideoUiModel::id)
         val additions = videos.filter {
@@ -2014,14 +2015,15 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         if (additions.isEmpty()) return
 
         activePluginDataSources = activePluginDataSources + additions.pluginDataSourceFactories()
-        openedVideos = openedVideos + additions
-        queueIds = queueIds + additions.map(VideoUiModel::id)
         val targetHeight = selectedVideoQuality ?: AUTOMATIC_VIDEO_HEIGHT
-        exoPlayer.addMediaSources(
-            additions.map { video ->
-                video.buildMediaSource(video.nearestQualityVariantHeight(targetHeight))
-            },
-        )
+        additions.forEach { video ->
+            val index = queueInsertionIndex(queueIds, orderedVideoIds, video.id)
+            openedVideos = openedVideos.toMutableList().apply { add(index, video) }
+            queueIds = queueIds.toMutableList().apply { add(index, video.id) }
+            exoPlayer.addMediaSource(
+                index, video.buildMediaSource(video.nearestQualityVariantHeight(targetHeight)),
+            )
+        }
         syncPlayback()
         // Playlist entries are appended lazily. Explicitly reattach the foreground notification
         // after the timeline changes so Media3 cannot leave only the MediaSession/AVRCP controls

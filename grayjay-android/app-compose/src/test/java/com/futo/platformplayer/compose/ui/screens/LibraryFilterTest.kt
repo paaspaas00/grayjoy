@@ -42,6 +42,16 @@ class LibraryFilterTest {
     }
 
     @Test
+    fun downloadOrderDoesNotReverseWhenPlaybackUpdatesHistory() {
+        val before = listOf("a", "b", "c").map { video(it, isDownloaded = true) }
+        val after = before.reversed().mapIndexed { index, video -> video.copy(lastWatchedAt = 100L - index) }
+        assertEquals(
+            videosForLibraryFilter(before, LibraryFilter.Downloads).map(VideoUiModel::id),
+            videosForLibraryFilter(after, LibraryFilter.Downloads).map(VideoUiModel::id),
+        )
+    }
+
+    @Test
     fun playlistSearchIsCaseInsensitiveAndPreservesAllItemsForBlankQueries() {
         val playlists = listOf(
             playlist("one", "Road Trip"),

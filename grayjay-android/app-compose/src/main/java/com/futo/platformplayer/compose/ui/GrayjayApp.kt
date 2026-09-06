@@ -710,6 +710,10 @@ fun GrayjayApp(
             .mapNotNull(availableVideosById::get)
     }
     val onSelect: (GrayjayDestination) -> Unit = {
+        // Clear the outgoing page synchronously. Its delayed AnimatedContent disposal
+        // must never clear focus already acquired by the incoming search field.
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
         searchAutoFocusRequested = it == GrayjayDestination.Search &&
             selected != GrayjayDestination.Search
         destinationName = it.name
@@ -733,6 +737,8 @@ fun GrayjayApp(
         actionVideoId = it.id
     }
     val onChannelClick: (ChannelUiModel) -> Unit = {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
         searchAutoFocusRequested = false
         onLoadChannel(it)
         selectedChannelId = it.id
@@ -768,6 +774,8 @@ fun GrayjayApp(
         }
     }
     val onPlaylistClick: (PlaylistUiModel) -> Unit = {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
         searchAutoFocusRequested = false
         if (it.sourceId.isNotBlank()) onLoadRemotePlaylist(it)
         if (it.sourceId.isBlank()) {
@@ -816,6 +824,8 @@ fun GrayjayApp(
         }
     }
     val onNavigateBack: () -> Unit = {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
         if (selectedVideoId != null) {
             settlePlayer(1f, selectedVideoId)
         } else if (selectedChannelId != null) {
@@ -842,6 +852,8 @@ fun GrayjayApp(
         }
     }
     val onManageSources: () -> Unit = {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
         nestedBackDestinationName = selected.name
         destinationName = GrayjayDestination.Sources.name
         selectedVideoId = null

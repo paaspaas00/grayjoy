@@ -367,6 +367,16 @@ class GrayjayAppTest {
     }
 
     @Test
+    fun enteringSearchKeepsFocusAfterPreviousPageExitAnimation() {
+        composeRule.onNodeWithTag("nav-library").performClick()
+        composeRule.onNodeWithTag("nav-search").performClick()
+        composeRule.mainClock.advanceTimeBy(600)
+        composeRule.onNodeWithTag("search-field").assertIsFocused()
+        composeRule.onNodeWithTag("search-field").performTextInput("query")
+        composeRule.onNodeWithTag("search-field").assertIsFocused()
+    }
+
+    @Test
     fun playerCanCollapseAndExpandWithoutDuplicateMiniPlayer() {
         composeRule.onNodeWithTag("video-card-real-video-one").performScrollTo().performClick()
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.now_playing)).assertIsDisplayed()

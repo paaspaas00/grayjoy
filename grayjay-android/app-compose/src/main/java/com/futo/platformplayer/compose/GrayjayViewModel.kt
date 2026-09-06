@@ -480,7 +480,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var resumePromptJob: Job? = null
     private var downloadQueueRestoreJob: Job? = null
     private var offlinePlaylistSyncJob: Job? = null
-    private var queuePreparationJob: Job? = null
+    private val queuePreparation = QueuePreparationGate(viewModelScope)
     private var queuePreparationBlockedUntilMs = 0L
     private var queueMutationJob: Job? = null
     private var watchProgressWriteJob: Job? = null
@@ -2906,12 +2906,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val session = playbackQueueSession ?: return
         if (System.currentTimeMillis() < queuePreparationBlockedUntilMs) return
         if (session.generation != playbackGeneration || session.profileId != activeProfileId) return
-        if (pendingPlaybackVideoId?.let { it != playback.currentVideoId } == true) return
+        if (pendingPlaybackVideoId != null) return
         if (playback.currentVideoId == null || engine.player.mediaItemCount == 0) return
         if (preparedQueueItemsAhead(playback.queueVideoIds, playback.currentVideoId) >= QUEUE_LOOKAHEAD) return
-        if (session.pendingVideos.isEmpty() || queuePreparationJob?.isActive == true) return
+        if (session.pendingVideos.isEmpty() || queuePreparation.isRunning) return
 
-        val job = viewModelScope.launch {
+        queuePreparation.launch {
             while (true) {
                 val currentSession = playbackQueueSession
                 if (
@@ -2967,7 +2967,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 remoteVideos[resolved.id] = resolved
                 registerRemoteChannel(resolved)
                 try {
-                    engine.appendToQueue(listOf(resolved))
+                    engine.appendToQueue(listOf(resolved), session.orderedVideoIds.toList())
                 } catch (error: Throwable) {
                     Log.w(
                         "GrayjayViewModel",
@@ -2980,17 +2980,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
-        queuePreparationJob = job
-        job.invokeOnCompletion {
-            if (queuePreparationJob === job) queuePreparationJob = null
-        }
     }
 
     private fun invalidatePlaybackQueue(): Long {
         playbackGeneration += 1
         queuePreparationBlockedUntilMs = 0L
-        queuePreparationJob?.cancel()
-        queuePreparationJob = null
+        queuePreparation.cancel()
         playbackQueueSession = null
         return playbackGeneration
     }
@@ -4487,14 +4482,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             descriptors.forEach { descriptor ->
                 val playlist = playlists[descriptor.playlistId]
                 if (playlist == null) {
-                    descriptor.managedVideoIds.forEach {
-                        removedCandidates += it to descriptor.mediaType
-                    }
+                    // Missing library metadata (for example during recovery/import) is not
+                    // authorization to delete the user's downloaded media.
                     offlinePlaylistStore.remove(descriptor)
                     return@forEach
                 }
                 val currentIds = playlist.videoIds
-                    .filter { findVideo(it)?.supportsOfflineDownload() == true }
+                    .filter(String::isNotBlank)
                     .toSet()
                 (descriptor.managedVideoIds - currentIds).forEach {
                     removedCandidates += it to descriptor.mediaType
@@ -4517,6 +4511,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
             downloadCandidates.distinct().forEach { (videoId, mediaType) ->
+                if (findVideo(videoId)?.supportsOfflineDownload() != true) return@forEach
                 val current = _uiState.value.downloads[videoId]
                 if (current?.isComplete(mediaType) != true && current?.isActive(mediaType) != true) {
                     startDownload(
@@ -5535,7 +5530,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         searchPagingJob?.cancel()
         suggestionJob?.cancel()
         detailsJob?.cancel()
-        queuePreparationJob?.cancel()
+        queuePreparation.cancel()
         queueMutationJob?.cancel()
         extrasPagingJob?.cancel()
         channelJob?.cancel()

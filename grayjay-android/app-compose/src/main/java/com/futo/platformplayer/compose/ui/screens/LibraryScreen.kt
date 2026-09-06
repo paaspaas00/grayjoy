@@ -54,7 +54,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -106,6 +105,8 @@ internal fun videosForLibraryFilter(
     LibraryFilter.WatchLater -> videos.filter(VideoUiModel::isWatchLater)
     LibraryFilter.Playlists -> videos.filter { it.playlistNames.isNotEmpty() }
     LibraryFilter.Downloads -> videos.filter { it.isDownloaded || it.id in downloads }
+        .sortedWith(compareByDescending<VideoUiModel> { downloads[it.id]?.preparedAtMs ?: 0L }
+            .thenBy { it.title.lowercase() }.thenBy(VideoUiModel::id))
     LibraryFilter.History -> videos
         .filter { it.lastWatchedAt > 0L || it.watchProgress > 0f }
         .sortedByDescending(VideoUiModel::lastWatchedAt)
@@ -241,12 +242,6 @@ internal fun LibraryScreen(
         keyboardController?.hide()
         focusManager.clearFocus(force = true)
         focusedSearchFilter = null
-    }
-    DisposableEffect(Unit) {
-        onDispose {
-            keyboardController?.hide()
-            focusManager.clearFocus(force = true)
-        }
     }
     val searchHeaderScrollConnection = remember(focusManager, keyboardController) {
         object : NestedScrollConnection {

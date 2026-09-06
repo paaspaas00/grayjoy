@@ -1,6 +1,8 @@
 package com.futo.platformplayer.compose.data
 
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.SharedPreferences
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.futo.platformplayer.compose.ui.VideoUiModel
@@ -8,19 +10,32 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class LibraryPersistenceTest {
-    private val context: Context = ApplicationProvider.getApplicationContext()
+    private val appContext: Context = ApplicationProvider.getApplicationContext()
+    private lateinit var context: Context
+    private lateinit var profileId: String
 
     @Before
-    fun clearStorage() {
-        context.getSharedPreferences("grayjay_compose_library_v2", Context.MODE_PRIVATE)
-            .edit()
-            .clear()
-            .commit()
+    fun isolateStorage() {
+        profileId = "instrumentation-${UUID.randomUUID()}"
+        context = object : ContextWrapper(appContext) {
+            override fun getSharedPreferences(name: String, mode: Int): SharedPreferences {
+                check(name.endsWith("_$profileId")) { "Test attempted to access non-isolated storage" }
+                return super.getSharedPreferences(name, mode)
+            }
+        }
+    }
+
+    @After
+    fun removeIsolatedStorage() {
+        appContext.deleteSharedPreferences("grayjay_compose_library_v2_$profileId")
+        appContext.deleteSharedPreferences("grayjay_compose_watch_progress_v1_$profileId")
     }
 
     @Test
@@ -37,12 +52,12 @@ class LibraryPersistenceTest {
             sourceName = "YouTube",
             sourceIconUrl = "https://plugins.grayjay.app/Youtube/youtube.png",
         )
-        val repository = SharedPreferencesLibraryRepository(context)
+        val repository = SharedPreferencesLibraryRepository(context, profileId)
 
         repository.recordHistory(video, progress = 0.4f)
         repository.createPlaylist("Saved", listOf(video))
 
-        val reloaded = SharedPreferencesLibraryRepository(context)
+        val reloaded = SharedPreferencesLibraryRepository(context, profileId)
         val savedVideo = reloaded.loadSavedVideos().single()
         assertEquals(video.title, savedVideo.title)
         assertEquals(video.thumbnailUrl, savedVideo.thumbnailUrl)
@@ -54,7 +69,7 @@ class LibraryPersistenceTest {
 
     @Test
     fun duplicatePlaylistNamesAreRejectedAndSelectedPlaylistsCanBeRemoved() {
-        val repository = SharedPreferencesLibraryRepository(context)
+        val repository = SharedPreferencesLibraryRepository(context, profileId)
         val video = VideoUiModel(
             id = "video-one",
             title = "Video one",

@@ -777,11 +777,12 @@ internal fun PlayerSurface(
                     ) as PlayerView).apply {
                         useController = false
                         (videoSurfaceView as? SurfaceView)?.setSecure(video.isDrmProtected)
-                        this.player = player
                         keepScreenOn = true
                     }
                 },
-                update = { it.player = player },
+                update = { PlayerViewTargets.attach(it, player) },
+                onReset = PlayerViewTargets::detach,
+                onRelease = PlayerViewTargets::detach,
                 modifier = Modifier.fillMaxSize(),
             )
         }
