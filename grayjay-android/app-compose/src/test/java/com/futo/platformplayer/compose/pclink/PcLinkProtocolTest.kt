@@ -9,6 +9,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PcLinkProtocolTest {
+    @Test
+    fun frequentStatusMessagesStillPersistLastSeenPeriodically() {
+        var persisted = 0L
+        val writes = mutableListOf<Long>()
+        for (now in 100_000L..220_000L step 1_000L) {
+            if (shouldPersistPcLastSeen(now, persisted)) {
+                persisted = now
+                writes += now
+            }
+        }
+        assertEquals(listOf(100_000L, 160_000L, 220_000L), writes)
+        assertTrue(shouldPersistPcLastSeen(90_000L, persisted))
+    }
+
     private val secret = Base64.getUrlEncoder().withoutPadding()
         .encodeToString(ByteArray(32) { index -> index.toByte() })
 

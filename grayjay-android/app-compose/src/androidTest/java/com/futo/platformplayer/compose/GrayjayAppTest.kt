@@ -17,6 +17,8 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
@@ -364,6 +366,18 @@ class GrayjayAppTest {
         composeRule.onNodeWithTag("search-field").performImeAction()
 
         composeRule.onNodeWithTag("video-card-real-video-one").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun duplicateSuggestionsFromSourcesDoNotCrashSearch() {
+        composeRule.runOnIdle {
+            state.value = state.value.copy(search = SearchUiState(
+                query = "query", suggestions = listOf("Android", "android", " Android ", "Kotlin"),
+            ))
+        }
+        composeRule.onNodeWithTag("nav-search").performClick()
+        composeRule.onAllNodesWithText("Android").assertCountEquals(1)
+        composeRule.onNodeWithText("Kotlin").assertIsDisplayed()
     }
 
     @Test

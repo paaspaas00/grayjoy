@@ -81,6 +81,7 @@ fun SearchScreen(
     onNavigationMenuClick: () -> Unit = {},
 ) {
     val listState = rememberContentListState()
+    val suggestions = remember(search.suggestions) { uniqueSearchSuggestions(search.suggestions) }
     var typeName by rememberSaveable { mutableStateOf(SearchContentType.Videos.name) }
     var selectedSourceIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var sourcesInitialized by rememberSaveable { mutableStateOf(false) }
@@ -303,8 +304,8 @@ fun SearchScreen(
                         SuggestionListSkeleton()
                     }
                 }
-                search.suggestions.isNotEmpty() -> items(
-                    items = search.suggestions,
+                suggestions.isNotEmpty() -> items(
+                    items = suggestions,
                     key = { suggestion -> suggestion.lowercase() },
                     contentType = { "suggestion" },
                 ) { suggestion ->
@@ -522,6 +523,10 @@ fun SearchScreen(
         )
     }
 }
+
+internal fun uniqueSearchSuggestions(values: List<String>): List<String> =
+    values.asSequence().map(String::trim).filter(String::isNotEmpty)
+        .distinctBy { it.lowercase() }.toList()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

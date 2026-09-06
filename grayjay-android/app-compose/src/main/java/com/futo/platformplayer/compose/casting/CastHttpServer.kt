@@ -8,13 +8,11 @@ import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.net.Inet6Address
 import java.net.InetAddress
-import java.net.ServerSocket
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
+import com.futo.platformplayer.compose.net.BoundedSocketServer
 
 /**
  * Chromecast cannot consume the in-memory DASH manifests returned by Grayjay plugins and it
@@ -45,37 +43,19 @@ internal class CastHttpServer {
     ) : Route
 
     private val routes = ConcurrentHashMap<String, Route>()
-    private val running = AtomicBoolean(false)
-    private val executor = Executors.newCachedThreadPool { runnable ->
-        Thread(runnable, "Grayjoy-CastHttp").apply { isDaemon = true }
-    }
-    private var serverSocket: ServerSocket? = null
+    private val server = BoundedSocketServer("Grayjoy-CastHttp", workerCount = 8, pendingCount = 16, handle = ::handle)
 
-    val port: Int get() = serverSocket?.localPort ?: 0
+    val port: Int get() = server.port
 
     @Synchronized
-    fun start() {
-        if (running.get()) return
-        val socket = ServerSocket(0)
-        serverSocket = socket
-        running.set(true)
-        executor.execute {
-            while (running.get()) {
-                val client = runCatching { socket.accept() }.getOrNull() ?: break
-                executor.execute { runCatching { handle(client) }.also { runCatching(client::close) } }
-            }
-        }
-    }
+    fun start() = server.start()
 
     fun clearRoutes() = routes.clear()
 
     @Synchronized
     fun stop() {
-        running.set(false)
-        runCatching { serverSocket?.close() }
-        serverSocket = null
+        server.stop()
         routes.clear()
-        executor.shutdownNow()
     }
 
     fun serveDash(

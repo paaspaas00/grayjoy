@@ -4,12 +4,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
-import java.net.ServerSocket
 import java.net.Socket
-import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
+import com.futo.platformplayer.compose.net.BoundedSocketServer
 
 internal class PcLinkHttpServer(
     private val manager: PcLinkManager,
@@ -21,39 +18,13 @@ internal class PcLinkHttpServer(
         val body: ByteArray,
     )
 
-    private val running = AtomicBoolean(false)
-    private val executor = Executors.newCachedThreadPool { runnable ->
-        Thread(runnable, "Grayjoy-PcLink").apply { isDaemon = true }
-    }
-    private var serverSocket: ServerSocket? = null
+    private val server = BoundedSocketServer("Grayjoy-PcLink", PcLinkProtocol.PORT, handle = ::handle)
 
     @Synchronized
-    fun start() {
-        if (running.get()) return
-        val socket = ServerSocket().apply {
-            reuseAddress = true
-            bind(InetSocketAddress(PcLinkProtocol.PORT))
-        }
-        serverSocket = socket
-        running.set(true)
-        executor.execute {
-            while (running.get()) {
-                val client = runCatching { socket.accept() }.getOrNull() ?: break
-                executor.execute {
-                    runCatching { handle(client) }
-                    runCatching(client::close)
-                }
-            }
-        }
-    }
+    fun start() = server.start()
 
     @Synchronized
-    fun stop() {
-        running.set(false)
-        runCatching { serverSocket?.close() }
-        serverSocket = null
-        executor.shutdownNow()
-    }
+    fun stop() = server.stop()
 
     private fun handle(socket: Socket) {
         socket.soTimeout = SOCKET_TIMEOUT_MS

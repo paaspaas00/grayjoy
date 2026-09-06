@@ -19,7 +19,7 @@ import com.futo.platformplayer.logging.Logger
 import com.futo.platformplayer.matchesDomain
 import kotlinx.serialization.encodeToString
 
-class LoginWebViewClient : WebViewClient {
+open class LoginWebViewClient : WebViewClient {
     private val LOG_VERBOSE = false;
 
     private val _pluginConfig: SourcePluginConfig?;

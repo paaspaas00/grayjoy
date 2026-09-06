@@ -35,10 +35,6 @@ class PcLinkService : Service() {
     override fun onCreate() {
         super.onCreate()
         manager = PcLinkManager.get(this)
-        if (manager.snapshot.value.pairedComputers.isEmpty()) {
-            stopSelf()
-            return
-        }
         createNotificationChannel()
         val foregroundStarted = try {
             startForegroundCompat(buildNotification(manager.snapshot.value.activePlayback))
@@ -51,6 +47,13 @@ class PcLinkService : Service() {
             false
         }
         if (!foregroundStarted) {
+            stopSelf()
+            return
+        }
+        // Pairing can be removed after ensureRunning() but before service creation.
+        // Acknowledge startForegroundService before stopping in that race.
+        if (manager.snapshot.value.pairedComputers.isEmpty()) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return
         }

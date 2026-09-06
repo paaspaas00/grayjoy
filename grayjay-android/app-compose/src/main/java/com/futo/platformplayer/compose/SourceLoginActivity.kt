@@ -10,6 +10,8 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.RenderProcessGoneDetail
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -22,6 +24,7 @@ import com.futo.platformplayer.api.media.platforms.js.SourcePluginConfig
 import com.futo.platformplayer.backend.GrayjayPluginAuthStore
 import com.futo.platformplayer.others.LoginWebViewClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -52,6 +55,7 @@ class SourceLoginActivity : ComponentActivity() {
                 }
                 SourcePluginConfig.fromJson(text, configUrl)
             }.getOrElse {
+                if (it is CancellationException) throw it
                 finishWithError(it.localizedMessage ?: getString(R.string.source_login_page_failed))
                 return@launch
             }
@@ -106,8 +110,19 @@ class SourceLoginActivity : ComponentActivity() {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(browser, true)
         }
-        val client = LoginWebViewClient(config, browser.settings.userAgentString)
+        val client = object : LoginWebViewClient(config, browser.settings.userAgentString) {
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                // This WebView can never be reused after renderer termination.
+                val wasCurrent = webView === view
+                if (wasCurrent) webView = null
+                (view.parent as? ViewGroup)?.removeView(view)
+                view.destroy()
+                if (wasCurrent) finishWithError(getString(R.string.source_login_page_failed))
+                return true
+            }
+        }
         client.onPageLoaded.subscribe { _, url ->
+            if (isFinishing || isDestroyed || webView !== browser) return@subscribe
             val pageUri = Uri.parse(url.orEmpty())
             val isChannelSwitcher = url.orEmpty().contains("/channel_switcher", ignoreCase = true) ||
                 (
@@ -226,6 +241,7 @@ class SourceLoginActivity : ComponentActivity() {
         sourceId: String,
         auth: SourceAuth,
     ) {
+        if (isFinishing || isDestroyed || webView == null) return
         if (!loginCompleted.compareAndSet(false, true)) return
         GrayjayPluginAuthStore.save(this, profileId, pluginId, auth)
         CookieManager.getInstance().flush()
@@ -237,6 +253,7 @@ class SourceLoginActivity : ComponentActivity() {
     }
 
     private fun finishWithError(message: String) {
+        if (isFinishing || isDestroyed) return
         setResult(Activity.RESULT_CANCELED, Intent().putExtra(EXTRA_ERROR, message))
         setContentView(
             TextView(this).apply {
@@ -248,12 +265,14 @@ class SourceLoginActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        webView?.apply {
-            loadUrl("about:blank")
+        val browser = webView
+        webView = null
+        browser?.apply {
+            webViewClient = WebViewClient()
+            (parent as? ViewGroup)?.removeView(this)
             stopLoading()
             destroy()
         }
-        webView = null
         super.onDestroy()
     }
 

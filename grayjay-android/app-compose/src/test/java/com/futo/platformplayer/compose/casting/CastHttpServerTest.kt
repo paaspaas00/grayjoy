@@ -8,6 +8,18 @@ import org.junit.Test
 
 class CastHttpServerTest {
     @Test
+    fun castServerCanServeAgainAfterDisconnect() {
+        val server = CastHttpServer()
+        try {
+            repeat(2) {
+                val url = server.serveDash("<MPD><Period/></MPD>", InetAddress.getLoopbackAddress(), null, emptyMap())
+                assertTrue(URL(url).readText().contains("<MPD>"))
+                server.stop()
+            }
+        } finally { server.stop() }
+    }
+
+    @Test
     fun `dash manifest is exposed over lan and upstream urls are proxied`() {
         val server = CastHttpServer()
         try {

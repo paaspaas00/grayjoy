@@ -71,6 +71,7 @@ class MainActivity : FragmentActivity() {
     private var pendingUpdateApk: File? = null
     private var updateDownloadState by mutableStateOf<UpdateDownloadUiModel?>(null)
     private var updateDownloadJob: Job? = null
+    private var updateDownloadGeneration = 0L
     private val unknownSourcesLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
@@ -521,12 +522,15 @@ class MainActivity : FragmentActivity() {
             updateDownloadState?.versionName == update.versionName
         ) return
         cancelUpdateDownload()
+        val generation = updateDownloadGeneration
+        pendingUpdateApk = null
         updateDownloadState = UpdateDownloadUiModel(versionName = update.versionName)
         Toast.makeText(this, R.string.update_download_started, Toast.LENGTH_SHORT).show()
         updateDownloadJob = lifecycleScope.launch {
             try {
                 val apk = updateInstaller.download(update.versionName, url) { downloaded, total ->
                     withContext(Dispatchers.Main.immediate) {
+                        if (generation != updateDownloadGeneration) return@withContext
                         updateDownloadState = UpdateDownloadUiModel(
                             versionName = update.versionName,
                             downloadedBytes = downloaded,
@@ -534,12 +538,14 @@ class MainActivity : FragmentActivity() {
                         )
                     }
                 }
+                if (generation != updateDownloadGeneration) return@launch
                 pendingUpdateApk = apk
                 updateDownloadState = null
                 installPendingUpdateIfAllowed()
             } catch (_: CancellationException) {
-                updateDownloadState = null
+                if (generation == updateDownloadGeneration) updateDownloadState = null
             } catch (_: Throwable) {
+                if (generation != updateDownloadGeneration) return@launch
                 updateDownloadState = null
                 Toast.makeText(
                     this@MainActivity,
@@ -547,12 +553,13 @@ class MainActivity : FragmentActivity() {
                     Toast.LENGTH_LONG,
                 ).show()
             } finally {
-                updateDownloadJob = null
+                if (generation == updateDownloadGeneration) updateDownloadJob = null
             }
         }
     }
 
     private fun cancelUpdateDownload() {
+        updateDownloadGeneration++
         updateDownloadJob?.cancel()
         updateDownloadJob = null
         updateDownloadState = null

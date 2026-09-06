@@ -29,6 +29,7 @@ class PcLinkManager private constructor(context: Context) {
     // Keep command IDs above any sequence the browser may retain while this Android process is
     // restarted. Epoch milliseconds stay exactly representable by JavaScript numbers.
     private val commandSequence = AtomicLong(System.currentTimeMillis())
+    private var lastSeenPersistedAtMs = 0L
     private var serverAddresses = currentPhysicalLanServerUrls()
     private val _snapshot = MutableStateFlow(PcLinkSnapshot())
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -127,7 +128,10 @@ class PcLinkManager private constructor(context: Context) {
             lastSeenAtMs = nowMs,
             lastKnownAddress = address,
         )
-        if (nowMs - computer.lastSeenAtMs > LAST_SEEN_PERSIST_INTERVAL_MS) saveComputers()
+        if (shouldPersistPcLastSeen(nowMs, lastSeenPersistedAtMs)) {
+            saveComputers()
+            lastSeenPersistedAtMs = nowMs
+        }
     }
 
     @Synchronized
@@ -281,7 +285,6 @@ class PcLinkManager private constructor(context: Context) {
     companion object {
         private const val PREFERENCES_NAME = "grayjoy_pc_link_v1"
         private const val KEY_COMPUTERS = "paired_computers"
-        private const val LAST_SEEN_PERSIST_INTERVAL_MS = 60_000L
         private const val NONCE_RETENTION_MS = 3 * 60_000L
         private const val MAX_PENDING_COMMANDS = 32
         private val NONCE = Regex("[A-Za-z0-9_-]{12,100}")
@@ -294,3 +297,6 @@ class PcLinkManager private constructor(context: Context) {
         }
     }
 }
+
+internal fun shouldPersistPcLastSeen(nowMs: Long, lastPersistedAtMs: Long): Boolean =
+    lastPersistedAtMs == 0L || nowMs < lastPersistedAtMs || nowMs - lastPersistedAtMs >= 60_000L

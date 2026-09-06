@@ -5,6 +5,7 @@ import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import org.json.JSONArray
 import org.json.JSONObject
+import com.google.gson.JsonParser
 
 internal data class QueuedDownload(
     val profileId: String,
@@ -70,34 +71,7 @@ internal class GrayjoyDownloadQueue(context: Context) {
 
     private fun load(): List<QueuedDownload> {
         val raw = preferences.getString(KEY_RECORDS, null) ?: return emptyList()
-        return runCatching {
-            val array = JSONArray(raw)
-            buildList {
-                repeat(array.length()) { index ->
-                    val json = array.getJSONObject(index)
-                    val status = runCatching {
-                        DownloadStatus.valueOf(json.getString("status"))
-                    }.getOrDefault(DownloadStatus.Queued)
-                    add(
-                        QueuedDownload(
-                            profileId = json.getString("profileId"),
-                            videoId = json.getString("videoId"),
-                            mediaType = DownloadMediaType.valueOf(json.getString("mediaType")),
-                            // A process cannot resume inside plugin preparation; repeat it.
-                            status = if (status == DownloadStatus.Preparing) {
-                                DownloadStatus.Queued
-                            } else status,
-                            createdAtMs = json.optLong("createdAtMs", System.currentTimeMillis()),
-                            targetVideoHeight = json.optInt("targetVideoHeight")
-                                .takeIf { it > 0 },
-                            targetAudioBitrate = json.optInt("targetAudioBitrate")
-                                .takeIf { it > 0 },
-                            errorMessage = json.optString("errorMessage").takeIf(String::isNotBlank),
-                        ),
-                    )
-                }
-            }
-        }.getOrDefault(emptyList())
+        return parseDownloadQueueRecords(raw)
     }
 
     private fun save() {
@@ -128,5 +102,33 @@ internal class GrayjoyDownloadQueue(context: Context) {
 
         fun key(profileId: String, videoId: String, mediaType: DownloadMediaType): String =
             "$profileId\u0000$videoId\u0000${mediaType.name}"
+    }
+}
+
+/** A malformed record must not discard all unrelated queued downloads. */
+internal fun parseDownloadQueueRecords(raw: String, nowMs: Long = System.currentTimeMillis()): List<QueuedDownload> {
+    val array = runCatching { JsonParser.parseString(raw).asJsonArray }.getOrNull() ?: return emptyList()
+    return array.mapNotNull { element ->
+        runCatching {
+            if (!element.isJsonObject) return@runCatching null
+            val json = element.asJsonObject
+            fun text(name: String): String? = runCatching { json.get(name)?.asString }
+                .getOrNull()?.takeIf(String::isNotBlank)
+            val profileId = text("profileId") ?: return@runCatching null
+            val videoId = text("videoId") ?: return@runCatching null
+            val mediaType = text("mediaType")?.let(DownloadMediaType::valueOf) ?: return@runCatching null
+            val status = runCatching { DownloadStatus.valueOf(text("status").orEmpty()) }
+                .getOrDefault(DownloadStatus.Queued)
+            QueuedDownload(
+                profileId = profileId,
+                videoId = videoId,
+                mediaType = mediaType,
+                status = if (status == DownloadStatus.Preparing) DownloadStatus.Queued else status,
+                createdAtMs = runCatching { json.get("createdAtMs")?.asLong }.getOrNull() ?: nowMs,
+                targetVideoHeight = runCatching { json.get("targetVideoHeight")?.asInt }.getOrNull()?.takeIf { it > 0 },
+                targetAudioBitrate = runCatching { json.get("targetAudioBitrate")?.asInt }.getOrNull()?.takeIf { it > 0 },
+                errorMessage = text("errorMessage"),
+            )
+        }.getOrNull()
     }
 }
