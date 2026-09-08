@@ -188,7 +188,7 @@ fun SourcesScreen(
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                shape = MaterialTheme.shapes.extraLarge,
+                shape = SearchFieldShape,
                 label = { Text(stringResource(R.string.find_source)) },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                 trailingIcon = {

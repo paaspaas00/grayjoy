@@ -33,10 +33,6 @@ import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -50,7 +46,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -121,6 +116,7 @@ fun SettingsScreen(
     onRemovePairedComputer: (String) -> Unit = {},
 ) {
     val performance = rememberDevicePerformanceProfile()
+    val compactLayout = compactUi()
     var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showQualityDialog by rememberSaveable { mutableStateOf(false) }
@@ -132,22 +128,21 @@ fun SettingsScreen(
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     var showPairedComputers by rememberSaveable { mutableStateOf(false) }
+    val groupSpacing = if (performance.compactContent) 10.dp else 16.dp
     LazyColumn(
-        state = rememberContentListState(),
+        state = rememberSettingsListState(),
         modifier = Modifier.testTag("settings-list"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             if (performance.compactContent) 10.dp else 16.dp,
         ),
-        verticalArrangement = Arrangement.spacedBy(
-            if (performance.compactContent) 10.dp else 16.dp,
-        ),
+        verticalArrangement = Arrangement.Top,
     ) {
-        item {
-            SettingsSection(stringResource(R.string.settings_appearance)) {
+        settingsGroup("settings-group-1", R.string.settings_appearance, groupSpacing) {
+            setting("app-language", "link") {
                 val systemLanguageLabel = stringResource(R.string.system_default_language)
                 LinkSetting(
                     title = stringResource(R.string.app_language),
-                    description = stringResource(
+                    description = if (compactLayout) AppLanguageManager.displayName(uiLanguageTag, systemLanguageLabel) else stringResource(
                         R.string.app_language_description,
                         AppLanguageManager.displayName(uiLanguageTag, systemLanguageLabel),
                     ),
@@ -155,7 +150,8 @@ fun SettingsScreen(
                     onClick = { showLanguageDialog = true },
                     testTag = "app-language",
                 )
-                HorizontalDivider()
+            }
+            setting("theme-mode", "link") {
                 LinkSetting(
                     title = stringResource(R.string.settings_appearance),
                     description = stringResource(
@@ -169,7 +165,8 @@ fun SettingsScreen(
                     onClick = { showThemeDialog = true },
                     testTag = "theme-mode",
                 )
-                HorizontalDivider()
+            }
+            setting("toggle-dynamic-colors", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.use_wallpaper_colors),
                     description = stringResource(R.string.material_you_dynamic_color),
@@ -180,8 +177,8 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
-            SettingsSection(stringResource(R.string.settings_playback)) {
+        settingsGroup("settings-group-2", R.string.settings_playback, groupSpacing) {
+            setting("default-playback-speed", "link") {
                 LinkSetting(
                     title = stringResource(R.string.default_playback_speed),
                     description = "${defaultPlaybackSpeed}x",
@@ -189,7 +186,8 @@ fun SettingsScreen(
                     onClick = { showSpeedDialog = true },
                     testTag = "default-playback-speed",
                 )
-                HorizontalDivider()
+            }
+            setting("per-channel-playback-speed", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.per_channel_playback_speed),
                     description = stringResource(R.string.per_channel_playback_speed_description),
@@ -198,7 +196,8 @@ fun SettingsScreen(
                     onCheckedChange = onPerChannelPlaybackSpeedChange,
                     testTag = "per-channel-playback-speed",
                 )
-                HorizontalDivider()
+            }
+            setting("hold-to-speed", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.hold_to_speed),
                     description = stringResource(R.string.hold_to_speed_description),
@@ -207,7 +206,8 @@ fun SettingsScreen(
                     onCheckedChange = onHoldToSpeedChange,
                     testTag = "hold-to-speed",
                 )
-                HorizontalDivider()
+            }
+            setting("preferred-video-quality", "link") {
                 LinkSetting(
                     title = stringResource(R.string.preferred_quality),
                     description = if (preferredVideoQuality == 0) {
@@ -221,8 +221,8 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
-            SettingsCard {
+        settingsGroup("settings-group-3", null, groupSpacing) {
+            setting("preferred-audio-quality", "link") {
                 LinkSetting(
                     title = stringResource(R.string.preferred_audio_quality),
                     description = stringResource(
@@ -236,7 +236,8 @@ fun SettingsScreen(
                     onClick = { showAudioQualityDialog = true },
                     testTag = "preferred-audio-quality",
                 )
-                HorizontalDivider()
+            }
+            setting("preferred-audio-language", "link") {
                 LinkSetting(
                     title = stringResource(R.string.primary_audio_language),
                     description = audioLanguageDisplayName(preferredAudioLanguage),
@@ -244,7 +245,8 @@ fun SettingsScreen(
                     onClick = { showAudioLanguageDialog = true },
                     testTag = "preferred-audio-language",
                 )
-                HorizontalDivider()
+            }
+            setting("prefer-original-audio", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.prefer_original_audio),
                     description = stringResource(R.string.prefer_original_audio_description),
@@ -253,7 +255,8 @@ fun SettingsScreen(
                     onCheckedChange = onPreferOriginalAudioChange,
                     testTag = "prefer-original-audio",
                 )
-                HorizontalDivider()
+            }
+            setting("prefer-newpipe-youtube-playback", "link") {
                 LinkSetting(
                     title = stringResource(R.string.youtube_backend),
                     description = stringResource(
@@ -267,7 +270,8 @@ fun SettingsScreen(
                     onClick = { showYoutubeBackendDialog = true },
                     testTag = "prefer-newpipe-youtube-playback",
                 )
-                HorizontalDivider()
+            }
+            setting("subscription-fetch-mode", "link") {
                 LinkSetting(
                     title = stringResource(R.string.subscription_fetch_mode),
                     description = stringResource(
@@ -280,7 +284,8 @@ fun SettingsScreen(
                     onClick = { showSubscriptionFetchDialog = true },
                     testTag = "subscription-fetch-mode",
                 )
-                HorizontalDivider()
+            }
+            setting("video-title-language", "link") {
                 LinkSetting(
                     title = stringResource(R.string.video_title_language),
                     description = stringResource(
@@ -293,7 +298,8 @@ fun SettingsScreen(
                     onClick = { showTitleLanguageDialog = true },
                     testTag = "video-title-language",
                 )
-                HorizontalDivider()
+            }
+            setting("sticky-captions", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.remember_subtitles),
                     description = stringResource(R.string.remember_subtitles_description),
@@ -304,8 +310,8 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
-            SettingsCard {
+        settingsGroup("settings-group-4", null, groupSpacing) {
+            setting("keep-screen-awake", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.keep_screen_awake),
                     description = stringResource(R.string.keep_screen_awake_description),
@@ -314,7 +320,8 @@ fun SettingsScreen(
                     onCheckedChange = onKeepScreenAwakeChange,
                     testTag = "keep-screen-awake",
                 )
-                HorizontalDivider()
+            }
+            setting("picture-in-picture", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.picture_in_picture),
                     description = stringResource(R.string.picture_in_picture_description),
@@ -323,7 +330,8 @@ fun SettingsScreen(
                     onCheckedChange = onPictureInPictureChange,
                     testTag = "picture-in-picture",
                 )
-                HorizontalDivider()
+            }
+            setting("other-audio-ducking", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.lower_volume_for_other_audio),
                     description = stringResource(R.string.lower_volume_for_other_audio_description),
@@ -332,7 +340,8 @@ fun SettingsScreen(
                     onCheckedChange = onOtherAudioDuckingChange,
                     testTag = "other-audio-ducking",
                 )
-                HorizontalDivider()
+            }
+            setting("other-audio-duck-volume", "link") {
                 LinkSetting(
                     title = stringResource(R.string.reduced_playback_volume),
                     description = stringResource(
@@ -345,8 +354,8 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
-            SettingsSection(stringResource(R.string.settings_content)) {
+        settingsGroup("settings-group-5", R.string.settings_content, groupSpacing) {
+            setting("show-recommendations", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.show_recommendations),
                     description = stringResource(R.string.show_recommendations_description),
@@ -355,7 +364,8 @@ fun SettingsScreen(
                     onCheckedChange = onShowRecommendationsChange,
                     testTag = "show-recommendations",
                 )
-                HorizontalDivider()
+            }
+            setting("search-history", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.search_history),
                     description = stringResource(R.string.search_history_description),
@@ -366,8 +376,8 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
-            SettingsSection(stringResource(R.string.settings_privacy)) {
+        settingsGroup("settings-group-6", R.string.settings_privacy, groupSpacing) {
+            setting("toggle-private-session", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.private_session),
                     description = stringResource(R.string.private_session_description),
@@ -376,7 +386,8 @@ fun SettingsScreen(
                     onCheckedChange = onPrivateSessionChange,
                     testTag = "toggle-private-session",
                 )
-                HorizontalDivider()
+            }
+            setting("privacy-controls", "link") {
                 LinkSetting(
                     title = stringResource(R.string.privacy_controls),
                     description = stringResource(R.string.privacy_controls_description),
@@ -384,7 +395,8 @@ fun SettingsScreen(
                     onClick = {},
                     testTag = "privacy-controls",
                 )
-                HorizontalDivider()
+            }
+            setting("crash-logging", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.save_crash_logs),
                     description = stringResource(R.string.save_crash_logs_description),
@@ -395,8 +407,8 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
-            SettingsSection(stringResource(R.string.settings_sources)) {
+        settingsGroup("settings-group-7", R.string.settings_sources, groupSpacing) {
+            setting("manage-sources", "link") {
                 LinkSetting(
                     title = stringResource(R.string.manage_sources),
                     description = pluralStringResource(
@@ -410,8 +422,8 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
-            SettingsSection(stringResource(R.string.settings_connections)) {
+        settingsGroup("settings-group-8", R.string.settings_connections, groupSpacing) {
+            setting("paired-computers", "link") {
                 LinkSetting(
                     title = stringResource(R.string.paired_computers),
                     description = stringResource(
@@ -424,8 +436,8 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
-            SettingsSection(stringResource(R.string.settings_data)) {
+        settingsGroup("settings-group-9", R.string.settings_data, groupSpacing) {
+            setting("import-grayjay-database", "link") {
                 LinkSetting(
                     title = stringResource(R.string.import_grayjay_database),
                     description = stringResource(R.string.import_grayjay_database_description),
@@ -433,7 +445,8 @@ fun SettingsScreen(
                     onClick = onImportDatabase,
                     testTag = "import-grayjay-database",
                 )
-                HorizontalDivider()
+            }
+            setting("import-newpipe-database", "link") {
                 LinkSetting(
                     title = stringResource(R.string.import_newpipe_database),
                     description = stringResource(R.string.import_newpipe_database_description),
@@ -489,6 +502,7 @@ fun SettingsScreen(
     if (showLanguageDialog) {
         ChoiceDialog(
             title = stringResource(R.string.app_language),
+            description = stringResource(R.string.app_language_description, AppLanguageManager.displayName(uiLanguageTag, stringResource(R.string.system_default_language))),
             choices = listOf(
                 AppLanguageManager.SYSTEM_LANGUAGE_TAG to
                     stringResource(R.string.system_default_language),
@@ -634,12 +648,14 @@ private fun <T> ChoiceDialog(
     selected: T,
     onDismiss: () -> Unit,
     onChoose: (T) -> Unit,
+    description: String? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
             LazyColumn(Modifier.heightIn(max = 520.dp)) {
+                description?.let { value -> item { Text(value, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 12.dp)) } }
                 items(choices.size) { index ->
                     val (value, label) = choices[index]
                     ListItem(
@@ -657,34 +673,6 @@ private fun <T> ChoiceDialog(
 }
 
 @Composable
-private fun SettingsSection(
-    title: String,
-    content: @Composable () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            title,
-            modifier = Modifier.padding(horizontal = 4.dp),
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.titleMedium,
-        )
-        SettingsCard(content)
-    }
-}
-
-@Composable
-private fun SettingsCard(content: @Composable () -> Unit) {
-    val lowEnd = rememberDevicePerformanceProfile().isLowEnd
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = if (lowEnd) RectangleShape else MaterialTheme.shapes.medium,
-        elevation = CardDefaults.cardElevation(defaultElevation = if (lowEnd) 0.dp else 1.dp),
-    ) {
-        Column(content = { content() })
-    }
-}
-
-@Composable
 private fun ToggleSetting(
     title: String,
     description: String,
@@ -693,6 +681,12 @@ private fun ToggleSetting(
     onCheckedChange: (Boolean) -> Unit,
     testTag: String,
 ) {
+    if (compactUi()) {
+        CompactSettingRow(title, description, onClick = { onCheckedChange(!checked) }) {
+            Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.testTag(testTag))
+        }
+        return
+    }
     val compact = rememberDevicePerformanceProfile().compactContent
     if (compact) {
         Row(
@@ -721,11 +715,11 @@ private fun ToggleSetting(
         }
         return
     }
-    ListItem(
-        headlineContent = { Text(title) },
-        supportingContent = { Text(description) },
-        leadingContent = { Icon(icon, contentDescription = null) },
-        trailingContent = {
+    StandardSettingRow(
+        title = title,
+        description = description,
+        leading = { Icon(icon, contentDescription = null) },
+        trailing = {
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
@@ -743,6 +737,12 @@ private fun LinkSetting(
     onClick: () -> Unit,
     testTag: String,
 ) {
+    if (compactUi()) {
+        CompactSettingRow(title, description, onClick = onClick, modifier = Modifier.testTag(testTag)) {
+            Icon(Icons.Outlined.ChevronRight, contentDescription = stringResource(R.string.open_item, title), modifier = Modifier.size(20.dp))
+        }
+        return
+    }
     val compact = rememberDevicePerformanceProfile().compactContent
     if (compact) {
         Row(
@@ -772,14 +772,14 @@ private fun LinkSetting(
         }
         return
     }
-    ListItem(
+    StandardSettingRow(
         modifier = Modifier
             .testTag(testTag)
             .clickable(onClick = onClick),
-        headlineContent = { Text(title) },
-        supportingContent = { Text(description) },
-        leadingContent = { Icon(icon, contentDescription = null) },
-        trailingContent = {
+        title = title,
+        description = description,
+        leading = { Icon(icon, contentDescription = null) },
+        trailing = {
             Icon(
                 Icons.Outlined.ChevronRight,
                 contentDescription = stringResource(R.string.open_item, title),

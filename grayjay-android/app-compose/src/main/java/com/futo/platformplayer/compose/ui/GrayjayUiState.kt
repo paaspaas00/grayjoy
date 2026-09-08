@@ -8,6 +8,7 @@ data class GrayjayUiState(
     val libraryVideos: List<VideoUiModel> = emptyList(),
     val channels: List<ChannelUiModel> = emptyList(),
     val playlists: List<PlaylistUiModel> = emptyList(),
+    val playbackPlaylist: PlaylistUiModel? = null,
     val sources: List<SourceUiModel> = emptyList(),
     val sourceFilterSelections: Map<String, Map<String, String>> = emptyMap(),
     val dynamicColorsEnabled: Boolean = true,

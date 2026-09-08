@@ -83,7 +83,10 @@ fun RemotePlaylistDetailScreen(
     onCancelDownloadAll: (DownloadMediaType) -> Unit = {},
     onCreateLocalPlaylist: (String) -> Unit,
     onLoadMore: () -> Unit,
+    currentVideoId: String? = null,
+    isPlaying: Boolean = false,
 ) {
+    val compactLayout = compactUi()
     val playlist = detail.playlist ?: return
     val listState = rememberContentListState()
     var showCreateSheet by rememberSaveable(playlist.id) { mutableStateOf(false) }
@@ -94,7 +97,7 @@ fun RemotePlaylistDetailScreen(
     var sortAscending by rememberSaveable(playlist.id) { mutableStateOf(true) }
     val sortMode = RemotePlaylistSortMode.valueOf(sortModeName)
     val sortedVideos = remember(detail.videos, sortMode, sortAscending) {
-        sortedRemotePlaylistVideos(detail.videos, sortMode, sortAscending)
+        sortedRemotePlaylistVideos(detail.videos, sortMode, sortAscending).distinctBy(VideoUiModel::id)
     }
     val existingPlaylistTitles = localPlaylists.map(PlaylistUiModel::title)
     val suggestedLocalTitle = uniqueRemotePlaylistTitle(
@@ -126,10 +129,30 @@ fun RemotePlaylistDetailScreen(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize().testTag("remote-playlist-${playlist.id}"),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(if (compactLayout) 12.dp else 16.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compactLayout) 8.dp else 16.dp),
     ) {
         item {
+            if (compactLayout) CompactPlaylistHeader(
+                title = playlist.title, description = playlist.description,
+                playEnabled = detail.videos.isNotEmpty() && !detail.isLoadingAll,
+                playTag = "remote-playlist-play-all", onPlayAll = onPlayAll,
+                actions = listOf(
+                    PlaylistMenuAction(stringResource(R.string.download_all_audio), Icons.Outlined.Download,
+                        enabled = audioBatchActive || (downloadableVideos.isNotEmpty() && !detail.isLoadingAll),
+                        subtitle = if (audioBatchActive) stringResource(R.string.cancel_download) else null,
+                        tag = "remote-playlist-download-audio",
+                        onClick = { if (audioBatchActive) onCancelDownloadAll(DownloadMediaType.Audio) else onDownloadAll(DownloadMediaType.Audio) }),
+                    PlaylistMenuAction(stringResource(R.string.download_all_video), Icons.Outlined.Download,
+                        enabled = videoBatchActive || (downloadableVideos.isNotEmpty() && !detail.isLoadingAll),
+                        subtitle = if (videoBatchActive) stringResource(R.string.cancel_download) else null,
+                        tag = "remote-playlist-download-video",
+                        onClick = { if (videoBatchActive) onCancelDownloadAll(DownloadMediaType.Video) else onDownloadAll(DownloadMediaType.Video) }),
+                    PlaylistMenuAction(stringResource(R.string.make_local_playlist), Icons.AutoMirrored.Outlined.PlaylistAdd,
+                        enabled = detail.videos.isNotEmpty() && !detail.isLoadingAll,
+                        tag = "remote-playlist-create-local", onClick = { showCreateSheet = true }),
+                ),
+            ) else {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.extraLarge,
@@ -141,11 +164,11 @@ fun RemotePlaylistDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text(stringResource(R.string.source_playlist), style = MaterialTheme.typography.labelLarge)
-                    Text(playlist.title, style = MaterialTheme.typography.headlineMedium)
+                Text(playlist.title, style = if (compactLayout) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium)
                     if (playlist.description.isNotBlank()) {
                         Text(playlist.description, style = MaterialTheme.typography.bodyLarge)
                     }
-                    Row(
+                    AdaptiveActionRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -204,10 +227,9 @@ fun RemotePlaylistDetailScreen(
                         Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, contentDescription = null)
                         Text(stringResource(R.string.make_local_playlist))
                     }
-                    Row(
+                    AdaptiveActionRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             pluralStringResource(
@@ -235,6 +257,7 @@ fun RemotePlaylistDetailScreen(
                     }
                 }
             }
+            }
         }
 
         detail.errorMessage?.let { message ->
@@ -246,7 +269,10 @@ fun RemotePlaylistDetailScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(stringResource(R.string.videos), style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    if (compactLayout) pluralStringResource(R.plurals.video_count, displayedVideoCount, displayedVideoCount) else stringResource(R.string.videos),
+                    style = if (compactLayout) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall,
+                )
                 OutlinedButton(onClick = { showSortSheet = true }) {
                     Icon(Icons.Outlined.Sort, contentDescription = null)
                     Text(stringResource(R.string.sort))
@@ -261,8 +287,10 @@ fun RemotePlaylistDetailScreen(
                 key = { _, video -> video.id },
                 contentType = { _, _ -> "video" },
             ) { index, video ->
-                VideoCard(
-                    video = video,
+            VideoCard(
+                video = video,
+                isCurrent = video.id == currentVideoId,
+                isPlaying = isPlaying,
                     index = index,
                     download = downloads[video.id],
                     onClick = { onVideoClick(video) },

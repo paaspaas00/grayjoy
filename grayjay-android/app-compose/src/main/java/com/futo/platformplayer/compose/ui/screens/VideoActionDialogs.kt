@@ -69,6 +69,7 @@ internal fun PlaylistSearchField(
 ) {
     OutlinedTextField(
         value = query,
+        shape = SearchFieldShape,
         onValueChange = { onQueryChange(it.take(80)) },
         modifier = modifier
             .fillMaxWidth()

@@ -1,12 +1,11 @@
 package com.futo.platformplayer.compose.ui.screens
 
-import android.graphics.drawable.ColorDrawable
-import android.widget.ImageView
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +13,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,6 +38,7 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -62,16 +64,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import com.futo.platformplayer.compose.R
-import androidx.compose.ui.viewinterop.AndroidView
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadUiModel
-import com.bumptech.glide.Glide
-import com.bumptech.glide.load.model.GlideUrl
-import com.bumptech.glide.load.model.LazyHeaders
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.request.target.Target
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
@@ -79,16 +73,6 @@ import com.futo.platformplayer.compose.rememberDevicePerformanceProfile
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.delay
-
-private data class RemoteImageRequestKey(
-    val url: String,
-    val fallbackUrl: String?,
-    val placeholderColor: Int,
-    val circleCrop: Boolean,
-    val targetWidthPx: Int?,
-    val targetHeightPx: Int?,
-    val requestHeaders: Map<String, String>,
-)
 
 private val YOUTUBE_THUMBNAIL_ID_REGEX = Regex(
     "/vi(?:_webp)?/([^/?&]+)",
@@ -107,90 +91,6 @@ private val VIDEO_PLACEHOLDER_GRADIENTS = listOf(
 )
 
 internal val LocalVideoCreatorClick = compositionLocalOf<(VideoUiModel) -> Unit> { {} }
-
-/** Avoid restarting an in-flight Glide request whenever the playback clock recomposes the UI. */
-private fun ImageView.loadRemoteImage(
-    url: String,
-    placeholderColor: Int,
-    fallbackUrl: String? = null,
-    circleCrop: Boolean = false,
-    targetWidthPx: Int? = null,
-    targetHeightPx: Int? = null,
-    requestHeaders: Map<String, String> = emptyMap(),
-) {
-    val key = RemoteImageRequestKey(
-        url,
-        fallbackUrl,
-        placeholderColor,
-        circleCrop,
-        targetWidthPx,
-        targetHeightPx,
-        requestHeaders,
-    )
-    if (getTag(R.id.remote_image_request_key) == key) return
-    setTag(R.id.remote_image_request_key, key)
-    val manager = Glide.with(this)
-    val requestModel: Any = url.withHeaders(requestHeaders)
-    val fallback = fallbackUrl?.let { candidate ->
-        var request = manager.load(candidate.withHeaders(requestHeaders))
-            .placeholder(ColorDrawable(placeholderColor))
-            .error(ColorDrawable(placeholderColor))
-        if (targetWidthPx != null && targetHeightPx != null) {
-            request = request.override(targetWidthPx, targetHeightPx)
-        }
-        if (circleCrop) request.circleCrop() else request
-    }
-    var request = manager.load(requestModel)
-        .dontAnimate()
-        .placeholder(ColorDrawable(placeholderColor))
-        .let { request ->
-            when {
-                fallback != null -> request.error(fallback)
-                else -> request.error(ColorDrawable(placeholderColor))
-            }
-        }
-    if (targetWidthPx != null && targetHeightPx != null) {
-        request = request.override(targetWidthPx, targetHeightPx)
-    }
-    val targetView = this
-    request = request.listener(
-        object : RequestListener<android.graphics.drawable.Drawable> {
-            override fun onLoadFailed(
-                e: GlideException?,
-                model: Any?,
-                target: Target<android.graphics.drawable.Drawable>,
-                isFirstResource: Boolean,
-            ): Boolean {
-                targetView.setTag(R.id.remote_image_request_key, null)
-                return false
-            }
-
-            override fun onResourceReady(
-                resource: android.graphics.drawable.Drawable,
-                model: Any,
-                target: Target<android.graphics.drawable.Drawable>?,
-                dataSource: DataSource,
-                isFirstResource: Boolean,
-            ): Boolean = false
-        },
-    )
-    (if (circleCrop) request.circleCrop() else request).into(this)
-}
-
-private fun String.withHeaders(headers: Map<String, String>): Any {
-    if (headers.isEmpty()) return this
-    val lazyHeaders = LazyHeaders.Builder().apply {
-        headers.forEach { (name, value) -> addHeader(name, value) }
-    }.build()
-    return GlideUrl(this, lazyHeaders)
-}
-
-/** Enable AndroidView pooling in lazy lists and detach the previous Glide request on reuse. */
-private fun ImageView.resetRemoteImage() {
-    Glide.with(this).clear(this)
-    setTag(R.id.remote_image_request_key, null)
-    setImageDrawable(null)
-}
 
 internal fun youtubeThumbnailFallbackUrl(
     sourceId: String,
@@ -240,7 +140,7 @@ internal fun SectionHeading(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        Text(title, style = if (compactUi()) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
         if (action != null) {
             AssistChip(onClick = onAction ?: {}, label = { Text(action) })
         }
@@ -259,6 +159,8 @@ internal fun VideoCard(
     selectionMode: Boolean = false,
     showProgress: Boolean = false,
     animateEntrance: Boolean = true,
+    isCurrent: Boolean = false,
+    isPlaying: Boolean = false,
 ) {
     CompactVideoCard(
         video = video,
@@ -271,6 +173,8 @@ internal fun VideoCard(
         selectionMode = selectionMode,
         showProgress = showProgress,
         animateEntrance = animateEntrance,
+        isCurrent = isCurrent,
+        isPlaying = isPlaying,
     )
 }
 
@@ -287,39 +191,41 @@ internal fun CompactVideoCard(
     selectionMode: Boolean = false,
     showProgress: Boolean = false,
     animateEntrance: Boolean = true,
+    isCurrent: Boolean = false,
+    isPlaying: Boolean = false,
 ) {
     val performance = rememberDevicePerformanceProfile()
+    val dense = compactUi()
+    val compactCard = performance.compactContent || dense
+    val cardShape = if (performance.isLowEnd) RectangleShape else if (dense) RoundedCornerShape(16.dp) else MaterialTheme.shapes.medium
+    val displayMetadata = if (dense && metadataText.contains("·")) metadataText.substringAfterLast("·").trim() else metadataText
     val entranceModifier = staggeredVideoEntrance(
         index = index,
         videoId = video.id,
         enabled = animateEntrance && performance.allowPerItemLayerAnimations,
     )
-    val thumbnailWidth = if (performance.compactContent) 148.dp else 184.dp
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val thumbnailWidth = videoCardThumbnailWidth(configuration.screenWidthDp, compactCard).dp
     val thumbnailHeight = (thumbnailWidth.value * 9f / 16f).dp
+    val adaptiveHeight = configuration.screenWidthDp < 390 || density.fontScale > 1.1f || compactCard
     val onCreatorClick = LocalVideoCreatorClick.current
-    Card(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .then(entranceModifier)
+            .clip(cardShape)
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
+            .then(if (isCurrent) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, cardShape) else Modifier)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .testTag("video-card-${video.id}"),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.secondaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerLow
-            },
-        ),
-        shape = if (performance.isLowEnd) RectangleShape else MaterialTheme.shapes.medium,
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (performance.isLowEnd) 0.dp else 1.dp,
-        ),
     ) {
         Column {
             Row(
-                modifier = Modifier.padding(if (performance.compactContent) 6.dp else 10.dp),
-                verticalAlignment = Alignment.Top,
+                modifier = Modifier.padding(if (compactCard) 6.dp else 10.dp),
+                verticalAlignment = if (adaptiveHeight) Alignment.CenterVertically else Alignment.Top,
             ) {
+                Box(Modifier.testTag("video-thumbnail-${video.id}")) {
                 CompactVideoThumbnail(
                     video = video,
                     index = index,
@@ -330,33 +236,39 @@ internal fun CompactVideoCard(
                         .height(thumbnailHeight)
                         .then(
                             if (performance.isLowEnd) Modifier
-                            else Modifier.clip(MaterialTheme.shapes.medium),
+                            else Modifier.clip(if (dense) RoundedCornerShape(12.dp) else MaterialTheme.shapes.medium),
                         ),
                 )
+                if (isCurrent) NowPlayingIndicator(
+                    isPlaying = isPlaying,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
+                )
+                }
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .height(thumbnailHeight)
+                        .then(if (adaptiveHeight) Modifier.heightIn(min = thumbnailHeight) else Modifier.height(thumbnailHeight))
                         .padding(
-                            start = if (performance.compactContent) 8.dp else 12.dp,
+                            start = if (compactCard) 8.dp else 12.dp,
                             end = 4.dp,
                         ),
-                    verticalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = if (adaptiveHeight) Arrangement.spacedBy(4.dp) else Arrangement.SpaceBetween,
                 ) {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(
-                            if (performance.compactContent) 1.dp else 3.dp,
+                            if (compactCard) 1.dp else 3.dp,
                         ),
                     ) {
                         Text(
                             text = video.title,
+                            modifier = Modifier.testTag("video-title-${video.id}"),
                             style = MaterialTheme.typography.titleSmall,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        if (metadataText.isNotBlank()) {
+                        if (!dense && displayMetadata.isNotBlank()) {
                             Text(
-                                text = metadataText,
+                                text = displayMetadata,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.labelSmall,
                                 maxLines = 1,
@@ -364,11 +276,13 @@ internal fun CompactVideoCard(
                             )
                         }
                     }
-                    Surface(
+                    Box(
                         modifier = Modifier
+                            .widthIn(max = 360.dp)
                             .fillMaxWidth()
                             .minimumInteractiveComponentSize()
                             .clip(MaterialTheme.shapes.small)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                             .combinedClickable(
                                 role = Role.Button,
                                 onClick = {
@@ -377,14 +291,11 @@ internal fun CompactVideoCard(
                                 onLongClick = onLongClick,
                             )
                             .testTag("video-channel-footer-${video.id}"),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        shape = MaterialTheme.shapes.small,
                     ) {
                         Row(
                             modifier = Modifier.padding(
-                                horizontal = if (performance.compactContent) 7.dp else 9.dp,
-                                vertical = if (performance.compactContent) 4.dp else 5.dp,
+                                horizontal = if (compactCard) 7.dp else 9.dp,
+                                vertical = if (compactCard) 4.dp else 5.dp,
                             ),
                             horizontalArrangement = Arrangement.spacedBy(7.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -394,16 +305,17 @@ internal fun CompactVideoCard(
                                 thumbnailUrl = video.authorThumbnailUrl,
                                 requestHeaders = video.thumbnailRequestHeaders,
                                 modifier = Modifier.size(
-                                    if (performance.compactContent) 20.dp else 24.dp,
+                                    if (dense) 18.dp else if (compactCard) 20.dp else 24.dp,
                                 ),
                             )
-                            Text(
-                                text = video.creator,
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(video.creator, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (dense && displayMetadata.isNotBlank()) Text(
+                                    displayMetadata, style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }
@@ -466,7 +378,12 @@ private fun staggeredVideoEntrance(
     videoId: String,
     enabled: Boolean,
 ): Modifier {
-    if (!enabled) return Modifier
+    var completed by rememberSaveable(videoId) { mutableStateOf(!enabled) }
+    if (!enabled) {
+        SideEffect { completed = true }
+        return Modifier
+    }
+    if (completed) return Modifier
     var entered by rememberSaveable(videoId) { mutableStateOf(false) }
     var entranceLayerActive by remember(videoId) { mutableStateOf(!entered) }
     val progress = animateFloatAsState(
@@ -483,6 +400,7 @@ private fun staggeredVideoEntrance(
             delay(210L)
         }
         entranceLayerActive = false
+        completed = true
     }
     if (!entranceLayerActive) return Modifier
     return Modifier.graphicsLayer {
@@ -514,28 +432,14 @@ private fun CompactVideoThumbnail(
         modifier = modifier.background(placeholderBrush),
     ) {
         if (video.thumbnailUrl.isNotBlank()) {
-            AndroidView(
-                factory = { context ->
-                    ImageView(context).apply {
-                        scaleType = ImageView.ScaleType.CENTER_CROP
-                    }
-                },
-                update = { imageView ->
-                    imageView.loadRemoteImage(
-                        url = video.thumbnailUrl,
-                        placeholderColor = placeholderColor,
-                        fallbackUrl = youtubeThumbnailFallbackUrl(
-                            sourceId = video.sourceId,
-                            videoId = video.id,
-                            thumbnailUrl = video.thumbnailUrl,
-                        ),
-                        targetWidthPx = targetWidthPx,
-                        targetHeightPx = targetHeightPx,
-                        requestHeaders = video.thumbnailRequestHeaders,
-                    )
-                },
-                onReset = { imageView -> imageView.resetRemoteImage() },
-                onRelease = { imageView -> imageView.resetRemoteImage() },
+            RemoteBitmapImage(
+                url = video.thumbnailUrl,
+                placeholderColor = Color(placeholderColor),
+                fallbackUrl = youtubeThumbnailFallbackUrl(
+                    sourceId = video.sourceId, videoId = video.id, thumbnailUrl = video.thumbnailUrl,
+                ),
+                requestSize = androidx.compose.ui.unit.IntSize(targetWidthPx, targetHeightPx),
+                requestHeaders = video.thumbnailRequestHeaders,
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -654,15 +558,8 @@ internal fun SourceIconImage(
             style = MaterialTheme.typography.labelSmall,
         )
         if (iconUrl.isNotBlank()) {
-            AndroidView(
-                factory = { context ->
-                    ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-                },
-                update = { imageView ->
-                    imageView.loadRemoteImage(iconUrl, placeholderColor)
-                },
-                onReset = { imageView -> imageView.resetRemoteImage() },
-                onRelease = { imageView -> imageView.resetRemoteImage() },
+            RemoteBitmapImage(
+                url = iconUrl, placeholderColor = Color(placeholderColor),
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -732,20 +629,9 @@ internal fun ChannelAvatarImage(
             style = MaterialTheme.typography.titleMedium,
         )
         if (thumbnailUrl.isNotBlank()) {
-            AndroidView(
-                factory = { context ->
-                    ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-                },
-                update = { imageView ->
-                    imageView.loadRemoteImage(
-                        url = thumbnailUrl,
-                        placeholderColor = placeholderColor,
-                        circleCrop = true,
-                        requestHeaders = requestHeaders,
-                    )
-                },
-                onReset = { imageView -> imageView.resetRemoteImage() },
-                onRelease = { imageView -> imageView.resetRemoteImage() },
+            RemoteBitmapImage(
+                url = thumbnailUrl, placeholderColor = Color(placeholderColor),
+                circleCrop = true, requestHeaders = requestHeaders,
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -784,19 +670,9 @@ internal fun PlaylistRow(
         ) {
             if (playlist.thumbnailUrl.isNotBlank()) {
                 val placeholderColor = MaterialTheme.colorScheme.secondaryContainer.toArgb()
-                AndroidView(
-                    factory = { context ->
-                        ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-                    },
-                    update = { imageView ->
-                        imageView.loadRemoteImage(playlist.thumbnailUrl, placeholderColor)
-                    },
-                    onReset = { imageView -> imageView.resetRemoteImage() },
-                    onRelease = { imageView -> imageView.resetRemoteImage() },
-                    modifier = Modifier
-                        .width(112.dp)
-                        .height(64.dp)
-                        .clip(MaterialTheme.shapes.medium),
+                RemoteBitmapImage(
+                    url = playlist.thumbnailUrl, placeholderColor = Color(placeholderColor),
+                    modifier = Modifier.width(112.dp).height(64.dp).clip(MaterialTheme.shapes.medium),
                 )
             } else {
                 Surface(

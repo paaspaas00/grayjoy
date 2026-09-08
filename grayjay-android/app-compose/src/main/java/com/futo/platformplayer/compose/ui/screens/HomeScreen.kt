@@ -95,6 +95,7 @@ fun HomeScreen(
     onSeekComputerPlayback: (String, Long) -> Unit = { _, _ -> },
 ) {
     val performance = rememberDevicePerformanceProfile()
+    val compact = compactUi()
     var updateDetailsVisible by rememberSaveable { mutableStateOf(false) }
     val youtubeEnabled = sources.any { source ->
         source.id.equals("youtube", ignoreCase = true) && source.isEnabled &&
@@ -237,8 +238,8 @@ fun HomeScreen(
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
                 .padding(
-                    horizontal = if (performance.compactContent) 8.dp else 16.dp,
-                    vertical = if (performance.compactContent) 4.dp else 8.dp,
+                    horizontal = if (compact) 12.dp else if (performance.compactContent) 8.dp else 16.dp,
+                    vertical = if (compact) 0.dp else if (performance.compactContent) 4.dp else 8.dp,
                 ),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -396,17 +397,19 @@ fun HomeScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(if (performance.compactContent) 8.dp else 16.dp),
+                    contentPadding = PaddingValues(if (compact) 12.dp else if (performance.compactContent) 8.dp else 16.dp),
                     verticalArrangement = Arrangement.spacedBy(
-                        if (performance.compactContent) 8.dp else 16.dp,
+                        if (compact || performance.compactContent) 8.dp else 16.dp,
                     ),
                 ) {
+                    if (!compact || browseTab != null || (feed == HomeFeedType.Subscriptions &&
+                            pageHome.subscriptionsTotal > 0 && pageHome.subscriptionsLoaded < pageHome.subscriptionsTotal)) {
                     item {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
+                            if (!compact || browseTab != null) Text(
                                 text = browseTab?.let {
                                     pageHome.browseOptionLabel ?: it.label
                                 } ?: when (feed) {
@@ -426,6 +429,7 @@ fun HomeScreen(
                                 )
                             }
                         }
+                    }
                     }
 
                     if (pageHome.isLoading && pageHome.videos.isEmpty()) {
@@ -473,7 +477,7 @@ fun HomeScreen(
                                 index = index,
                                 showProgress = feed == HomeFeedType.Subscriptions ||
                                     feed == HomeFeedType.Shorts,
-                                animateEntrance = animateEntrance,
+                                animateEntrance = animateEntrance && !listState.isScrollInProgress,
                                 onClick = { onVideoClick(video) },
                                 onLongClick = { onVideoLongClick(video) },
                             )

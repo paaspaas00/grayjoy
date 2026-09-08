@@ -462,6 +462,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var detailsJob: Job? = null
     private var storyboardJob: Job? = null
     private var audioLanguageJob: Job? = null
+    private var playbackRetryJob: Job? = null
     private var channelJob: Job? = null
     private var channelSearchJob: Job? = null
     private var homeJob: Job? = null
@@ -504,6 +505,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var pendingPlaybackVideoId: String? = null
     private var pendingPcHandoffSeek: Pair<String, Long>? = null
     private var activePlaylistId: String? = null
+        set(value) {
+            field = value
+            _uiState.update { state -> state.copy(playbackPlaylist = value?.let { id ->
+                state.playlists.firstOrNull { it.id == id }
+            }) }
+        }
     private var appIsForeground = false
     private var externalNavigationRequestId = 0L
     private var suppressChromecastHandoff = false
@@ -2983,6 +2990,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun invalidatePlaybackQueue(): Long {
+        playbackRetryJob?.cancel()
         playbackGeneration += 1
         queuePreparationBlockedUntilMs = 0L
         queuePreparation.cancel()
@@ -3191,6 +3199,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setAudioLanguage(language: String?) {
+        playbackRetryJob?.cancel()
         val video = _uiState.value.nowPlaying.video ?: return
         if (video.playbackFromDownload || video.contentUrl.isBlank()) {
             engine.setAudioLanguage(language)
@@ -3250,7 +3259,55 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun retryPlayback() = engine.retryPlayback()
+    fun retryPlayback() {
+        val video = _uiState.value.nowPlaying.video ?: return
+        if (video.playbackFromDownload || video.contentUrl.isBlank()) {
+            engine.retryPlayback()
+            return
+        }
+        if (playbackRetryJob?.isActive == true) return
+        audioLanguageJob?.cancel()
+        val profile = activeProfileId
+        val generation = playbackGeneration
+        val positionMs = _uiState.value.playback.positionMs
+        fun isCurrentRequest() = profile == activeProfileId &&
+            generation == playbackGeneration && _uiState.value.nowPlaying.video?.id == video.id
+        playbackRetryJob = viewModelScope.launch {
+            _uiState.update { it.copy(nowPlaying = it.nowPlaying.copy(isLoadingPlayback = true)) }
+            try {
+                // Signed stream URLs can expire. Resolve from the canonical content URL instead
+                // of preparing the same failing media source again; keep the existing queue.
+                val resolved = resolveWithAudioPreferences(video.onlinePlaybackInput())
+                    .withPersistedLibraryState()
+                if (!isCurrentRequest()) return@launch
+                remoteVideos[resolved.id] = resolved
+                _uiState.update { it.copy(nowPlaying = it.nowPlaying.copy(video = resolved)) }
+                if (chromecastManager.state.value.isConnected) {
+                    chromecastManager.cast(
+                        resolved,
+                        _uiState.value.playback.copy(
+                            positionMs = positionMs,
+                            isPlaying = true,
+                            errorMessage = null,
+                        ),
+                    )
+                } else {
+                    engine.replaceCurrent(resolved, positionMs, playWhenReady = true)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (isCurrentRequest()) {
+                    Log.e("GrayjayViewModel", "Could not refresh playback source.", error)
+                    Toast.makeText(getApplication(), error.localizedMessage, Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                if (isCurrentRequest()) {
+                    _uiState.update { it.copy(nowPlaying = it.nowPlaying.copy(isLoadingPlayback = false)) }
+                }
+            }
+        }
+    }
 
     fun toggleFollowing() {
         val video = _uiState.value.nowPlaying.video ?: return
@@ -3861,6 +3918,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 val videos = fullyLoadRemotePlaylist(playlist.id)
                 activePlaylistId = null
                 startQueue(videos.map(VideoUiModel::id))
+                if (videos.isNotEmpty()) _uiState.update { it.copy(playbackPlaylist = playlist) }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -3893,6 +3951,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 if (queueIds.isNotEmpty()) {
                     activePlaylistId = null
                     startQueue(queueIds)
+                    _uiState.update { it.copy(playbackPlaylist = playlist) }
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -4356,27 +4415,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }
         }
     }
-
-    private fun VideoUiModel.onlinePlaybackInput(): VideoUiModel = copy(
-        isDownloaded = false,
-        playbackFromDownload = false,
-        playbackAudioOnly = false,
-        playbackCacheNamespace = "",
-        audioCacheNamespace = "",
-        playbackStreamKeys = emptyList(),
-        audioStreamKeys = emptyList(),
-        playbackUrl = "",
-        playbackMimeType = "",
-        playbackManifest = "",
-        audioUrl = "",
-        audioRequestHeaders = emptyMap(),
-        audioDataSourceFactory = null,
-        playbackRequestHeaders = emptyMap(),
-        playbackDataSourceFactory = null,
-        subtitleTracks = emptyList(),
-        qualityVariants = emptyList(),
-        audioQualityVariants = emptyList(),
-    )
 
     fun downloadVideos(videoIds: List<String>, mediaType: DownloadMediaType) {
         val profileAtStart = activeProfileId

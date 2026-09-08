@@ -22,3 +22,17 @@ internal fun rememberContentListState(): LazyListState {
     }
     return rememberLazyListState(cacheWindow = cacheWindow)
 }
+
+/** Preferences have small, image-free rows: retain a larger bounded window for fast flings. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun rememberSettingsListState(): LazyListState {
+    val lowEnd = rememberDevicePerformanceProfile().isLowEnd
+    val cacheWindow = remember(lowEnd) {
+        LazyLayoutCacheWindow(
+            ahead = if (lowEnd) 720.dp else 1440.dp,
+            behind = if (lowEnd) 480.dp else 960.dp,
+        )
+    }
+    return rememberLazyListState(cacheWindow = cacheWindow)
+}

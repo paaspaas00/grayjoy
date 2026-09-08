@@ -1,6 +1,6 @@
 package com.futo.platformplayer.compose.ui.screens
 
-import androidx.activity.compose.BackHandler
+import com.futo.platformplayer.compose.ui.PageBackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -212,7 +212,10 @@ fun SubscriptionsScreen(
             focusManager.clearFocus(force = true)
         }
     }
-    BackHandler(enabled = isManaging) { leaveManagement() }
+    PageBackHandler(enabled = isManaging) {
+        if (selectedChannelIds.isNotEmpty()) selectedChannelIds.clear() else leaveManagement()
+    }
+    PageBackHandler(enabled = !isManaging && videoSelectionMode) { leaveVideoSelectionMode() }
 
     if (isManaging) {
         ManageSubscriptionsPane(
@@ -549,6 +552,7 @@ private fun ManageSubscriptionsPane(
         )
         OutlinedTextField(
             value = query,
+            shape = SearchFieldShape,
             onValueChange = onQueryChange,
             modifier = Modifier
                 .fillMaxWidth()

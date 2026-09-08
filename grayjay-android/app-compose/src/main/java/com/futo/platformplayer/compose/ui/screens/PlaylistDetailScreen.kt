@@ -1,6 +1,9 @@
 package com.futo.platformplayer.compose.ui.screens
 
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +42,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import com.futo.platformplayer.compose.ui.PageBackHandler
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -81,7 +86,10 @@ fun PlaylistDetailScreen(
     onAddSelectionToPlaylist: (List<String>) -> Unit = {},
     onRemoveVideos: (List<String>) -> Unit = {},
     onReorder: (List<String>) -> Unit = {},
+    currentVideoId: String? = null,
+    isPlaying: Boolean = false,
 ) {
+    val compactLayout = compactUi()
     var showRenameDialog by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var showReorderDialog by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var confirmRemoval by rememberSaveable(playlist.id) { mutableStateOf(false) }
@@ -89,7 +97,7 @@ fun PlaylistDetailScreen(
     val selectedVideoIds = remember(playlist.id) { mutableStateListOf<String>() }
     val videosById = remember(videos) { videos.associateBy(VideoUiModel::id) }
     val playlistVideos = remember(playlist.videoIds, videosById) {
-        playlist.videoIds.mapNotNull(videosById::get)
+        playlist.videoIds.distinct().mapNotNull(videosById::get)
     }
     val downloadableIds = remember(playlistVideos) {
         playlistVideos.filter(VideoUiModel::supportsOfflineDownload).map(VideoUiModel::id)
@@ -111,22 +119,49 @@ fun PlaylistDetailScreen(
         selectionMode = false
         selectedVideoIds.clear()
     }
+    PageBackHandler(enabled = selectionMode) { leaveSelectionMode() }
+    LaunchedEffect(playlistVideos) {
+        selectedVideoIds.retainAll(playlistVideos.mapTo(mutableSetOf(), VideoUiModel::id))
+        if (selectedVideoIds.isEmpty()) selectionMode = false
+    }
+    val listState = rememberContentListState()
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
-            state = rememberContentListState(),
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("playlist-detail-${playlist.id}"),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                start = 16.dp,
-                top = 16.dp,
-                end = 16.dp,
+                start = if (compactLayout) 12.dp else 16.dp,
+                top = if (compactLayout) 8.dp else 16.dp,
+                end = if (compactLayout) 12.dp else 16.dp,
                 bottom = if (selectionMode) 88.dp else 16.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compactLayout) 8.dp else 16.dp),
         ) {
             item {
+                if (compactLayout) CompactPlaylistHeader(
+                    title = playlist.title,
+                    description = playlist.description,
+                    playEnabled = playlistVideos.isNotEmpty(),
+                    playTag = "playlist-play-all",
+                    onPlayAll = onPlayAll,
+                    actions = listOf(
+                        PlaylistMenuAction(stringResource(R.string.download_all_audio), Icons.Outlined.Download,
+                            enabled = audioBatchActive || downloadableIds.any { downloads[it]?.isComplete(DownloadMediaType.Audio) != true && downloads[it]?.isActive(DownloadMediaType.Audio) != true },
+                            subtitle = if (audioBatchActive) stringResource(R.string.cancel_download) else null,
+                            tag = "playlist-download-audio",
+                            onClick = { if (audioBatchActive) onCancelDownloadAllAsAudio() else onDownloadAllAsAudio(downloadableIds) }),
+                        PlaylistMenuAction(stringResource(R.string.download_all_video), Icons.Outlined.Download,
+                            enabled = videoBatchActive || downloadableIds.any { downloads[it]?.isComplete(DownloadMediaType.Video) != true && downloads[it]?.isActive(DownloadMediaType.Video) != true },
+                            subtitle = if (videoBatchActive) stringResource(R.string.cancel_download) else null,
+                            tag = "playlist-download-video",
+                            onClick = { if (videoBatchActive) onCancelDownloadAllAsVideo() else onDownloadAllAsVideo(downloadableIds) }),
+                        PlaylistMenuAction(stringResource(R.string.rename_playlist), Icons.Outlined.Edit,
+                            tag = "rename-current-playlist", onClick = { showRenameDialog = true }),
+                    ),
+                ) else {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.extraLarge,
@@ -134,7 +169,7 @@ fun PlaylistDetailScreen(
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 ) {
                     Column(
-                        modifier = Modifier.padding(24.dp),
+                        modifier = Modifier.padding(if (compactLayout) 16.dp else 24.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text(stringResource(R.string.local_playlist), style = MaterialTheme.typography.labelLarge)
@@ -146,7 +181,7 @@ fun PlaylistDetailScreen(
                             Text(
                                 playlist.title,
                                 modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.headlineMedium,
+                                style = if (compactLayout) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium,
                             )
                             IconButton(
                                 onClick = { showRenameDialog = true },
@@ -158,8 +193,8 @@ fun PlaylistDetailScreen(
                                 )
                             }
                         }
-                        Text(playlist.description, style = MaterialTheme.typography.bodyLarge)
-                        Row(
+                        if (playlist.description.isNotBlank()) Text(playlist.description, style = MaterialTheme.typography.bodyLarge)
+                        AdaptiveActionRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
@@ -224,10 +259,9 @@ fun PlaylistDetailScreen(
                                 )
                             }
                         }
-                        Row(
+                        AdaptiveActionRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
                                 pluralStringResource(
@@ -248,16 +282,20 @@ fun PlaylistDetailScreen(
                         }
                     }
                 }
+                }
             }
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(stringResource(R.string.videos), style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        if (compactLayout && !selectionMode) pluralStringResource(R.plurals.video_count, playlistVideos.size, playlistVideos.size) else stringResource(R.string.videos),
+                        style = if (compactLayout) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                    )
                     if (selectionMode) {
                         Text(
-                            pluralStringResource(
+                            if (compactLayout) selectedVideoIds.size.toString() else pluralStringResource(
                                 R.plurals.selected_count,
                                 selectedVideoIds.size,
                                 selectedVideoIds.size,
@@ -297,6 +335,8 @@ fun PlaylistDetailScreen(
             ) { index, video ->
                 VideoCard(
                     video = video,
+                    isCurrent = video.id == currentVideoId,
+                    isPlaying = isPlaying,
                     index = index,
                     download = downloads[video.id],
                     selected = video.id in selectedVideoIds,
@@ -332,15 +372,23 @@ fun PlaylistDetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        pluralStringResource(
+                        if (compactLayout) selectedVideoIds.size.toString() else pluralStringResource(
                             R.plurals.selected_count,
                             selectedVideoIds.size,
                             selectedVideoIds.size,
                         ),
                         modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium,
                     )
                     selectedVideoIds.singleOrNull()?.let { selectedVideoId ->
+                        if (compactLayout) IconButton(
+                            onClick = { leaveSelectionMode(); onPlayFromHere(selectedVideoId) },
+                            modifier = Modifier.testTag("playlist-selection-play-from-here"),
+                        ) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.play_from_here))
+                        } else
                         Button(
                             onClick = {
                                 leaveSelectionMode()
@@ -413,141 +461,4 @@ fun PlaylistDetailScreen(
             },
         )
     }
-}
-
-@Composable
-private fun ReorderPlaylistDialog(
-    videos: List<VideoUiModel>,
-    onDismiss: () -> Unit,
-    onConfirm: (List<String>) -> Unit,
-) {
-    val orderedIds = remember(videos.map(VideoUiModel::id)) {
-        mutableStateListOf<String>().apply { addAll(videos.map(VideoUiModel::id)) }
-    }
-    val videosById = remember(videos) { videos.associateBy(VideoUiModel::id) }
-    val rowStepPx = with(LocalDensity.current) { 52.dp.toPx() }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
-    var draggedId by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.reorder_playlist)) },
-        text = {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 420.dp)
-                    .testTag("playlist-reorder-list"),
-            ) {
-                itemsIndexed(orderedIds, key = { _, id -> id }) { index, id ->
-                    val isDragged = draggedId == id
-                    val rowScale by animateFloatAsState(
-                        targetValue = if (isDragged) 1.025f else 1f,
-                        animationSpec = tween(120),
-                        label = "playlist-reorder-scale",
-                    )
-                    val animatedDragOffset by animateFloatAsState(
-                        targetValue = if (isDragged) dragOffset else 0f,
-                        animationSpec = if (isDragged) snap() else spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMedium,
-                        ),
-                        label = "playlist-reorder-drag-offset",
-                    )
-                    val rowColor by animateColorAsState(
-                        targetValue = if (isDragged) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHigh
-                        },
-                        animationSpec = tween(140),
-                        label = "playlist-reorder-color",
-                    )
-                    val rowShape = MaterialTheme.shapes.medium
-                    Row(
-                        modifier = Modifier
-                            .animateItem(
-                                placementSpec = if (isDragged) null else spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessMediumLow,
-                                ),
-                            )
-                            .zIndex(if (isDragged) 1f else 0f)
-                            .graphicsLayer {
-                                translationY = animatedDragOffset
-                                scaleX = rowScale
-                                scaleY = rowScale
-                                shadowElevation = if (isDragged) 10.dp.toPx() else 0f
-                                shape = rowShape
-                                clip = true
-                            }
-                            .background(rowColor)
-                            .fillMaxWidth()
-                            .heightIn(min = 52.dp)
-                            .padding(start = 12.dp)
-                            .testTag("playlist-reorder-$index"),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            videosById[id]?.title.orEmpty(),
-                            modifier = Modifier.weight(1f),
-                            maxLines = 2,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        Icon(
-                            Icons.Outlined.DragHandle,
-                            contentDescription = stringResource(R.string.reorder_video),
-                            modifier = Modifier
-                                .padding(12.dp)
-                                .pointerInput(id, orderedIds.size) {
-                                    detectDragGestures(
-                                        onDragStart = {
-                                            draggedId = id
-                                            dragOffset = 0f
-                                        },
-                                        onDragCancel = {
-                                            draggedId = null
-                                            dragOffset = 0f
-                                        },
-                                        onDragEnd = {
-                                            draggedId = null
-                                            dragOffset = 0f
-                                        },
-                                    ) { change, dragAmount ->
-                                        change.consume()
-                                        dragOffset += dragAmount.y
-                                        var currentIndex = orderedIds.indexOf(id)
-                                        val swapThreshold = rowStepPx * 0.5f
-                                        while (
-                                            dragOffset > swapThreshold &&
-                                            currentIndex < orderedIds.lastIndex
-                                        ) {
-                                            orderedIds.removeAt(currentIndex)
-                                            orderedIds.add(currentIndex + 1, id)
-                                            currentIndex += 1
-                                            dragOffset -= rowStepPx
-                                        }
-                                        while (dragOffset < -swapThreshold && currentIndex > 0) {
-                                            orderedIds.removeAt(currentIndex)
-                                            orderedIds.add(currentIndex - 1, id)
-                                            currentIndex -= 1
-                                            dragOffset += rowStepPx
-                                        }
-                                    }
-                                },
-                        )
-                    }
-                    if (index < orderedIds.lastIndex) HorizontalDivider()
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(orderedIds.toList()) }) {
-                Text(stringResource(R.string.ok))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        },
-    )
 }

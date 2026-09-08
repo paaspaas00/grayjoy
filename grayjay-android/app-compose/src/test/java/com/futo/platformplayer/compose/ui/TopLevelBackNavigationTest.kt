@@ -22,8 +22,8 @@ class TopLevelBackNavigationTest {
     }
 
     @Test
-    fun nestedOnlyDestinationDoesNotMasqueradeAsTopLevel() {
-        assertNull(topLevelBackDestination(GrayjayDestination.Sources))
+    fun sourcesOpenedFromTabletNavigationReturnsHome() {
+        assertEquals(GrayjayDestination.Home, topLevelBackDestination(GrayjayDestination.Sources))
     }
 
     @Test

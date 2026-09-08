@@ -1982,6 +1982,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             ?: return
         if (openedVideos.getOrNull(currentIndex)?.id != video.id) return
 
+        lastError = null
         val updated = openedVideos.toMutableList().apply { this[currentIndex] = video }
         val nextPluginDataSources = updated.pluginDataSourceFactories()
         activePluginDataSources

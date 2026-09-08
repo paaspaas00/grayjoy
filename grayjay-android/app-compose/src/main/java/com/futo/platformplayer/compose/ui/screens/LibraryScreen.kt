@@ -3,7 +3,7 @@ package com.futo.platformplayer.compose.ui.screens
 import android.net.Uri
 import android.text.format.DateUtils
 import androidx.annotation.StringRes
-import androidx.activity.compose.BackHandler
+import com.futo.platformplayer.compose.ui.PageBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -167,6 +167,7 @@ internal fun LibraryScreen(
     onSelectedFilterChange: (LibraryFilter) -> Unit = {},
     playlistListState: LazyListState = rememberLazyListState(),
 ) {
+    val compactLayout = compactUi()
     var selectionMode by rememberSaveable { mutableStateOf(false) }
     var confirmRemoval by rememberSaveable { mutableStateOf(false) }
     var showExportSheet by rememberSaveable { mutableStateOf(false) }
@@ -238,11 +239,12 @@ internal fun LibraryScreen(
             pagerState.animateScrollToPage(page)
         }
     }
-    BackHandler(enabled = focusedSearchFilter != null) {
+    PageBackHandler(enabled = focusedSearchFilter != null) {
         keyboardController?.hide()
         focusManager.clearFocus(force = true)
         focusedSearchFilter = null
     }
+    PageBackHandler(enabled = selectionMode) { leaveSelectionMode() }
     val searchHeaderScrollConnection = remember(focusManager, keyboardController) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -360,9 +362,10 @@ internal fun LibraryScreen(
                             16.dp
                         },
                     ),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (compactLayout) 8.dp else 16.dp),
                 ) {
         item {
+            if (!compactLayout || selectionMode || pageFilter == LibraryFilter.Downloads) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -399,9 +402,14 @@ internal fun LibraryScreen(
                     }
                 }
             }
+            }
         }
         item {
-            LibrarySummary(
+            if (compactLayout) {
+                val count = if (pageFilter == LibraryFilter.Playlists) playlists.size else unfilteredPageVideos.size
+                Text(pluralStringResource(if (pageFilter == LibraryFilter.Playlists) R.plurals.playlist_count else R.plurals.video_count, count, count),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else LibrarySummary(
                 filter = pageFilter,
                 videos = unfilteredPageVideos,
                 playlistCount = playlists.size,
@@ -502,6 +510,7 @@ internal fun LibraryScreen(
                         LibraryFilter.Downloads,
                     ) && video.id in selectedVideoIds,
                     showProgress = pageFilter == LibraryFilter.History,
+                    animateEntrance = !listState.isScrollInProgress,
                     onClick = {
                         if (
                             pageFilter in setOf(LibraryFilter.History, LibraryFilter.Downloads) &&
@@ -790,6 +799,7 @@ private fun LibrarySearchField(
 ) {
     OutlinedTextField(
         value = query,
+        shape = SearchFieldShape,
         onValueChange = { onQueryChange(it.take(100)) },
         modifier = modifier
             .onFocusChanged { onFocusChange(it.isFocused) }

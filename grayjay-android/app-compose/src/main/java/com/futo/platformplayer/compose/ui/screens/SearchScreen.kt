@@ -81,6 +81,7 @@ fun SearchScreen(
     onNavigationMenuClick: () -> Unit = {},
 ) {
     val listState = rememberContentListState()
+    val compactLayout = compactUi()
     val suggestions = remember(search.suggestions) { uniqueSearchSuggestions(search.suggestions) }
     var typeName by rememberSaveable { mutableStateOf(SearchContentType.Videos.name) }
     var selectedSourceIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
@@ -187,8 +188,8 @@ fun SearchScreen(
     LazyColumn(
         state = listState,
         modifier = Modifier.testTag("search-results"),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(if (compactLayout) 12.dp else 16.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compactLayout) 8.dp else 12.dp),
     ) {
         item {
             Row(
@@ -219,7 +220,7 @@ fun SearchScreen(
                     .focusRequester(focusRequester)
                     .testTag("search-field"),
                 singleLine = true,
-                shape = MaterialTheme.shapes.extraLarge,
+                shape = SearchFieldShape,
                 placeholder = { Text(stringResource(R.string.search_hint)) },
                 supportingText = {
                     Text(
@@ -426,7 +427,7 @@ fun SearchScreen(
                         )
                     }
                     SearchContentType.Videos -> {
-                        if (search.videos.isNotEmpty()) {
+                        if (search.videos.isNotEmpty() && !compactLayout) {
                             item { SectionHeading(stringResource(R.string.videos)) }
                         }
                         itemsIndexed(
