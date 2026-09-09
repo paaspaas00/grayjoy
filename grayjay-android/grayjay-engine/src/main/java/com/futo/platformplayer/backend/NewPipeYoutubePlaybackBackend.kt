@@ -20,6 +20,7 @@ import org.schabi.newpipe.extractor.stream.AudioTrackType
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.Stream
 import org.schabi.newpipe.extractor.stream.StreamInfo
+import org.schabi.newpipe.extractor.stream.Frameset
 import org.schabi.newpipe.extractor.stream.StreamType
 import org.schabi.newpipe.extractor.stream.VideoStream
 import org.schabi.newpipe.extractor.services.youtube.dashmanifestcreators.YoutubeOtfDashManifestCreator
@@ -328,11 +329,37 @@ class NewPipeYoutubePlaybackBackend(
             audioLanguages = audioLanguages,
             selectedAudioLanguage = selectedAudio?.language,
             selectedAudioIsOriginal = selectedAudio?.isOriginal == true,
+            storyboard = previewFrames.toGrayjayStoryboard(),
             isLive = isLive,
             isAudioOnly = effectiveAudioOnly,
             videoHasMuxedAudio = selectedContainsAudio,
         )
     }
+
+    suspend fun loadStoryboard(contentUrl: String, forceRefresh: Boolean = false): GrayjayStoryboard? =
+        withContext(Dispatchers.IO) {
+            ensureInitialized()
+            val normalized = contentUrl.toYoutubeWatchUrl()
+            if (forceRefresh) {
+                resolveCache.keys.filter { it.contentUrl == normalized }.forEach(resolveCache::remove)
+            }
+            synchronized(NEWPIPE_INITIALIZATION_LOCK) { NewPipe.setupLocalization(localization) }
+            StreamInfo.getInfo(ServiceList.YouTube, normalized).previewFrames.toGrayjayStoryboard()
+        }
+
+    internal fun List<Frameset>.toGrayjayStoryboard(): GrayjayStoryboard? = mapNotNull { frames ->
+                val urls = frames.urls.filter(String::isNotBlank)
+                GrayjayStoryboardLevel(
+                    width = frames.frameWidth,
+                    height = frames.frameHeight,
+                    frameCount = frames.totalCount,
+                    columns = frames.framesPerPageX,
+                    rows = frames.framesPerPageY,
+                    intervalMs = frames.durationPerFrame.toLong(),
+                    sheetUrlTemplate = urls.firstOrNull().orEmpty(),
+                    sheetUrls = urls,
+                ).takeIf { urls.isNotEmpty() && it.width > 0 && it.height > 0 && it.frameCount > 0 && it.columns > 0 && it.rows > 0 && it.intervalMs > 0L }
+            }.takeIf(List<GrayjayStoryboardLevel>::isNotEmpty)?.let(::GrayjayStoryboard)
 
     private data class NewPipeAudioDescriptor(
         val stream: AudioStream,

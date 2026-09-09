@@ -13,6 +13,7 @@ class UpdateDownloadFilesTest {
         val old = createUpdateDownloadFiles(folder.root, "2.0.1")
         val next = createUpdateDownloadFiles(folder.root, "2.0.1")
         assertEquals(old.destination, next.destination)
+        assertTrue(old.destination.name.endsWith("-release.apk"))
         assertNotEquals(old.temporary, next.temporary)
         old.temporary.delete()
         assertTrue(next.temporary.exists())

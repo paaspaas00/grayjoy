@@ -8,7 +8,7 @@ internal data class GitHubRelease(
     val versionName: String,
     val releaseUrl: String,
     val changelog: String,
-    val debugApkUrl: String?,
+    val releaseApkUrl: String?,
 )
 
 internal data class GitHubReleaseAsset(val name: String, val downloadUrl: String)
@@ -46,7 +46,7 @@ internal class GitHubReleaseChecker(
                 versionName = versionName,
                 releaseUrl = releaseUrl,
                 changelog = release.optString("body"),
-                debugApkUrl = selectDebugApkUrl(
+                releaseApkUrl = selectReleaseApkUrl(
                     assets = (release.optJSONArray("assets") ?: JSONArray()).let { assets ->
                         (0 until assets.length()).mapNotNull { index ->
                             assets.optJSONObject(index)?.let { asset ->
@@ -73,12 +73,12 @@ internal class GitHubReleaseChecker(
     }
 }
 
-internal fun selectDebugApkUrl(
+internal fun selectReleaseApkUrl(
     assets: List<GitHubReleaseAsset>,
     supportedAbis: List<String>,
 ): String? {
     val candidates = assets.filter { asset ->
-        asset.name.endsWith("-debug.apk", ignoreCase = true) &&
+        asset.name.endsWith("-release.apk", ignoreCase = true) &&
             asset.downloadUrl.startsWith("https://")
     }
     val variants = supportedAbis.mapNotNull { abi ->
@@ -92,7 +92,7 @@ internal fun selectDebugApkUrl(
     } + "universal"
     return variants.firstNotNullOfOrNull { variant ->
         candidates.firstOrNull { asset ->
-            asset.name.endsWith("-$variant-debug.apk", ignoreCase = true)
+            asset.name.endsWith("-$variant-release.apk", ignoreCase = true)
         }?.downloadUrl
     }
 }

@@ -1,4 +1,6 @@
 package com.futo.platformplayer.compose
+import androidx.compose.ui.test.swipeUp
+import com.futo.platformplayer.compose.ui.HomeFeedType
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.hasTestTag
@@ -112,7 +114,10 @@ class GrayjayAppTest {
                     onPlayQueue = { ids -> ids.firstOrNull()?.let(::openVideo) },
                     onQueueVideos = {},
                     onPlayPlaylist = {},
-                    onPlayPlaylistFrom = { _, _ -> },
+                    onPlayPlaylistFrom = { playlistId, videoId ->
+                        state.value = state.value.copy(playbackPlaylist = state.value.playlists.firstOrNull { it.id == playlistId })
+                        openVideo(videoId)
+                    },
                     onTogglePlayback = {},
                     onSkipToNext = {},
                     onSkipToPrevious = {},
@@ -479,6 +484,25 @@ class GrayjayAppTest {
     }
 
     @Test
+    fun shortsModeIsOptInAndSwipesChangeTheActualSelection() {
+        val clips = listOf(video("short-one", "First short", 1L), video("short-two", "Second short", 2L))
+            .map { it.copy(isShort = true, thumbnailUrl = "", sourceIconUrl = "") }
+        composeRule.runOnIdle {
+            state.value = state.value.copy(videos = clips, libraryVideos = clips,
+                home = HomeUiState(selectedFeed = HomeFeedType.Shorts, videos = clips), brainrotShortsEnabled = false)
+        }
+        composeRule.onNodeWithTag("video-title-short-one", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("shorts-fullscreen-pager").assertDoesNotExist()
+        composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+        composeRule.runOnIdle { state.value = state.value.copy(brainrotShortsEnabled = true) }
+        composeRule.onNodeWithTag("video-title-short-one", useUnmergedTree = true).performScrollTo().performClick()
+        composeRule.onNodeWithTag("shorts-fullscreen-pager").assertIsDisplayed().performTouchInput { swipeUp() }
+        composeRule.runOnIdle { assertEquals("short-two", state.value.nowPlaying.video?.id) }
+        composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+        composeRule.onNodeWithTag("shorts-fullscreen-pager").assertDoesNotExist()
+    }
+
+    @Test
     fun collapsingPlaylistPlaybackFromHomeOpensItsPlaylist() {
         val playlist = PlaylistUiModel("active", "Active playlist", "", listOf("real-video-two", "real-video-one"))
         composeRule.runOnIdle { state.value = state.value.copy(playlists = listOf(playlist), playbackPlaylist = playlist) }
@@ -496,7 +520,6 @@ class GrayjayAppTest {
         composeRule.runOnIdle {
             state.value = state.value.copy(
                 videos = videos, libraryVideos = videos, playlists = listOf(playlist),
-                playbackPlaylist = playlist,
                 externalNavigation = ExternalNavigationUiModel(23L, ExternalNavigationKind.Playlist, playlist.id),
             )
         }
@@ -657,7 +680,7 @@ class GrayjayAppTest {
         ) }
         val playlist = PlaylistUiModel("audit-playlist", "Playlist con un nome lungo per verificare il layout", "", videos.map { it.id })
         val remote = playlist.copy(id = "audit-remote", sourceId = "youtube")
-        val channel = com.futo.platformplayer.compose.ui.ChannelUiModel("audit-channel", "Laboratorio delle idee", "youtube", "YouTube", 0, "12.345 iscritti", "Esperimenti, approfondimenti e curiosità dal mondo della tecnologia. ".repeat(4))
+        val channel = com.futo.platformplayer.compose.ui.ChannelUiModel("audit-channel", "Laboratorio delle idee", "youtube", "YouTube", 0, "12.345 iscritti", "Esperimenti, approfondimenti e curiosità dal mondo della tecnologia. ".repeat(4), thumbnailUrl = "android.resource://$testPackage/drawable/audit_moon")
         composeRule.runOnIdle {
             state.value = state.value.copy(videos = videos, libraryVideos = videos, playlists = listOf(playlist), channels = listOf(channel),
                 home = HomeUiState(videos = videos), subscriptionVideos = videos, followingVideos = videos,
@@ -678,7 +701,13 @@ class GrayjayAppTest {
         closeSoftKeyboard(); capture("04-search")
         composeRule.onNodeWithTag("nav-library").performClick(); capture("05-library")
         composeRule.onNodeWithTag("nav-settings").performClick(); capture("06-settings")
-        if (compactAudit) composeRule.onNodeWithTag("default-playback-speed").assertIsDisplayed()
+        composeRule.onNodeWithTag("settings-list").performScrollToNode(hasTestTag("advanced-settings"))
+        composeRule.onNodeWithTag("advanced-settings").performClick(); capture("06b-advanced")
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.close)).performClick()
+        if (compactAudit) {
+            composeRule.onNodeWithTag("settings-list").performScrollToNode(hasTestTag("default-playback-speed"))
+            composeRule.onNodeWithTag("default-playback-speed").assertIsDisplayed()
+        }
         composeRule.onNodeWithTag("settings-list").performScrollToNode(hasTestTag("version-information")); capture("07-settings-bottom")
         composeRule.onNodeWithTag("settings-list").performScrollToNode(hasTestTag("manage-sources"))
         composeRule.onNodeWithTag("manage-sources").performScrollTo().performClick(); capture("08-sources")
@@ -713,6 +742,15 @@ class GrayjayAppTest {
         closeSoftKeyboard()
         composeRule.runOnIdle { state.value = state.value.copy(externalNavigation = ExternalNavigationUiModel(82L, ExternalNavigationKind.Playlist, remote.id)) }
         capture("16-remote-playlist")
+        if (com.futo.platformplayer.compose.ui.screens.supportsShortsFeedPlayer(configuration.screenWidthDp, configuration.screenHeightDp, configuration.smallestScreenWidthDp)) {
+            composeRule.onNodeWithTag("nav-home").performClick()
+            val clips = videos.take(3).map { it.copy(isShort = true) }
+            composeRule.runOnIdle { state.value = state.value.copy(videos = clips, home = HomeUiState(selectedFeed = HomeFeedType.Shorts, videos = clips), brainrotShortsEnabled = true) }
+            composeRule.onNodeWithTag("video-title-audit-1", useUnmergedTree = true).performScrollTo().performClick()
+            capture("17-shorts")
+            composeRule.onNodeWithTag("shorts-fullscreen-pager").performTouchInput { swipeUp() }
+            capture("18-shorts-next")
+        }
     }
 
     private fun openVideo(id: String) {
@@ -768,6 +806,7 @@ class GrayjayAppTest {
                 SourceUiModel(
                     id = "youtube",
                     engineId = "youtube-plugin-id",
+                    pluginConfigPath = "sources/youtube/YoutubeConfig.json",
                     name = "YouTube",
                     description = "Videos and creators",
                     accentColor = 0xFFE53935,

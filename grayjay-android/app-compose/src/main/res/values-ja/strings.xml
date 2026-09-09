@@ -603,4 +603,14 @@
     <string name="video_title_language">動画タイトルの言語</string>
     <string name="prefer_original_title">元のタイトルを優先</string>
     <string name="use_app_language_for_titles">アプリの言語を使用</string>
+    <string name="advanced_settings">詳細設定</string>
+    <string name="advanced_settings_description">キャッシュとエンジン・プラグインのバージョン</string>
+    <string name="rebuild_content_caches">コンテンツのキャッシュを再構築</string>
+    <string name="rebuild_cache_description">このプロフィールの画像とコンテンツを再読み込みします。履歴、プレイリスト、ダウンロード、プラグイン、ログイン状態は保持されます。</string>
+    <string name="engine_versions">エンジン</string>
+    <string name="engine_revision_explanation">このプロジェクトに含まれる調整済みGrayjayコードのリビジョン。</string>
+    <string name="plugin_versions">プラグインのバージョン</string>
+    <string name="version_unavailable">利用不可</string>
+    <string name="brainrot_shorts">ショートのBrainrotモード</string>
+    <string name="brainrot_shorts_description">スマートフォン専用：ホームのショートを縦向き全画面で開きます。上下にスワイプして動画を切り替えます。</string>
 </resources>

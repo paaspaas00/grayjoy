@@ -75,6 +75,7 @@ fun SettingsScreen(
     onImportDatabase: () -> Unit,
     onImportNewPipeDatabase: () -> Unit = {},
     activeSourceCount: Int,
+    sources: List<com.futo.platformplayer.compose.ui.SourceUiModel> = emptyList(),
     defaultPlaybackSpeed: Float,
     onDefaultPlaybackSpeedChange: (Float) -> Unit,
     perChannelPlaybackSpeedEnabled: Boolean,
@@ -128,6 +129,9 @@ fun SettingsScreen(
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     var showPairedComputers by rememberSaveable { mutableStateOf(false) }
+    var showAdvanced by rememberSaveable { mutableStateOf(false) }
+    val extras = LocalExtraPreferences.current
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val groupSpacing = if (performance.compactContent) 10.dp else 16.dp
     LazyColumn(
         state = rememberSettingsListState(),
@@ -178,6 +182,10 @@ fun SettingsScreen(
             }
         }
         settingsGroup("settings-group-2", R.string.settings_playback, groupSpacing) {
+            if (supportsShortsFeedPlayer(configuration.screenWidthDp, configuration.screenHeightDp, configuration.smallestScreenWidthDp)) setting("brainrot-shorts", "toggle") {
+                ToggleSetting(stringResource(R.string.brainrot_shorts), stringResource(R.string.brainrot_shorts_description), Icons.Outlined.PictureInPicture,
+                    extras.brainrotEnabled, extras.onBrainrotChange, "brainrot-shorts")
+            }
             setting("default-playback-speed", "link") {
                 LinkSetting(
                     title = stringResource(R.string.default_playback_speed),
@@ -456,6 +464,10 @@ fun SettingsScreen(
                 )
             }
         }
+        item(key = "advanced-preferences") {
+            LinkSetting(stringResource(R.string.advanced_settings), stringResource(R.string.advanced_settings_description), Icons.Outlined.BugReport,
+                { showAdvanced = true }, "advanced-settings")
+        }
         item {
             Column(
                 modifier = Modifier
@@ -482,6 +494,7 @@ fun SettingsScreen(
         }
     }
 
+    if (showAdvanced) AdvancedPreferencesDialog(sources, onDismiss = { showAdvanced = false })
     if (showThemeDialog) {
         ChoiceDialog(
             title = stringResource(R.string.settings_appearance),

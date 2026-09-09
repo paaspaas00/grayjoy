@@ -408,6 +408,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var libraryRepository: LibraryRepository =
         SharedPreferencesLibraryRepository(application, activeProfileId)
     private var homeCacheRepository = HomeCacheRepository(application, activeProfileId)
+    private var channelArtworkStore = com.futo.platformplayer.compose.data.ChannelArtworkStore(application, activeProfileId)
+    private val channelArtworkChecks = mutableMapOf<String, Long>()
+    private val channelArtworkJobs = mutableMapOf<String, Job>()
+    private val channelArtworkSemaphore = Semaphore(2)
     private var sourceRepository: SourceRepository =
         SharedPreferencesSourceRepository(application, activeProfileId)
     private val engine: GrayjayEngine = AndroidGrayjayEngine(application)
@@ -461,6 +465,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var profileSwitchJob: Job? = null
     private var detailsJob: Job? = null
     private var storyboardJob: Job? = null
+    private val storyboardRefreshAt = mutableMapOf<String, Long>()
     private var audioLanguageJob: Job? = null
     private var playbackRetryJob: Job? = null
     private var channelJob: Job? = null
@@ -560,6 +565,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             defaultPlaybackSpeed = preferences.defaultPlaybackSpeed,
             perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
             holdToSpeedEnabled = preferences.holdToSpeedEnabled,
+            brainrotShortsEnabled = preferences.brainrotShortsEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             preferredVideoQuality = preferences.preferredVideoQuality,
@@ -595,11 +601,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         libraryLoadJob = viewModelScope.launch(Dispatchers.IO) {
             val savedVideos = initialLibraryRepository.loadSavedVideos()
             val playlists = initialLibraryRepository.loadPlaylists()
+            val savedArtwork = channelArtworkStore.load()
             withContext(Dispatchers.Main.immediate) {
                 if (
                     initialProfileId == activeProfileId &&
                     initialLibraryRepository === libraryRepository
                 ) {
+                    savedArtwork.forEach { (channel, time) ->
+                        registerRemoteChannel(channel)
+                        channelArtworkChecks["${channel.sourceId}|${channel.id}"] = time
+                    }
                     savedVideos.forEach(::registerRemoteChannel)
                     applyLibrarySnapshot(savedVideos, playlists)
                     _uiState.update { it.copy(channels = visibleKnownChannels()) }
@@ -780,6 +791,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             it.copy(perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled)
         }
         applyPlaybackSpeed(_uiState.value.nowPlaying.video)
+    }
+
+    fun setBrainrotShortsEnabled(enabled: Boolean) {
+        preferences.brainrotShortsEnabled = enabled
+        _uiState.update { it.copy(brainrotShortsEnabled = enabled) }
     }
 
     fun setHoldToSpeedEnabled(enabled: Boolean) {
@@ -1837,6 +1853,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         configureYoutubeBackend()
         libraryRepository = SharedPreferencesLibraryRepository(application, activeProfileId)
         homeCacheRepository = HomeCacheRepository(application, activeProfileId)
+        channelArtworkJobs.values.toList().forEach(Job::cancel)
+        channelArtworkJobs.clear()
+        channelArtworkChecks.clear()
+        channelArtworkStore = com.futo.platformplayer.compose.data.ChannelArtworkStore(application, activeProfileId)
         sourceRepository = SharedPreferencesSourceRepository(application, activeProfileId)
         engineSources = (baseEngineSources + sourceRepository.loadCustomSources())
             .distinctBy { it.engineId }
@@ -1861,12 +1881,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val loadedLibrary = withContext(Dispatchers.IO) {
             libraryRepository.loadSavedVideos() to libraryRepository.loadPlaylists()
         }
+        val loadedArtwork = withContext(Dispatchers.IO) { channelArtworkStore.load() }
         allVideos = loadedLibrary.first
         savedVideosById = allVideos.associateBy(VideoUiModel::id)
         remoteVideos.clear()
         remoteChannels.clear()
         homeFeedCache.clear()
         preferences.loadImportedChannels().forEach { remoteChannels[it.id] = it }
+        loadedArtwork.forEach { (channel, time) -> registerRemoteChannel(channel); channelArtworkChecks["${channel.sourceId}|${channel.id}"] = time }
         allVideos.forEach(::registerRemoteChannel)
         val visible = visibleContentForSources(
             videos = content.videos,
@@ -1892,6 +1914,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             defaultPlaybackSpeed = preferences.defaultPlaybackSpeed,
             perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
             holdToSpeedEnabled = preferences.holdToSpeedEnabled,
+            brainrotShortsEnabled = preferences.brainrotShortsEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             preferredVideoQuality = preferences.preferredVideoQuality,
@@ -1957,10 +1980,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun setAppForeground(foreground: Boolean) {
         appIsForeground = foreground
         if (foreground) {
+            com.futo.platformplayer.compose.images.ArtworkCache.get(getApplication()).retryFailed()
             schedulePluginUpdates()
             viewModelScope.launch {
                 libraryLoadJob?.join()
-                if (appIsForeground) syncDownloadState()
+                if (appIsForeground) {
+                    syncDownloadState()
+                    delay(250L)
+                    if (!appIsForeground) return@launch
+                    com.futo.platformplayer.compose.images.ArtworkCache.get(getApplication()).refreshActive()
+                }
             }
         }
     }
@@ -2103,7 +2132,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         versionName = it.versionName,
                         releaseUrl = it.releaseUrl,
                         changelog = it.changelog,
-                        debugApkUrl = it.debugApkUrl,
+                        releaseApkUrl = it.releaseApkUrl,
                     )
                 }
                 _uiState.update { it.copy(availableUpdate = availableUpdate) }
@@ -2637,11 +2666,18 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
             .format(Date(startAtMs))
 
-    private fun requestStoryboard(video: VideoUiModel, generation: Long) {
-        if (video.storyboard != null || video.isLive || video.playbackAudioOnly) return
+    private fun requestStoryboard(video: VideoUiModel, generation: Long, forceRefresh: Boolean = false) {
+        if ((!forceRefresh && video.storyboard != null) || video.isLive || video.playbackAudioOnly) return
         storyboardJob?.cancel()
         storyboardJob = viewModelScope.launch {
-            val storyboard = runCatching { engine.loadStoryboard(video) }.getOrNull() ?: return@launch
+            val storyboard = try {
+                engine.loadStoryboard(video, forceRefresh)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.d("GrayjayViewModel", "Storyboard lookup failed for ${video.id}.", error)
+                null
+            } ?: return@launch
             if (
                 generation != playbackGeneration ||
                 _uiState.value.nowPlaying.video?.id != video.id
@@ -2654,6 +2690,21 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
         }
+    }
+
+    fun refreshStoryboard(videoId: String) {
+        val video = _uiState.value.nowPlaying.video?.takeIf { it.id == videoId } ?: return
+        val now = System.currentTimeMillis()
+        if (now - storyboardRefreshAt.getOrDefault(videoId, 0L) < 30_000L) return
+        storyboardRefreshAt[videoId] = now
+        val withoutExpiredStoryboard = video.copy(storyboard = null)
+        remoteVideos[videoId] = withoutExpiredStoryboard
+        _uiState.update { state ->
+            if (state.nowPlaying.video?.id == videoId) state.copy(
+                nowPlaying = state.nowPlaying.copy(video = withoutExpiredStoryboard),
+            ) else state
+        }
+        requestStoryboard(withoutExpiredStoryboard, playbackGeneration, forceRefresh = true)
     }
 
     fun playQueue(videoIds: List<String>) {
@@ -3362,9 +3413,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val details = engine.loadChannel(initialChannel)
                 val detailedChannel = registerRemoteChannel(details.channel)
+                cacheChannelArtwork(detailedChannel)
                 val channelVideos = details.videos
                     .map { it.withPersistedLibraryState() }
                     .distinctBy(VideoUiModel::id)
+                    .withKnownChannelPresentation(listOf(detailedChannel))
                 channelVideos.forEach { remoteVideos[it.id] = it }
                 channelVideos.forEach(::registerRemoteChannel)
                 _uiState.update { state ->
@@ -5200,6 +5253,77 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun rebuildContentCaches() {
+        if (_uiState.value.rebuildingCaches) return
+        val profile = activeProfileId
+        val store = channelArtworkStore
+        _uiState.update { it.copy(rebuildingCaches = true) }
+        viewModelScope.launch {
+            try {
+                channelArtworkJobs.values.toList().forEach(Job::cancel)
+                channelArtworkJobs.clear()
+                channelArtworkChecks.clear()
+                channelJob?.cancel(); channelPagingJob?.cancel(); channelSearchJob?.cancel(); channelSearchPagingJob?.cancel()
+                com.bumptech.glide.Glide.get(getApplication<Application>()).clearMemory()
+                withContext(Dispatchers.IO) {
+                    com.bumptech.glide.Glide.get(getApplication<Application>()).clearDiskCache()
+                    com.futo.platformplayer.compose.images.ArtworkCache.get(getApplication()).invalidate()
+                    store.clear()
+                    engine.invalidateContentCaches()
+                }
+                if (profile != activeProfileId) return@launch
+                _uiState.update { it.copy(channelDetail = ChannelDetailUiState(), remotePlaylistDetail = RemotePlaylistDetailUiState()) }
+                invalidateBackendDependentContent()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("GrayjayViewModel", "Content cache rebuild failed.", error)
+                Toast.makeText(getApplication(), error.localizedMessage ?: text(R.string.home_feed_refresh_failed), Toast.LENGTH_LONG).show()
+            } finally {
+                _uiState.update { it.copy(rebuildingCaches = false) }
+            }
+        }
+    }
+
+    private fun cacheChannelArtwork(channel: ChannelUiModel) {
+        val now = System.currentTimeMillis()
+        channelArtworkChecks["${channel.sourceId}|${channel.id}"] = now
+        val store = channelArtworkStore
+        viewModelScope.launch(Dispatchers.IO) { store.save(channel, now) }
+    }
+
+    fun hydrateChannelArtwork(videoId: String) {
+        if (!appIsForeground || _uiState.value.rebuildingCaches) return
+        val video = findVideo(videoId) ?: return
+        val channel = channelForVideo(video)
+        if (!channel.id.startsWith("http") || channel.sourceId !in enabledSourceIds) return
+        val key = "${channel.sourceId}|${channel.id}"
+        val now = System.currentTimeMillis()
+        val last = channelArtworkChecks[key] ?: 0L
+        if (now - last in 0 until java.util.concurrent.TimeUnit.DAYS.toMillis(7) || channelArtworkJobs[key]?.isActive == true) return
+        val profile = activeProfileId
+        channelArtworkChecks[key] = now - java.util.concurrent.TimeUnit.DAYS.toMillis(7) + java.util.concurrent.TimeUnit.MINUTES.toMillis(15)
+        channelArtworkJobs[key] = viewModelScope.launch {
+            try {
+                val details = channelArtworkSemaphore.withPermit { engine.loadChannel(channel) }
+                if (activeProfileId != profile) return@launch
+                val resolved = registerRemoteChannel(details.channel)
+                // Keep the request's alias too: channel tabs may expose either a handle or an ID.
+                if (resolved.thumbnailUrl.isNotBlank()) registerRemoteChannel(channel.copy(thumbnailUrl = resolved.thumbnailUrl))
+                cacheChannelArtwork(resolved)
+                cacheChannelArtwork(channel.copy(thumbnailUrl = resolved.thumbnailUrl))
+                _uiState.update { state ->
+                    val shown = state.channelDetail.channel
+                    val updated = if (shown != null && shown.id in setOf(channel.id, resolved.id) && resolved.thumbnailUrl.isNotBlank())
+                        shown.copy(thumbnailUrl = resolved.thumbnailUrl) else shown
+                    state.copy(channels = visibleKnownChannels(), channelDetail = state.channelDetail.copy(channel = updated))
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Retain old artwork and apply the bounded retry delay. */ }
+            finally { if (activeProfileId == profile) channelArtworkJobs.remove(key) }
+        }
+    }
+
     fun removeSource(sourceId: String) {
         val source = _uiState.value.sources.firstOrNull { it.id == sourceId } ?: return
         if (!source.isCustom) return
@@ -6055,9 +6179,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (isEmpty() || all { it.authorThumbnailUrl.isNotBlank() }) return this
         val knownChannels = sequenceOf(
             extraChannels.asSequence(),
-            content.channels.asSequence(),
             remoteChannels.values.asSequence(),
-        ).flatten().distinctBy(ChannelUiModel::id).toList()
+            content.channels.asSequence(),
+        ).flatten().filter { it.thumbnailUrl.isNotBlank() }.distinctBy(ChannelUiModel::id).toList()
         if (knownChannels.isEmpty()) return this
 
         val byReference = HashMap<String, ChannelUiModel>(knownChannels.size * 2)
@@ -6475,7 +6599,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun VideoUiModel.creatorKey(): String = authorUrl.ifBlank {
-        channelId.ifBlank { "$sourceId:$creator" }
+        channelId.takeIf(String::isNotBlank)?.let { reference ->
+            if (
+                sourceId.equals("youtube", ignoreCase = true) &&
+                reference.startsWith("UC") &&
+                '/' !in reference
+            ) {
+                "https://www.youtube.com/channel/$reference"
+            } else {
+                reference
+            }
+        } ?: "$sourceId:$creator"
     }
 
     private fun registerRemoteChannel(video: VideoUiModel) {
@@ -6488,7 +6622,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val merged = if (previous == null) channel else channel.copy(
             thumbnailUrl = channel.thumbnailUrl.ifBlank { previous.thumbnailUrl },
             bannerUrl = channel.bannerUrl.ifBlank { previous.bannerUrl },
-            followerCount = channel.followerCount.takeUnless { it == text(R.string.creator) }
+            followerCount = channel.followerCount.takeUnless { it.isBlank() || it == text(R.string.creator) }
                 ?: previous.followerCount,
             description = channel.description.ifBlank { previous.description },
             links = channel.links.ifEmpty { previous.links },

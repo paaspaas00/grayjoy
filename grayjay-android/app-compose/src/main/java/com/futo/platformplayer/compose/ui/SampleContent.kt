@@ -87,6 +87,7 @@ data class StoryboardLevelUiModel(
     val rows: Int,
     val intervalMs: Long,
     val sheetUrlTemplate: String,
+    val sheetUrls: List<String> = emptyList(),
 )
 
 data class VideoQualityUiModel(

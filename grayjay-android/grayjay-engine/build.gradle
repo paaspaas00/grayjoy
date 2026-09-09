@@ -75,6 +75,8 @@ def syncLegacyBackend = tasks.register('syncLegacyBackend', Sync) {
 tasks.named('preBuild').configure { dependsOn(syncLegacyBackend) }
 
 dependencies {
+    def engineVersions = new Properties()
+    rootProject.file('engine-versions.properties').withInputStream { engineVersions.load(it) }
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
     implementation 'androidx.collection:collection-ktx:1.5.0'
     implementation 'androidx.core:core-ktx:1.17.0'
@@ -83,7 +85,7 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.13.2'
     implementation 'com.google.guava:guava:33.5.0-android'
     implementation 'com.squareup.okhttp3:okhttp:5.3.0'
-    implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.26.5'
+    implementation "com.github.TeamNewPipe:NewPipeExtractor:${engineVersions.getProperty('newpipe.version')}"
     implementation 'androidx.media3:media3-datasource:1.9.0'
     implementation 'org.jetbrains.kotlin:kotlin-reflect:2.2.21'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'

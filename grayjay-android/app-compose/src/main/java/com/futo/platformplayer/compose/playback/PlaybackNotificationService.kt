@@ -22,9 +22,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerNotificationManager
 import androidx.media3.ui.R as Media3UiR
-import com.bumptech.glide.Glide
-import com.bumptech.glide.request.target.CustomTarget
-import com.bumptech.glide.request.transition.Transition
 import com.futo.platformplayer.compose.MainActivity
 import com.futo.platformplayer.compose.R
 
@@ -140,7 +137,7 @@ class PlaybackNotificationService : Service() {
         // notification restore against this service after its destruction has begun.
         closingFromNotification = true
         mainHandler.removeCallbacks(restoreNotification)
-        descriptionAdapter.clearArtworkRequest()
+        descriptionAdapter.release()
         playerNotificationManager.setPlayer(null)
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
@@ -220,7 +217,10 @@ class PlaybackNotificationService : Service() {
     private class DescriptionAdapter(
         private val service: PlaybackNotificationService,
     ) : PlayerNotificationManager.MediaDescriptionAdapter {
-        private var artworkTarget: CustomTarget<Bitmap>? = null
+        private val loader = com.futo.platformplayer.compose.images.MediaArtworkLoader(service) { uri -> attachment?.artworkHeaders?.invoke(uri).orEmpty() }
+        private var artworkRequest: com.google.common.util.concurrent.ListenableFuture<Bitmap>? = null
+        private var artworkKey: String? = null
+        private var artworkBitmap: Bitmap? = null
 
         override fun getCurrentContentTitle(player: Player): CharSequence =
             player.mediaMetadata.title?.takeIf(CharSequence::isNotBlank)
@@ -236,29 +236,33 @@ class PlaybackNotificationService : Service() {
             player: Player,
             callback: PlayerNotificationManager.BitmapCallback,
         ): Bitmap? {
-            clearArtworkRequest()
             val artworkUri = player.mediaMetadata.artworkUri ?: return null
             val requestedMediaId = player.currentMediaItem?.mediaId
-            artworkTarget = object : CustomTarget<Bitmap>() {
-                override fun onResourceReady(
-                    resource: Bitmap,
-                    transition: Transition<in Bitmap>?,
-                ) {
-                    if (attachment?.player?.currentMediaItem?.mediaId == requestedMediaId) {
-                        callback.onBitmap(resource)
+            val key = "$requestedMediaId|$artworkUri"
+            if (artworkKey == key) return artworkBitmap
+            artworkRequest?.cancel(true)
+            artworkKey = key
+            artworkBitmap = null
+            val request = loader.loadBitmap(artworkUri)
+            artworkRequest = request
+            request.addListener({
+                val bitmap = runCatching { request.get() }.getOrNull() ?: return@addListener
+                service.mainHandler.post {
+                    if (artworkKey == key && attachment?.player?.currentMediaItem?.mediaId == requestedMediaId) {
+                        artworkBitmap = bitmap
+                        callback.onBitmap(bitmap)
                     }
                 }
-
-                override fun onLoadCleared(placeholder: android.graphics.drawable.Drawable?) = Unit
-            }.also { target ->
-                Glide.with(service).asBitmap().load(artworkUri).into(target)
-            }
+            }, com.google.common.util.concurrent.MoreExecutors.directExecutor())
             return null
         }
 
-        fun clearArtworkRequest() {
-            artworkTarget?.let { Glide.with(service).clear(it) }
-            artworkTarget = null
+        fun release() {
+            artworkRequest?.cancel(true)
+            artworkRequest = null
+            artworkBitmap = null
+            artworkKey = null
+            loader.close()
         }
     }
 
@@ -331,6 +335,7 @@ class PlaybackNotificationService : Service() {
         val player: Player,
         val mediaSession: MediaSession,
         val closePlayback: () -> Unit,
+        val artworkHeaders: (String) -> Map<String, String>,
     )
 
     companion object {
@@ -348,8 +353,9 @@ class PlaybackNotificationService : Service() {
             player: Player,
             mediaSession: MediaSession,
             closePlayback: () -> Unit,
+            artworkHeaders: (String) -> Map<String, String> = { emptyMap() },
         ) {
-            attachment = Attachment(player, mediaSession, closePlayback)
+            attachment = Attachment(player, mediaSession, closePlayback, artworkHeaders)
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, PlaybackNotificationService::class.java),

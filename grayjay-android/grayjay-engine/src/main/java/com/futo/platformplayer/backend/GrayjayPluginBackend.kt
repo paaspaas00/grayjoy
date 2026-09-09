@@ -2487,6 +2487,14 @@ class GrayjayPluginBackend(
         this.profileId = profileId
     }
 
+    fun invalidateContentCaches() {
+        pagerSessions.clear()
+        storyboardCache.clear()
+        storyboardFailures.clear()
+        storyboardDurations.clear()
+        resolvedVideoDetails.clear()
+    }
+
     fun clearProfileData(targetProfileId: String) {
         if (targetProfileId.isBlank() || targetProfileId == profileId) return
         GrayjayPluginAuthStore.clearProfile(appContext, targetProfileId)
@@ -2533,8 +2541,17 @@ class GrayjayPluginBackend(
         sourceId: String,
         contentUrl: String,
         endpoint: PluginEndpoint,
+        forceRefresh: Boolean = false,
     ): GrayjayStoryboard? = withContext(Dispatchers.IO) {
         if (endpoint.pluginId != YOUTUBE_PLUGIN_ID) return@withContext null
+        if (forceRefresh) {
+            val videoId = youtubeVideoId(contentUrl)
+            if (videoId != null) {
+                val key = "$profileId:$videoId"
+                storyboardCache.remove(key)
+                storyboardFailures.remove(key)
+            }
+        }
         val duration = storyboardDurations[storyboardCacheKey(contentUrl)] ?: 0L
         loadYouTubeStoryboard(contentUrl, duration)
     }

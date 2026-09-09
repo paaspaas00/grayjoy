@@ -20,8 +20,8 @@ internal class GrayjoyUpdateInstaller(private val context: Context) {
         require(downloadUrl.startsWith("https://github.com/paaspaas00/grayjoy/releases/")) {
             "Unsupported update host"
         }
-        require(downloadUrl.substringBefore('?').endsWith("-debug.apk")) {
-            "The selected release asset is not a debug APK"
+        require(downloadUrl.substringBefore('?').endsWith("-release.apk")) {
+            "The selected release asset is not a signed release APK"
         }
         val directory = File(context.cacheDir, "updates").apply { mkdirs() }
         val files = createUpdateDownloadFiles(directory, versionName)
@@ -112,7 +112,7 @@ internal fun createUpdateDownloadFiles(directory: File, versionName: String): Up
     val safeVersion = versionName.replace(Regex("[^A-Za-z0-9._-]"), "_").take(80)
     require(directory.isDirectory || directory.mkdirs()) { "Could not create update directory" }
     return UpdateDownloadFiles(
-        File(directory, "Grayjoy-$safeVersion-debug.apk"),
+        File(directory, "Grayjoy-$safeVersion-release.apk"),
         // A cancelled request may finish its cleanup after the next attempt has begun.
         File.createTempFile("Grayjoy-$safeVersion-", ".part", directory),
     )

@@ -347,7 +347,7 @@ fun PlaylistDetailScreen(
                             else selectedVideoIds.add(video.id)
                             if (selectedVideoIds.isEmpty()) leaveSelectionMode()
                         } else {
-                            onVideoClick(video)
+                            onPlayFromHere(video.id)
                         }
                     },
                     onLongClick = {

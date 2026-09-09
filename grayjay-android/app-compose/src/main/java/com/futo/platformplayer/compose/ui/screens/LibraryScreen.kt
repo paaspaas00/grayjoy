@@ -485,10 +485,11 @@ internal fun LibraryScreen(
                 val watchedMetadata = if (
                     pageFilter == LibraryFilter.History && video.lastWatchedAt > 0L
                 ) {
-                    val relativeTime = remember(video.lastWatchedAt) {
+                    val displayNow = com.futo.platformplayer.compose.ui.LocalDisplayClock.current.value
+                    val relativeTime = remember(video.lastWatchedAt, displayNow) {
                         DateUtils.getRelativeTimeSpanString(
                             video.lastWatchedAt,
-                            System.currentTimeMillis(),
+                            displayNow,
                             DateUtils.MINUTE_IN_MILLIS,
                             DateUtils.FORMAT_ABBREV_RELATIVE,
                         ).toString()

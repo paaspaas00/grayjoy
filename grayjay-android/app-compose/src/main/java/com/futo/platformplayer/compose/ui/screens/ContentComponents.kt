@@ -67,6 +67,10 @@ import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.ui.LocalChannelArtworkIndex
+import com.futo.platformplayer.compose.ui.LocalChannelArtworkRequest
+import com.futo.platformplayer.compose.ui.LocalDisplayClock
+import com.futo.platformplayer.compose.ui.refreshedVideoMetadata
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.rememberDevicePerformanceProfile
@@ -198,7 +202,15 @@ internal fun CompactVideoCard(
     val dense = compactUi()
     val compactCard = performance.compactContent || dense
     val cardShape = if (performance.isLowEnd) RectangleShape else if (dense) RoundedCornerShape(16.dp) else MaterialTheme.shapes.medium
-    val displayMetadata = if (dense && metadataText.contains("·")) metadataText.substringAfterLast("·").trim() else metadataText
+    val now = LocalDisplayClock.current.value
+    val currentMetadata = remember(video.publishedAtMs, video.metadata, metadataText, now) { refreshedVideoMetadata(video, metadataText, now) }
+    val displayMetadata = if (dense && (currentMetadata.contains("·") || currentMetadata.contains("•"))) currentMetadata.substringAfterLast('·').substringAfterLast('•').trim() else currentMetadata
+    val channelArtwork = LocalChannelArtworkIndex.current.find(video) ?: video.authorThumbnailUrl
+    val requestChannelArtwork = LocalChannelArtworkRequest.current
+    LaunchedEffect(video.id, video.authorUrl, video.channelId) {
+        delay(700L)
+        requestChannelArtwork(video.id)
+    }
     val entranceModifier = staggeredVideoEntrance(
         index = index,
         videoId = video.id,
@@ -302,7 +314,7 @@ internal fun CompactVideoCard(
                         ) {
                             ChannelAvatarImage(
                                 name = video.creator,
-                                thumbnailUrl = video.authorThumbnailUrl,
+                                thumbnailUrl = channelArtwork,
                                 requestHeaders = video.thumbnailRequestHeaders,
                                 modifier = Modifier.size(
                                     if (dense) 18.dp else if (compactCard) 20.dp else 24.dp,
@@ -561,6 +573,7 @@ internal fun SourceIconImage(
             RemoteBitmapImage(
                 url = iconUrl, placeholderColor = Color(placeholderColor),
                 modifier = Modifier.matchParentSize(),
+                showParentPlaceholderWhileLoading = true,
             )
         }
     }
@@ -633,6 +646,7 @@ internal fun ChannelAvatarImage(
                 url = thumbnailUrl, placeholderColor = Color(placeholderColor),
                 circleCrop = true, requestHeaders = requestHeaders,
                 modifier = Modifier.matchParentSize(),
+                showParentPlaceholderWhileLoading = true,
             )
         }
     }

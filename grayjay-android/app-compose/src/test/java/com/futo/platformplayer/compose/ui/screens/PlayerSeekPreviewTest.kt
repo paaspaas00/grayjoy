@@ -64,6 +64,15 @@ class PlayerSeekPreviewTest {
         assertEquals(11, requireNotNull(storyboard.frameAt(Long.MAX_VALUE, 160)).frameIndex)
     }
 
+    @Test fun explicitNewPipeSpriteUrlsSelectTheCorrectSheet() {
+        val source = level(width = 160, frameCount = 30).copy(columns = 5, rows = 2,
+            sheetUrlTemplate = "", sheetUrls = listOf("sheet-0", "sheet-1", "sheet-2"))
+        val frame = StoryboardUiModel(listOf(source)).frameAt(source.intervalMs * 23, 160)
+        assertEquals("sheet-2", frame?.sheetUrl)
+        assertEquals(3, frame?.column)
+        assertEquals(0, frame?.row)
+    }
+
     private fun level(
         width: Int,
         frameCount: Int = 20,

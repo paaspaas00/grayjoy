@@ -77,6 +77,7 @@ fun RemotePlaylistDetailScreen(
     downloads: Map<String, DownloadUiModel>,
     localPlaylists: List<PlaylistUiModel> = emptyList(),
     onVideoClick: (VideoUiModel) -> Unit,
+    onPlayFromHere: (String) -> Unit = {},
     onVideoLongClick: (VideoUiModel) -> Unit,
     onPlayAll: () -> Unit,
     onDownloadAll: (DownloadMediaType) -> Unit,
@@ -293,7 +294,7 @@ fun RemotePlaylistDetailScreen(
                 isPlaying = isPlaying,
                     index = index,
                     download = downloads[video.id],
-                    onClick = { onVideoClick(video) },
+                    onClick = { onPlayFromHere(video.id) },
                     onLongClick = { onVideoLongClick(video) },
                 )
             }

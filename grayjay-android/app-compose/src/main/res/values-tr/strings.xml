@@ -603,4 +603,14 @@
     <string name="video_title_language">Video başlığı dili</string>
     <string name="prefer_original_title">Özgün başlığı tercih et</string>
     <string name="use_app_language_for_titles">Uygulama dilini kullan</string>
+    <string name="advanced_settings">Gelişmiş</string>
+    <string name="advanced_settings_description">Önbellekler, motor ve eklenti sürümleri</string>
+    <string name="rebuild_content_caches">İçerik önbelleklerini yeniden oluştur</string>
+    <string name="rebuild_cache_description">Bu profilin resimlerini ve içeriğini yeniden yükle. Geçmiş, oynatma listeleri, indirmeler, eklentiler ve oturumlar korunur.</string>
+    <string name="engine_versions">Motorlar</string>
+    <string name="engine_revision_explanation">Projeye dahil edilen uyarlanmış Grayjay kodunun revizyonu.</string>
+    <string name="plugin_versions">Eklenti sürümleri</string>
+    <string name="version_unavailable">Kullanılamıyor</string>
+    <string name="brainrot_shorts">Shorts için Brainrot modu</string>
+    <string name="brainrot_shorts_description">Yalnızca telefonda: Ana Sayfa Shorts videolarını dikey tam ekranda aç. Video değiştirmek için yukarı veya aşağı kaydır.</string>
 </resources>

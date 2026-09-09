@@ -273,6 +273,7 @@ private data class PlaybackPresentation(
     val onEnterFullscreen: () -> Unit,
     val onExitFullscreen: () -> Unit,
     val onRetry: () -> Unit,
+    val onStoryboardLoadFailure: (String) -> Unit,
     val onToggleFollowing: () -> Unit,
     val onCreatorFollowedChange: (String, Boolean) -> Unit,
     val onLoadChannel: (ChannelUiModel) -> Unit,
@@ -474,6 +475,7 @@ fun GrayjayApp(
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
     onRetryPlayback: () -> Unit,
+    onStoryboardLoadFailure: (String) -> Unit = {},
     onClosePlayback: () -> Unit,
     onToggleWatchLater: (String) -> Unit,
     onToggleDownloaded: (String) -> Unit,
@@ -573,11 +575,18 @@ fun GrayjayApp(
     updateDownload: UpdateDownloadUiModel? = null,
     onCancelUpdateDownload: () -> Unit = {},
     onHydrateVideoMetadata: (String) -> Unit = {},
+    onHydrateChannelArtwork: (String) -> Unit = {},
+    onBrainrotShortsChange: (Boolean) -> Unit = {},
+    onRebuildContentCaches: () -> Unit = {},
     deviceIsLandscape: Boolean = false,
     pictureInPictureMode: Boolean = false,
     onFullscreenPresentationChanged: (Boolean, Boolean) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
+    val displayClock = rememberDisplayClock()
+    val channelArtworkIndex = remember(uiState.channels, uiState.channelDetail.channel) {
+        ChannelArtworkIndex(listOfNotNull(uiState.channelDetail.channel) + uiState.channels)
+    }
     val shareVideoLabel = stringResource(R.string.share_video)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -595,6 +604,16 @@ fun GrayjayApp(
     val libraryPlaylistListState = rememberLazyListState()
     var nestedBackDestinationName by rememberSaveable { mutableStateOf<String?>(null) }
     var isFullscreen by rememberSaveable { mutableStateOf(false) }
+    var shortsModeActive by rememberSaveable { mutableStateOf(false) }
+    val shortsPhone = com.futo.platformplayer.compose.ui.screens.supportsShortsFeedPlayer(LocalConfiguration.current.screenWidthDp, LocalConfiguration.current.screenHeightDp, LocalConfiguration.current.smallestScreenWidthDp)
+    val shortsVideos = remember(uiState.home.selectedFeed, uiState.home.videos) {
+        if (uiState.home.selectedFeed == HomeFeedType.Shorts) {
+            uiState.home.videos.filter(VideoUiModel::isAvailable)
+        } else {
+            emptyList()
+        }
+    }
+    val shortsVideoIds = remember(shortsVideos) { shortsVideos.mapTo(hashSetOf(), VideoUiModel::id) }
     var fullscreenEnteredByRotation by rememberSaveable { mutableStateOf(false) }
     var actionVideoId by rememberSaveable { mutableStateOf<String?>(null) }
     var actionIsRemotePlaylistVideo by rememberSaveable { mutableStateOf(false) }
@@ -739,6 +758,7 @@ fun GrayjayApp(
             .mapNotNull(availableVideosById::get)
     }
     val onSelect: (GrayjayDestination) -> Unit = {
+        shortsModeActive = false
         // Clear focus before switching pages so disposal cannot steal the incoming field's focus.
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
@@ -770,6 +790,10 @@ fun GrayjayApp(
     }
     val onVideoClick: (VideoUiModel) -> Unit = {
         searchAutoFocusRequested = false
+        shortsModeActive = uiState.brainrotShortsEnabled && shortsPhone && it.id in shortsVideoIds &&
+            selected == GrayjayDestination.Home && uiState.home.selectedFeed == HomeFeedType.Shorts &&
+            selectedChannelId == null && selectedPlaylistId == null && !uiState.chromecast.isConnected
+        if (shortsModeActive) { isFullscreen = true; fullscreenEnteredByRotation = false }
         onOpenVideo(it.id)
         if (it.isAvailable && it.scheduledStartAtMs <= System.currentTimeMillis()) {
             settlePlayer(0f, it.id)
@@ -995,10 +1019,12 @@ fun GrayjayApp(
             isFullscreen = true
         },
         onExitFullscreen = {
+            shortsModeActive = false
             fullscreenEnteredByRotation = false
             isFullscreen = false
         },
         onRetry = onRetryPlayback,
+        onStoryboardLoadFailure = onStoryboardLoadFailure,
         onToggleFollowing = onToggleFollowing,
         onCreatorFollowedChange = onCreatorFollowedChange,
         onLoadChannel = onLoadChannel,
@@ -1237,7 +1263,7 @@ fun GrayjayApp(
     }
 
     val fullscreenVideo = selectedVideo ?: playbackVideo
-    val portraitFullscreen = usePortraitPlayerFullscreen(fullscreenVideo, uiState.playback)
+    val portraitFullscreen = (shortsModeActive && shortsPhone) || usePortraitPlayerFullscreen(fullscreenVideo, uiState.playback)
     val currentConfiguration = LocalConfiguration.current
     val windowOrientation = currentConfiguration.orientation
     val automaticFullscreenAllowed = automaticFullscreenAllowedForViewport(
@@ -1297,6 +1323,7 @@ fun GrayjayApp(
                     navigationBackProgress.floatValue = event.progress
                 }
                 if (isFullscreen) {
+                    shortsModeActive = false
                     fullscreenEnteredByRotation = false
                     isFullscreen = false
                 } else {
@@ -1320,6 +1347,7 @@ fun GrayjayApp(
     }
 
     if (isFullscreen && fullscreenVideo != null) {
+        val fullscreenContent: @Composable () -> Unit = {
         FullscreenPlayerScreen(
             video = fullscreenVideo,
             player = playback.player,
@@ -1349,6 +1377,7 @@ fun GrayjayApp(
             onCaptionsEnabledChange = playback.onCaptionsEnabledChange,
             onSubtitleLanguageChange = playback.onSubtitleLanguageChange,
             onRetryPlayback = playback.onRetry,
+            onStoryboardLoadFailure = { playback.onStoryboardLoadFailure(fullscreenVideo.id) },
             resumePositionFraction = playback.nowPlaying.resumePositionFraction,
             onResumeFromHistory = playback.onResumeFromHistory,
             onExitFullscreen = playback.onExitFullscreen,
@@ -1360,6 +1389,16 @@ fun GrayjayApp(
                 alpha = 1f - 0.22f * progress
             },
         )
+        }
+        if (shortsModeActive && shortsPhone && uiState.brainrotShortsEnabled && fullscreenVideo.id in shortsVideoIds) {
+            com.futo.platformplayer.compose.ui.screens.ShortsFeedPlayer(
+                videos = shortsVideos, activeVideoId = fullscreenVideo.id, player = playback.player,
+                onVideoSelected = onVideoClick,
+                hasMore = uiState.home.hasMore && !uiState.home.isLoadingMore && !uiState.home.isLoading,
+                onLoadMore = onLoadMoreHome,
+                content = fullscreenContent,
+            )
+        } else fullscreenContent()
     } else if (
         shouldCoverAppChromeDuringOrientationHandoff(
             windowOrientation = windowOrientation,
@@ -1372,6 +1411,12 @@ fun GrayjayApp(
         Box(Modifier.fillMaxSize().background(Color.Black))
     } else CompositionLocalProvider(
         LocalVideoCreatorClick provides onVideoCreatorClick,
+        LocalChannelArtworkIndex provides channelArtworkIndex,
+        LocalChannelArtworkRequest provides onHydrateChannelArtwork,
+        LocalDisplayClock provides displayClock,
+        com.futo.platformplayer.compose.ui.screens.LocalExtraPreferences provides com.futo.platformplayer.compose.ui.screens.ExtraPreferences(
+            uiState.brainrotShortsEnabled, onBrainrotShortsChange, uiState.rebuildingCaches, onRebuildContentCaches,
+        ),
     ) {
         val navigationVideos = remember(uiState.videos, uiState.subscriptionVideos) {
             (uiState.videos + uiState.subscriptionVideos).distinctBy(VideoUiModel::id)
@@ -2229,6 +2274,7 @@ private fun GrayjayScaffold(
                     downloads = playback.downloads,
                     localPlaylists = playlists,
                     onVideoClick = onVideoClick,
+                    onPlayFromHere = playback.onPlayRemotePlaylistFrom,
                     onVideoLongClick = onRemotePlaylistVideoLongClick,
                     onPlayAll = playback.onPlayRemotePlaylist,
                     onDownloadAll = playback.onDownloadRemotePlaylist,
@@ -2324,6 +2370,7 @@ private fun GrayjayScaffold(
                         playlistListState = playback.libraryPlaylistListState,
                     )
                     GrayjayDestination.Settings -> SettingsScreen(
+                        sources = sourcePresentation.sources,
                         uiLanguageTag = playback.uiLanguageTag,
                         onUiLanguageChange = playback.onUiLanguageChange,
                         dynamicColorsEnabled = dynamicColorsEnabled,
@@ -2623,6 +2670,7 @@ private fun GrayjayScaffold(
                                 onCaptionsEnabledChange = playback.onCaptionsEnabledChange,
                                 onSubtitleLanguageChange = playback.onSubtitleLanguageChange,
                                 onRetryPlayback = playback.onRetry,
+                                onStoryboardLoadFailure = { playback.onStoryboardLoadFailure(transitionVideo.id) },
                                 onVideoClick = onVideoClick,
                                 onVideoLongClick = playback.onVideoLongClick,
                                 onQueueVideoLongClick = playback.onQueueVideoLongClick,

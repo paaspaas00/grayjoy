@@ -200,6 +200,7 @@ fun VideoDetailScreen(
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
     onRetryPlayback: () -> Unit,
+    onStoryboardLoadFailure: () -> Unit = {},
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
     onQueueVideoLongClick: (VideoUiModel) -> Unit = onVideoLongClick,
@@ -312,6 +313,7 @@ fun VideoDetailScreen(
             onCaptionsEnabledChange = onCaptionsEnabledChange,
             onSubtitleLanguageChange = onSubtitleLanguageChange,
             onRetryPlayback = onRetryPlayback,
+            onStoryboardLoadFailure = onStoryboardLoadFailure,
             onFullscreen = onFullscreen,
             resumePositionFraction = resumeFraction,
             onResumeFromHistory = onResumeFromHistory,
@@ -579,6 +581,7 @@ fun FullscreenPlayerScreen(
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
     onRetryPlayback: () -> Unit,
+    onStoryboardLoadFailure: () -> Unit = {},
     resumePositionFraction: Float? = null,
     onResumeFromHistory: () -> Unit = {},
     onExitFullscreen: () -> Unit,
@@ -633,6 +636,7 @@ fun FullscreenPlayerScreen(
                 onCaptionsEnabledChange = onCaptionsEnabledChange,
                 onSubtitleLanguageChange = onSubtitleLanguageChange,
                 onRetryPlayback = onRetryPlayback,
+                onStoryboardLoadFailure = onStoryboardLoadFailure,
                 onFullscreen = onExitFullscreen,
                 resumePositionFraction = resumePositionFraction,
                 onResumeFromHistory = onResumeFromHistory,
@@ -680,6 +684,7 @@ internal fun PlayerSurface(
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
     onRetryPlayback: () -> Unit,
+    onStoryboardLoadFailure: () -> Unit = {},
     onFullscreen: () -> Unit,
     modifier: Modifier,
     controlsAlpha: Float = 1f,
@@ -996,6 +1001,7 @@ internal fun PlayerSurface(
                 isPortraitFullscreen = isPortraitFullscreen,
                 onSeek = onSeek,
                 onSeekingChanged = { isTimelineSeeking = it },
+                onStoryboardLoadFailure = onStoryboardLoadFailure,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
@@ -1247,6 +1253,7 @@ private fun PlayerTimelineRow(
     isPortraitFullscreen: Boolean,
     onSeek: (Float) -> Unit,
     onSeekingChanged: (Boolean) -> Unit,
+    onStoryboardLoadFailure: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var playerPositionMs by remember(video.id) {
@@ -1436,7 +1443,10 @@ private fun PlayerTimelineRow(
                             AndroidView(
                                 factory = { context -> StoryboardFrameView(context) },
                                 update = { view ->
-                                    view.onLoadFailure = { storyboardUnavailable = true }
+                                    view.onLoadFailure = {
+                                        storyboardUnavailable = true
+                                        onStoryboardLoadFailure()
+                                    }
                                     view.showFrame(storyboardFrame)
                                 },
                                 modifier = Modifier.fillMaxSize(),

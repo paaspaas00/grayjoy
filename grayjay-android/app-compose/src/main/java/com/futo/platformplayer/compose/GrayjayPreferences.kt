@@ -61,6 +61,10 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
             preferences.edit().putBoolean(KEY_HOLD_TO_SPEED, value).apply()
         }
 
+    var brainrotShortsEnabled: Boolean
+        get() = preferences.getBoolean("brainrot_shorts_enabled", false)
+        set(value) { preferences.edit().putBoolean("brainrot_shorts_enabled", value).apply() }
+
     fun channelPlaybackSpeeds(): Map<String, Float> =
         playbackSpeedMap(KEY_CHANNEL_PLAYBACK_SPEEDS)
 

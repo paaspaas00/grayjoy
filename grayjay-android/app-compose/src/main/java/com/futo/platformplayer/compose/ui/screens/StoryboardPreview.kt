@@ -32,7 +32,7 @@ internal fun StoryboardUiModel.frameAt(
     val usableLevels = levels.filter { level ->
         level.width > 0 && level.height > 0 && level.frameCount > 0 &&
             level.columns > 0 && level.rows > 0 && level.intervalMs > 0L &&
-            level.sheetUrlTemplate.isNotBlank()
+            (level.sheetUrlTemplate.isNotBlank() || level.sheetUrls.isNotEmpty())
     }
     val target = targetWidthPx.coerceAtLeast(1)
     val level = usableLevels.filter { it.width >= target }.minByOrNull { it.width }
@@ -44,7 +44,8 @@ internal fun StoryboardUiModel.frameAt(
     val sheetCapacity = level.columns * level.rows
     val sheetIndex = frameIndex / sheetCapacity
     val cellIndex = frameIndex % sheetCapacity
-    val sheetUrl = level.sheetUrlTemplate.replace("\$M", sheetIndex.toString())
+    val sheetUrl = level.sheetUrls.getOrNull(sheetIndex)
+        ?: level.sheetUrlTemplate.replace("\$M", sheetIndex.toString())
     if (sheetUrl.contains("\$M")) return null
     return StoryboardFrameUiModel(
         sheetUrl = sheetUrl,
@@ -64,6 +65,8 @@ internal class StoryboardFrameView @JvmOverloads constructor(
     var onLoadFailure: (() -> Unit)? = null
 
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val sourceRect = Rect()
+    private val destinationRect = RectF()
     private var bitmap: Bitmap? = null
     private var frame: StoryboardFrameUiModel? = null
     private var requestedUrl: String? = null
@@ -128,20 +131,20 @@ internal class StoryboardFrameView @JvmOverloads constructor(
             return
         }
 
-        val source = Rect(left, top, right, bottom)
+        sourceRect.set(left, top, right, bottom)
         val scale = minOf(
             width.toFloat() / currentFrame.cellWidth.toFloat(),
             height.toFloat() / currentFrame.cellHeight.toFloat(),
         )
         val renderedWidth = currentFrame.cellWidth * scale
         val renderedHeight = currentFrame.cellHeight * scale
-        val destination = RectF(
+        destinationRect.set(
             (width - renderedWidth) / 2f,
             (height - renderedHeight) / 2f,
             (width + renderedWidth) / 2f,
             (height + renderedHeight) / 2f,
         )
-        canvas.drawBitmap(sourceBitmap, source, destination, bitmapPaint)
+        canvas.drawBitmap(sourceBitmap, sourceRect, destinationRect, bitmapPaint)
     }
 
     override fun onDetachedFromWindow() {

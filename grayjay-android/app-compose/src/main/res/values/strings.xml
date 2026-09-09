@@ -675,4 +675,14 @@
         <item quantity="one">%d filter</item>
         <item quantity="other">%d filters</item>
     </plurals>
+    <string name="advanced_settings">Advanced</string>
+    <string name="advanced_settings_description">Caches and engine/plugin versions</string>
+    <string name="rebuild_content_caches">Rebuild content caches</string>
+    <string name="rebuild_cache_description">Reload images and content for this profile. History, playlists, downloads, plugins and logins are kept.</string>
+    <string name="engine_versions">Engines</string>
+    <string name="engine_revision_explanation">Revision of the adapted Grayjay source included in this project.</string>
+    <string name="plugin_versions">Plugin versions</string>
+    <string name="version_unavailable">Unavailable</string>
+    <string name="brainrot_shorts">Brainrot mode for Shorts</string>
+    <string name="brainrot_shorts_description">Phone only: open Home Shorts in portrait fullscreen. Swipe up or down to change video.</string>
 </resources>

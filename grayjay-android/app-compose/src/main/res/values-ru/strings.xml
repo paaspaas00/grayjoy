@@ -603,4 +603,14 @@
     <string name="video_title_language">Язык названий видео</string>
     <string name="prefer_original_title">Предпочитать оригинальное название</string>
     <string name="use_app_language_for_titles">Использовать язык приложения</string>
+    <string name="advanced_settings">Дополнительно</string>
+    <string name="advanced_settings_description">Кэши и версии движков и плагинов</string>
+    <string name="rebuild_content_caches">Перестроить кэши контента</string>
+    <string name="rebuild_cache_description">Заново загрузить изображения и контент профиля. История, плейлисты, загрузки, плагины и сеансы входа сохранятся.</string>
+    <string name="engine_versions">Движки</string>
+    <string name="engine_revision_explanation">Ревизия адаптированного кода Grayjay, включённого в проект.</string>
+    <string name="plugin_versions">Версии плагинов</string>
+    <string name="version_unavailable">Недоступно</string>
+    <string name="brainrot_shorts">Режим Brainrot для Shorts</string>
+    <string name="brainrot_shorts_description">Только на телефоне: открывать Shorts с главной страницы вертикально на весь экран. Проведите вверх или вниз, чтобы сменить видео.</string>
 </resources>

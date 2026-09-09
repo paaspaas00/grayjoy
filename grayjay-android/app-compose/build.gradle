@@ -26,6 +26,21 @@ def debugApplicationIdSuffix = providers
     .gradleProperty('GRAYJOY_DEBUG_APPLICATION_ID_SUFFIX')
     .getOrNull()
 
+def engineRevision = providers.exec {
+    workingDir rootProject.projectDir
+    commandLine 'git', 'log', '-1', '--format=%H', '--', 'grayjay-engine/src/main/java', 'app/src/main/java', 'app-compose/src/main/java/com/futo/platformplayer/compose/engine'
+    ignoreExitValue = true
+}.standardOutput.asText.get().trim()
+if (engineRevision.isEmpty()) engineRevision = 'snapshot'
+def engineVersions = new Properties()
+rootProject.file('engine-versions.properties').withInputStream { engineVersions.load(it) }
+def engineChanges = providers.exec {
+    workingDir rootProject.projectDir
+    commandLine 'git', 'status', '--porcelain', '--', 'grayjay-engine/src/main/java', 'app/src/main/java', 'app-compose/src/main/java/com/futo/platformplayer/compose/engine'
+    ignoreExitValue = true
+}.standardOutput.asText.get().trim()
+if (!engineChanges.isEmpty()) engineRevision += '+'
+
 android {
     namespace 'com.futo.platformplayer.compose'
 
@@ -41,8 +56,11 @@ android {
         applicationId 'com.futo.platformplayer.compose'
         minSdk 28
         targetSdk 36
-        versionCode 2100
-        versionName '2.1.0'
+        versionCode 2200
+        versionName '2.2.0'
+        buildConfigField 'String', 'GRAYJAY_ENGINE_REVISION', '"' + engineRevision + '"'
+        buildConfigField 'String', 'NEWPIPE_ENGINE_VERSION', '"' + engineVersions.getProperty('newpipe.version') + '"'
+        buildConfigField 'String', 'NEWPIPE_ENGINE_REVISION', '"' + engineVersions.getProperty('newpipe.commit') + '"'
         manifestPlaceholders = [grayjoyAppLabel: '@string/app_name']
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
@@ -125,6 +143,7 @@ android {
 }
 
 dependencies {
+    implementation 'com.squareup.okhttp3:okhttp:5.3.0'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
     def composeBom = platform('androidx.compose:compose-bom:2026.05.00')
     implementation composeBom

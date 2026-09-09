@@ -293,6 +293,7 @@ class MainActivity : FragmentActivity() {
                     onCaptionsEnabledChange = viewModel::setCaptionsEnabled,
                     onSubtitleLanguageChange = viewModel::setSubtitleLanguage,
                     onRetryPlayback = viewModel::retryPlayback,
+                    onStoryboardLoadFailure = viewModel::refreshStoryboard,
                     onClosePlayback = viewModel::closePlayback,
                     onToggleWatchLater = viewModel::toggleWatchLater,
                     onToggleDownloaded = viewModel::toggleDownloaded,
@@ -428,6 +429,9 @@ class MainActivity : FragmentActivity() {
                     updateDownload = updateDownloadState,
                     onCancelUpdateDownload = ::cancelUpdateDownload,
                     onHydrateVideoMetadata = viewModel::hydrateVideoMetadata,
+                    onHydrateChannelArtwork = viewModel::hydrateChannelArtwork,
+                    onBrainrotShortsChange = viewModel::setBrainrotShortsEnabled,
+                    onRebuildContentCaches = viewModel::rebuildContentCaches,
                     pictureInPictureMode = pictureInPictureMode,
                 )
             }
@@ -517,7 +521,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun downloadAndInstallUpdate(update: ReleaseUpdateUiModel) {
-        val url = update.debugApkUrl ?: return
+        val url = update.releaseApkUrl ?: return
         if (updateDownloadJob?.isActive == true &&
             updateDownloadState?.versionName == update.versionName
         ) return

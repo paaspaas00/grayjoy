@@ -675,4 +675,14 @@
         <item quantity="one">%d filtro</item>
         <item quantity="other">%d filtri</item>
     </plurals>
+    <string name="advanced_settings">Avanzate</string>
+    <string name="advanced_settings_description">Cache e versioni di motori e plugin</string>
+    <string name="rebuild_content_caches">Ricostruisci cache dei contenuti</string>
+    <string name="rebuild_cache_description">Ricarica immagini e contenuti del profilo. Cronologia, playlist, download, plugin e accessi vengono conservati.</string>
+    <string name="engine_versions">Motori</string>
+    <string name="engine_revision_explanation">Revisione del codice Grayjay adattato incluso nel progetto.</string>
+    <string name="plugin_versions">Versioni dei plugin</string>
+    <string name="version_unavailable">Non disponibile</string>
+    <string name="brainrot_shorts">Modalità Brainrot per gli Shorts</string>
+    <string name="brainrot_shorts_description">Solo su telefono: apri gli Shorts della Home a schermo intero verticale. Scorri su o giù per cambiare video.</string>
 </resources>

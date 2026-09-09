@@ -578,7 +578,7 @@ fun HomeScreen(
                 if (activeDownload == null) {
                     Button(
                         onClick = { onInstallUpdate(availableUpdate) },
-                        enabled = availableUpdate.debugApkUrl != null,
+                        enabled = availableUpdate.releaseApkUrl != null,
                     ) {
                         Text(stringResource(R.string.install))
                     }

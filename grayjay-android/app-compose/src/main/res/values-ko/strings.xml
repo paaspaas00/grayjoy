@@ -603,4 +603,14 @@
     <string name="video_title_language">동영상 제목 언어</string>
     <string name="prefer_original_title">원래 제목 우선</string>
     <string name="use_app_language_for_titles">앱 언어 사용</string>
+    <string name="advanced_settings">고급</string>
+    <string name="advanced_settings_description">캐시 및 엔진·플러그인 버전</string>
+    <string name="rebuild_content_caches">콘텐츠 캐시 다시 만들기</string>
+    <string name="rebuild_cache_description">이 프로필의 이미지와 콘텐츠를 다시 불러옵니다. 기록, 재생목록, 다운로드, 플러그인, 로그인은 유지됩니다.</string>
+    <string name="engine_versions">엔진</string>
+    <string name="engine_revision_explanation">이 프로젝트에 포함된 수정된 Grayjay 코드의 리비전입니다.</string>
+    <string name="plugin_versions">플러그인 버전</string>
+    <string name="version_unavailable">사용 불가</string>
+    <string name="brainrot_shorts">Shorts용 Brainrot 모드</string>
+    <string name="brainrot_shorts_description">휴대전화 전용: 홈의 Shorts를 세로 전체 화면으로 엽니다. 위아래로 스와이프하여 동영상을 바꿉니다.</string>
 </resources>

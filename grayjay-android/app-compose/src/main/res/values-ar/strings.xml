@@ -603,4 +603,14 @@
     <string name="video_title_language">لغة عناوين الفيديو</string>
     <string name="prefer_original_title">تفضيل العنوان الأصلي</string>
     <string name="use_app_language_for_titles">استخدام لغة التطبيق</string>
+    <string name="advanced_settings">متقدم</string>
+    <string name="advanced_settings_description">ذاكرة التخزين المؤقت وإصدارات المحركات والإضافات</string>
+    <string name="rebuild_content_caches">إعادة بناء ذاكرة المحتوى المؤقتة</string>
+    <string name="rebuild_cache_description">إعادة تحميل صور هذا الملف الشخصي ومحتواه. يتم الاحتفاظ بالسجل وقوائم التشغيل والتنزيلات والإضافات وجلسات الدخول.</string>
+    <string name="engine_versions">المحركات</string>
+    <string name="engine_revision_explanation">مراجعة شيفرة Grayjay المعدلة المضمنة في هذا المشروع.</string>
+    <string name="plugin_versions">إصدارات الإضافات</string>
+    <string name="version_unavailable">غير متاح</string>
+    <string name="brainrot_shorts">وضع Brainrot للمقاطع القصيرة</string>
+    <string name="brainrot_shorts_description">للهواتف فقط: افتح المقاطع القصيرة من الرئيسية بملء الشاشة عموديًا. اسحب لأعلى أو لأسفل لتغيير الفيديو.</string>
 </resources>

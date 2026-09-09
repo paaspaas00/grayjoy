@@ -22,13 +22,24 @@ class GitHubReleaseCheckerTest {
     }
 
     @Test
-    fun `debug asset selection follows device ABI and falls back to universal`() {
+    fun `release asset selection follows device ABI and falls back to universal`() {
         val assets = listOf(
             GitHubReleaseAsset("Grayjoy-v1.4.0-universal-debug.apk", "https://example/universal"),
             GitHubReleaseAsset("Grayjoy-v1.4.0-arm64-v8a-debug.apk", "https://example/arm64"),
-            GitHubReleaseAsset("Grayjoy-v1.4.0-arm64-v8a-release.apk", "https://example/release"),
+            GitHubReleaseAsset("Grayjoy-v1.4.0-universal-release.apk", "https://example/universal-release"),
+            GitHubReleaseAsset("Grayjoy-v1.4.0-arm64-v8a-release.apk", "https://example/arm64-release"),
+            GitHubReleaseAsset("Grayjoy-v1.4.0-arm64-v8a-release-unsigned.apk", "https://example/unsigned"),
         )
-        assertEquals("https://example/arm64", selectDebugApkUrl(assets, listOf("arm64-v8a")))
-        assertEquals("https://example/universal", selectDebugApkUrl(assets, listOf("riscv64")))
+        assertEquals("https://example/arm64-release", selectReleaseApkUrl(assets, listOf("arm64-v8a")))
+        assertEquals("https://example/universal-release", selectReleaseApkUrl(assets, listOf("riscv64")))
+    }
+
+    @Test
+    fun `debug and unsigned assets are never selected for an in app update`() {
+        val assets = listOf(
+            GitHubReleaseAsset("Grayjoy-v2.2.0-arm64-v8a-debug.apk", "https://example/debug"),
+            GitHubReleaseAsset("Grayjoy-v2.2.0-arm64-v8a-release-unsigned.apk", "https://example/unsigned"),
+        )
+        assertEquals(null, selectReleaseApkUrl(assets, listOf("arm64-v8a")))
     }
 }

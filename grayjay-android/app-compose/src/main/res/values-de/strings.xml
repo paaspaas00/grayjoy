@@ -603,4 +603,14 @@
     <string name="video_title_language">Sprache der Videotitel</string>
     <string name="prefer_original_title">Originaltitel bevorzugen</string>
     <string name="use_app_language_for_titles">App-Sprache verwenden</string>
+    <string name="advanced_settings">Erweitert</string>
+    <string name="advanced_settings_description">Caches sowie Engine- und Plugin-Versionen</string>
+    <string name="rebuild_content_caches">Inhaltscaches neu aufbauen</string>
+    <string name="rebuild_cache_description">Bilder und Inhalte dieses Profils neu laden. Verlauf, Playlists, Downloads, Plugins und Anmeldungen bleiben erhalten.</string>
+    <string name="engine_versions">Engines</string>
+    <string name="engine_revision_explanation">Revision des angepassten Grayjay-Quellcodes in diesem Projekt.</string>
+    <string name="plugin_versions">Plugin-Versionen</string>
+    <string name="version_unavailable">Nicht verfügbar</string>
+    <string name="brainrot_shorts">Brainrot-Modus für Shorts</string>
+    <string name="brainrot_shorts_description">Nur auf Smartphones: Home-Shorts im Hochformat-Vollbild öffnen. Nach oben oder unten wischen, um das Video zu wechseln.</string>
 </resources>

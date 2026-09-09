@@ -17,6 +17,8 @@ data class GrayjayUiState(
     val defaultPlaybackSpeed: Float = 1f,
     val perChannelPlaybackSpeedEnabled: Boolean = true,
     val holdToSpeedEnabled: Boolean = false,
+    val brainrotShortsEnabled: Boolean = false,
+    val rebuildingCaches: Boolean = false,
     val channelPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val videoPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val preferredVideoQuality: Int = 0,
@@ -144,7 +146,7 @@ data class ReleaseUpdateUiModel(
     val versionName: String,
     val releaseUrl: String,
     val changelog: String,
-    val debugApkUrl: String?,
+    val releaseApkUrl: String?,
 )
 
 data class UpdateDownloadUiModel(

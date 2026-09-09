@@ -368,6 +368,7 @@ interface GrayjayEngine {
     suspend fun trustInstallSource(token: String): SourceUiModel
     fun discardUntrustedSource(token: String)
     fun clearSourceCache(sourceId: String)
+    fun invalidateContentCaches() = Unit
     fun removeSource(sourceId: String)
     fun purgePlugin(pluginId: String)
     fun setPluginSettings(pluginId: String, settings: Map<String, String?>)
@@ -423,7 +424,7 @@ interface GrayjayEngine {
         useNewPipe: Boolean,
         subscriptionFetchMode: YoutubeSubscriptionFetchMode,
     )
-    suspend fun loadStoryboard(video: VideoUiModel): StoryboardUiModel?
+    suspend fun loadStoryboard(video: VideoUiModel, forceRefresh: Boolean = false): StoryboardUiModel?
     suspend fun loadExtras(video: VideoUiModel): EngineVideoExtras
     suspend fun loadMoreRecommendations(continuationId: String): EngineVideoPage
     suspend fun loadMoreComments(continuationId: String): EngineCommentPage
@@ -530,7 +531,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         },
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
+    private val mediaArtworkLoader = com.futo.platformplayer.compose.images.MediaArtworkLoader(appContext) { uri ->
+        openedVideos.firstOrNull { it.thumbnailUrl == uri }?.thumbnailRequestHeaders.orEmpty()
+    }
     private val mediaSession = MediaSession.Builder(appContext, exoPlayer)
+        .setBitmapLoader(androidx.media3.session.CacheBitmapLoader(mediaArtworkLoader))
         // Activity recreation can briefly overlap the previous ViewModel/session teardown. Media3
         // rejects two sessions with its default empty ID in the same process, crashing before the
         // Activity can resume. Each engine owns an independent token, so give it an independent ID.
@@ -965,6 +970,12 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override fun clearSourceCache(sourceId: String) {
         val endpoint = pluginEndpoints[sourceId] ?: return
         pluginBackend.clearPlugin(sourceId, endpoint.pluginId)
+    }
+
+    override fun invalidateContentCaches() {
+        mixedContinuations.clear()
+        newPipeYoutubeContentBackend.resetTransientSessions()
+        if (pluginBackendDelegate.isInitialized()) pluginBackend.invalidateContentCaches()
     }
 
     override fun removeSource(sourceId: String) {
@@ -1815,14 +1826,19 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         youtubeSubscriptionFetchMode = subscriptionFetchMode
     }
 
-    override suspend fun loadStoryboard(video: VideoUiModel): StoryboardUiModel? {
-        if (video.isYoutubeVideo() && useNewPipeYoutubeBackend) return video.storyboard
+    override suspend fun loadStoryboard(video: VideoUiModel, forceRefresh: Boolean): StoryboardUiModel? {
+        if (video.isYoutubeVideo() && useNewPipeYoutubeBackend) {
+            if (!forceRefresh) video.storyboard?.let { return it }
+            val contentUrl = video.pluginContentUrlOrNull() ?: return null
+            return newPipeYoutubeBackend.loadStoryboard(contentUrl, forceRefresh)?.toUiModel()
+        }
         val endpoint = pluginEndpoints[video.sourceId] ?: return null
         val contentUrl = video.pluginContentUrlOrNull() ?: return null
         return pluginBackend.loadStoryboard(
             sourceId = video.sourceId,
             contentUrl = contentUrl,
             endpoint = endpoint,
+            forceRefresh = forceRefresh,
         )?.toUiModel()
     }
 
@@ -1971,6 +1987,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             player = exoPlayer,
             mediaSession = mediaSession,
             closePlayback = ::closePlayback,
+            artworkHeaders = { uri -> openedVideos.firstOrNull { it.thumbnailUrl == uri }?.thumbnailRequestHeaders.orEmpty() },
         )
         syncPlayback(currentVideoId)
     }
@@ -2551,6 +2568,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         activePluginDataSources.forEach(JSHttpDataSource.Factory::closeExecutors)
         activePluginDataSources = emptySet()
         mediaSession.release()
+        mediaArtworkLoader.close()
         exoPlayer.release()
         // JSClient.disable() waits for the V8 busy lock. A plugin callback or manifest generator
         // can legitimately hold it for many seconds, so teardown must never run in
@@ -2705,6 +2723,7 @@ private fun com.futo.platformplayer.backend.GrayjayStoryboard.toUiModel() = Stor
             rows = level.rows,
             intervalMs = level.intervalMs,
             sheetUrlTemplate = level.sheetUrlTemplate,
+            sheetUrls = level.sheetUrls,
         )
     },
 )

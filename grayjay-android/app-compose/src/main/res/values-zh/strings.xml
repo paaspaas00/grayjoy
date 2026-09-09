@@ -603,4 +603,14 @@
     <string name="video_title_language">视频标题语言</string>
     <string name="prefer_original_title">优先使用原标题</string>
     <string name="use_app_language_for_titles">使用应用语言</string>
+    <string name="advanced_settings">高级</string>
+    <string name="advanced_settings_description">缓存、引擎及插件版本</string>
+    <string name="rebuild_content_caches">重建内容缓存</string>
+    <string name="rebuild_cache_description">重新加载此个人资料的图片和内容。保留历史记录、播放列表、下载、插件和登录状态。</string>
+    <string name="engine_versions">引擎</string>
+    <string name="engine_revision_explanation">本项目所包含的经过适配的 Grayjay 源码修订版本。</string>
+    <string name="plugin_versions">插件版本</string>
+    <string name="version_unavailable">不可用</string>
+    <string name="brainrot_shorts">Shorts 的 Brainrot 模式</string>
+    <string name="brainrot_shorts_description">仅限手机：以竖屏全屏打开首页的 Shorts。上下滑动可切换视频。</string>
 </resources>

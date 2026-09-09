@@ -15,6 +15,7 @@ data class GrayjayStoryboardLevel(
     val intervalMs: Long,
     /** A signed YouTube sprite URL containing `$M` where the sheet index belongs. */
     val sheetUrlTemplate: String,
+    val sheetUrls: List<String> = emptyList(),
 )
 
 /** Parses YouTube's watch-page storyboard spec without coupling it to plugin models. */
