@@ -89,6 +89,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -160,6 +162,14 @@ internal fun shouldCoverAppChromeDuringOrientationHandoff(
 // Private GitHub repositories do not expose release metadata to unauthenticated app clients.
 // Keep the complete banner/check path dormant until the repository is made public.
 internal const val RELEASE_UPDATE_CHECK_ENABLED = true
+
+/**
+ * Owned above fullscreen and PiP branches so page-local state survives while app chrome is not
+ * composed. Search type/source choices and list positions otherwise reset when returning.
+ */
+private val LocalPageStateHolder = staticCompositionLocalOf<SaveableStateHolder> {
+    error("Page state holder was not provided")
+}
 
 internal fun hasNowPlayingDownload(download: DownloadUiModel?): Boolean {
     if (download == null) return false
@@ -584,6 +594,7 @@ fun GrayjayApp(
 ) {
     val context = LocalContext.current
     val displayClock = rememberDisplayClock()
+    val pageStateHolder = rememberSaveableStateHolder()
     val channelArtworkIndex = remember(uiState.channels, uiState.channelDetail.channel) {
         ChannelArtworkIndex(listOfNotNull(uiState.channelDetail.channel) + uiState.channels)
     }
@@ -703,27 +714,28 @@ fun GrayjayApp(
         playerTransitionJob?.cancel()
         playerTransition.snapTo(value)
     }
-    val settlePlayer: (Float, String?) -> Unit = { target, videoId ->
-        playerTransitionJob?.cancel()
-        if (target == 1f) {
-            uiState.playbackPlaylist?.let { playingPlaylist ->
-                val playlist = uiState.playlists.firstOrNull { it.id == playingPlaylist.id }
-                    ?: playingPlaylist.takeIf { it.sourceId.isNotBlank() }
-                if (playlist != null) {
-                    visitedPlaylists[playlist.id] = playlist
-                    selectedChannelId = null
-                    selectedPlaylistId = playlist.id
-                    if (playlist.sourceId.isBlank()) {
-                        destinationName = GrayjayDestination.Library.name
-                        libraryFilterName = LibraryFilter.Playlists.name
-                        browseHistory = emptyList()
-                        nestedBackDestinationName = null
-                    } else if (uiState.remotePlaylistDetail.playlist?.id != playlist.id) {
-                        onLoadRemotePlaylist(playlist)
-                    }
+    val restorePlaybackPlaylistDestination: () -> Unit = {
+        uiState.playbackPlaylist?.let { playingPlaylist ->
+            val playlist = uiState.playlists.firstOrNull { it.id == playingPlaylist.id }
+                ?: playingPlaylist.takeIf { it.sourceId.isNotBlank() }
+            if (playlist != null) {
+                visitedPlaylists[playlist.id] = playlist
+                selectedChannelId = null
+                selectedPlaylistId = playlist.id
+                if (playlist.sourceId.isBlank()) {
+                    destinationName = GrayjayDestination.Library.name
+                    libraryFilterName = LibraryFilter.Playlists.name
+                    browseHistory = emptyList()
+                    nestedBackDestinationName = null
+                } else if (uiState.remotePlaylistDetail.playlist?.id != playlist.id) {
+                    onLoadRemotePlaylist(playlist)
                 }
             }
         }
+    }
+    val settlePlayer: (Float, String?) -> Unit = { target, videoId ->
+        playerTransitionJob?.cancel()
+        if (target == 1f) restorePlaybackPlaylistDestination()
         if (target == 0f) {
             focusManager.clearFocus(force = true)
             keyboardController?.hide()
@@ -1054,6 +1066,7 @@ fun GrayjayApp(
         onDismissCommentReplies = onDismissCommentReplies,
         onLoadMoreCommentReplies = onLoadMoreCommentReplies,
         onClose = {
+            restorePlaybackPlaylistDestination()
             snapPlayerTransition(1f)
             selectedVideoId = null
             onClosePlayback()
@@ -1410,6 +1423,7 @@ fun GrayjayApp(
         // inside the temporary landscape viewport.
         Box(Modifier.fillMaxSize().background(Color.Black))
     } else CompositionLocalProvider(
+        LocalPageStateHolder provides pageStateHolder,
         LocalVideoCreatorClick provides onVideoCreatorClick,
         LocalChannelArtworkIndex provides channelArtworkIndex,
         LocalChannelArtworkRequest provides onHydrateChannelArtwork,
@@ -1939,7 +1953,7 @@ private fun GrayjayScaffold(
     var rootTopPx by remember { mutableFloatStateOf(0f) }
     var appBottomBarHeightPx by remember { mutableFloatStateOf(0f) }
     var isTransitionDragging by remember { mutableStateOf(false) }
-    val pageStateHolder = rememberSaveableStateHolder()
+    val pageStateHolder = LocalPageStateHolder.current
     val compactChrome = com.futo.platformplayer.compose.ui.screens.compactUi()
     val transitionVideo = selectedVideo ?: playback.video
     val transitionActive = transitionVideo != null && selectedVideo != null

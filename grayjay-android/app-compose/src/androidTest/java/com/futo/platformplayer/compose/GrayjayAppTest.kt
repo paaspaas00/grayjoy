@@ -67,6 +67,7 @@ class GrayjayAppTest {
 
     private lateinit var player: ExoPlayer
     private lateinit var state: MutableState<GrayjayUiState>
+    private lateinit var pictureInPictureMode: MutableState<Boolean>
     private var installedSourceUrl: String? = null
     private var importPickerRequested = false
     private var newPipeImportPickerRequested = false
@@ -91,6 +92,7 @@ class GrayjayAppTest {
             player = ExoPlayer.Builder(composeRule.activity).build()
         }
         state = mutableStateOf(testState())
+        pictureInPictureMode = mutableStateOf(false)
         composeRule.setContent {
             val audit = androidx.test.platform.app.InstrumentationRegistry.getArguments().containsKey("layoutAuditName")
             GrayjayTheme(dynamicColor = false, darkTheme = if (audit) androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("layoutAuditDark") == "true" else androidx.compose.foundation.isSystemInDarkTheme()) {
@@ -134,6 +136,7 @@ class GrayjayAppTest {
                         state.value = state.value.copy(
                             playback = PlaybackUiState(),
                             nowPlaying = NowPlayingUiState(),
+                            playbackPlaylist = null,
                         )
                     },
                     onToggleWatchLater = { id -> updateVideo(id) { it.copy(isWatchLater = !it.isWatchLater) } },
@@ -174,12 +177,20 @@ class GrayjayAppTest {
                     onSearchQueryChange = { query ->
                         state.value = state.value.copy(search = state.value.search.copy(query = query))
                     },
-                    onSearchSubmit = { query, _, _ ->
+                    onSearchSubmit = { query, type, _ ->
                         state.value = state.value.copy(
                             search = SearchUiState(
                                 query = query,
                                 hasSearched = true,
-                                videos = state.value.videos,
+                                videos = state.value.videos.takeIf {
+                                    type == com.futo.platformplayer.compose.ui.SearchContentType.Videos
+                                }.orEmpty(),
+                                channels = state.value.channels.takeIf {
+                                    type == com.futo.platformplayer.compose.ui.SearchContentType.Creators
+                                }.orEmpty(),
+                                playlists = state.value.playlists.takeIf {
+                                    type == com.futo.platformplayer.compose.ui.SearchContentType.Playlists
+                                }.orEmpty(),
                             ),
                         )
                     },
@@ -211,6 +222,7 @@ class GrayjayAppTest {
                     onShowRecommendationsChange = {},
                     onSearchHistoryChange = {},
                     onKeepScreenAwakeChange = {},
+                    pictureInPictureMode = pictureInPictureMode.value,
                 )
             }
             }
@@ -484,6 +496,52 @@ class GrayjayAppTest {
     }
 
     @Test
+    fun pictureInPicturePreservesSearchTypeResultsAndScrollPosition() {
+        val results = (1..40).map { index ->
+            PlaylistUiModel("pip-result-$index", "Search playlist $index", "", emptyList())
+        }
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                playlists = results,
+                search = SearchUiState(
+                    query = "playlist query",
+                    hasSearched = true,
+                    playlists = results,
+                ),
+            )
+            openVideo("real-video-one")
+        }
+        composeRule.onNodeWithTag("nav-search").performClick()
+        closeSoftKeyboard()
+        composeRule.onNodeWithTag("search-filter-playlists").performClick()
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                search = SearchUiState(
+                    query = "playlist query",
+                    hasSearched = true,
+                    playlists = results,
+                ),
+            )
+        }
+        composeRule.onNodeWithTag("search-results")
+            .performScrollToNode(hasTestTag("playlist-pip-result-30"))
+        composeRule.onNodeWithTag("playlist-pip-result-30").performScrollTo()
+        val before = composeRule.onNodeWithTag("playlist-pip-result-30")
+            .fetchSemanticsNode().boundsInRoot.top
+
+        composeRule.runOnIdle { pictureInPictureMode.value = true }
+        composeRule.runOnIdle { pictureInPictureMode.value = false }
+        composeRule.onNodeWithContentDescription(
+            composeRule.activity.getString(R.string.back),
+        ).performClick()
+
+        composeRule.onNodeWithTag("playlist-pip-result-30").assertIsDisplayed()
+        val after = composeRule.onNodeWithTag("playlist-pip-result-30")
+            .fetchSemanticsNode().boundsInRoot.top
+        assertEquals(before, after, 2f)
+    }
+
+    @Test
     fun shortsModeIsOptInAndSwipesChangeTheActualSelection() {
         val clips = listOf(video("short-one", "First short", 1L), video("short-two", "Second short", 2L))
             .map { it.copy(isShort = true, thumbnailUrl = "", sourceIconUrl = "") }
@@ -541,6 +599,38 @@ class GrayjayAppTest {
         val after = composeRule.onNodeWithTag("video-card-scroll-30").fetchSemanticsNode().boundsInRoot.top
         assertEquals(before, after, 2f)
         composeRule.onNodeWithTag("mini-player").assertIsDisplayed()
+    }
+
+    @Test
+    fun closingPlaybackReturnsToItsPlaylistEvenAfterBrowsingSearch() {
+        val playlist = PlaylistUiModel(
+            "close-origin",
+            "Close origin playlist",
+            "",
+            listOf("real-video-one", "real-video-two"),
+        )
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                playlists = listOf(playlist),
+                externalNavigation = ExternalNavigationUiModel(
+                    91L,
+                    ExternalNavigationKind.Playlist,
+                    playlist.id,
+                ),
+            )
+        }
+        composeRule.onNodeWithTag("video-title-real-video-one", useUnmergedTree = true)
+            .performScrollTo().performClick()
+        composeRule.onNodeWithContentDescription(
+            composeRule.activity.getString(R.string.back),
+        ).performClick()
+        composeRule.onNodeWithTag("nav-search").performClick()
+        closeSoftKeyboard()
+        composeRule.onNodeWithTag("mini-player").performClick()
+        composeRule.onNodeWithTag("now-playing-close").performClick()
+
+        composeRule.onNodeWithTag("playlist-detail-close-origin").assertIsDisplayed()
+        composeRule.onNodeWithTag("mini-player").assertDoesNotExist()
     }
 
     @Test
