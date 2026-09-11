@@ -2992,7 +2992,7 @@ private fun CreatorNameShimmer(name: String, sequence: Int) {
         )
     }
     val base = MaterialTheme.colorScheme.onSurface
-    val highlight = MaterialTheme.colorScheme.primary
+    val highlight = MaterialTheme.colorScheme.inverseOnSurface
     val width = widthPx.coerceAtLeast(1).toFloat()
     val center = width * progress.value
     val shimmerBrush = Brush.linearGradient(
