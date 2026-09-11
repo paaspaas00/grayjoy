@@ -343,6 +343,7 @@ private data class PlaybackPresentation(
     val channelPlaybackSpeeds: Map<String, Float>,
     val videoPlaybackSpeeds: Map<String, Float>,
     val sponsorBlockEnabled: Boolean,
+    val sponsorBlockSkipNoticesEnabled: Boolean,
     val sponsorBlockCategories: Set<SponsorBlockCategory>,
     val channelSponsorBlockOverrides: Map<String, SponsorBlockRule>,
     val videoSponsorBlockOverrides: Map<String, SponsorBlockRule>,
@@ -369,6 +370,7 @@ private data class PlaybackPresentation(
     val onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
     val onHoldToSpeedChange: (Boolean) -> Unit,
     val onSponsorBlockEnabledChange: (Boolean) -> Unit,
+    val onSponsorBlockSkipNoticesEnabledChange: (Boolean) -> Unit,
     val onSponsorBlockCategoriesChange: (Set<SponsorBlockCategory>) -> Unit,
     val onChannelSponsorBlockOverrideChange: (String, SponsorBlockRule?) -> Unit,
     val onVideoSponsorBlockOverrideChange: (String, SponsorBlockRule?) -> Unit,
@@ -565,6 +567,7 @@ fun GrayjayApp(
     onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
     onHoldToSpeedChange: (Boolean) -> Unit = {},
     onSponsorBlockEnabledChange: (Boolean) -> Unit = {},
+    onSponsorBlockSkipNoticesEnabledChange: (Boolean) -> Unit = {},
     onSponsorBlockCategoriesChange: (Set<SponsorBlockCategory>) -> Unit = {},
     onChannelSponsorBlockOverrideChange: (String, SponsorBlockRule?) -> Unit = { _, _ -> },
     onVideoSponsorBlockOverrideChange: (String, SponsorBlockRule?) -> Unit = { _, _ -> },
@@ -1142,6 +1145,7 @@ fun GrayjayApp(
         channelPlaybackSpeeds = uiState.channelPlaybackSpeeds,
         videoPlaybackSpeeds = uiState.videoPlaybackSpeeds,
         sponsorBlockEnabled = uiState.sponsorBlockEnabled,
+        sponsorBlockSkipNoticesEnabled = uiState.sponsorBlockSkipNoticesEnabled,
         sponsorBlockCategories = uiState.sponsorBlockCategories,
         channelSponsorBlockOverrides = uiState.channelSponsorBlockOverrides,
         videoSponsorBlockOverrides = uiState.videoSponsorBlockOverrides,
@@ -1168,6 +1172,7 @@ fun GrayjayApp(
         onPerChannelPlaybackSpeedChange = onPerChannelPlaybackSpeedChange,
         onHoldToSpeedChange = onHoldToSpeedChange,
         onSponsorBlockEnabledChange = onSponsorBlockEnabledChange,
+        onSponsorBlockSkipNoticesEnabledChange = onSponsorBlockSkipNoticesEnabledChange,
         onSponsorBlockCategoriesChange = onSponsorBlockCategoriesChange,
         onChannelSponsorBlockOverrideChange = onChannelSponsorBlockOverrideChange,
         onVideoSponsorBlockOverrideChange = onVideoSponsorBlockOverrideChange,
@@ -1401,6 +1406,7 @@ fun GrayjayApp(
             videoPlaybackSpeedOverride = playback.videoPlaybackSpeeds[fullscreenVideo.id],
             channelPlaybackSpeed = playback.channelPlaybackSpeeds[fullscreenVideo.playbackChannelKey()],
             sponsorBlockSegments = playback.nowPlaying.sponsorBlockSegments,
+            sponsorBlockSkipNotice = playback.nowPlaying.sponsorBlockSkipNotice,
             sponsorBlockInheritedRule = playback.channelSponsorBlockOverrides[fullscreenVideo.playbackChannelKey()]
                 ?: SponsorBlockRule(playback.sponsorBlockEnabled, playback.sponsorBlockCategories),
             sponsorBlockVideoOverride = playback.videoSponsorBlockOverrides[fullscreenVideo.id],
@@ -2443,8 +2449,11 @@ private fun GrayjayScaffold(
                         holdToSpeedEnabled = playback.holdToSpeedEnabled,
                         onHoldToSpeedChange = playback.onHoldToSpeedChange,
                         sponsorBlockEnabled = playback.sponsorBlockEnabled,
+                        sponsorBlockSkipNoticesEnabled = playback.sponsorBlockSkipNoticesEnabled,
                         sponsorBlockCategories = playback.sponsorBlockCategories,
                         onSponsorBlockEnabledChange = playback.onSponsorBlockEnabledChange,
+                        onSponsorBlockSkipNoticesEnabledChange =
+                            playback.onSponsorBlockSkipNoticesEnabledChange,
                         onSponsorBlockCategoriesChange = playback.onSponsorBlockCategoriesChange,
                         preferredVideoQuality = playback.preferredVideoQuality,
                         onPreferredVideoQualityChange = playback.onPreferredVideoQualityChange,
@@ -2825,6 +2834,7 @@ private fun GrayjayScaffold(
                 channelPlaybackSpeed =
                     playback.channelPlaybackSpeeds[transitionVideo.playbackChannelKey()],
                 sponsorBlockSegments = playback.nowPlaying.sponsorBlockSegments,
+                sponsorBlockSkipNotice = playback.nowPlaying.sponsorBlockSkipNotice,
                 sponsorBlockInheritedRule = playback.channelSponsorBlockOverrides[
                     transitionVideo.playbackChannelKey()
                 ] ?: SponsorBlockRule(playback.sponsorBlockEnabled, playback.sponsorBlockCategories),

@@ -25,6 +25,7 @@ data class GrayjayUiState(
     val channelPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val videoPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val sponsorBlockEnabled: Boolean = true,
+    val sponsorBlockSkipNoticesEnabled: Boolean = true,
     val sponsorBlockCategories: Set<SponsorBlockCategory> = SponsorBlockCategory.defaultCategories,
     val channelSponsorBlockOverrides: Map<String, SponsorBlockRule> = emptyMap(),
     val videoSponsorBlockOverrides: Map<String, SponsorBlockRule> = emptyMap(),
@@ -435,7 +436,13 @@ data class NowPlayingUiState(
     val resumePositionFraction: Float? = null,
     val sponsorBlockSegments: List<SponsorBlockSegment> = emptyList(),
     val sponsorBlockLoading: Boolean = false,
+    val sponsorBlockSkipNotice: SponsorBlockSkipNoticeUiModel? = null,
     val errorMessage: String? = null,
+)
+
+data class SponsorBlockSkipNoticeUiModel(
+    val category: SponsorBlockCategory,
+    val sequence: Long,
 )
 
 data class SearchUiState(

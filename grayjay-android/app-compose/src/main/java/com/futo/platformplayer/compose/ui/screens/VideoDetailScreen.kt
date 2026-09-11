@@ -159,6 +159,8 @@ import com.futo.platformplayer.compose.ui.audioLanguageDisplayName
 import com.futo.platformplayer.compose.ui.supportsOfflineDownload
 import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
 import com.futo.platformplayer.compose.sponsorblock.SponsorBlockSegment
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockCategory
+import com.futo.platformplayer.compose.ui.SponsorBlockSkipNoticeUiModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
@@ -318,6 +320,7 @@ fun VideoDetailScreen(
             onUseChannelSpeed = onUseChannelSpeed,
             onChannelSpeedChange = onChannelSpeedChange,
             sponsorBlockSegments = nowPlaying.sponsorBlockSegments,
+            sponsorBlockSkipNotice = nowPlaying.sponsorBlockSkipNotice,
             sponsorBlockInheritedRule = sponsorBlockInheritedRule,
             sponsorBlockVideoOverride = sponsorBlockVideoOverride,
             onSponsorBlockVideoOverrideChange = onSponsorBlockVideoOverrideChange,
@@ -589,6 +592,7 @@ fun FullscreenPlayerScreen(
     onUseChannelSpeed: () -> Unit = {},
     onChannelSpeedChange: (Float?) -> Unit = {},
     sponsorBlockSegments: List<SponsorBlockSegment> = emptyList(),
+    sponsorBlockSkipNotice: SponsorBlockSkipNoticeUiModel? = null,
     sponsorBlockInheritedRule: SponsorBlockRule = SponsorBlockRule(),
     sponsorBlockVideoOverride: SponsorBlockRule? = null,
     onSponsorBlockVideoOverrideChange: (SponsorBlockRule?) -> Unit = {},
@@ -648,6 +652,7 @@ fun FullscreenPlayerScreen(
                 onUseChannelSpeed = onUseChannelSpeed,
                 onChannelSpeedChange = onChannelSpeedChange,
                 sponsorBlockSegments = sponsorBlockSegments,
+                sponsorBlockSkipNotice = sponsorBlockSkipNotice,
                 sponsorBlockInheritedRule = sponsorBlockInheritedRule,
                 sponsorBlockVideoOverride = sponsorBlockVideoOverride,
                 onSponsorBlockVideoOverrideChange = onSponsorBlockVideoOverrideChange,
@@ -700,6 +705,7 @@ internal fun PlayerSurface(
     onUseChannelSpeed: () -> Unit = {},
     onChannelSpeedChange: (Float?) -> Unit = {},
     sponsorBlockSegments: List<SponsorBlockSegment> = emptyList(),
+    sponsorBlockSkipNotice: SponsorBlockSkipNoticeUiModel? = null,
     sponsorBlockInheritedRule: SponsorBlockRule = SponsorBlockRule(),
     sponsorBlockVideoOverride: SponsorBlockRule? = null,
     onSponsorBlockVideoOverrideChange: (SponsorBlockRule?) -> Unit = {},
@@ -728,6 +734,9 @@ internal fun PlayerSurface(
         mutableStateOf(PlayerSettingsPage.Main.name)
     }
     var controlsLocked by rememberSaveable(video.id, isFullscreen) { mutableStateOf(false) }
+    var lastSkipNoticeCategory by remember(video.id) {
+        mutableStateOf(SponsorBlockCategory.Sponsor)
+    }
     val isPlaylistPlayback = playback.queueVideoIds.size > 1
     val previousAvailable = canGoPrevious || player.currentPosition > 5_000L
     val showControls = !controlsLocked &&
@@ -771,6 +780,9 @@ internal fun PlayerSurface(
         onDispose {
             if (speedHolding) onSpeedHoldEnd()
         }
+    }
+    LaunchedEffect(sponsorBlockSkipNotice?.sequence) {
+        sponsorBlockSkipNotice?.let { lastSkipNoticeCategory = it.category }
     }
 
     Box(
@@ -820,6 +832,30 @@ internal fun PlayerSurface(
                 playback = playback,
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+        AnimatedVisibility(
+            visible = sponsorBlockSkipNotice != null,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = if (isFullscreen) (-72).dp else (-58).dp)
+                .zIndex(5f)
+                .testTag("sponsorblock-skip-notice"),
+            enter = fadeIn(tween(140)),
+            exit = fadeOut(tween(220)),
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.94f),
+                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                tonalElevation = 6.dp,
+                shadowElevation = 6.dp,
+            ) {
+                Text(
+                    text = stringResource(sponsorBlockSkipNoticeText(lastSkipNoticeCategory)),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
         }
         if (controlsAlpha > 0.01f) Box(
             modifier = Modifier
@@ -1216,6 +1252,18 @@ internal fun PlayerSurface(
             },
         )
     }
+}
+
+@androidx.annotation.StringRes
+private fun sponsorBlockSkipNoticeText(category: SponsorBlockCategory): Int = when (category) {
+    SponsorBlockCategory.Sponsor -> R.string.sponsorblock_skipped_sponsor
+    SponsorBlockCategory.SelfPromotion -> R.string.sponsorblock_skipped_self_promotion
+    SponsorBlockCategory.Interaction -> R.string.sponsorblock_skipped_interaction
+    SponsorBlockCategory.Intro -> R.string.sponsorblock_skipped_intro
+    SponsorBlockCategory.Outro -> R.string.sponsorblock_skipped_outro
+    SponsorBlockCategory.Preview -> R.string.sponsorblock_skipped_preview
+    SponsorBlockCategory.MusicOfftopic -> R.string.sponsorblock_skipped_music_offtopic
+    SponsorBlockCategory.Filler -> R.string.sponsorblock_skipped_filler
 }
 
 @androidx.annotation.LayoutRes

@@ -85,6 +85,12 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         get() = preferences.getBoolean(KEY_SPONSORBLOCK_ENABLED, true)
         set(value) { preferences.edit().putBoolean(KEY_SPONSORBLOCK_ENABLED, value).apply() }
 
+    var sponsorBlockSkipNoticesEnabled: Boolean
+        get() = preferences.getBoolean(KEY_SPONSORBLOCK_SKIP_NOTICES, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_SPONSORBLOCK_SKIP_NOTICES, value).apply()
+        }
+
     var sponsorBlockCategories: Set<SponsorBlockCategory>
         get() = if (!preferences.contains(KEY_SPONSORBLOCK_CATEGORIES)) {
             SponsorBlockCategory.defaultCategories
@@ -426,6 +432,7 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         private const val KEY_CHANNEL_PLAYBACK_SPEEDS = "channel_playback_speeds"
         private const val KEY_VIDEO_PLAYBACK_SPEEDS = "video_playback_speeds"
         private const val KEY_SPONSORBLOCK_ENABLED = "sponsorblock_enabled"
+        private const val KEY_SPONSORBLOCK_SKIP_NOTICES = "sponsorblock_skip_notices_enabled"
         private const val KEY_SPONSORBLOCK_CATEGORIES = "sponsorblock_categories"
         private const val KEY_CHANNEL_SPONSORBLOCK_OVERRIDES = "channel_sponsorblock_overrides"
         private const val KEY_VIDEO_SPONSORBLOCK_OVERRIDES = "video_sponsorblock_overrides"

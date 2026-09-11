@@ -632,4 +632,14 @@
     <string name="sponsorblock_category_filler">Remplissage</string>
     <string name="channel_settings">Paramètres de la chaîne</string>
     <string name="video_sponsorblock_settings">SponsorBlock pour cette vidéo</string>
+    <string name="sponsorblock_skip_notices">Afficher les messages des segments ignorés</string>
+    <string name="sponsorblock_skip_notices_description">Indique brièvement le type de segment qui a été ignoré.</string>
+    <string name="sponsorblock_skipped_sponsor">Publicité ignorée</string>
+    <string name="sponsorblock_skipped_self_promotion">Autopromotion ignorée</string>
+    <string name="sponsorblock_skipped_interaction">Rappel d’interaction ignoré</string>
+    <string name="sponsorblock_skipped_intro">Introduction ignorée</string>
+    <string name="sponsorblock_skipped_outro">Conclusion ignorée</string>
+    <string name="sponsorblock_skipped_preview">Aperçu ou récapitulatif ignoré</string>
+    <string name="sponsorblock_skipped_music_offtopic">Partie non musicale ignorée</string>
+    <string name="sponsorblock_skipped_filler">Remplissage ignoré</string>
 </resources>

@@ -632,4 +632,14 @@
     <string name="sponsorblock_category_filler">Relleno</string>
     <string name="channel_settings">Ajustes del canal</string>
     <string name="video_sponsorblock_settings">SponsorBlock para este vídeo</string>
+    <string name="sponsorblock_skip_notices">Mostrar mensajes de segmentos omitidos</string>
+    <string name="sponsorblock_skip_notices_description">Indica brevemente el tipo de segmento que se ha omitido.</string>
+    <string name="sponsorblock_skipped_sponsor">Anuncio omitido</string>
+    <string name="sponsorblock_skipped_self_promotion">Autopromoción omitida</string>
+    <string name="sponsorblock_skipped_interaction">Recordatorio de interacción omitido</string>
+    <string name="sponsorblock_skipped_intro">Introducción omitida</string>
+    <string name="sponsorblock_skipped_outro">Cierre omitido</string>
+    <string name="sponsorblock_skipped_preview">Avance o resumen omitido</string>
+    <string name="sponsorblock_skipped_music_offtopic">Sección no musical omitida</string>
+    <string name="sponsorblock_skipped_filler">Relleno omitido</string>
 </resources>

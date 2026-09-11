@@ -90,6 +90,7 @@ import com.futo.platformplayer.compose.ui.SearchContentType
 import com.futo.platformplayer.compose.ui.SourceAvailability
 import com.futo.platformplayer.compose.ui.SourceUiModel
 import com.futo.platformplayer.compose.ui.SourceTrustRequestUiModel
+import com.futo.platformplayer.compose.ui.SponsorBlockSkipNoticeUiModel
 import com.futo.platformplayer.compose.ui.ThemeMode
 import com.futo.platformplayer.compose.ui.YoutubeImportSelection
 import com.futo.platformplayer.compose.ui.YoutubeImportStageUi
@@ -166,6 +167,7 @@ private object HomeSessionCache {
 
 private const val QUEUE_LOOKAHEAD = 2
 private const val SPONSORBLOCK_MONITOR_INTERVAL_MS = 250L
+private const val SPONSORBLOCK_NOTICE_DURATION_MS = 2_400L
 private const val WATCH_PROGRESS_WRITE_DEBOUNCE_MS = 250L
 
 /**
@@ -476,6 +478,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var storyboardJob: Job? = null
     private var sponsorBlockJob: Job? = null
     private var sponsorBlockPlaybackMonitorJob: Job? = null
+    private var sponsorBlockNoticeJob: Job? = null
+    private var sponsorBlockNoticeSequence = 0L
     private var sponsorBlockVideoId: String? = null
     private val manuallyAllowedSponsorSegments = mutableSetOf<String>()
     private var lastAutomaticallySkippedSponsorSegment: String? = null
@@ -583,6 +587,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             sponsorBlockEnabled = preferences.sponsorBlockEnabled,
+            sponsorBlockSkipNoticesEnabled = preferences.sponsorBlockSkipNoticesEnabled,
             sponsorBlockCategories = preferences.sponsorBlockCategories,
             channelSponsorBlockOverrides = preferences.channelSponsorBlockOverrides(),
             videoSponsorBlockOverrides = preferences.videoSponsorBlockOverrides(),
@@ -822,6 +827,23 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         preferences.sponsorBlockEnabled = enabled
         _uiState.update { it.copy(sponsorBlockEnabled = enabled) }
         requestSponsorBlockSegments(_uiState.value.nowPlaying.video)
+    }
+
+    fun setSponsorBlockSkipNoticesEnabled(enabled: Boolean) {
+        if (preferences.sponsorBlockSkipNoticesEnabled == enabled) return
+        preferences.sponsorBlockSkipNoticesEnabled = enabled
+        if (!enabled) {
+            sponsorBlockNoticeJob?.cancel()
+            sponsorBlockNoticeJob = null
+        }
+        _uiState.update { state ->
+            state.copy(
+                sponsorBlockSkipNoticesEnabled = enabled,
+                nowPlaying = if (enabled) state.nowPlaying else state.nowPlaying.copy(
+                    sponsorBlockSkipNotice = null,
+                ),
+            )
+        }
     }
 
     fun setSponsorBlockCategories(categories: Set<SponsorBlockCategory>) {
@@ -1868,6 +1890,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         storyboardJob?.cancel()
         sponsorBlockJob?.cancel()
         sponsorBlockPlaybackMonitorJob?.cancel()
+        sponsorBlockNoticeJob?.cancel()
         sponsorBlockVideoId = null
         manuallyAllowedSponsorSegments.clear()
         lastAutomaticallySkippedSponsorSegment = null
@@ -1983,6 +2006,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             sponsorBlockEnabled = preferences.sponsorBlockEnabled,
+            sponsorBlockSkipNoticesEnabled = preferences.sponsorBlockSkipNoticesEnabled,
             sponsorBlockCategories = preferences.sponsorBlockCategories,
             channelSponsorBlockOverrides = preferences.channelSponsorBlockOverrides(),
             videoSponsorBlockOverrides = preferences.videoSponsorBlockOverrides(),
@@ -4162,6 +4186,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         storyboardJob?.cancel()
         sponsorBlockJob?.cancel()
         sponsorBlockPlaybackMonitorJob?.cancel()
+        sponsorBlockNoticeJob?.cancel()
         sponsorBlockVideoId = null
         manuallyAllowedSponsorSegments.clear()
         lastAutomaticallySkippedSponsorSegment = null
@@ -6895,8 +6920,32 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         lastAutomaticallySkippedSponsorSegment = segment.id
+        showSponsorBlockSkipNotice(segment.category)
         if (chromecastManager.state.value.isConnected) chromecastManager.seekTo(segment.endMs)
         else engine.player.seekTo(segment.endMs)
+    }
+
+    private fun showSponsorBlockSkipNotice(category: SponsorBlockCategory) {
+        if (!preferences.sponsorBlockSkipNoticesEnabled) return
+        sponsorBlockNoticeSequence += 1L
+        val sequence = sponsorBlockNoticeSequence
+        sponsorBlockNoticeJob?.cancel()
+        _uiState.update { state ->
+            state.copy(
+                nowPlaying = state.nowPlaying.copy(
+                    sponsorBlockSkipNotice = SponsorBlockSkipNoticeUiModel(category, sequence),
+                ),
+            )
+        }
+        sponsorBlockNoticeJob = viewModelScope.launch {
+            delay(SPONSORBLOCK_NOTICE_DURATION_MS)
+            _uiState.update { state ->
+                if (state.nowPlaying.sponsorBlockSkipNotice?.sequence != sequence) state
+                else state.copy(
+                    nowPlaying = state.nowPlaying.copy(sponsorBlockSkipNotice = null),
+                )
+            }
+        }
     }
 
     private fun findVideo(videoId: String): VideoUiModel? {

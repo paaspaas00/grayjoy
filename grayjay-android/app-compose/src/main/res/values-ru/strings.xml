@@ -632,4 +632,14 @@
     <string name="sponsorblock_category_filler">Заполнитель</string>
     <string name="channel_settings">Настройки канала</string>
     <string name="video_sponsorblock_settings">SponsorBlock для этого видео</string>
+    <string name="sponsorblock_skip_notices">Показывать сообщения о пропущенных сегментах</string>
+    <string name="sponsorblock_skip_notices_description">Кратко показывает тип пропущенного сегмента.</string>
+    <string name="sponsorblock_skipped_sponsor">Реклама пропущена</string>
+    <string name="sponsorblock_skipped_self_promotion">Самореклама пропущена</string>
+    <string name="sponsorblock_skipped_interaction">Напоминание о взаимодействии пропущено</string>
+    <string name="sponsorblock_skipped_intro">Вступление пропущено</string>
+    <string name="sponsorblock_skipped_outro">Завершение пропущено</string>
+    <string name="sponsorblock_skipped_preview">Анонс или повтор пропущен</string>
+    <string name="sponsorblock_skipped_music_offtopic">Немузыкальная часть пропущена</string>
+    <string name="sponsorblock_skipped_filler">Заполнитель пропущен</string>
 </resources>

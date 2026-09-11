@@ -632,4 +632,14 @@
     <string name="sponsorblock_category_filler">불필요한 부분</string>
     <string name="channel_settings">채널 설정</string>
     <string name="video_sponsorblock_settings">이 동영상의 SponsorBlock</string>
+    <string name="sponsorblock_skip_notices">건너뛴 구간 메시지 표시</string>
+    <string name="sponsorblock_skip_notices_description">건너뛴 구간의 유형을 잠시 표시합니다.</string>
+    <string name="sponsorblock_skipped_sponsor">광고를 건너뛰었습니다</string>
+    <string name="sponsorblock_skipped_self_promotion">자체 홍보를 건너뛰었습니다</string>
+    <string name="sponsorblock_skipped_interaction">상호작용 안내를 건너뛰었습니다</string>
+    <string name="sponsorblock_skipped_intro">인트로를 건너뛰었습니다</string>
+    <string name="sponsorblock_skipped_outro">아웃트로를 건너뛰었습니다</string>
+    <string name="sponsorblock_skipped_preview">미리보기 또는 요약을 건너뛰었습니다</string>
+    <string name="sponsorblock_skipped_music_offtopic">음악 외 구간을 건너뛰었습니다</string>
+    <string name="sponsorblock_skipped_filler">불필요한 부분을 건너뛰었습니다</string>
 </resources>

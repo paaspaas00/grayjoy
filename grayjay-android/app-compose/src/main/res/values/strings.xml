@@ -704,4 +704,14 @@
     <string name="sponsorblock_category_filler">Filler</string>
     <string name="channel_settings">Channel settings</string>
     <string name="video_sponsorblock_settings">SponsorBlock for this video</string>
+    <string name="sponsorblock_skip_notices">Show skipped-segment messages</string>
+    <string name="sponsorblock_skip_notices_description">Briefly identify the type of segment that was skipped.</string>
+    <string name="sponsorblock_skipped_sponsor">Advertisement skipped</string>
+    <string name="sponsorblock_skipped_self_promotion">Self-promotion skipped</string>
+    <string name="sponsorblock_skipped_interaction">Interaction reminder skipped</string>
+    <string name="sponsorblock_skipped_intro">Intro skipped</string>
+    <string name="sponsorblock_skipped_outro">Outro skipped</string>
+    <string name="sponsorblock_skipped_preview">Preview or recap skipped</string>
+    <string name="sponsorblock_skipped_music_offtopic">Non-music section skipped</string>
+    <string name="sponsorblock_skipped_filler">Filler skipped</string>
 </resources>

@@ -88,8 +88,10 @@ fun SettingsScreen(
     holdToSpeedEnabled: Boolean,
     onHoldToSpeedChange: (Boolean) -> Unit,
     sponsorBlockEnabled: Boolean,
+    sponsorBlockSkipNoticesEnabled: Boolean,
     sponsorBlockCategories: Set<SponsorBlockCategory>,
     onSponsorBlockEnabledChange: (Boolean) -> Unit,
+    onSponsorBlockSkipNoticesEnabledChange: (Boolean) -> Unit,
     onSponsorBlockCategoriesChange: (Set<SponsorBlockCategory>) -> Unit,
     preferredVideoQuality: Int,
     onPreferredVideoQualityChange: (Int) -> Unit,
@@ -531,6 +533,8 @@ fun SettingsScreen(
                             onSponsorBlockCategoriesChange(rule.categories)
                         }
                     },
+                    skipNoticesEnabled = sponsorBlockSkipNoticesEnabled,
+                    onSkipNoticesEnabledChange = onSponsorBlockSkipNoticesEnabledChange,
                     modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 )
             },

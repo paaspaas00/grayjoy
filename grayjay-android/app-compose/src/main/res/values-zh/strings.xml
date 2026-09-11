@@ -632,4 +632,14 @@
     <string name="sponsorblock_category_filler">填充内容</string>
     <string name="channel_settings">频道设置</string>
     <string name="video_sponsorblock_settings">此视频的 SponsorBlock</string>
+    <string name="sponsorblock_skip_notices">显示已跳过片段的消息</string>
+    <string name="sponsorblock_skip_notices_description">短暂显示所跳过片段的类型。</string>
+    <string name="sponsorblock_skipped_sponsor">已跳过广告</string>
+    <string name="sponsorblock_skipped_self_promotion">已跳过自我推广</string>
+    <string name="sponsorblock_skipped_interaction">已跳过互动提醒</string>
+    <string name="sponsorblock_skipped_intro">已跳过片头</string>
+    <string name="sponsorblock_skipped_outro">已跳过片尾</string>
+    <string name="sponsorblock_skipped_preview">已跳过预告或回顾</string>
+    <string name="sponsorblock_skipped_music_offtopic">已跳过非音乐部分</string>
+    <string name="sponsorblock_skipped_filler">已跳过填充内容</string>
 </resources>

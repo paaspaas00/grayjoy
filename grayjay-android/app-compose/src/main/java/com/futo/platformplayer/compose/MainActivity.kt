@@ -388,6 +388,8 @@ class MainActivity : FragmentActivity() {
                     onPerChannelPlaybackSpeedChange = viewModel::setPerChannelPlaybackSpeedEnabled,
                     onHoldToSpeedChange = viewModel::setHoldToSpeedEnabled,
                     onSponsorBlockEnabledChange = viewModel::setSponsorBlockEnabled,
+                    onSponsorBlockSkipNoticesEnabledChange =
+                        viewModel::setSponsorBlockSkipNoticesEnabled,
                     onSponsorBlockCategoriesChange = viewModel::setSponsorBlockCategories,
                     onChannelSponsorBlockOverrideChange = viewModel::setChannelSponsorBlockOverride,
                     onVideoSponsorBlockOverrideChange = viewModel::setVideoSponsorBlockOverride,

@@ -6,6 +6,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 enum class SponsorBlockCategory(
@@ -121,7 +122,7 @@ internal fun youtubeVideoId(urlOrId: String): String? {
 class SponsorBlockClient(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
         .build(),
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -144,18 +145,30 @@ class SponsorBlockClient(
             )
             .build()
         val request = Request.Builder().url(url).header("Accept", "application/json").build()
-        val segments = httpClient.newCall(request).execute().use { response ->
-            if (response.code == 404) emptyList()
-            else {
-                check(response.isSuccessful) { "SponsorBlock HTTP ${response.code}" }
-                parseSponsorBlockSegments(response.body.string(), categories)
+        var lastFailure: IOException? = null
+        var segments: List<SponsorBlockSegment>? = null
+        repeat(2) { attempt ->
+            if (segments != null) return@repeat
+            try {
+                segments = httpClient.newCall(request).execute().use { response ->
+                    if (response.code == 404) emptyList()
+                    else {
+                        if (response.code >= 500) throw IOException("SponsorBlock HTTP ${response.code}")
+                        check(response.isSuccessful) { "SponsorBlock HTTP ${response.code}" }
+                        parseSponsorBlockSegments(response.body.string(), categories)
+                    }
+                }
+            } catch (error: IOException) {
+                lastFailure = error
+                if (attempt == 1) throw error
             }
         }
+        val loadedSegments = segments ?: throw lastFailure ?: IOException("SponsorBlock request failed")
         synchronized(cache) {
-            cache[key] = CacheEntry(clock(), segments)
+            cache[key] = CacheEntry(clock(), loadedSegments)
             while (cache.size > MAX_CACHE_ENTRIES) cache.remove(cache.keys.first())
         }
-        return segments
+        return loadedSegments
     }
 
     companion object {

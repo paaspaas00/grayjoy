@@ -632,4 +632,14 @@
     <string name="sponsorblock_category_filler">Dolgu</string>
     <string name="channel_settings">Kanal ayarları</string>
     <string name="video_sponsorblock_settings">Bu video için SponsorBlock</string>
+    <string name="sponsorblock_skip_notices">Atlanan bölüm mesajlarını göster</string>
+    <string name="sponsorblock_skip_notices_description">Atlanan bölümün türünü kısa süreliğine gösterir.</string>
+    <string name="sponsorblock_skipped_sponsor">Reklam atlandı</string>
+    <string name="sponsorblock_skipped_self_promotion">Kendi tanıtımı atlandı</string>
+    <string name="sponsorblock_skipped_interaction">Etkileşim hatırlatması atlandı</string>
+    <string name="sponsorblock_skipped_intro">Giriş atlandı</string>
+    <string name="sponsorblock_skipped_outro">Kapanış atlandı</string>
+    <string name="sponsorblock_skipped_preview">Ön izleme veya özet atlandı</string>
+    <string name="sponsorblock_skipped_music_offtopic">Müzik dışı bölüm atlandı</string>
+    <string name="sponsorblock_skipped_filler">Dolgu atlandı</string>
 </resources>

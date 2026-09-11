@@ -632,4 +632,14 @@
     <string name="sponsorblock_category_filler">حشو</string>
     <string name="channel_settings">إعدادات القناة</string>
     <string name="video_sponsorblock_settings">SponsorBlock لهذا الفيديو</string>
+    <string name="sponsorblock_skip_notices">إظهار رسائل المقاطع التي تم تخطيها</string>
+    <string name="sponsorblock_skip_notices_description">يعرض لفترة وجيزة نوع المقطع الذي تم تخطيه.</string>
+    <string name="sponsorblock_skipped_sponsor">تم تخطي الإعلان</string>
+    <string name="sponsorblock_skipped_self_promotion">تم تخطي الترويج الذاتي</string>
+    <string name="sponsorblock_skipped_interaction">تم تخطي تذكير التفاعل</string>
+    <string name="sponsorblock_skipped_intro">تم تخطي المقدمة</string>
+    <string name="sponsorblock_skipped_outro">تم تخطي الخاتمة</string>
+    <string name="sponsorblock_skipped_preview">تم تخطي المعاينة أو الملخص</string>
+    <string name="sponsorblock_skipped_music_offtopic">تم تخطي القسم غير الموسيقي</string>
+    <string name="sponsorblock_skipped_filler">تم تخطي الحشو</string>
 </resources>

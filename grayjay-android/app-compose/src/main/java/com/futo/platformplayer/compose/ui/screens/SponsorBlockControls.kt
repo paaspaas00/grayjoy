@@ -29,6 +29,8 @@ internal fun SponsorBlockRuleEditor(
     inheritedRule: SponsorBlockRule? = null,
     onCustomize: (() -> Unit)? = null,
     onUseInherited: (() -> Unit)? = null,
+    skipNoticesEnabled: Boolean? = null,
+    onSkipNoticesEnabledChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -73,6 +75,35 @@ internal fun SponsorBlockRuleEditor(
                     onCheckedChange = { onRuleChange(rule.copy(enabled = it)) },
                     modifier = Modifier.testTag("sponsorblock-enabled"),
                 )
+            }
+            if (skipNoticesEnabled != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onSkipNoticesEnabledChange(!skipNoticesEnabled)
+                        }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.sponsorblock_skip_notices),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            stringResource(R.string.sponsorblock_skip_notices_description),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(
+                        checked = skipNoticesEnabled,
+                        onCheckedChange = onSkipNoticesEnabledChange,
+                        modifier = Modifier.testTag("sponsorblock-skip-notices"),
+                    )
+                }
             }
             Text(
                 stringResource(R.string.sponsorblock_segments_to_skip),

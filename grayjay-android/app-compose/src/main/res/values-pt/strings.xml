@@ -632,4 +632,14 @@
     <string name="sponsorblock_category_filler">Enchimento</string>
     <string name="channel_settings">Definições do canal</string>
     <string name="video_sponsorblock_settings">SponsorBlock para este vídeo</string>
+    <string name="sponsorblock_skip_notices">Mostrar mensagens dos segmentos ignorados</string>
+    <string name="sponsorblock_skip_notices_description">Indica brevemente o tipo de segmento que foi ignorado.</string>
+    <string name="sponsorblock_skipped_sponsor">Anúncio ignorado</string>
+    <string name="sponsorblock_skipped_self_promotion">Autopromoção ignorada</string>
+    <string name="sponsorblock_skipped_interaction">Lembrete de interação ignorado</string>
+    <string name="sponsorblock_skipped_intro">Introdução ignorada</string>
+    <string name="sponsorblock_skipped_outro">Encerramento ignorado</string>
+    <string name="sponsorblock_skipped_preview">Pré-visualização ou resumo ignorado</string>
+    <string name="sponsorblock_skipped_music_offtopic">Secção não musical ignorada</string>
+    <string name="sponsorblock_skipped_filler">Enchimento ignorado</string>
 </resources>

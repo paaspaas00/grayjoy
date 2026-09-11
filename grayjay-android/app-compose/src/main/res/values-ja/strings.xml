@@ -632,4 +632,14 @@
     <string name="sponsorblock_category_filler">余分な部分</string>
     <string name="channel_settings">チャンネル設定</string>
     <string name="video_sponsorblock_settings">この動画のSponsorBlock</string>
+    <string name="sponsorblock_skip_notices">スキップした区間のメッセージを表示</string>
+    <string name="sponsorblock_skip_notices_description">スキップした区間の種類を短時間表示します。</string>
+    <string name="sponsorblock_skipped_sponsor">広告をスキップしました</string>
+    <string name="sponsorblock_skipped_self_promotion">自己宣伝をスキップしました</string>
+    <string name="sponsorblock_skipped_interaction">操作のお願いをスキップしました</string>
+    <string name="sponsorblock_skipped_intro">イントロをスキップしました</string>
+    <string name="sponsorblock_skipped_outro">アウトロをスキップしました</string>
+    <string name="sponsorblock_skipped_preview">予告または振り返りをスキップしました</string>
+    <string name="sponsorblock_skipped_music_offtopic">音楽以外の部分をスキップしました</string>
+    <string name="sponsorblock_skipped_filler">余分な部分をスキップしました</string>
 </resources>

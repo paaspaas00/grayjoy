@@ -632,4 +632,14 @@
     <string name="sponsorblock_category_filler">Füllmaterial</string>
     <string name="channel_settings">Kanaleinstellungen</string>
     <string name="video_sponsorblock_settings">SponsorBlock für dieses Video</string>
+    <string name="sponsorblock_skip_notices">Meldungen für übersprungene Segmente anzeigen</string>
+    <string name="sponsorblock_skip_notices_description">Zeigt kurz an, welche Segmentart übersprungen wurde.</string>
+    <string name="sponsorblock_skipped_sponsor">Werbung übersprungen</string>
+    <string name="sponsorblock_skipped_self_promotion">Eigenwerbung übersprungen</string>
+    <string name="sponsorblock_skipped_interaction">Interaktionshinweis übersprungen</string>
+    <string name="sponsorblock_skipped_intro">Intro übersprungen</string>
+    <string name="sponsorblock_skipped_outro">Outro übersprungen</string>
+    <string name="sponsorblock_skipped_preview">Vorschau oder Rückblick übersprungen</string>
+    <string name="sponsorblock_skipped_music_offtopic">Nichtmusikalischer Abschnitt übersprungen</string>
+    <string name="sponsorblock_skipped_filler">Füllmaterial übersprungen</string>
 </resources>

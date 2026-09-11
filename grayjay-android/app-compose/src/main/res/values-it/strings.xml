@@ -704,4 +704,14 @@
     <string name="sponsorblock_category_filler">Riempitivo</string>
     <string name="channel_settings">Impostazioni canale</string>
     <string name="video_sponsorblock_settings">SponsorBlock per questo video</string>
+    <string name="sponsorblock_skip_notices">Mostra i messaggi dei segmenti saltati</string>
+    <string name="sponsorblock_skip_notices_description">Indica brevemente il tipo di segmento che è stato saltato.</string>
+    <string name="sponsorblock_skipped_sponsor">Pubblicità saltata</string>
+    <string name="sponsorblock_skipped_self_promotion">Autopromozione saltata</string>
+    <string name="sponsorblock_skipped_interaction">Invito all’interazione saltato</string>
+    <string name="sponsorblock_skipped_intro">Introduzione saltata</string>
+    <string name="sponsorblock_skipped_outro">Conclusione saltata</string>
+    <string name="sponsorblock_skipped_preview">Anteprima o riepilogo saltato</string>
+    <string name="sponsorblock_skipped_music_offtopic">Parte non musicale saltata</string>
+    <string name="sponsorblock_skipped_filler">Riempitivo saltato</string>
 </resources>
