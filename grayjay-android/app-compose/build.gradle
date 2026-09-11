@@ -56,8 +56,8 @@ android {
         applicationId 'com.futo.platformplayer.compose'
         minSdk 28
         targetSdk 36
-        versionCode 2201
-        versionName '2.2.1'
+        versionCode 2300
+        versionName '2.3.0'
         buildConfigField 'String', 'GRAYJAY_ENGINE_REVISION', '"' + engineRevision + '"'
         buildConfigField 'String', 'NEWPIPE_ENGINE_VERSION', '"' + engineVersions.getProperty('newpipe.version') + '"'
         buildConfigField 'String', 'NEWPIPE_ENGINE_REVISION', '"' + engineVersions.getProperty('newpipe.commit') + '"'
@@ -179,6 +179,7 @@ dependencies {
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
 
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20250517'
     androidTestImplementation 'androidx.test.ext:junit:1.3.0'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
     androidTestImplementation 'androidx.test:runner:1.7.0'

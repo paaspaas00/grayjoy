@@ -685,4 +685,23 @@
     <string name="version_unavailable">Unavailable</string>
     <string name="brainrot_shorts">Brainrot mode for Shorts</string>
     <string name="brainrot_shorts_description">Phone only: open Home Shorts in portrait fullscreen. Swipe up or down to change video.</string>
+    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock_description">Automatically skip selected community-marked segments in YouTube videos.</string>
+    <string name="sponsorblock_global_settings">SponsorBlock settings</string>
+    <string name="sponsorblock_enabled">Skip marked segments</string>
+    <string name="sponsorblock_enabled_description">Applies without delaying video startup.</string>
+    <string name="sponsorblock_segments_to_skip">Segments to skip</string>
+    <string name="sponsorblock_customize">Customize</string>
+    <string name="sponsorblock_use_inherited">Use inherited settings</string>
+    <string name="sponsorblock_using_inherited">Using the settings inherited from the channel or app.</string>
+    <string name="sponsorblock_category_sponsor">Ads and sponsors</string>
+    <string name="sponsorblock_category_self_promotion">Self-promotion</string>
+    <string name="sponsorblock_category_interaction">Interaction reminders</string>
+    <string name="sponsorblock_category_intro">Intro</string>
+    <string name="sponsorblock_category_outro">Outro</string>
+    <string name="sponsorblock_category_preview">Preview or recap</string>
+    <string name="sponsorblock_category_music_offtopic">Non-music section</string>
+    <string name="sponsorblock_category_filler">Filler</string>
+    <string name="channel_settings">Channel settings</string>
+    <string name="video_sponsorblock_settings">SponsorBlock for this video</string>
 </resources>

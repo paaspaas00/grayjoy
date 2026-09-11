@@ -7,6 +7,8 @@ import com.futo.platformplayer.compose.ui.VideoTitleLanguageMode
 import com.futo.platformplayer.compose.ui.YoutubeBackendMode
 import com.futo.platformplayer.compose.ui.SubscriptionFetchMode
 import com.futo.platformplayer.compose.engine.OtherAudioDuckingController
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockCategory
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -78,6 +80,36 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
     fun setVideoPlaybackSpeed(videoId: String, speed: Float?) {
         setPlaybackSpeedEntry(KEY_VIDEO_PLAYBACK_SPEEDS, videoId, speed)
     }
+
+    var sponsorBlockEnabled: Boolean
+        get() = preferences.getBoolean(KEY_SPONSORBLOCK_ENABLED, true)
+        set(value) { preferences.edit().putBoolean(KEY_SPONSORBLOCK_ENABLED, value).apply() }
+
+    var sponsorBlockCategories: Set<SponsorBlockCategory>
+        get() = if (!preferences.contains(KEY_SPONSORBLOCK_CATEGORIES)) {
+            SponsorBlockCategory.defaultCategories
+        } else {
+            preferences.getStringSet(KEY_SPONSORBLOCK_CATEGORIES, emptySet()).orEmpty()
+                .mapNotNullTo(linkedSetOf(), SponsorBlockCategory::fromApiValue)
+        }
+        set(value) {
+            preferences.edit().putStringSet(
+                KEY_SPONSORBLOCK_CATEGORIES,
+                value.mapTo(mutableSetOf(), SponsorBlockCategory::apiValue),
+            ).apply()
+        }
+
+    fun channelSponsorBlockOverrides(): Map<String, SponsorBlockRule> =
+        sponsorBlockRuleMap(KEY_CHANNEL_SPONSORBLOCK_OVERRIDES)
+
+    fun videoSponsorBlockOverrides(): Map<String, SponsorBlockRule> =
+        sponsorBlockRuleMap(KEY_VIDEO_SPONSORBLOCK_OVERRIDES)
+
+    fun setChannelSponsorBlockOverride(channelId: String, rule: SponsorBlockRule?) =
+        setSponsorBlockRuleEntry(KEY_CHANNEL_SPONSORBLOCK_OVERRIDES, channelId, rule)
+
+    fun setVideoSponsorBlockOverride(videoId: String, rule: SponsorBlockRule?) =
+        setSponsorBlockRuleEntry(KEY_VIDEO_SPONSORBLOCK_OVERRIDES, videoId, rule)
 
     var preferredVideoQuality: Int
         get() = preferences.getInt(KEY_PREFERRED_VIDEO_QUALITY, 0)
@@ -343,6 +375,43 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         preferences.edit().putString(key, json.toString()).apply()
     }
 
+    private fun sponsorBlockRuleMap(key: String): Map<String, SponsorBlockRule> = runCatching {
+        val root = JSONObject(preferences.getString(key, "{}").orEmpty())
+        buildMap {
+            root.keys().forEach { id ->
+                val item = root.optJSONObject(id) ?: return@forEach
+                val categoryArray = item.optJSONArray("categories") ?: JSONArray()
+                val categories = buildSet {
+                    for (index in 0 until categoryArray.length()) {
+                        SponsorBlockCategory.fromApiValue(categoryArray.optString(index))?.let(::add)
+                    }
+                }
+                put(
+                    id,
+                    SponsorBlockRule(
+                        enabled = item.optBoolean("enabled", true),
+                        categories = categories,
+                    ),
+                )
+            }
+        }
+    }.getOrDefault(emptyMap())
+
+    private fun setSponsorBlockRuleEntry(key: String, id: String, rule: SponsorBlockRule?) {
+        if (id.isBlank()) return
+        val updated = sponsorBlockRuleMap(key).toMutableMap()
+        if (rule == null) updated.remove(id) else updated[id] = rule
+        val root = JSONObject().apply {
+            updated.forEach { (entryId, entry) ->
+                put(entryId, JSONObject().apply {
+                    put("enabled", entry.enabled)
+                    put("categories", JSONArray(entry.categories.map(SponsorBlockCategory::apiValue).sorted()))
+                })
+            }
+        }
+        preferences.edit().putString(key, root.toString()).apply()
+    }
+
     companion object {
         internal const val FILE_NAME = "grayjay_compose_preferences"
         private const val KEY_DYNAMIC_COLORS = "dynamic_colors_enabled"
@@ -356,6 +425,10 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         private const val KEY_HOLD_TO_SPEED = "hold_to_speed_enabled"
         private const val KEY_CHANNEL_PLAYBACK_SPEEDS = "channel_playback_speeds"
         private const val KEY_VIDEO_PLAYBACK_SPEEDS = "video_playback_speeds"
+        private const val KEY_SPONSORBLOCK_ENABLED = "sponsorblock_enabled"
+        private const val KEY_SPONSORBLOCK_CATEGORIES = "sponsorblock_categories"
+        private const val KEY_CHANNEL_SPONSORBLOCK_OVERRIDES = "channel_sponsorblock_overrides"
+        private const val KEY_VIDEO_SPONSORBLOCK_OVERRIDES = "video_sponsorblock_overrides"
         private const val KEY_PREFERRED_VIDEO_QUALITY = "preferred_video_quality"
         private const val KEY_PREFERRED_AUDIO_BITRATE = "preferred_audio_bitrate"
         private const val KEY_PREFERRED_AUDIO_LANGUAGE = "preferred_audio_language"

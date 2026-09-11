@@ -5,6 +5,7 @@ import com.futo.platformplayer.compose.ui.PageBackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AssistChip
@@ -70,6 +72,7 @@ import com.futo.platformplayer.compose.ui.ChannelDetailUiState
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -90,11 +93,14 @@ fun ChannelDetailScreen(
     channelPlaybackSpeed: Float? = null,
     defaultPlaybackSpeed: Float = 1f,
     onPlaybackSpeedChange: (Float?) -> Unit = {},
+    sponsorBlockGlobalRule: SponsorBlockRule = SponsorBlockRule(),
+    sponsorBlockOverride: SponsorBlockRule? = null,
+    onSponsorBlockOverrideChange: (SponsorBlockRule?) -> Unit = {},
 ) {
     val performance = rememberDevicePerformanceProfile()
     val compactLayout = compactUi()
     val query = detail.searchQuery
-    var showSpeedSheet by rememberSaveable(channel.id) { mutableStateOf(false) }
+    var showSettingsSheet by rememberSaveable(channel.id) { mutableStateOf(false) }
     var showSortSheet by rememberSaveable(channel.id, detail.selectedTab) { mutableStateOf(false) }
     var descriptionExpanded by rememberSaveable(channel.id) { mutableStateOf(false) }
     var descriptionOverflows by remember(channel.id) { mutableStateOf(false) }
@@ -267,10 +273,9 @@ fun ChannelDetailScreen(
                             putExtra(Intent.EXTRA_TEXT, displayedChannel.id)
                         }, context.getString(R.string.share)))
                     }))
-                    if (perChannelPlaybackSpeedEnabled) add(PlaylistMenuAction(
-                        stringResource(R.string.playback_speed), Icons.Outlined.Speed,
-                        subtitle = channelPlaybackSpeed?.let(::formatChannelSpeed) ?: stringResource(R.string.default_speed_label),
-                        tag = "channel-playback-speed", onClick = { showSpeedSheet = true },
+                    if (perChannelPlaybackSpeedEnabled || displayedChannel.sourceId.equals("youtube", true)) add(PlaylistMenuAction(
+                        stringResource(R.string.channel_settings), Icons.Outlined.Settings,
+                        tag = "channel-settings", onClick = { showSettingsSheet = true },
                     ))
                     displayedChannel.links.entries.take(6).forEach { (label, url) ->
                         add(PlaylistMenuAction(label.ifBlank { stringResource(R.string.link) }, Icons.Outlined.Link,
@@ -394,16 +399,13 @@ fun ChannelDetailScreen(
                             Icon(Icons.Outlined.Share, contentDescription = if (compactLayout) stringResource(R.string.share) else null)
                             if (!compactLayout) Text(stringResource(R.string.share))
                         }
-                        if (perChannelPlaybackSpeedEnabled) {
+                        if (perChannelPlaybackSpeedEnabled || displayedChannel.sourceId.equals("youtube", true)) {
                             Button(
-                                onClick = { showSpeedSheet = true },
-                                modifier = Modifier.testTag("channel-playback-speed"),
+                                onClick = { showSettingsSheet = true },
+                                modifier = Modifier.testTag("channel-settings"),
                             ) {
-                                Icon(Icons.Outlined.Speed, contentDescription = if (compactLayout) stringResource(R.string.playback_speed) else null)
-                                if (!compactLayout) Text(
-                                    channelPlaybackSpeed?.let(::formatChannelSpeed)
-                                        ?: stringResource(R.string.default_speed_label),
-                                )
+                                Icon(Icons.Outlined.Settings, contentDescription = if (compactLayout) stringResource(R.string.channel_settings) else null)
+                                if (!compactLayout) Text(stringResource(R.string.channel_settings))
                             }
                         }
                     }
@@ -562,59 +564,54 @@ fun ChannelDetailScreen(
         }
     }
 
-    if (showSpeedSheet) {
+    if (showSettingsSheet) {
         ModalBottomSheet(
-            onDismissRequest = { showSpeedSheet = false },
+            onDismissRequest = { showSettingsSheet = false },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentWindowInsets = { grayjoySheetInsets() },
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .padding(bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    stringResource(R.string.channel_playback_speed),
+                    stringResource(R.string.channel_settings),
                     style = MaterialTheme.typography.titleLarge,
                 )
-                Text(
-                    stringResource(R.string.channel_playback_speed_description),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilterChip(
-                        selected = channelPlaybackSpeed == null,
-                        onClick = {
-                            onPlaybackSpeedChange(null)
-                            showSpeedSheet = false
-                        },
-                        label = {
-                            Text(
-                                stringResource(
-                                    R.string.app_default_speed,
-                                    formatChannelSpeed(defaultPlaybackSpeed),
-                                ),
-                            )
-                        },
-                    )
-                    playbackSpeedChoices.forEach { speed ->
+                if (perChannelPlaybackSpeedEnabled) {
+                    Text(stringResource(R.string.channel_playback_speed), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.channel_playback_speed_description), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
-                            selected = channelPlaybackSpeed == speed,
-                            onClick = {
-                                onPlaybackSpeedChange(speed)
-                                showSpeedSheet = false
-                            },
-                            label = { Text(formatChannelSpeed(speed)) },
+                            selected = channelPlaybackSpeed == null,
+                            onClick = { onPlaybackSpeedChange(null) },
+                            label = { Text(stringResource(R.string.app_default_speed, formatChannelSpeed(defaultPlaybackSpeed))) },
                         )
+                        playbackSpeedChoices.forEach { speed ->
+                            FilterChip(selected = channelPlaybackSpeed == speed, onClick = { onPlaybackSpeedChange(speed) }, label = { Text(formatChannelSpeed(speed)) })
+                        }
                     }
                 }
+                if (displayedChannel.sourceId.equals("youtube", true)) {
+                    Text(stringResource(R.string.sponsorblock), style = MaterialTheme.typography.titleMedium)
+                    SponsorBlockRuleEditor(
+                        rule = sponsorBlockOverride ?: sponsorBlockGlobalRule,
+                        inherited = sponsorBlockOverride == null,
+                        inheritedRule = sponsorBlockGlobalRule,
+                        onCustomize = { onSponsorBlockOverrideChange(sponsorBlockGlobalRule) },
+                        onUseInherited = { onSponsorBlockOverrideChange(null) },
+                        onRuleChange = onSponsorBlockOverrideChange,
+                    )
+                }
                 TextButton(
-                    onClick = { showSpeedSheet = false },
+                    onClick = { showSettingsSheet = false },
                     modifier = Modifier.align(Alignment.End),
                 ) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(R.string.close))
                 }
             }
         }

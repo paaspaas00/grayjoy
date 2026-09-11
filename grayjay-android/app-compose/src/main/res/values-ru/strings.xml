@@ -613,4 +613,23 @@
     <string name="version_unavailable">Недоступно</string>
     <string name="brainrot_shorts">Режим Brainrot для Shorts</string>
     <string name="brainrot_shorts_description">Только на телефоне: открывать Shorts с главной страницы вертикально на весь экран. Проведите вверх или вниз, чтобы сменить видео.</string>
+    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock_description">Автоматически пропускает выбранные отмеченные сообществом сегменты в видео YouTube.</string>
+    <string name="sponsorblock_global_settings">Настройки SponsorBlock</string>
+    <string name="sponsorblock_enabled">Пропускать отмеченные сегменты</string>
+    <string name="sponsorblock_enabled_description">Работает без задержки запуска видео.</string>
+    <string name="sponsorblock_segments_to_skip">Пропускаемые сегменты</string>
+    <string name="sponsorblock_customize">Настроить</string>
+    <string name="sponsorblock_use_inherited">Использовать унаследованные настройки</string>
+    <string name="sponsorblock_using_inherited">Используются настройки, унаследованные от канала или приложения.</string>
+    <string name="sponsorblock_category_sponsor">Реклама и спонсоры</string>
+    <string name="sponsorblock_category_self_promotion">Самореклама</string>
+    <string name="sponsorblock_category_interaction">Напоминания о взаимодействии</string>
+    <string name="sponsorblock_category_intro">Вступление</string>
+    <string name="sponsorblock_category_outro">Завершение</string>
+    <string name="sponsorblock_category_preview">Анонс или повтор</string>
+    <string name="sponsorblock_category_music_offtopic">Немузыкальная часть</string>
+    <string name="sponsorblock_category_filler">Заполнитель</string>
+    <string name="channel_settings">Настройки канала</string>
+    <string name="video_sponsorblock_settings">SponsorBlock для этого видео</string>
 </resources>

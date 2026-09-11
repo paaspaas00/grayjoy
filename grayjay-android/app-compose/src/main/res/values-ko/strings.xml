@@ -613,4 +613,23 @@
     <string name="version_unavailable">사용 불가</string>
     <string name="brainrot_shorts">Shorts용 Brainrot 모드</string>
     <string name="brainrot_shorts_description">휴대전화 전용: 홈의 Shorts를 세로 전체 화면으로 엽니다. 위아래로 스와이프하여 동영상을 바꿉니다.</string>
+    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock_description">YouTube 동영상에서 커뮤니티가 표시한 선택 구간을 자동으로 건너뜁니다.</string>
+    <string name="sponsorblock_global_settings">SponsorBlock 설정</string>
+    <string name="sponsorblock_enabled">표시된 구간 건너뛰기</string>
+    <string name="sponsorblock_enabled_description">동영상 시작을 지연하지 않고 작동합니다.</string>
+    <string name="sponsorblock_segments_to_skip">건너뛸 구간</string>
+    <string name="sponsorblock_customize">맞춤 설정</string>
+    <string name="sponsorblock_use_inherited">상속된 설정 사용</string>
+    <string name="sponsorblock_using_inherited">채널 또는 앱에서 상속된 설정을 사용 중입니다.</string>
+    <string name="sponsorblock_category_sponsor">광고 및 스폰서</string>
+    <string name="sponsorblock_category_self_promotion">자체 홍보</string>
+    <string name="sponsorblock_category_interaction">상호작용 안내</string>
+    <string name="sponsorblock_category_intro">인트로</string>
+    <string name="sponsorblock_category_outro">아웃트로</string>
+    <string name="sponsorblock_category_preview">미리보기 또는 요약</string>
+    <string name="sponsorblock_category_music_offtopic">음악 외 구간</string>
+    <string name="sponsorblock_category_filler">불필요한 부분</string>
+    <string name="channel_settings">채널 설정</string>
+    <string name="video_sponsorblock_settings">이 동영상의 SponsorBlock</string>
 </resources>

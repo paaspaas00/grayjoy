@@ -613,4 +613,23 @@
     <string name="version_unavailable">利用不可</string>
     <string name="brainrot_shorts">ショートのBrainrotモード</string>
     <string name="brainrot_shorts_description">スマートフォン専用：ホームのショートを縦向き全画面で開きます。上下にスワイプして動画を切り替えます。</string>
+    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock_description">YouTube動画内でコミュニティが指定した選択済みの区間を自動的にスキップします。</string>
+    <string name="sponsorblock_global_settings">SponsorBlock設定</string>
+    <string name="sponsorblock_enabled">指定区間をスキップ</string>
+    <string name="sponsorblock_enabled_description">動画の開始を遅らせずに動作します。</string>
+    <string name="sponsorblock_segments_to_skip">スキップする区間</string>
+    <string name="sponsorblock_customize">カスタマイズ</string>
+    <string name="sponsorblock_use_inherited">継承した設定を使用</string>
+    <string name="sponsorblock_using_inherited">チャンネルまたはアプリから継承した設定を使用しています。</string>
+    <string name="sponsorblock_category_sponsor">広告とスポンサー</string>
+    <string name="sponsorblock_category_self_promotion">自己宣伝</string>
+    <string name="sponsorblock_category_interaction">操作のお願い</string>
+    <string name="sponsorblock_category_intro">イントロ</string>
+    <string name="sponsorblock_category_outro">アウトロ</string>
+    <string name="sponsorblock_category_preview">予告または振り返り</string>
+    <string name="sponsorblock_category_music_offtopic">音楽以外の部分</string>
+    <string name="sponsorblock_category_filler">余分な部分</string>
+    <string name="channel_settings">チャンネル設定</string>
+    <string name="video_sponsorblock_settings">この動画のSponsorBlock</string>
 </resources>

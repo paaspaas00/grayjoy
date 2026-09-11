@@ -613,4 +613,23 @@
     <string name="version_unavailable">Indisponível</string>
     <string name="brainrot_shorts">Modo Brainrot para Shorts</string>
     <string name="brainrot_shorts_description">Apenas em celulares: abrir os Shorts do Início em tela cheia vertical. Deslize para cima ou para baixo para mudar de vídeo.</string>
+    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock_description">Ignora automaticamente segmentos selecionados e marcados pela comunidade em vídeos do YouTube.</string>
+    <string name="sponsorblock_global_settings">Definições do SponsorBlock</string>
+    <string name="sponsorblock_enabled">Ignorar segmentos marcados</string>
+    <string name="sponsorblock_enabled_description">Funciona sem atrasar o início do vídeo.</string>
+    <string name="sponsorblock_segments_to_skip">Segmentos a ignorar</string>
+    <string name="sponsorblock_customize">Personalizar</string>
+    <string name="sponsorblock_use_inherited">Usar definições herdadas</string>
+    <string name="sponsorblock_using_inherited">Estão a ser usadas as definições herdadas do canal ou da aplicação.</string>
+    <string name="sponsorblock_category_sponsor">Anúncios e patrocinadores</string>
+    <string name="sponsorblock_category_self_promotion">Autopromoção</string>
+    <string name="sponsorblock_category_interaction">Lembretes de interação</string>
+    <string name="sponsorblock_category_intro">Introdução</string>
+    <string name="sponsorblock_category_outro">Encerramento</string>
+    <string name="sponsorblock_category_preview">Pré-visualização ou resumo</string>
+    <string name="sponsorblock_category_music_offtopic">Secção não musical</string>
+    <string name="sponsorblock_category_filler">Enchimento</string>
+    <string name="channel_settings">Definições do canal</string>
+    <string name="video_sponsorblock_settings">SponsorBlock para este vídeo</string>
 </resources>

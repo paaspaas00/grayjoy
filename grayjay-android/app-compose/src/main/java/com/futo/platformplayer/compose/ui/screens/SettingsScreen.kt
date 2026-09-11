@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -19,6 +21,7 @@ import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.FastForward
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.ClosedCaption
 import androidx.compose.material.icons.outlined.HighQuality
@@ -60,6 +63,8 @@ import com.futo.platformplayer.compose.ui.VideoTitleLanguageMode
 import com.futo.platformplayer.compose.ui.SubscriptionFetchMode
 import com.futo.platformplayer.compose.ui.audioLanguageDisplayName
 import com.futo.platformplayer.compose.ui.supportedAudioLanguageCodes
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockCategory
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
 
 @Composable
 fun SettingsScreen(
@@ -82,6 +87,10 @@ fun SettingsScreen(
     onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
     holdToSpeedEnabled: Boolean,
     onHoldToSpeedChange: (Boolean) -> Unit,
+    sponsorBlockEnabled: Boolean,
+    sponsorBlockCategories: Set<SponsorBlockCategory>,
+    onSponsorBlockEnabledChange: (Boolean) -> Unit,
+    onSponsorBlockCategoriesChange: (Set<SponsorBlockCategory>) -> Unit,
     preferredVideoQuality: Int,
     onPreferredVideoQualityChange: (Int) -> Unit,
     preferredAudioBitrate: Int,
@@ -119,6 +128,7 @@ fun SettingsScreen(
     val performance = rememberDevicePerformanceProfile()
     val compactLayout = compactUi()
     var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
+    var showSponsorBlockDialog by rememberSaveable { mutableStateOf(false) }
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showQualityDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
@@ -213,6 +223,17 @@ fun SettingsScreen(
                     checked = holdToSpeedEnabled,
                     onCheckedChange = onHoldToSpeedChange,
                     testTag = "hold-to-speed",
+                )
+            }
+            setting("sponsorblock", "link") {
+                LinkSetting(
+                    title = stringResource(R.string.sponsorblock),
+                    description = stringResource(
+                        if (sponsorBlockEnabled) R.string.on else R.string.off,
+                    ),
+                    icon = Icons.Outlined.FastForward,
+                    onClick = { showSponsorBlockDialog = true },
+                    testTag = "sponsorblock-settings",
                 )
             }
             setting("preferred-video-quality", "link") {
@@ -495,6 +516,31 @@ fun SettingsScreen(
     }
 
     if (showAdvanced) AdvancedPreferencesDialog(sources, onDismiss = { showAdvanced = false })
+    if (showSponsorBlockDialog) {
+        AlertDialog(
+            onDismissRequest = { showSponsorBlockDialog = false },
+            title = { Text(stringResource(R.string.sponsorblock_global_settings)) },
+            text = {
+                SponsorBlockRuleEditor(
+                    rule = SponsorBlockRule(sponsorBlockEnabled, sponsorBlockCategories),
+                    onRuleChange = { rule ->
+                        if (rule.enabled != sponsorBlockEnabled) {
+                            onSponsorBlockEnabledChange(rule.enabled)
+                        }
+                        if (rule.categories != sponsorBlockCategories) {
+                            onSponsorBlockCategoriesChange(rule.categories)
+                        }
+                    },
+                    modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showSponsorBlockDialog = false }) {
+                    Text(stringResource(R.string.close))
+                }
+            },
+        )
+    }
     if (showThemeDialog) {
         ChoiceDialog(
             title = stringResource(R.string.settings_appearance),

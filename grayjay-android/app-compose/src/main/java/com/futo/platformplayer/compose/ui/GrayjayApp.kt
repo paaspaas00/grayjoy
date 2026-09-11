@@ -123,6 +123,8 @@ import androidx.media3.common.Player
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.BuildConfig
 import com.futo.platformplayer.compose.playlistQueueFrom
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockCategory
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
 import com.futo.platformplayer.compose.ui.screens.HomeScreen
 import com.futo.platformplayer.compose.ui.screens.ChannelDetailScreen
 import com.futo.platformplayer.compose.ui.screens.ChromecastSheet
@@ -340,6 +342,10 @@ private data class PlaybackPresentation(
     val holdToSpeedEnabled: Boolean,
     val channelPlaybackSpeeds: Map<String, Float>,
     val videoPlaybackSpeeds: Map<String, Float>,
+    val sponsorBlockEnabled: Boolean,
+    val sponsorBlockCategories: Set<SponsorBlockCategory>,
+    val channelSponsorBlockOverrides: Map<String, SponsorBlockRule>,
+    val videoSponsorBlockOverrides: Map<String, SponsorBlockRule>,
     val preferredVideoQuality: Int,
     val preferredAudioBitrate: Int,
     val preferredAudioLanguage: String,
@@ -362,6 +368,10 @@ private data class PlaybackPresentation(
     val onDefaultPlaybackSpeedChange: (Float) -> Unit,
     val onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
     val onHoldToSpeedChange: (Boolean) -> Unit,
+    val onSponsorBlockEnabledChange: (Boolean) -> Unit,
+    val onSponsorBlockCategoriesChange: (Set<SponsorBlockCategory>) -> Unit,
+    val onChannelSponsorBlockOverrideChange: (String, SponsorBlockRule?) -> Unit,
+    val onVideoSponsorBlockOverrideChange: (String, SponsorBlockRule?) -> Unit,
     val onPreferredVideoQualityChange: (Int) -> Unit,
     val onPreferredAudioBitrateChange: (Int) -> Unit,
     val onPreferredAudioLanguageChange: (String) -> Unit,
@@ -554,6 +564,10 @@ fun GrayjayApp(
     onDefaultPlaybackSpeedChange: (Float) -> Unit,
     onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
     onHoldToSpeedChange: (Boolean) -> Unit = {},
+    onSponsorBlockEnabledChange: (Boolean) -> Unit = {},
+    onSponsorBlockCategoriesChange: (Set<SponsorBlockCategory>) -> Unit = {},
+    onChannelSponsorBlockOverrideChange: (String, SponsorBlockRule?) -> Unit = { _, _ -> },
+    onVideoSponsorBlockOverrideChange: (String, SponsorBlockRule?) -> Unit = { _, _ -> },
     onPreferredVideoQualityChange: (Int) -> Unit,
     onPreferredAudioBitrateChange: (Int) -> Unit,
     onPreferredAudioLanguageChange: (String) -> Unit,
@@ -1127,6 +1141,10 @@ fun GrayjayApp(
         holdToSpeedEnabled = uiState.holdToSpeedEnabled,
         channelPlaybackSpeeds = uiState.channelPlaybackSpeeds,
         videoPlaybackSpeeds = uiState.videoPlaybackSpeeds,
+        sponsorBlockEnabled = uiState.sponsorBlockEnabled,
+        sponsorBlockCategories = uiState.sponsorBlockCategories,
+        channelSponsorBlockOverrides = uiState.channelSponsorBlockOverrides,
+        videoSponsorBlockOverrides = uiState.videoSponsorBlockOverrides,
         preferredVideoQuality = uiState.preferredVideoQuality,
         preferredAudioBitrate = uiState.preferredAudioBitrate,
         preferredAudioLanguage = uiState.preferredAudioLanguage,
@@ -1149,6 +1167,10 @@ fun GrayjayApp(
         onDefaultPlaybackSpeedChange = onDefaultPlaybackSpeedChange,
         onPerChannelPlaybackSpeedChange = onPerChannelPlaybackSpeedChange,
         onHoldToSpeedChange = onHoldToSpeedChange,
+        onSponsorBlockEnabledChange = onSponsorBlockEnabledChange,
+        onSponsorBlockCategoriesChange = onSponsorBlockCategoriesChange,
+        onChannelSponsorBlockOverrideChange = onChannelSponsorBlockOverrideChange,
+        onVideoSponsorBlockOverrideChange = onVideoSponsorBlockOverrideChange,
         onPreferredVideoQualityChange = onPreferredVideoQualityChange,
         onPreferredAudioBitrateChange = onPreferredAudioBitrateChange,
         onPreferredAudioLanguageChange = onPreferredAudioLanguageChange,
@@ -1378,6 +1400,13 @@ fun GrayjayApp(
             perChannelPlaybackSpeedEnabled = playback.perChannelPlaybackSpeedEnabled,
             videoPlaybackSpeedOverride = playback.videoPlaybackSpeeds[fullscreenVideo.id],
             channelPlaybackSpeed = playback.channelPlaybackSpeeds[fullscreenVideo.playbackChannelKey()],
+            sponsorBlockSegments = playback.nowPlaying.sponsorBlockSegments,
+            sponsorBlockInheritedRule = playback.channelSponsorBlockOverrides[fullscreenVideo.playbackChannelKey()]
+                ?: SponsorBlockRule(playback.sponsorBlockEnabled, playback.sponsorBlockCategories),
+            sponsorBlockVideoOverride = playback.videoSponsorBlockOverrides[fullscreenVideo.id],
+            onSponsorBlockVideoOverrideChange = { rule ->
+                playback.onVideoSponsorBlockOverrideChange(fullscreenVideo.id, rule)
+            },
             defaultPlaybackSpeed = playback.defaultPlaybackSpeed,
             preferredAudioLanguage = playback.preferredAudioLanguage,
             preferOriginalAudio = playback.preferOriginalAudio,
@@ -2233,6 +2262,14 @@ private fun GrayjayScaffold(
                     onPlaybackSpeedChange = { speed ->
                         playback.onChannelSpeedChange(animatedChannel.id, speed)
                     },
+                    sponsorBlockGlobalRule = SponsorBlockRule(
+                        playback.sponsorBlockEnabled,
+                        playback.sponsorBlockCategories,
+                    ),
+                    sponsorBlockOverride = playback.channelSponsorBlockOverrides[animatedChannel.id],
+                    onSponsorBlockOverrideChange = { rule ->
+                        playback.onChannelSponsorBlockOverrideChange(animatedChannel.id, rule)
+                    },
                 )
                 } else if (animatedPlaylist != null) {
                 if (animatedPlaylist.sourceId.isBlank()) PlaylistDetailScreen(
@@ -2405,6 +2442,10 @@ private fun GrayjayScaffold(
                         onPerChannelPlaybackSpeedChange = playback.onPerChannelPlaybackSpeedChange,
                         holdToSpeedEnabled = playback.holdToSpeedEnabled,
                         onHoldToSpeedChange = playback.onHoldToSpeedChange,
+                        sponsorBlockEnabled = playback.sponsorBlockEnabled,
+                        sponsorBlockCategories = playback.sponsorBlockCategories,
+                        onSponsorBlockEnabledChange = playback.onSponsorBlockEnabledChange,
+                        onSponsorBlockCategoriesChange = playback.onSponsorBlockCategoriesChange,
                         preferredVideoQuality = playback.preferredVideoQuality,
                         onPreferredVideoQualityChange = playback.onPreferredVideoQualityChange,
                         preferredAudioBitrate = playback.preferredAudioBitrate,
@@ -2669,6 +2710,17 @@ private fun GrayjayScaffold(
                                 channelPlaybackSpeed = playback.channelPlaybackSpeeds[
                                     transitionVideo.playbackChannelKey()
                                 ],
+                                sponsorBlockInheritedRule = playback.channelSponsorBlockOverrides[
+                                    transitionVideo.playbackChannelKey()
+                                ] ?: SponsorBlockRule(
+                                    playback.sponsorBlockEnabled,
+                                    playback.sponsorBlockCategories,
+                                ),
+                                sponsorBlockVideoOverride =
+                                    playback.videoSponsorBlockOverrides[transitionVideo.id],
+                                onSponsorBlockVideoOverrideChange = { rule ->
+                                    playback.onVideoSponsorBlockOverrideChange(transitionVideo.id, rule)
+                                },
                                 defaultPlaybackSpeed = playback.defaultPlaybackSpeed,
                                 onUseChannelSpeed = playback.onUseChannelSpeed,
                                 onChannelSpeedChange = { speed ->
@@ -2772,6 +2824,14 @@ private fun GrayjayScaffold(
                 videoPlaybackSpeedOverride = playback.videoPlaybackSpeeds[transitionVideo.id],
                 channelPlaybackSpeed =
                     playback.channelPlaybackSpeeds[transitionVideo.playbackChannelKey()],
+                sponsorBlockSegments = playback.nowPlaying.sponsorBlockSegments,
+                sponsorBlockInheritedRule = playback.channelSponsorBlockOverrides[
+                    transitionVideo.playbackChannelKey()
+                ] ?: SponsorBlockRule(playback.sponsorBlockEnabled, playback.sponsorBlockCategories),
+                sponsorBlockVideoOverride = playback.videoSponsorBlockOverrides[transitionVideo.id],
+                onSponsorBlockVideoOverrideChange = { rule ->
+                    playback.onVideoSponsorBlockOverrideChange(transitionVideo.id, rule)
+                },
                 defaultPlaybackSpeed = playback.defaultPlaybackSpeed,
                 onUseChannelSpeed = playback.onUseChannelSpeed,
                 onChannelSpeedChange = { speed ->

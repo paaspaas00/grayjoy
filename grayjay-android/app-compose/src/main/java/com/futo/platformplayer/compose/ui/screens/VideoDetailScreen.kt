@@ -154,12 +154,14 @@ import com.futo.platformplayer.compose.ui.VideoCommentUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.ui.audioLanguageDisplayName
 import com.futo.platformplayer.compose.ui.supportsOfflineDownload
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockSegment
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
 
 private enum class DetailSection { UpNext, Comments }
-private enum class PlayerSettingsPage { Main, Quality, Speed, ChannelSpeed, AudioLanguage, Subtitles }
+private enum class PlayerSettingsPage { Main, Quality, Speed, ChannelSpeed, SponsorBlock, AudioLanguage, Subtitles }
 
 @Composable
 fun VideoDetailScreen(
@@ -195,6 +197,9 @@ fun VideoDetailScreen(
     preferOriginalAudio: Boolean = true,
     onUseChannelSpeed: () -> Unit = {},
     onChannelSpeedChange: (Float?) -> Unit = {},
+    sponsorBlockInheritedRule: SponsorBlockRule = SponsorBlockRule(),
+    sponsorBlockVideoOverride: SponsorBlockRule? = null,
+    onSponsorBlockVideoOverrideChange: (SponsorBlockRule?) -> Unit = {},
     onQualityChange: (Int?) -> Unit,
     onAudioLanguageChange: (String?) -> Unit = {},
     onCaptionsEnabledChange: (Boolean) -> Unit,
@@ -309,6 +314,10 @@ fun VideoDetailScreen(
             preferOriginalAudio = preferOriginalAudio,
             onUseChannelSpeed = onUseChannelSpeed,
             onChannelSpeedChange = onChannelSpeedChange,
+            sponsorBlockSegments = nowPlaying.sponsorBlockSegments,
+            sponsorBlockInheritedRule = sponsorBlockInheritedRule,
+            sponsorBlockVideoOverride = sponsorBlockVideoOverride,
+            onSponsorBlockVideoOverrideChange = onSponsorBlockVideoOverrideChange,
             onQualityChange = onQualityChange,
             onCaptionsEnabledChange = onCaptionsEnabledChange,
             onSubtitleLanguageChange = onSubtitleLanguageChange,
@@ -576,6 +585,10 @@ fun FullscreenPlayerScreen(
     preferOriginalAudio: Boolean = true,
     onUseChannelSpeed: () -> Unit = {},
     onChannelSpeedChange: (Float?) -> Unit = {},
+    sponsorBlockSegments: List<SponsorBlockSegment> = emptyList(),
+    sponsorBlockInheritedRule: SponsorBlockRule = SponsorBlockRule(),
+    sponsorBlockVideoOverride: SponsorBlockRule? = null,
+    onSponsorBlockVideoOverrideChange: (SponsorBlockRule?) -> Unit = {},
     onQualityChange: (Int?) -> Unit,
     onAudioLanguageChange: (String?) -> Unit = {},
     onCaptionsEnabledChange: (Boolean) -> Unit,
@@ -631,6 +644,10 @@ fun FullscreenPlayerScreen(
                 preferOriginalAudio = preferOriginalAudio,
                 onUseChannelSpeed = onUseChannelSpeed,
                 onChannelSpeedChange = onChannelSpeedChange,
+                sponsorBlockSegments = sponsorBlockSegments,
+                sponsorBlockInheritedRule = sponsorBlockInheritedRule,
+                sponsorBlockVideoOverride = sponsorBlockVideoOverride,
+                onSponsorBlockVideoOverrideChange = onSponsorBlockVideoOverrideChange,
                 onQualityChange = onQualityChange,
                 onAudioLanguageChange = onAudioLanguageChange,
                 onCaptionsEnabledChange = onCaptionsEnabledChange,
@@ -679,6 +696,10 @@ internal fun PlayerSurface(
     preferOriginalAudio: Boolean = true,
     onUseChannelSpeed: () -> Unit = {},
     onChannelSpeedChange: (Float?) -> Unit = {},
+    sponsorBlockSegments: List<SponsorBlockSegment> = emptyList(),
+    sponsorBlockInheritedRule: SponsorBlockRule = SponsorBlockRule(),
+    sponsorBlockVideoOverride: SponsorBlockRule? = null,
+    onSponsorBlockVideoOverrideChange: (SponsorBlockRule?) -> Unit = {},
     onQualityChange: (Int?) -> Unit,
     onAudioLanguageChange: (String?) -> Unit = {},
     onCaptionsEnabledChange: (Boolean) -> Unit,
@@ -997,6 +1018,7 @@ internal fun PlayerSurface(
                 remotePositionMs = playback.positionMs.takeIf { playback.isCasting },
                 durationMs = playback.durationMs,
                 bufferedPercentage = playback.bufferedPercentage,
+                sponsorBlockSegments = sponsorBlockSegments,
                 isFullscreen = isFullscreen,
                 isPortraitFullscreen = isPortraitFullscreen,
                 onSeek = onSeek,
@@ -1169,6 +1191,9 @@ internal fun PlayerSurface(
                 onChannelSpeedChange(it)
                 showSettings = false
             },
+            sponsorBlockInheritedRule = sponsorBlockInheritedRule,
+            sponsorBlockVideoOverride = sponsorBlockVideoOverride,
+            onSponsorBlockVideoOverrideChange = onSponsorBlockVideoOverrideChange,
             onAudioLanguageChange = {
                 onAudioLanguageChange(it)
                 showSettings = false
@@ -1249,6 +1274,7 @@ private fun PlayerTimelineRow(
     remotePositionMs: Long?,
     durationMs: Long,
     bufferedPercentage: Int,
+    sponsorBlockSegments: List<SponsorBlockSegment>,
     isFullscreen: Boolean,
     isPortraitFullscreen: Boolean,
     onSeek: (Float) -> Unit,
@@ -1312,6 +1338,7 @@ private fun PlayerTimelineRow(
         animationSpec = tween(durationMillis = 220),
         label = "player-buffered-progress",
     )
+    val progressColor = MaterialTheme.colorScheme.primary
 
     Row(
         modifier = modifier,
@@ -1371,6 +1398,24 @@ private fun PlayerTimelineRow(
                     strokeWidth = strokeWidth,
                     cap = StrokeCap.Round,
                 )
+                drawLine(
+                    color = progressColor,
+                    start = androidx.compose.ui.geometry.Offset(0f, y),
+                    end = androidx.compose.ui.geometry.Offset(size.width * displayedProgress, y),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+                if (durationMs > 0L) sponsorBlockSegments.forEach { segment ->
+                    val start = (segment.startMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                    val end = (segment.endMs.toFloat() / durationMs).coerceIn(start, 1f)
+                    drawLine(
+                        color = Color(0xFF8FE388),
+                        start = androidx.compose.ui.geometry.Offset(size.width * start, y),
+                        end = androidx.compose.ui.geometry.Offset(size.width * end, y),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Butt,
+                    )
+                }
             }
             Slider(
                 value = displayedProgress,
@@ -1391,7 +1436,9 @@ private fun PlayerTimelineRow(
                     onSeekingChanged(false)
                 },
                 colors = SliderDefaults.colors(
+                    activeTrackColor = Color.Transparent,
                     inactiveTrackColor = Color.Transparent,
+                    disabledActiveTrackColor = Color.Transparent,
                     disabledInactiveTrackColor = Color.Transparent,
                 ),
                 modifier = Modifier.fillMaxWidth(),
@@ -1661,6 +1708,8 @@ private fun PlayerSettingsSheet(
     perChannelPlaybackSpeedEnabled: Boolean,
     videoPlaybackSpeedOverride: Float?,
     channelPlaybackSpeed: Float?,
+    sponsorBlockInheritedRule: SponsorBlockRule,
+    sponsorBlockVideoOverride: SponsorBlockRule?,
     defaultPlaybackSpeed: Float,
     preferredAudioLanguage: String,
     preferOriginalAudio: Boolean,
@@ -1670,6 +1719,7 @@ private fun PlayerSettingsSheet(
     onSpeedChange: (Float) -> Unit,
     onUseChannelSpeed: () -> Unit,
     onChannelSpeedChange: (Float?) -> Unit,
+    onSponsorBlockVideoOverrideChange: (SponsorBlockRule?) -> Unit,
     onAudioLanguageChange: (String?) -> Unit,
     onCaptionsEnabledChange: (Boolean) -> Unit,
     onSubtitleLanguageChange: (String?) -> Unit,
@@ -1761,6 +1811,7 @@ private fun PlayerSettingsSheet(
                         PlayerSettingsPage.Quality -> stringResource(R.string.quality)
                         PlayerSettingsPage.Speed -> stringResource(R.string.playback_speed)
                         PlayerSettingsPage.ChannelSpeed -> stringResource(R.string.channel_playback_speed)
+                        PlayerSettingsPage.SponsorBlock -> stringResource(R.string.video_sponsorblock_settings)
                         PlayerSettingsPage.AudioLanguage -> stringResource(R.string.audio_language)
                         PlayerSettingsPage.Subtitles -> stringResource(R.string.subtitles)
                     },
@@ -1792,6 +1843,17 @@ private fun PlayerSettingsSheet(
                                 ?: stringResource(R.string.default_speed_label),
                             testTag = "player-settings-channel-speed",
                             onClick = { onPageChange(PlayerSettingsPage.ChannelSpeed) },
+                        )
+                    }
+                    if (video.sourceId.equals("youtube", ignoreCase = true)) {
+                        PlayerSettingRow(
+                            icon = Icons.Outlined.FastForward,
+                            title = stringResource(R.string.sponsorblock),
+                            value = if ((sponsorBlockVideoOverride ?: sponsorBlockInheritedRule).enabled) {
+                                stringResource(R.string.on)
+                            } else stringResource(R.string.off),
+                            testTag = "player-settings-sponsorblock",
+                            onClick = { onPageChange(PlayerSettingsPage.SponsorBlock) },
                         )
                     }
                     PlayerSettingRow(
@@ -1884,7 +1946,7 @@ private fun PlayerSettingsSheet(
                     }
                     PlayerSheetOptions(
                         options = speedOptions,
-                        horizontal = isFullscreen,
+                        horizontal = false,
                     )
                 }
 
@@ -1915,7 +1977,21 @@ private fun PlayerSettingsSheet(
                     }
                     PlayerSheetOptions(
                         options = channelOptions,
-                        horizontal = isFullscreen,
+                        horizontal = false,
+                    )
+                }
+
+                PlayerSettingsPage.SponsorBlock -> {
+                    SponsorBlockRuleEditor(
+                        rule = sponsorBlockVideoOverride ?: sponsorBlockInheritedRule,
+                        inherited = sponsorBlockVideoOverride == null,
+                        inheritedRule = sponsorBlockInheritedRule,
+                        onCustomize = {
+                            onSponsorBlockVideoOverrideChange(sponsorBlockInheritedRule)
+                        },
+                        onUseInherited = { onSponsorBlockVideoOverrideChange(null) },
+                        onRuleChange = onSponsorBlockVideoOverrideChange,
+                        modifier = Modifier.padding(horizontal = 16.dp),
                     )
                 }
 

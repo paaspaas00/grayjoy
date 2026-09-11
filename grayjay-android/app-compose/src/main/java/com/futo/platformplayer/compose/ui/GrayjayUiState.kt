@@ -2,6 +2,9 @@ package com.futo.platformplayer.compose.ui
 
 import androidx.annotation.StringRes
 import com.futo.platformplayer.compose.R
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockCategory
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockSegment
 
 data class GrayjayUiState(
     val videos: List<VideoUiModel> = emptyList(),
@@ -21,6 +24,10 @@ data class GrayjayUiState(
     val rebuildingCaches: Boolean = false,
     val channelPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val videoPlaybackSpeeds: Map<String, Float> = emptyMap(),
+    val sponsorBlockEnabled: Boolean = true,
+    val sponsorBlockCategories: Set<SponsorBlockCategory> = SponsorBlockCategory.defaultCategories,
+    val channelSponsorBlockOverrides: Map<String, SponsorBlockRule> = emptyMap(),
+    val videoSponsorBlockOverrides: Map<String, SponsorBlockRule> = emptyMap(),
     val preferredVideoQuality: Int = 0,
     val preferredAudioBitrate: Int = Int.MAX_VALUE,
     val preferredAudioLanguage: String = "en",
@@ -426,6 +433,8 @@ data class NowPlayingUiState(
     val hasMoreComments: Boolean = false,
     val isFollowing: Boolean = false,
     val resumePositionFraction: Float? = null,
+    val sponsorBlockSegments: List<SponsorBlockSegment> = emptyList(),
+    val sponsorBlockLoading: Boolean = false,
     val errorMessage: String? = null,
 )
 

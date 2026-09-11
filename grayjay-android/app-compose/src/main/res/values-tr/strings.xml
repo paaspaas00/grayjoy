@@ -613,4 +613,23 @@
     <string name="version_unavailable">Kullanılamıyor</string>
     <string name="brainrot_shorts">Shorts için Brainrot modu</string>
     <string name="brainrot_shorts_description">Yalnızca telefonda: Ana Sayfa Shorts videolarını dikey tam ekranda aç. Video değiştirmek için yukarı veya aşağı kaydır.</string>
+    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock_description">YouTube videolarındaki toplulukça işaretlenmiş seçili bölümleri otomatik olarak atlar.</string>
+    <string name="sponsorblock_global_settings">SponsorBlock ayarları</string>
+    <string name="sponsorblock_enabled">İşaretli bölümleri atla</string>
+    <string name="sponsorblock_enabled_description">Video başlangıcını geciktirmeden çalışır.</string>
+    <string name="sponsorblock_segments_to_skip">Atlanacak bölümler</string>
+    <string name="sponsorblock_customize">Özelleştir</string>
+    <string name="sponsorblock_use_inherited">Devralınan ayarları kullan</string>
+    <string name="sponsorblock_using_inherited">Kanal veya uygulamadan devralınan ayarlar kullanılıyor.</string>
+    <string name="sponsorblock_category_sponsor">Reklamlar ve sponsorlar</string>
+    <string name="sponsorblock_category_self_promotion">Kendi tanıtımı</string>
+    <string name="sponsorblock_category_interaction">Etkileşim hatırlatmaları</string>
+    <string name="sponsorblock_category_intro">Giriş</string>
+    <string name="sponsorblock_category_outro">Kapanış</string>
+    <string name="sponsorblock_category_preview">Ön izleme veya özet</string>
+    <string name="sponsorblock_category_music_offtopic">Müzik dışı bölüm</string>
+    <string name="sponsorblock_category_filler">Dolgu</string>
+    <string name="channel_settings">Kanal ayarları</string>
+    <string name="video_sponsorblock_settings">Bu video için SponsorBlock</string>
 </resources>

@@ -613,4 +613,23 @@
     <string name="version_unavailable">不可用</string>
     <string name="brainrot_shorts">Shorts 的 Brainrot 模式</string>
     <string name="brainrot_shorts_description">仅限手机：以竖屏全屏打开首页的 Shorts。上下滑动可切换视频。</string>
+    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock_description">自动跳过 YouTube 视频中由社区标记的所选片段。</string>
+    <string name="sponsorblock_global_settings">SponsorBlock 设置</string>
+    <string name="sponsorblock_enabled">跳过已标记片段</string>
+    <string name="sponsorblock_enabled_description">不会延迟视频开始播放。</string>
+    <string name="sponsorblock_segments_to_skip">要跳过的片段</string>
+    <string name="sponsorblock_customize">自定义</string>
+    <string name="sponsorblock_use_inherited">使用继承的设置</string>
+    <string name="sponsorblock_using_inherited">正在使用从频道或应用继承的设置。</string>
+    <string name="sponsorblock_category_sponsor">广告和赞助</string>
+    <string name="sponsorblock_category_self_promotion">自我推广</string>
+    <string name="sponsorblock_category_interaction">互动提醒</string>
+    <string name="sponsorblock_category_intro">片头</string>
+    <string name="sponsorblock_category_outro">片尾</string>
+    <string name="sponsorblock_category_preview">预告或回顾</string>
+    <string name="sponsorblock_category_music_offtopic">非音乐部分</string>
+    <string name="sponsorblock_category_filler">填充内容</string>
+    <string name="channel_settings">频道设置</string>
+    <string name="video_sponsorblock_settings">此视频的 SponsorBlock</string>
 </resources>

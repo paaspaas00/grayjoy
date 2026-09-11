@@ -613,4 +613,23 @@
     <string name="version_unavailable">غير متاح</string>
     <string name="brainrot_shorts">وضع Brainrot للمقاطع القصيرة</string>
     <string name="brainrot_shorts_description">للهواتف فقط: افتح المقاطع القصيرة من الرئيسية بملء الشاشة عموديًا. اسحب لأعلى أو لأسفل لتغيير الفيديو.</string>
+    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock_description">يتخطى تلقائيًا المقاطع المحددة والتي أبلغ عنها المجتمع في فيديوهات YouTube.</string>
+    <string name="sponsorblock_global_settings">إعدادات SponsorBlock</string>
+    <string name="sponsorblock_enabled">تخطي المقاطع المبلّغ عنها</string>
+    <string name="sponsorblock_enabled_description">يعمل دون تأخير بدء الفيديو.</string>
+    <string name="sponsorblock_segments_to_skip">المقاطع التي سيتم تخطيها</string>
+    <string name="sponsorblock_customize">تخصيص</string>
+    <string name="sponsorblock_use_inherited">استخدام الإعدادات الموروثة</string>
+    <string name="sponsorblock_using_inherited">يتم استخدام الإعدادات الموروثة من القناة أو التطبيق.</string>
+    <string name="sponsorblock_category_sponsor">الإعلانات والرعاة</string>
+    <string name="sponsorblock_category_self_promotion">الترويج الذاتي</string>
+    <string name="sponsorblock_category_interaction">تذكيرات التفاعل</string>
+    <string name="sponsorblock_category_intro">المقدمة</string>
+    <string name="sponsorblock_category_outro">الخاتمة</string>
+    <string name="sponsorblock_category_preview">معاينة أو ملخص</string>
+    <string name="sponsorblock_category_music_offtopic">قسم غير موسيقي</string>
+    <string name="sponsorblock_category_filler">حشو</string>
+    <string name="channel_settings">إعدادات القناة</string>
+    <string name="video_sponsorblock_settings">SponsorBlock لهذا الفيديو</string>
 </resources>

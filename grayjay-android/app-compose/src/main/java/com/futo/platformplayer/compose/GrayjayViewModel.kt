@@ -105,6 +105,13 @@ import com.futo.platformplayer.compose.ui.YoutubeBackendMode
 import com.futo.platformplayer.compose.ui.SubscriptionFetchMode
 import com.futo.platformplayer.backend.YoutubeSubscriptionFetchMode
 import com.futo.platformplayer.compose.update.GitHubReleaseChecker
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockCategory
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockClient
+import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
+import com.futo.platformplayer.compose.sponsorblock.contains
+import com.futo.platformplayer.compose.sponsorblock.effectiveSponsorBlockRule
+import com.futo.platformplayer.compose.sponsorblock.youtubeVideoId
+import com.futo.platformplayer.compose.sponsorblock.sponsorSegmentToSkip
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -158,6 +165,7 @@ private object HomeSessionCache {
 }
 
 private const val QUEUE_LOOKAHEAD = 2
+private const val SPONSORBLOCK_MONITOR_INTERVAL_MS = 250L
 private const val WATCH_PROGRESS_WRITE_DEBOUNCE_MS = 250L
 
 /**
@@ -429,6 +437,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val offlinePlaylistStore = GrayjoyOfflinePlaylistStore(application)
     private val releaseChecker = GitHubReleaseChecker()
     private val pcLinkManager = PcLinkManager.get(application)
+    private val sponsorBlockClient = SponsorBlockClient()
     private val baseEngineSources = engine.sources(content.sources)
     private var engineSources = (
         baseEngineSources + sourceRepository.loadCustomSources()
@@ -465,6 +474,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var profileSwitchJob: Job? = null
     private var detailsJob: Job? = null
     private var storyboardJob: Job? = null
+    private var sponsorBlockJob: Job? = null
+    private var sponsorBlockPlaybackMonitorJob: Job? = null
+    private var sponsorBlockVideoId: String? = null
+    private val manuallyAllowedSponsorSegments = mutableSetOf<String>()
+    private var lastAutomaticallySkippedSponsorSegment: String? = null
     private val storyboardRefreshAt = mutableMapOf<String, Long>()
     private var audioLanguageJob: Job? = null
     private var playbackRetryJob: Job? = null
@@ -568,6 +582,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             brainrotShortsEnabled = preferences.brainrotShortsEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
+            sponsorBlockEnabled = preferences.sponsorBlockEnabled,
+            sponsorBlockCategories = preferences.sponsorBlockCategories,
+            channelSponsorBlockOverrides = preferences.channelSponsorBlockOverrides(),
+            videoSponsorBlockOverrides = preferences.videoSponsorBlockOverrides(),
             preferredVideoQuality = preferences.preferredVideoQuality,
             preferredAudioBitrate = preferences.preferredAudioBitrate,
             preferredAudioLanguage = preferences.preferredAudioLanguage,
@@ -672,6 +690,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         scheduleResumePromptDismiss(currentVideo.id, currentVideo.resumePositionFraction())
                         applyPlaybackSpeed(currentVideo)
                         requestStoryboard(currentVideo, playbackGeneration)
+                        requestSponsorBlockSegments(currentVideo)
                         detailsJob = viewModelScope.launch { loadExtras(currentVideo) }
                     }
                 } else if (
@@ -687,6 +706,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update { it.copy(nowPlaying = NowPlayingUiState()) }
                 }
                 if (!awaitingPendingSelection) prepareQueueLookAhead(playback)
+                if (!awaitingPendingSelection) maybeSkipSponsorSegment(
+                    positionMs = playback.positionMs,
+                    durationMs = playback.durationMs,
+                )
                 pendingPcHandoffSeek
                     ?.takeIf { (videoId, _) -> videoId == playback.currentVideoId }
                     ?.let { (_, positionMs) ->
@@ -717,6 +740,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         playback = state.playback.withChromecast(cast),
                     )
                 }
+                if (cast.isConnected) maybeSkipSponsorSegment(cast.positionMs, cast.durationMs)
                 if (previous.isConnected && !cast.isConnected) {
                     if (suppressChromecastHandoff) {
                         suppressChromecastHandoff = false
@@ -791,6 +815,42 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             it.copy(perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled)
         }
         applyPlaybackSpeed(_uiState.value.nowPlaying.video)
+    }
+
+    fun setSponsorBlockEnabled(enabled: Boolean) {
+        if (preferences.sponsorBlockEnabled == enabled) return
+        preferences.sponsorBlockEnabled = enabled
+        _uiState.update { it.copy(sponsorBlockEnabled = enabled) }
+        requestSponsorBlockSegments(_uiState.value.nowPlaying.video)
+    }
+
+    fun setSponsorBlockCategories(categories: Set<SponsorBlockCategory>) {
+        if (preferences.sponsorBlockCategories == categories) return
+        preferences.sponsorBlockCategories = categories
+        _uiState.update { it.copy(sponsorBlockCategories = preferences.sponsorBlockCategories) }
+        requestSponsorBlockSegments(_uiState.value.nowPlaying.video)
+    }
+
+    fun setChannelSponsorBlockOverride(channelId: String, rule: SponsorBlockRule?) {
+        if (preferences.channelSponsorBlockOverrides()[channelId] == rule) return
+        preferences.setChannelSponsorBlockOverride(channelId, rule)
+        _uiState.update {
+            it.copy(channelSponsorBlockOverrides = preferences.channelSponsorBlockOverrides())
+        }
+        if (_uiState.value.nowPlaying.video?.creatorKey() == channelId) {
+            requestSponsorBlockSegments(_uiState.value.nowPlaying.video)
+        }
+    }
+
+    fun setVideoSponsorBlockOverride(videoId: String, rule: SponsorBlockRule?) {
+        if (preferences.videoSponsorBlockOverrides()[videoId] == rule) return
+        preferences.setVideoSponsorBlockOverride(videoId, rule)
+        _uiState.update {
+            it.copy(videoSponsorBlockOverrides = preferences.videoSponsorBlockOverrides())
+        }
+        if (_uiState.value.nowPlaying.video?.id == videoId) {
+            requestSponsorBlockSegments(_uiState.value.nowPlaying.video)
+        }
     }
 
     fun setBrainrotShortsEnabled(enabled: Boolean) {
@@ -1806,6 +1866,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         queueMutationJob?.cancel()
         detailsJob?.cancel()
         storyboardJob?.cancel()
+        sponsorBlockJob?.cancel()
+        sponsorBlockPlaybackMonitorJob?.cancel()
+        sponsorBlockVideoId = null
+        manuallyAllowedSponsorSegments.clear()
+        lastAutomaticallySkippedSponsorSegment = null
         audioLanguageJob?.cancel()
         extrasPagingJob?.cancel()
         channelJob?.cancel()
@@ -1917,6 +1982,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             brainrotShortsEnabled = preferences.brainrotShortsEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
+            sponsorBlockEnabled = preferences.sponsorBlockEnabled,
+            sponsorBlockCategories = preferences.sponsorBlockCategories,
+            channelSponsorBlockOverrides = preferences.channelSponsorBlockOverrides(),
+            videoSponsorBlockOverrides = preferences.videoSponsorBlockOverrides(),
             preferredVideoQuality = preferences.preferredVideoQuality,
             preferredAudioBitrate = preferences.preferredAudioBitrate,
             preferredAudioLanguage = preferences.preferredAudioLanguage,
@@ -2057,19 +2126,22 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                             sourceName = sourceName,
                             sourceIconUrl = source?.iconUrl.orEmpty(),
                         )
-                        val video = if (
-                            seedVideo.title.isBlank() ||
-                            seedVideo.title.equals("watch", ignoreCase = true)
-                        ) {
-                            resolveForPlayback(seedVideo, profileAtStart)
-                        } else {
-                            seedVideo
+                        // Navigate as soon as the URL has been classified. Resolution continues
+                        // behind the loading player instead of briefly exposing Home/miniplayer.
+                        remoteVideos[seedVideo.id] = seedVideo
+                        _uiState.update { state ->
+                            state.copy(
+                                nowPlaying = NowPlayingUiState(
+                                    video = seedVideo,
+                                    isLoadingPlayback = true,
+                                    isLoadingExtras = true,
+                                    isFollowing = preferences.isCreatorFollowed(seedVideo.creatorKey()),
+                                ),
+                            )
                         }
+                        publishExternalNavigation(ExternalNavigationKind.Video, seedVideo.id)
                         if (profileAtStart != activeProfileId) return@launch
-                        remoteVideos[video.id] = video
-                        registerRemoteChannel(video)
-                        publishExternalNavigation(ExternalNavigationKind.Video, video.id)
-                        openVideoInternal(video.id, publishNavigationWhenResolved = false)
+                        openVideoInternal(seedVideo.id, publishNavigationWhenResolved = false)
                     }
                     EngineUrlKind.Channel -> {
                         val channel = ChannelUiModel(
@@ -2465,6 +2537,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val requestGeneration = videoOpenRequestGeneration
         val previousNowPlaying = _uiState.value.nowPlaying
         pendingPlaybackVideoId = video.id
+        resetSponsorBlockSession(video.id)
         detailsJob?.cancel()
         storyboardJob?.cancel()
         extrasPagingJob?.cancel()
@@ -2542,6 +2615,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 if (pendingPlaybackVideoId == video.id) pendingPlaybackVideoId = null
                 applyPlaybackPreferences()
                 requestStoryboard(resolved, generation)
+                requestSponsorBlockSegments(resolved)
                 loadExtras(resolved)
             } catch (error: CancellationException) {
                 throw error
@@ -2863,6 +2937,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val generation = invalidatePlaybackQueue()
         val profileAtStart = activeProfileId
         pendingPlaybackVideoId = queue.first().id
+        resetSponsorBlockSession(queue.first().id)
         val playlistIdForQueue = activePlaylistId
         playbackQueueSession = PlaybackQueueSession(
             generation = generation,
@@ -2949,6 +3024,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             if (pendingPlaybackVideoId == first.id) pendingPlaybackVideoId = null
             applyPlaybackPreferences()
             requestStoryboard(first, generation)
+            requestSponsorBlockSegments(first)
             prepareQueueLookAhead()
             loadExtras(first)
         }
@@ -3082,6 +3158,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun seekPlaybackBy(deltaMs: Long) {
         val cast = chromecastManager.state.value
+        val positionMs = if (cast.isConnected) cast.positionMs else engine.player.currentPosition
+        val durationMs = if (cast.isConnected) cast.durationMs else engine.player.duration
+        markManualSponsorSeek((positionMs + deltaMs).coerceIn(0L, durationMs.takeIf { it > 0L } ?: Long.MAX_VALUE))
         if (cast.isConnected) {
             chromecastManager.seekTo(
                 (cast.positionMs + deltaMs).coerceIn(0L, cast.durationMs.takeIf { it > 0L } ?: Long.MAX_VALUE),
@@ -4026,6 +4105,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun seekPlayback(fraction: Float) {
         val cast = chromecastManager.state.value
+        val durationMs = if (cast.isConnected) cast.durationMs else engine.player.duration
+        if (durationMs > 0L) markManualSponsorSeek((durationMs * fraction.coerceIn(0f, 1f)).toLong())
         if (cast.isConnected && cast.durationMs > 0L) {
             chromecastManager.seekTo((cast.durationMs * fraction.coerceIn(0f, 1f)).toLong())
         } else {
@@ -4079,6 +4160,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         engine.closePlayback()
         detailsJob?.cancel()
         storyboardJob?.cancel()
+        sponsorBlockJob?.cancel()
+        sponsorBlockPlaybackMonitorJob?.cancel()
+        sponsorBlockVideoId = null
+        manuallyAllowedSponsorSegments.clear()
+        lastAutomaticallySkippedSponsorSegment = null
         _uiState.update { it.copy(nowPlaying = NowPlayingUiState()) }
     }
 
@@ -6707,6 +6793,110 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         )
         if (chromecastManager.state.value.isConnected) chromecastManager.setPlaybackSpeed(speed)
         else engine.setPlaybackSpeed(speed)
+    }
+
+    private fun sponsorBlockRuleFor(video: VideoUiModel): SponsorBlockRule =
+        effectiveSponsorBlockRule(
+            global = SponsorBlockRule(
+                enabled = preferences.sponsorBlockEnabled,
+                categories = preferences.sponsorBlockCategories,
+            ),
+            channelOverride = preferences.channelSponsorBlockOverrides()[video.creatorKey()],
+            videoOverride = preferences.videoSponsorBlockOverrides()[video.id],
+        )
+
+    private fun requestSponsorBlockSegments(video: VideoUiModel?) {
+        sponsorBlockJob?.cancel()
+        sponsorBlockPlaybackMonitorJob?.cancel()
+        sponsorBlockPlaybackMonitorJob = null
+        if (video?.id != sponsorBlockVideoId) {
+            sponsorBlockVideoId = video?.id
+            manuallyAllowedSponsorSegments.clear()
+            lastAutomaticallySkippedSponsorSegment = null
+        }
+        if (video == null || !video.sourceId.equals("youtube", ignoreCase = true)) {
+            _uiState.update { it.copy(nowPlaying = it.nowPlaying.copy(sponsorBlockSegments = emptyList(), sponsorBlockLoading = false)) }
+            return
+        }
+        val rule = sponsorBlockRuleFor(video)
+        val remoteId = sequenceOf(video.contentUrl, video.shareUrl, video.id)
+            .mapNotNull(::youtubeVideoId)
+            .firstOrNull()
+        if (!rule.enabled || rule.categories.isEmpty() || remoteId == null) {
+            _uiState.update { it.copy(nowPlaying = it.nowPlaying.copy(sponsorBlockSegments = emptyList(), sponsorBlockLoading = false)) }
+            return
+        }
+        _uiState.update { state ->
+            if (state.nowPlaying.video?.id != video.id) state else state.copy(
+                nowPlaying = state.nowPlaying.copy(sponsorBlockLoading = true, sponsorBlockSegments = emptyList()),
+            )
+        }
+        sponsorBlockJob = viewModelScope.launch(Dispatchers.IO) {
+            val segments = runCatching { sponsorBlockClient.load(remoteId, rule.categories) }
+                .onFailure { Log.w("SponsorBlock", "Could not load skip segments.", it) }
+                .getOrDefault(emptyList())
+            withContext(Dispatchers.Main.immediate) {
+                _uiState.update { state ->
+                    if (state.nowPlaying.video?.id != video.id) state else state.copy(
+                        nowPlaying = state.nowPlaying.copy(
+                            sponsorBlockSegments = segments,
+                            sponsorBlockLoading = false,
+                        ),
+                    )
+                }
+                if (segments.isNotEmpty() && _uiState.value.nowPlaying.video?.id == video.id) {
+                    startSponsorBlockPlaybackMonitor(video.id)
+                }
+            }
+        }
+    }
+
+    private fun resetSponsorBlockSession(videoId: String) {
+        sponsorBlockVideoId = videoId
+        manuallyAllowedSponsorSegments.clear()
+        lastAutomaticallySkippedSponsorSegment = null
+    }
+
+    private fun startSponsorBlockPlaybackMonitor(videoId: String) {
+        sponsorBlockPlaybackMonitorJob?.cancel()
+        sponsorBlockPlaybackMonitorJob = viewModelScope.launch {
+            while (isActive && _uiState.value.nowPlaying.video?.id == videoId) {
+                val cast = chromecastManager.state.value
+                if (cast.isConnected) {
+                    maybeSkipSponsorSegment(cast.positionMs, cast.durationMs)
+                } else if (engine.player.currentMediaItem != null) {
+                    maybeSkipSponsorSegment(engine.player.currentPosition, engine.player.duration)
+                }
+                delay(SPONSORBLOCK_MONITOR_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun markManualSponsorSeek(targetPositionMs: Long) {
+        _uiState.value.nowPlaying.sponsorBlockSegments
+            .firstOrNull { it.contains(targetPositionMs) }
+            ?.let { manuallyAllowedSponsorSegments += it.id }
+    }
+
+    private fun maybeSkipSponsorSegment(positionMs: Long, durationMs: Long) {
+        val segments = _uiState.value.nowPlaying.sponsorBlockSegments
+        val lastSkipped = lastAutomaticallySkippedSponsorSegment
+        if (lastSkipped != null && segments.any { it.id == lastSkipped && it.contains(positionMs) }) {
+            return
+        }
+        val segment = sponsorSegmentToSkip(
+            segments = segments,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            manuallyAllowedIds = manuallyAllowedSponsorSegments,
+            lastSkippedId = lastAutomaticallySkippedSponsorSegment,
+        ) ?: run {
+            lastAutomaticallySkippedSponsorSegment = null
+            return
+        }
+        lastAutomaticallySkippedSponsorSegment = segment.id
+        if (chromecastManager.state.value.isConnected) chromecastManager.seekTo(segment.endMs)
+        else engine.player.seekTo(segment.endMs)
     }
 
     private fun findVideo(videoId: String): VideoUiModel? {

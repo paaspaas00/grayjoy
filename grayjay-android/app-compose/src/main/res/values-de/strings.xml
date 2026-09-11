@@ -613,4 +613,23 @@
     <string name="version_unavailable">Nicht verfügbar</string>
     <string name="brainrot_shorts">Brainrot-Modus für Shorts</string>
     <string name="brainrot_shorts_description">Nur auf Smartphones: Home-Shorts im Hochformat-Vollbild öffnen. Nach oben oder unten wischen, um das Video zu wechseln.</string>
+    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock_description">Überspringt automatisch ausgewählte, von der Community markierte Segmente in YouTube-Videos.</string>
+    <string name="sponsorblock_global_settings">SponsorBlock-Einstellungen</string>
+    <string name="sponsorblock_enabled">Markierte Segmente überspringen</string>
+    <string name="sponsorblock_enabled_description">Funktioniert, ohne den Videostart zu verzögern.</string>
+    <string name="sponsorblock_segments_to_skip">Zu überspringende Segmente</string>
+    <string name="sponsorblock_customize">Anpassen</string>
+    <string name="sponsorblock_use_inherited">Geerbte Einstellungen verwenden</string>
+    <string name="sponsorblock_using_inherited">Die vom Kanal oder der App geerbten Einstellungen werden verwendet.</string>
+    <string name="sponsorblock_category_sponsor">Werbung und Sponsoren</string>
+    <string name="sponsorblock_category_self_promotion">Eigenwerbung</string>
+    <string name="sponsorblock_category_interaction">Interaktionshinweise</string>
+    <string name="sponsorblock_category_intro">Intro</string>
+    <string name="sponsorblock_category_outro">Outro</string>
+    <string name="sponsorblock_category_preview">Vorschau oder Rückblick</string>
+    <string name="sponsorblock_category_music_offtopic">Nichtmusikalischer Abschnitt</string>
+    <string name="sponsorblock_category_filler">Füllmaterial</string>
+    <string name="channel_settings">Kanaleinstellungen</string>
+    <string name="video_sponsorblock_settings">SponsorBlock für dieses Video</string>
 </resources>

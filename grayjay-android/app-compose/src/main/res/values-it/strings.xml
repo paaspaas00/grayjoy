@@ -685,4 +685,23 @@
     <string name="version_unavailable">Non disponibile</string>
     <string name="brainrot_shorts">Modalità Brainrot per gli Shorts</string>
     <string name="brainrot_shorts_description">Solo su telefono: apri gli Shorts della Home a schermo intero verticale. Scorri su o giù per cambiare video.</string>
+    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock_description">Salta automaticamente i segmenti selezionati e segnalati dalla comunità nei video YouTube.</string>
+    <string name="sponsorblock_global_settings">Impostazioni SponsorBlock</string>
+    <string name="sponsorblock_enabled">Salta i segmenti segnalati</string>
+    <string name="sponsorblock_enabled_description">Funziona senza ritardare l’avvio del video.</string>
+    <string name="sponsorblock_segments_to_skip">Segmenti da saltare</string>
+    <string name="sponsorblock_customize">Personalizza</string>
+    <string name="sponsorblock_use_inherited">Usa impostazioni ereditate</string>
+    <string name="sponsorblock_using_inherited">Sono in uso le impostazioni ereditate dal canale o dall’app.</string>
+    <string name="sponsorblock_category_sponsor">Pubblicità e sponsor</string>
+    <string name="sponsorblock_category_self_promotion">Autopromozione</string>
+    <string name="sponsorblock_category_interaction">Inviti all’interazione</string>
+    <string name="sponsorblock_category_intro">Introduzione</string>
+    <string name="sponsorblock_category_outro">Conclusione</string>
+    <string name="sponsorblock_category_preview">Anteprima o riepilogo</string>
+    <string name="sponsorblock_category_music_offtopic">Parte non musicale</string>
+    <string name="sponsorblock_category_filler">Riempitivo</string>
+    <string name="channel_settings">Impostazioni canale</string>
+    <string name="video_sponsorblock_settings">SponsorBlock per questo video</string>
 </resources>

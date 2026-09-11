@@ -613,4 +613,23 @@
     <string name="version_unavailable">Indisponible</string>
     <string name="brainrot_shorts">Mode Brainrot pour les Shorts</string>
     <string name="brainrot_shorts_description">Sur téléphone uniquement : ouvrir les Shorts de la page d’accueil en plein écran vertical. Balayer vers le haut ou le bas pour changer de vidéo.</string>
+    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock_description">Ignore automatiquement les segments sélectionnés et signalés par la communauté dans les vidéos YouTube.</string>
+    <string name="sponsorblock_global_settings">Paramètres SponsorBlock</string>
+    <string name="sponsorblock_enabled">Ignorer les segments signalés</string>
+    <string name="sponsorblock_enabled_description">Fonctionne sans retarder le démarrage de la vidéo.</string>
+    <string name="sponsorblock_segments_to_skip">Segments à ignorer</string>
+    <string name="sponsorblock_customize">Personnaliser</string>
+    <string name="sponsorblock_use_inherited">Utiliser les paramètres hérités</string>
+    <string name="sponsorblock_using_inherited">Les paramètres hérités de la chaîne ou de l’application sont utilisés.</string>
+    <string name="sponsorblock_category_sponsor">Publicités et sponsors</string>
+    <string name="sponsorblock_category_self_promotion">Autopromotion</string>
+    <string name="sponsorblock_category_interaction">Rappels d’interaction</string>
+    <string name="sponsorblock_category_intro">Introduction</string>
+    <string name="sponsorblock_category_outro">Conclusion</string>
+    <string name="sponsorblock_category_preview">Aperçu ou récapitulatif</string>
+    <string name="sponsorblock_category_music_offtopic">Partie non musicale</string>
+    <string name="sponsorblock_category_filler">Remplissage</string>
+    <string name="channel_settings">Paramètres de la chaîne</string>
+    <string name="video_sponsorblock_settings">SponsorBlock pour cette vidéo</string>
 </resources>
