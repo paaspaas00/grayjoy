@@ -96,6 +96,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
@@ -103,6 +104,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -124,6 +126,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
@@ -2927,6 +2930,7 @@ private fun CreatorCard(
     onClick: () -> Unit,
     modifier: Modifier,
 ) {
+    var followShimmerSequence by remember(video.id) { mutableIntStateOf(0) }
     Card(
         onClick = onClick,
         modifier = modifier
@@ -2945,7 +2949,10 @@ private fun CreatorCard(
                 modifier = Modifier.size(48.dp),
             )
             Column(Modifier.weight(1f)) {
-                Text(video.creator, style = MaterialTheme.typography.titleMedium)
+                CreatorNameShimmer(
+                    name = video.creator,
+                    sequence = followShimmerSequence,
+                )
                 video.authorSubscriberCount?.let { subscribers ->
                     Text(
                         pluralStringResource(
@@ -2959,13 +2966,47 @@ private fun CreatorCard(
                 }
             }
             Button(
-                onClick = onToggleFollowing,
+                onClick = {
+                    val subscribing = !isFollowing
+                    onToggleFollowing()
+                    if (subscribing) followShimmerSequence += 1
+                },
                 modifier = Modifier.testTag("creator-follow"),
             ) {
                 Text(stringResource(if (isFollowing) R.string.following else R.string.follow))
             }
         }
     }
+}
+
+@Composable
+private fun CreatorNameShimmer(name: String, sequence: Int) {
+    val progress = remember(name) { Animatable(-1f) }
+    var widthPx by remember(name) { mutableIntStateOf(0) }
+    LaunchedEffect(sequence) {
+        if (sequence <= 0) return@LaunchedEffect
+        progress.snapTo(-1f)
+        progress.animateTo(
+            targetValue = 2f,
+            animationSpec = tween(durationMillis = 720, easing = LinearEasing),
+        )
+    }
+    val base = MaterialTheme.colorScheme.onSurface
+    val highlight = MaterialTheme.colorScheme.primary
+    val width = widthPx.coerceAtLeast(1).toFloat()
+    val center = width * progress.value
+    val shimmerBrush = Brush.linearGradient(
+        colors = listOf(base, base, highlight, base, base),
+        start = androidx.compose.ui.geometry.Offset(center - width * 0.55f, 0f),
+        end = androidx.compose.ui.geometry.Offset(center + width * 0.55f, 0f),
+    )
+    Text(
+        text = name,
+        style = MaterialTheme.typography.titleMedium.copy(brush = shimmerBrush),
+        modifier = Modifier
+            .onSizeChanged { widthPx = it.width }
+            .testTag("creator-follow-shimmer"),
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
