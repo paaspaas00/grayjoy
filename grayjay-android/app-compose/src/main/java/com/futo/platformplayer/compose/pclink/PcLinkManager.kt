@@ -103,7 +103,7 @@ class PcLinkManager private constructor(context: Context) {
     ): Boolean {
         val computer = computers[computerId] ?: return false
         val requestTime = timestamp.toLongOrNull() ?: return false
-        if (kotlin.math.abs(nowMs - requestTime) > PcLinkProtocol.MAX_CLOCK_SKEW_MS) return false
+        if (!PcLinkProtocol.isTimestampFresh(requestTime, nowMs)) return false
         if (!NONCE.matches(nonce)) return false
         cleanupNonces(nowMs)
         val nonceKey = "$computerId:$nonce"

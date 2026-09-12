@@ -6,6 +6,37 @@ import org.junit.Test
 import org.junit.Assert.assertEquals
 
 class GitHubReleaseCheckerTest {
+    @Test fun choosesHighestStableVersionEvenIfAnOldReleaseWasRepublished() {
+        val releases = org.json.JSONArray("""[
+            {"tag_name":"v1.0.0"},
+            {"tag_name":"v4.0.0","prerelease":true},
+            {"tag_name":"v5.0.0","draft":true},
+            {"tag_name":"v2.3.1"},
+            {"tag_name":"v2.4.0"},
+            {"tag_name":"not-999-a-version"}
+        ]""")
+        assertEquals("2.4.0", latestInstallableRelease(releases, "2.3.0", emptyList())?.versionName)
+    }
+
+    @Test fun malformedOrOverflowingVersionsCannotDropTheirMajorNumber() {
+        assertFalse(isNewerVersion("garbage999", "2.3.0"))
+        assertFalse(isNewerVersion("9999999999999999999999.4.0", "2.3.0"))
+        assertFalse(isNewerVersion("1.2.3.4", "2.3.0"))
+    }
+
+    @Test fun fuzzVersionOrderingIsAntisymmetricAndMatchesNumericTuples() {
+        val random = kotlin.random.Random(0x564552)
+        repeat(20_000) {
+            val a = List(3) { random.nextInt(1000) }
+            val b = List(3) { random.nextInt(1000) }
+            val left = a.joinToString(".")
+            val right = b.joinToString(".")
+            val differing = (0..2).firstOrNull { a[it] != b[it] }
+            val expected = differing != null && a[differing] > b[differing]
+            assertEquals(expected, isNewerVersion(left, right))
+            assertFalse(isNewerVersion(left, right) && isNewerVersion(right, left))
+        }
+    }
     @Test
     fun `semantic release comparison handles v prefixes and multi digit parts`() {
         assertTrue(isNewerVersion("v0.9.9", "0.9.8"))

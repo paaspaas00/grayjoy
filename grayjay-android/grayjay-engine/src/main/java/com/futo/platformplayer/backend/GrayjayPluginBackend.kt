@@ -640,7 +640,7 @@ class GrayjayPluginBackend(
     private val clients = ConcurrentHashMap<String, JSClient>()
     private val sourceAliases = ConcurrentHashMap<String, String>()
     private val pendingUntrustedPlugins = ConcurrentHashMap<String, PendingUntrustedPlugin>()
-    private val pagerSessions = ConcurrentHashMap<String, PagerSession>()
+    private val pagerSessions = BoundedSessionCache<String, PagerSession>(64)
     // JS execution is protected by one lock per client. Running subscription coroutines against
     // the same client therefore remains completely serial. Legacy Grayjay uses a six-client pool
     // for channel refreshes; share that machinery here so independent RSS/channel requests can
@@ -672,7 +672,7 @@ class GrayjayPluginBackend(
     private val storyboardCache = ConcurrentHashMap<String, CachedStoryboard>()
     private val storyboardFailures = ConcurrentHashMap<String, Long>()
     private val storyboardDurations = ConcurrentHashMap<String, Long>()
-    private val resolvedVideoDetails = ConcurrentHashMap<String, CachedVideoDetails>()
+    private val resolvedVideoDetails = BoundedSessionCache<String, CachedVideoDetails>(24)
     private val commentHandles = ConcurrentHashMap<String, CommentHandle>()
     private val loadMutex = Mutex()
     @Volatile

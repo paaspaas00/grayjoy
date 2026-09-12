@@ -1,6 +1,10 @@
 package com.futo.platformplayer.backend
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -53,9 +57,9 @@ class NewPipeYoutubeContentBackend(
     private val httpClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         OkHttpClient.Builder().build()
     }
-    private val pagers = ConcurrentHashMap<String, PagerSession>()
-    private val channelTabs = ConcurrentHashMap<String, List<ListLinkHandler>>()
-    private val commentHandles = ConcurrentHashMap<String, CommentHandle>()
+    private val pagers = BoundedSessionCache<String, PagerSession>(64)
+    private val channelTabs = BoundedSessionCache<String, List<ListLinkHandler>>(256)
+    private val commentHandles = BoundedSessionCache<String, CommentHandle>(2_000)
 
     /** Continuations belong to one backend generation and must not survive an engine switch. */
     fun resetTransientSessions() {
@@ -287,6 +291,7 @@ class NewPipeYoutubeContentBackend(
                     kind = PagerKind.Comments,
                     nextPage = page,
                     loader = { next -> CommentsInfo.getMoreItems(service, contentUrl, next) },
+                    contentUrl = contentUrl,
                 )
             },
             hasMoreComments = Page.isValid(commentsInfo?.nextPage),
@@ -297,7 +302,7 @@ class NewPipeYoutubeContentBackend(
         val page = loadPage(continuationId)
         return GrayjayCommentPage(
             comments = page.items.filterIsInstance<CommentsInfoItem>()
-                .map { it.toGrayjayComment("") },
+                .map { it.toGrayjayComment(page.contentUrl) },
             continuationId = page.continuationId,
             hasMore = page.hasMore,
         )
@@ -312,6 +317,7 @@ class NewPipeYoutubeContentBackend(
                 kind = PagerKind.Comments,
                 nextPage = page.nextPage,
                 loader = extractor::getPage,
+                contentUrl = handle.contentUrl,
             )
             GrayjayCommentPage(
                 comments = page.items.map { it.toGrayjayComment(handle.contentUrl) },
@@ -339,34 +345,40 @@ class NewPipeYoutubeContentBackend(
         )
     }
 
-    private suspend fun loadPage(continuationId: String): LoadedPage =
+    internal suspend fun loadPage(continuationId: String): LoadedPage =
         withContext(Dispatchers.IO) {
             val session = pagers[continuationId] ?: return@withContext LoadedPage()
-            val next = session.nextPage ?: return@withContext LoadedPage()
-            val page = session.loader(next)
-            session.nextPage = page.nextPage
-            if (!Page.isValid(page.nextPage)) pagers.remove(continuationId)
-            LoadedPage(
-                kind = session.kind,
-                items = if (session.liveOnly) {
-                    page.items.filterIsInstance<StreamInfoItem>().filter { it.isLiveStream() }
-                } else {
-                    page.items
-                },
-                continuationId = continuationId.takeIf { Page.isValid(page.nextPage) },
-                hasMore = Page.isValid(page.nextPage),
-            )
+            session.mutex.withLock {
+                val next = session.nextPage ?: return@withLock LoadedPage()
+                val page = session.loader(next)
+                // A cancelled request must not consume a page that its caller will never receive.
+                currentCoroutineContext().ensureActive()
+                session.nextPage = page.nextPage
+                if (!Page.isValid(page.nextPage)) pagers.remove(continuationId, session)
+                LoadedPage(
+                    kind = session.kind,
+                    contentUrl = session.contentUrl,
+                    items = if (session.liveOnly) {
+                        page.items.filterIsInstance<StreamInfoItem>().filter { it.isLiveStream() }
+                    } else {
+                        page.items
+                    },
+                    continuationId = continuationId.takeIf { Page.isValid(page.nextPage) },
+                    hasMore = Page.isValid(page.nextPage),
+                )
+            }
         }
 
-    private fun registerPager(
+    internal fun registerPager(
         kind: PagerKind,
         nextPage: Page?,
         loader: (Page) -> ListExtractor.InfoItemsPage<out InfoItem>,
         liveOnly: Boolean = false,
+        contentUrl: String = "",
     ): String? {
         if (!Page.isValid(nextPage)) return null
         val id = "np:${UUID.randomUUID()}"
-        pagers[id] = PagerSession(kind, nextPage, loader, liveOnly)
+        pagers[id] = PagerSession(kind, nextPage, loader, liveOnly, contentUrl)
         return id
     }
 
@@ -586,12 +598,15 @@ class NewPipeYoutubeContentBackend(
         var nextPage: Page?,
         val loader: (Page) -> ListExtractor.InfoItemsPage<out InfoItem>,
         val liveOnly: Boolean,
+        val contentUrl: String,
+        val mutex: Mutex = Mutex(),
     )
 
-    private enum class PagerKind { Search, Kiosk, ChannelVideos, ChannelPlaylists, Playlist, Comments }
+    internal enum class PagerKind { Search, Kiosk, ChannelVideos, ChannelPlaylists, Playlist, Comments }
 
-    private data class LoadedPage(
+    internal data class LoadedPage(
         val kind: PagerKind? = null,
+        val contentUrl: String = "",
         val items: List<InfoItem> = emptyList(),
         val continuationId: String? = null,
         val hasMore: Boolean = false,

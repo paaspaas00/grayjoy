@@ -7,16 +7,11 @@ import java.io.BufferedOutputStream
 import java.net.Socket
 import java.nio.charset.StandardCharsets
 import com.futo.platformplayer.compose.net.BoundedSocketServer
+import com.futo.platformplayer.compose.net.readHttpRequest
 
 internal class PcLinkHttpServer(
     private val manager: PcLinkManager,
 ) {
-    private data class Request(
-        val method: String,
-        val target: String,
-        val headers: Map<String, String>,
-        val body: ByteArray,
-    )
 
     private val server = BoundedSocketServer("Grayjoy-PcLink", PcLinkProtocol.PORT, handle = ::handle)
 
@@ -30,7 +25,7 @@ internal class PcLinkHttpServer(
         socket.soTimeout = SOCKET_TIMEOUT_MS
         val input = BufferedInputStream(socket.getInputStream())
         val output = BufferedOutputStream(socket.getOutputStream())
-        val request = input.readRequest() ?: return
+        val request = readHttpRequest(input, MAX_BODY_BYTES) ?: return
         if (request.method == "OPTIONS") {
             output.writeResponse(204, "No Content", ByteArray(0))
             return
@@ -125,51 +120,6 @@ internal class PcLinkHttpServer(
         }
     }
 
-    private fun BufferedInputStream.readRequest(): Request? {
-        val requestLine = readHttpLine() ?: return null
-        val parts = requestLine.split(' ')
-        if (parts.size < 2) return null
-        val method = parts[0].uppercase()
-        val target = parts[1]
-        if (target.length > MAX_TARGET_LENGTH) return null
-        val headers = linkedMapOf<String, String>()
-        var headerBytes = requestLine.length
-        while (true) {
-            val line = readHttpLine() ?: return null
-            if (line.isEmpty()) break
-            headerBytes += line.length
-            if (headerBytes > MAX_HEADER_BYTES) return null
-            val separator = line.indexOf(':')
-            if (separator > 0) {
-                headers[line.substring(0, separator).trim().lowercase()] =
-                    line.substring(separator + 1).trim()
-            }
-        }
-        val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
-        if (contentLength !in 0..MAX_BODY_BYTES) return null
-        val body = ByteArray(contentLength)
-        var offset = 0
-        while (offset < body.size) {
-            val read = read(body, offset, body.size - offset)
-            if (read < 0) return null
-            offset += read
-        }
-        return Request(method, target, headers, body)
-    }
-
-    private fun BufferedInputStream.readHttpLine(): String? {
-        val bytes = java.io.ByteArrayOutputStream()
-        while (bytes.size() < MAX_HEADER_LINE) {
-            val value = read()
-            if (value == -1) {
-                return if (bytes.size() == 0) null
-                else String(bytes.toByteArray(), StandardCharsets.US_ASCII)
-            }
-            if (value == '\n'.code) break
-            if (value != '\r'.code) bytes.write(value)
-        }
-        return String(bytes.toByteArray(), StandardCharsets.US_ASCII)
-    }
 
     private fun BufferedOutputStream.writeJson(code: Int, json: JSONObject) {
         writeResponse(
@@ -213,9 +163,6 @@ internal class PcLinkHttpServer(
         const val HEADER_NONCE = "x-grayjoy-nonce"
         const val HEADER_SIGNATURE = "x-grayjoy-signature"
         const val SOCKET_TIMEOUT_MS = 10_000
-        const val MAX_TARGET_LENGTH = 2_048
-        const val MAX_HEADER_LINE = 8 * 1_024
-        const val MAX_HEADER_BYTES = 32 * 1_024
         const val MAX_BODY_BYTES = 64 * 1_024
         const val MAX_TITLE_LENGTH = 500
         const val MAX_URL_LENGTH = 4_096

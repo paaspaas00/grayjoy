@@ -7,6 +7,12 @@ import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class PlayerSeekPreviewTest {
+    @Test fun invalidSpriteDimensionsCannotOverflowOrDivideByZero() {
+        val invalid = level(width = 160).copy(columns = 65_536, rows = 65_536)
+        assertEquals(null, StoryboardUiModel(listOf(invalid)).frameAt(20_000, 160))
+        val valid = level(width = 160)
+        assertNotNull(StoryboardUiModel(listOf(invalid, valid)).frameAt(20_000, 160))
+    }
     @Test
     fun previewTimeTracksSliderProgress() {
         assertEquals(90_000L, seekPreviewPositionMs(durationMs = 180_000L, progress = 0.5f))

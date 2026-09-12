@@ -30,6 +30,8 @@ import androidx.media3.transformer.Transformer
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
@@ -52,13 +54,14 @@ internal class GrayjoyDownloadExporter(
         videos: List<VideoUiModel>,
         mediaType: DownloadMediaType,
         directoryUri: Uri,
-    ): Int {
+    ): Int = withContext(Dispatchers.IO) {
         val destination = DocumentFile.fromTreeUri(appContext, directoryUri)
             ?.takeIf { it.isDirectory && it.canWrite() }
             ?: throw IOException("The selected folder is not writable.")
         val exportDirectory = appContext.cacheDir.resolve("download_exports").apply(File::mkdirs)
         var exported = 0
         videos.distinctBy(VideoUiModel::id).forEach { video ->
+            currentCoroutineContext().ensureActive()
             val descriptor = downloadStore.playbackDescriptorFor(
                 profileId = profileId,
                 video = video,
@@ -86,7 +89,7 @@ internal class GrayjoyDownloadExporter(
                 temporaryFile.delete()
             }
         }
-        return exported
+        exported
     }
 
     private suspend fun transformToFile(
@@ -95,6 +98,7 @@ internal class GrayjoyDownloadExporter(
         output: File,
     ) = withContext(Dispatchers.Main.immediate) {
         suspendCancellableCoroutine { continuation ->
+            if (!continuation.isActive) return@suspendCancellableCoroutine
             val mediaSourceFactory = FixedMediaSourceFactory { createOfflineMediaSource(video) }
             val assetLoaderFactory = ExoPlayerAssetLoader.Factory(
                 appContext,
@@ -129,8 +133,10 @@ internal class GrayjoyDownloadExporter(
                 )
                 .build()
             continuation.invokeOnCancellation {
-                Handler(Looper.getMainLooper()).post(transformer::cancel)
-                output.delete()
+                Handler(Looper.getMainLooper()).post {
+                    transformer.cancel()
+                    output.delete()
+                }
             }
             val input = MediaItem.Builder()
                 .setMediaId(video.id)
@@ -140,6 +146,7 @@ internal class GrayjoyDownloadExporter(
                 .setRemoveVideo(mediaType == DownloadMediaType.Audio)
                 .build()
             try {
+                if (!continuation.isActive) return@suspendCancellableCoroutine
                 transformer.start(edited, output.absolutePath)
             } catch (error: Throwable) {
                 output.delete()
@@ -213,7 +220,16 @@ internal class GrayjoyDownloadExporter(
             ?: throw IOException("Could not create $requestedName in the selected folder.")
         try {
             appContext.contentResolver.openOutputStream(output.uri, "w")?.use { outputStream ->
-                input.inputStream().buffered().use { inputStream -> inputStream.copyTo(outputStream) }
+                input.inputStream().buffered().use { inputStream ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = inputStream.read(buffer)
+                        if (count < 0) break
+                        outputStream.write(buffer, 0, count)
+                    }
+                    currentCoroutineContext().ensureActive()
+                }
             } ?: throw IOException("Could not open $requestedName for writing.")
         } catch (error: Throwable) {
             output.delete()

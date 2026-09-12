@@ -34,32 +34,7 @@ internal class GitHubReleaseChecker(
             val releases = connection.inputStream.bufferedReader().use { reader ->
                 JSONArray(reader.readText())
             }
-            val release = (0 until releases.length())
-                .asSequence()
-                .map(releases::getJSONObject)
-                .firstOrNull { !it.optBoolean("draft", false) }
-                ?: return null
-            val versionName = release.optString("tag_name").removePrefix("v")
-            if (!isNewerVersion(versionName, currentVersionName)) return null
-            val releaseUrl = release.optString("html_url")
-            return GitHubRelease(
-                versionName = versionName,
-                releaseUrl = releaseUrl,
-                changelog = release.optString("body"),
-                releaseApkUrl = selectReleaseApkUrl(
-                    assets = (release.optJSONArray("assets") ?: JSONArray()).let { assets ->
-                        (0 until assets.length()).mapNotNull { index ->
-                            assets.optJSONObject(index)?.let { asset ->
-                                GitHubReleaseAsset(
-                                    name = asset.optString("name"),
-                                    downloadUrl = asset.optString("browser_download_url"),
-                                )
-                            }
-                        }
-                    },
-                    supportedAbis = supportedAbis,
-                ),
-            )
+            return latestInstallableRelease(releases, currentVersionName, supportedAbis)
         } finally {
             connection.disconnect()
         }
@@ -71,6 +46,43 @@ internal class GitHubReleaseChecker(
         private const val CONNECT_TIMEOUT_MS = 5_000
         private const val READ_TIMEOUT_MS = 8_000
     }
+}
+
+internal fun latestInstallableRelease(
+    releases: JSONArray,
+    currentVersionName: String,
+    supportedAbis: List<String>,
+): GitHubRelease? {
+    val release = (0 until releases.length())
+        .asSequence()
+        .mapNotNull(releases::optJSONObject)
+        .filter { !it.optBoolean("draft", false) && !it.optBoolean("prerelease", false) }
+        .filter { isNewerVersion(it.optString("tag_name"), currentVersionName) }
+        .maxWithOrNull { a, b ->
+            compareVersionParts(
+                semanticVersionParts(a.optString("tag_name")),
+                semanticVersionParts(b.optString("tag_name")),
+            )
+        }
+        ?: return null
+    return GitHubRelease(
+        versionName = release.optString("tag_name").removePrefix("v"),
+        releaseUrl = release.optString("html_url"),
+        changelog = release.optString("body"),
+        releaseApkUrl = selectReleaseApkUrl(
+            assets = (release.optJSONArray("assets") ?: JSONArray()).let { assets ->
+                (0 until assets.length()).mapNotNull { index ->
+                    assets.optJSONObject(index)?.let { asset ->
+                        GitHubReleaseAsset(
+                            name = asset.optString("name"),
+                            downloadUrl = asset.optString("browser_download_url"),
+                        )
+                    }
+                }
+            },
+            supportedAbis = supportedAbis,
+        ),
+    )
 }
 
 internal fun selectReleaseApkUrl(
@@ -101,16 +113,23 @@ internal fun isNewerVersion(candidate: String, current: String): Boolean {
     val candidateParts = semanticVersionParts(candidate)
     val currentParts = semanticVersionParts(current)
     if (candidateParts.isEmpty() || currentParts.isEmpty()) return false
+    return compareVersionParts(candidateParts, currentParts) > 0
+}
+
+private fun compareVersionParts(candidateParts: List<Int>, currentParts: List<Int>): Int {
     val width = maxOf(candidateParts.size, currentParts.size)
     repeat(width) { index ->
         val candidatePart = candidateParts.getOrElse(index) { 0 }
         val currentPart = currentParts.getOrElse(index) { 0 }
-        if (candidatePart != currentPart) return candidatePart > currentPart
+        if (candidatePart != currentPart) return candidatePart.compareTo(currentPart)
     }
-    return false
+    return 0
 }
 
-private fun semanticVersionParts(value: String): List<Int> =
-    Regex("""\d+""").findAll(value.substringBefore('-'))
-        .mapNotNull { it.value.toIntOrNull() }
-        .toList()
+private fun semanticVersionParts(value: String): List<Int> {
+    if (value.length > 128) return emptyList()
+    val match = RELEASE_VERSION.matchEntire(value) ?: return emptyList()
+    return (1..3).map { match.groupValues[it].ifEmpty { "0" }.toIntOrNull() ?: return emptyList() }
+}
+
+private val RELEASE_VERSION = Regex("""v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-+][0-9A-Za-z.-]+)?""")

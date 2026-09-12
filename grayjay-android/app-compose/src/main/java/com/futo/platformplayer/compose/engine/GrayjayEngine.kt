@@ -498,6 +498,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             .build()
     }
     private val exoPlayer = ExoPlayer.Builder(appContext, renderersFactory)
+        .setLoadControl(createPlaybackLoadControl(Runtime.getRuntime().maxMemory()))
         // The default Media3 builder does not request audio focus. Audio can still reach a
         // Bluetooth receiver in that state, but AVRCP/Android Auto may keep another (or empty)
         // session selected, leaving the car without metadata or transport controls. Grayjay's

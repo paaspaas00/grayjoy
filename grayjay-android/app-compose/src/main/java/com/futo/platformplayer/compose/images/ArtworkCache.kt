@@ -102,21 +102,22 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
     }
 
     private suspend fun refresh(entry: Entry, requestEpoch: Long, force: Boolean) {
-        directory.mkdirs()
-        val file = File(directory, "${entry.key}.img")
-        val metadata = File(directory, "${entry.key}.json")
-        var meta = runCatching { JSONObject(metadata.readText()) }.getOrDefault(JSONObject())
-        val now = clock()
-        entry.validatedAt = meta.optLong("validatedAt")
-        entry.retryAt = meta.optLong("retryAt")
-        entry.loaded = true
-        if (file.isFile && file.length() > 0) {
-            entry.state.value = CachedArtwork(file, meta.optLong("revision", file.lastModified()))
-            metadata.setLastModified(now)
-        } else entry.state.value = if (entry.failed || meta.optLong("retryAt") > 0L) CachedArtwork(null, 0L) else null
-        val age = now - meta.optLong("validatedAt")
-        if (!force && ((file.isFile && age in 0 until entry.maxAgeMs) || now < meta.optLong("retryAt"))) return
         try {
+            directory.mkdirs()
+            val file = File(directory, "${entry.key}.img")
+            val metadata = File(directory, "${entry.key}.json")
+            var meta = runCatching { JSONObject(metadata.readText()) }.getOrDefault(JSONObject())
+            val now = clock()
+            entry.validatedAt = meta.optLong("validatedAt")
+            entry.retryAt = meta.optLong("retryAt")
+            entry.failed = entry.retryAt > 0L
+            entry.loaded = true
+            if (file.isFile && file.length() > 0) {
+                entry.state.value = CachedArtwork(file, meta.optLong("revision", file.lastModified()))
+                metadata.setLastModified(now)
+            } else entry.state.value = if (entry.failed || meta.optLong("retryAt") > 0L) CachedArtwork(null, 0L) else null
+            val age = now - meta.optLong("validatedAt")
+            if (!force && ((file.isFile && age in 0 until entry.maxAgeMs) || now < meta.optLong("retryAt"))) return
             val request = Request.Builder().url(entry.url).apply {
                 tag(String::class.java, entry.url.toHttpUrl().host)
                 entry.headers.forEach { (name, value) -> header(name, value) }
@@ -166,10 +167,14 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
         } catch (_: Exception) {
             if (epoch.get() == requestEpoch) {
                 entry.failed = true
-                entry.retryAt = now + TimeUnit.MINUTES.toMillis(15)
+                entry.retryAt = clock() + TimeUnit.MINUTES.toMillis(15)
                 if (entry.state.value?.file == null) entry.state.value = CachedArtwork(null, 0L)
-                meta.put("retryAt", entry.retryAt)
-                runCatching { atomicWrite(metadata, meta.toString().toByteArray()) }
+                val metadata = File(directory, "${entry.key}.json")
+                runCatching {
+                    val saved = runCatching { JSONObject(metadata.readText()) }.getOrDefault(JSONObject())
+                    saved.put("retryAt", entry.retryAt)
+                    atomicWrite(metadata, saved.toString().toByteArray())
+                }
             }
         }
     }

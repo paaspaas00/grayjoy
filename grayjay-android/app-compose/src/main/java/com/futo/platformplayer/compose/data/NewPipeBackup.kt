@@ -10,6 +10,7 @@ import com.google.gson.JsonParser
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.util.zip.ZipInputStream
 
 internal data class NewPipeSubscription(
@@ -77,9 +78,8 @@ internal data class NewPipeBackup(
         fun merge(stream: NewPipeStream, historyEntry: NewPipeHistoryEntry? = null) {
             val progress = historyEntry?.let { entry ->
                 when {
-                    stream.durationSeconds > 0L -> entry.progressMs.toFloat()
-                        .div(stream.durationSeconds * 1_000L)
-                        .coerceIn(0f, 1f)
+                    stream.durationSeconds > 0L -> (entry.progressMs.toDouble() /
+                        (stream.durationSeconds.toDouble() * 1_000.0)).coerceIn(0.0, 1.0).toFloat()
                     entry.progressMs > 0L -> 0.01f
                     else -> 0f
                 }
@@ -126,6 +126,106 @@ internal open class NewPipeBackupException(message: String, cause: Throwable? = 
     IllegalArgumentException(message, cause)
 
 internal object NewPipeBackupParser {
+    /** Spool large DB/ZIP imports to disk instead of holding compressed and expanded copies. */
+    fun parse(input: InputStream, cacheDirectory: File, checkActive: () -> Unit = {}): NewPipeBackup {
+        cacheDirectory.mkdirs()
+        val source = File.createTempFile("newpipe-input-", ".backup", cacheDirectory)
+        try {
+            source.outputStream().use { output ->
+                val buffer = ByteArray(64 * 1024)
+                var total = 0L
+                while (true) {
+                    checkActive()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (count == 0) throw NewPipeBackupException("The import stream made no progress.")
+                    total += count
+                    if (total > MAX_INPUT_BYTES) throw NewPipeBackupException("The selected NewPipe export is larger than 256 MB.")
+                    output.write(buffer, 0, count)
+                }
+            }
+            if (source.length() == 0L) throw NewPipeBackupException("The selected NewPipe export is empty.")
+            val prefix = ByteArray(SQLITE_MAGIC.size)
+            source.inputStream().use { it.read(prefix) }
+            return when {
+                prefix.hasPrefix(SQLITE_MAGIC) -> parseExistingDatabase(source, checkActive)
+                prefix.isZip() -> parseZipStream(source.inputStream(), cacheDirectory, checkActive)
+                source.length() <= 32L * 1024 * 1024 -> {
+                    checkActive()
+                    parse(source.readBytes(), cacheDirectory)
+                }
+                else -> throw NewPipeBackupException("The subscriptions JSON exceeds the 32 MB import limit.")
+            }
+        } finally {
+            source.delete()
+            File(source.absolutePath + "-journal").delete()
+            File(source.absolutePath + "-wal").delete()
+            File(source.absolutePath + "-shm").delete()
+        }
+    }
+
+    private fun parseZipStream(input: InputStream, cacheDirectory: File, checkActive: () -> Unit): NewPipeBackup {
+        val databaseFile = try {
+            File.createTempFile("newpipe-expanded-", ".db", cacheDirectory)
+        } catch (error: Throwable) {
+            runCatching(input::close)
+            throw error
+        }
+        var found = false
+        var total = 0L
+        var entries = 0
+        try {
+            ZipInputStream(input).use { zip ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    checkActive()
+                    val entry = zip.nextEntry ?: break
+                    if (++entries > MAX_ZIP_ENTRIES) throw NewPipeBackupException("The NewPipe export contains too many files.")
+                    // Even directory entries can contain data: drain them through the same limits.
+                    val isDatabase = !entry.isDirectory && entry.name.substringAfterLast('/').equals("newpipe.db", true)
+                    if (isDatabase && found) throw NewPipeBackupException("The NewPipe export contains more than one database.")
+                    if (isDatabase) found = true
+                    val output = if (isDatabase) databaseFile.outputStream() else null
+                    output.use { destination ->
+                        var entryBytes = 0L
+                        while (true) {
+                            checkActive()
+                            val count = zip.read(buffer)
+                            if (count < 0) break
+                            if (count == 0) throw NewPipeBackupException("The archive stream made no progress.")
+                            total += count
+                            entryBytes += count
+                            if (entryBytes > MAX_DATABASE_BYTES || total > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+                                throw NewPipeBackupException("The NewPipe export expands beyond the safe import limit.")
+                            }
+                            destination?.write(buffer, 0, count)
+                        }
+                    }
+                }
+            }
+            if (!found) throw NewPipeBackupException("The NewPipe export does not contain newpipe.db.")
+            return parseExistingDatabase(databaseFile, checkActive)
+        } finally {
+            databaseFile.delete()
+            File(databaseFile.absolutePath + "-journal").delete()
+            File(databaseFile.absolutePath + "-wal").delete()
+            File(databaseFile.absolutePath + "-shm").delete()
+        }
+    }
+
+    private fun parseExistingDatabase(file: File, checkActive: () -> Unit): NewPipeBackup {
+        val magic = ByteArray(SQLITE_MAGIC.size)
+        file.inputStream().use { it.read(magic) }
+        if (!magic.hasPrefix(SQLITE_MAGIC)) throw NewPipeBackupException("The NewPipe database is invalid.")
+        checkActive()
+        val database = SQLiteDatabase.openDatabase(
+            file.absolutePath, null, SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
+        )
+        return try {
+            parseDatabase(database).also { checkActive() }
+        } finally { database.close() }
+    }
+
     fun parse(data: ByteArray, cacheDirectory: File): NewPipeBackup {
         if (data.isEmpty()) throw NewPipeBackupException("The selected NewPipe export is empty.")
         if (data.size > MAX_INPUT_BYTES) {
@@ -143,7 +243,7 @@ internal object NewPipeBackupParser {
         return when {
             firstContentByte == '{'.code.toByte() -> parseSubscriptionJson(data)
             data.hasPrefix(SQLITE_MAGIC) -> parseDatabaseFile(data, cacheDirectory)
-            data.isZip() -> parseZip(data, cacheDirectory)
+            data.isZip() -> parseZipStream(ByteArrayInputStream(data), cacheDirectory) {}
             else -> throw NewPipeBackupException(
                 "This is not a NewPipe export. Select its export ZIP, newpipe.db, or subscriptions.json.",
             )
@@ -179,44 +279,6 @@ internal object NewPipeBackupParser {
         return NewPipeBackup(subscriptions, emptyMap(), emptyList(), emptyList())
     }
 
-    private fun parseZip(data: ByteArray, cacheDirectory: File): NewPipeBackup {
-        var databaseBytes: ByteArray? = null
-        var entries = 0
-        var totalUncompressedBytes = 0L
-        ZipInputStream(ByteArrayInputStream(data)).use { zip ->
-            while (true) {
-                val entry = zip.nextEntry ?: break
-                if (entry.isDirectory) continue
-                entries += 1
-                if (entries > MAX_ZIP_ENTRIES) {
-                    throw NewPipeBackupException("The NewPipe export contains too many files.")
-                }
-                val isDatabase = entry.name.substringAfterLast('/').equals("newpipe.db", ignoreCase = true)
-                if (isDatabase) {
-                    if (databaseBytes != null) {
-                        throw NewPipeBackupException("The NewPipe export contains more than one database.")
-                    }
-                }
-                val output = if (isDatabase) java.io.ByteArrayOutputStream() else null
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                var entryBytes = 0L
-                while (true) {
-                    val read = zip.read(buffer)
-                    if (read < 0) break
-                    entryBytes += read
-                    totalUncompressedBytes += read
-                    if (entryBytes > MAX_DATABASE_BYTES || totalUncompressedBytes > MAX_TOTAL_UNCOMPRESSED_BYTES) {
-                        throw NewPipeBackupException("The NewPipe export expands beyond the safe import limit.")
-                    }
-                    output?.write(buffer, 0, read)
-                }
-                if (isDatabase) databaseBytes = output?.toByteArray()
-            }
-        }
-        val bytes = databaseBytes
-            ?: throw NewPipeBackupException("The NewPipe export does not contain newpipe.db.")
-        return parseDatabaseFile(bytes, cacheDirectory)
-    }
 
     private fun parseDatabaseFile(data: ByteArray, cacheDirectory: File): NewPipeBackup {
         if (!data.hasPrefix(SQLITE_MAGIC)) {

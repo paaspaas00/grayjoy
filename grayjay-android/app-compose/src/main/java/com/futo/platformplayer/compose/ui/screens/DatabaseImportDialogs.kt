@@ -40,8 +40,11 @@ fun DatabaseImportDialogs(
 ) {
     when {
         state.isBusy -> AlertDialog(
-            onDismissRequest = {},
+            onDismissRequest = onDismiss,
             confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            },
             icon = { CircularProgressIndicator() },
             title = {
                 Text(

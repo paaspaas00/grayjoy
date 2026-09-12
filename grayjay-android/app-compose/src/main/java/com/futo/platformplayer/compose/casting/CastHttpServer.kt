@@ -8,11 +8,9 @@ import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.net.Inet6Address
 import java.net.InetAddress
-import java.net.URI
 import java.nio.charset.StandardCharsets
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import com.futo.platformplayer.compose.net.BoundedSocketServer
+import com.futo.platformplayer.compose.net.readHttpRequest
 
 /**
  * Chromecast cannot consume the in-memory DASH manifests returned by Grayjay plugins and it
@@ -20,6 +18,7 @@ import com.futo.platformplayer.compose.net.BoundedSocketServer
  * manifests are served from the phone and every referenced stream is fetched through the same
  * Media3 data source used by local playback.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal class CastHttpServer {
     private sealed interface Route
 
@@ -42,7 +41,7 @@ internal class CastHttpServer {
         val localAddress: InetAddress,
     ) : Route
 
-    private val routes = ConcurrentHashMap<String, Route>()
+    private val routes = CastRouteRegistry<Route>()
     private val server = BoundedSocketServer("Grayjoy-CastHttp", workerCount = 8, pendingCount = 16, handle = ::handle)
 
     val port: Int get() = server.port
@@ -50,14 +49,15 @@ internal class CastHttpServer {
     @Synchronized
     fun start() = server.start()
 
-    fun clearRoutes() = routes.clear()
+    fun clearRoutes() { routes.reset() }
 
     @Synchronized
     fun stop() {
         server.stop()
-        routes.clear()
+        routes.reset()
     }
 
+    @Synchronized
     fun serveDash(
         manifest: String,
         localAddress: InetAddress,
@@ -65,7 +65,7 @@ internal class CastHttpServer {
         requestHeaders: Map<String, String>,
     ): String {
         start()
-        clearRoutes()
+        val generation = routes.reset()
         var rewritten = manifest
         DASH_URL.findAll(manifest).map { it.value }.distinct().forEach { encodedUrl ->
             val upstream = encodedUrl.xmlUnescape()
@@ -74,17 +74,18 @@ internal class CastHttpServer {
                 contentType = null,
                 dataSourceFactory = dataSourceFactory,
                 requestHeaders = requestHeaders,
+                generation = generation,
             )
             rewritten = rewritten.replace(encodedUrl, localUrl(localAddress, proxyPath))
         }
-        val manifestPath = "/dash-${UUID.randomUUID()}.mpd"
-        routes[manifestPath] = ConstantRoute(
+        val manifestPath = routes.add(ConstantRoute(
             contentType = "application/dash+xml",
             bytes = rewritten.toByteArray(StandardCharsets.UTF_8),
-        )
+        ), generation, "dash", ".mpd")
         return localUrl(localAddress, manifestPath)
     }
 
+    @Synchronized
     fun serveHls(
         upstreamUrl: String,
         localAddress: InetAddress,
@@ -92,12 +93,12 @@ internal class CastHttpServer {
         requestHeaders: Map<String, String>,
     ): String {
         start()
-        clearRoutes()
-        val path = "/hls-${UUID.randomUUID()}.m3u8"
-        routes[path] = HlsRoute(upstreamUrl, dataSourceFactory, requestHeaders, localAddress)
+        val generation = routes.reset()
+        val path = routes.add(HlsRoute(upstreamUrl, dataSourceFactory, requestHeaders, localAddress), generation, "hls", ".m3u8")
         return localUrl(localAddress, path)
     }
 
+    @Synchronized
     fun serveProgressive(
         upstreamUrl: String,
         contentType: String?,
@@ -106,10 +107,10 @@ internal class CastHttpServer {
         requestHeaders: Map<String, String>,
     ): String {
         start()
-        clearRoutes()
+        val generation = routes.reset()
         return localUrl(
             localAddress,
-            addProxyRoute(upstreamUrl, contentType, dataSourceFactory, requestHeaders),
+            addProxyRoute(upstreamUrl, contentType, dataSourceFactory, requestHeaders, generation),
         )
     }
 
@@ -118,35 +119,26 @@ internal class CastHttpServer {
         contentType: String?,
         dataSourceFactory: HttpDataSource.Factory?,
         requestHeaders: Map<String, String>,
+        generation: Long,
     ): String {
-        val path = "/stream-${UUID.randomUUID()}"
-        routes[path] = ProxyRoute(upstreamUrl, contentType, dataSourceFactory, requestHeaders)
-        return path
+        return routes.add(ProxyRoute(upstreamUrl, contentType, dataSourceFactory, requestHeaders), generation, "stream")
     }
 
     private fun handle(socket: java.net.Socket) {
         socket.soTimeout = SOCKET_TIMEOUT_MS
         val input = BufferedInputStream(socket.getInputStream())
         val output = BufferedOutputStream(socket.getOutputStream())
-        val requestLine = input.readHttpLine() ?: return
-        val requestParts = requestLine.split(' ')
-        if (requestParts.size < 2) return
-        val method = requestParts[0].uppercase()
-        val requestTarget = requestParts[1]
-        val path = requestTarget.substringBefore('?')
-        val headers = linkedMapOf<String, String>()
-        while (true) {
-            val line = input.readHttpLine() ?: break
-            if (line.isEmpty()) break
-            val separator = line.indexOf(':')
-            if (separator > 0) {
-                headers[line.substring(0, separator).trim().lowercase()] =
-                    line.substring(separator + 1).trim()
-            }
-        }
+        val request = readHttpRequest(input, maxBodyBytes = 0) ?: return
+        val method = request.method
+        val path = request.target.substringBefore('?')
+        val headers = request.headers
         if (method == "OPTIONS") {
             output.writeHeaders(204, "No Content", mapOf("Content-Length" to "0"))
             output.flush()
+            return
+        }
+        if (method != "GET" && method != "HEAD") {
+            output.writeTextResponse(405, "Method Not Allowed", "Method not allowed")
             return
         }
         val route = routes[path]
@@ -154,58 +146,34 @@ internal class CastHttpServer {
             output.writeTextResponse(404, "Not Found", "Not found")
             return
         }
-        when (route) {
+        when (val value = route.route) {
             is ConstantRoute -> {
                 output.writeHeaders(
                     200,
                     "OK",
                     mapOf(
-                        "Content-Type" to route.contentType,
-                        "Content-Length" to route.bytes.size.toString(),
+                        "Content-Type" to value.contentType,
+                        "Content-Length" to value.bytes.size.toString(),
                     ),
                 )
-                if (method != "HEAD") output.write(route.bytes)
+                if (method != "HEAD") output.write(value.bytes)
                 output.flush()
             }
-            is ProxyRoute -> proxy(route, method, headers, output)
-            is HlsRoute -> serveHlsPlaylist(route, method, output)
+            is ProxyRoute -> proxy(value, method, headers, output)
+            is HlsRoute -> serveHlsPlaylist(value, route.generation, method, output)
         }
     }
 
-    private fun serveHlsPlaylist(route: HlsRoute, method: String, output: BufferedOutputStream) {
+    private fun serveHlsPlaylist(route: HlsRoute, generation: Long, method: String, output: BufferedOutputStream) {
         val content = readAll(route.upstreamUrl, route.dataSourceFactory, route.requestHeaders)
             .toString(StandardCharsets.UTF_8)
-        val rewritten = content.lineSequence().joinToString("\n") { line ->
-            when {
-                line.startsWith("#") -> HLS_URI.replace(line) { match ->
-                    val upstream = URI(route.upstreamUrl).resolve(match.groupValues[1]).toString()
-                    val local = if (upstream.substringBefore('?').endsWith(".m3u8", ignoreCase = true)) {
-                        val childPath = "/hls-${UUID.randomUUID()}.m3u8"
-                        routes[childPath] = route.copy(upstreamUrl = upstream)
-                        localUrl(route.localAddress, childPath)
-                    } else {
-                        localUrl(
-                            route.localAddress,
-                            addProxyRoute(upstream, null, route.dataSourceFactory, route.requestHeaders),
-                        )
-                    }
-                    "URI=\"$local\""
-                }
-                line.isBlank() -> line
-                else -> {
-                    val upstream = URI(route.upstreamUrl).resolve(line.trim()).toString()
-                    if (upstream.substringBefore('?').endsWith(".m3u8", ignoreCase = true)) {
-                        val childPath = "/hls-${UUID.randomUUID()}.m3u8"
-                        routes[childPath] = route.copy(upstreamUrl = upstream)
-                        localUrl(route.localAddress, childPath)
-                    } else {
-                        localUrl(
-                            route.localAddress,
-                            addProxyRoute(upstream, null, route.dataSourceFactory, route.requestHeaders),
-                        )
-                    }
-                }
+        val rewritten = rewriteHlsPlaylist(content, route.upstreamUrl) { upstream, playlist ->
+            val path = if (playlist) {
+                routes.add(route.copy(upstreamUrl = upstream), generation, "hls", ".m3u8")
+            } else {
+                addProxyRoute(upstream, null, route.dataSourceFactory, route.requestHeaders, generation)
             }
+            localUrl(route.localAddress, path)
         }.toByteArray(StandardCharsets.UTF_8)
         output.writeHeaders(
             200,
@@ -225,22 +193,26 @@ internal class CastHttpServer {
         requestHeaders: Map<String, String>,
         output: BufferedOutputStream,
     ) {
-        val range = parseRange(requestHeaders["range"])
+        val rangeHeader = requestHeaders["range"]
+        val range = rangeHeader?.let(::parseCastByteRange)
+        if (rangeHeader != null && range == null) {
+            output.writeTextResponse(416, "Range Not Satisfiable", "Invalid byte range")
+            return
+        }
         val source = (route.dataSourceFactory ?: defaultFactory(route.requestHeaders)).createDataSource()
         route.requestHeaders.forEach(source::setRequestProperty)
+        range?.suffix?.let { source.setRequestProperty("Range", "bytes=-$it") }
         val spec = DataSpec.Builder()
             .setUri(route.upstreamUrl)
-            .setPosition(range?.first ?: 0L)
+            .setPosition(range?.start ?: 0L)
             .apply {
-                range?.last
-                    ?.takeIf { it != Long.MAX_VALUE }
-                    ?.let { end -> setLength(end - range.first + 1L) }
+                range?.length?.let(::setLength)
             }
             .build()
         try {
             val length = source.open(spec)
             val responseCode = source.responseCode
-            val partial = range != null || responseCode == 206
+            val partial = (range != null && range.suffix == null) || responseCode == 206
             val responseHeaders = source.responseHeaders
             val contentType = route.contentType
                 ?: responseHeaders.headerValue("Content-Type")
@@ -251,13 +223,12 @@ internal class CastHttpServer {
             )
             if (length != C.LENGTH_UNSET.toLong()) headers["Content-Length"] = length.toString()
             if (partial) {
-                headers["Content-Range"] = responseHeaders.headerValue("Content-Range")
-                    ?: buildString {
-                        val start = range?.first ?: 0L
-                        append("bytes $start-")
-                        append(if (length == C.LENGTH_UNSET.toLong()) "*" else start + length - 1L)
-                        append("/*")
-                    }
+                val contentRange = castContentRange(range, length, responseHeaders.headerValue("Content-Range"))
+                if (contentRange == null) {
+                    output.writeTextResponse(502, "Bad Gateway", "Invalid upstream byte range")
+                    return
+                }
+                headers["Content-Range"] = contentRange
             }
             output.writeHeaders(if (partial) 206 else 200, if (partial) "Partial Content" else "OK", headers)
             if (method != "HEAD") {
@@ -265,6 +236,7 @@ internal class CastHttpServer {
                 while (true) {
                     val read = source.read(buffer, 0, buffer.size)
                     if (read == C.RESULT_END_OF_INPUT) break
+                    if (read <= 0) throw java.io.IOException("Cast stream made no progress")
                     output.write(buffer, 0, read)
                 }
             }
@@ -288,6 +260,9 @@ internal class CastHttpServer {
             while (true) {
                 val read = source.read(buffer, 0, buffer.size)
                 if (read == C.RESULT_END_OF_INPUT) break
+                if (read <= 0 || output.size().toLong() + read > MAX_MANIFEST_BYTES) {
+                    throw java.io.IOException("Invalid or oversized cast manifest")
+                }
                 output.write(buffer, 0, read)
             }
             output.toByteArray()
@@ -336,34 +311,16 @@ internal class CastHttpServer {
         write(text.toByteArray(StandardCharsets.US_ASCII))
     }
 
-    private fun BufferedInputStream.readHttpLine(): String? {
-        val bytes = java.io.ByteArrayOutputStream()
-        while (bytes.size() < MAX_HEADER_LINE) {
-            val value = read()
-            if (value == -1) return if (bytes.size() == 0) null else bytes.toString(StandardCharsets.US_ASCII.name())
-            if (value == '\n'.code) break
-            if (value != '\r'.code) bytes.write(value)
-        }
-        return bytes.toString(StandardCharsets.US_ASCII.name())
-    }
 
     private companion object {
         const val SOCKET_TIMEOUT_MS = 30_000
         const val PROXY_BUFFER_SIZE = 64 * 1024
-        const val MAX_HEADER_LINE = 16 * 1024
+        const val MAX_MANIFEST_BYTES = 2 * 1024 * 1024
         val DASH_URL = Regex("https?://[^\\s<>\\\"]+")
-        val HLS_URI = Regex("URI=\\\"([^\\\"]+)\\\"")
 
         fun String.xmlUnescape(): String = replace("&amp;", "&")
             .replace("&quot;", "\"")
             .replace("&apos;", "'")
-
-        fun parseRange(value: String?): LongRange? {
-            val raw = value?.removePrefix("bytes=") ?: return null
-            val start = raw.substringBefore('-').toLongOrNull() ?: return null
-            val end = raw.substringAfter('-', "").toLongOrNull() ?: Long.MAX_VALUE
-            return start..end
-        }
 
         fun Map<String, List<String>>.headerValue(name: String): String? = entries
             .firstOrNull { it.key.equals(name, ignoreCase = true) }

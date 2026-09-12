@@ -75,6 +75,18 @@ interface LibraryRepository {
     fun saveVideos(videos: Collection<VideoUiModel>)
     fun saveDownloadDescriptor(video: VideoUiModel)
     fun clearDownloadDescriptor(videoId: String)
+    fun reconcileDownloads(completedIds: Set<String>): Boolean {
+        var changed = false
+        loadSavedVideos().forEach { video ->
+            val complete = video.id in completedIds
+            if (video.isDownloaded != complete) { setDownloaded(video.id, complete); changed = true }
+            if (!complete && (video.playbackUrl.isNotBlank() || video.playbackManifest.isNotBlank())) {
+                clearDownloadDescriptor(video.id)
+                changed = true
+            }
+        }
+        return changed
+    }
     fun recordHistory(video: VideoUiModel, progress: Float = video.watchProgress)
     fun setWatchLater(videoId: String, enabled: Boolean)
     fun setDownloaded(videoId: String, enabled: Boolean)
@@ -188,6 +200,16 @@ internal class SharedPreferencesLibraryRepository(
                 audioQualityVariants = emptyList(),
             )
         }
+    }
+
+    @Synchronized
+    override fun reconcileDownloads(completedIds: Set<String>): Boolean {
+        val videos = readVideos()
+        val updated = videos.map { reconcileVideoDownloadState(it, completedIds) }
+        if (updated == videos) return false
+        // One library serialization even if hundreds of downloads completed while we were away.
+        writeVideos(updated)
+        return true
     }
 
     @Synchronized
@@ -503,6 +525,14 @@ internal fun List<VideoUiModel>.withLibraryState(
             playlistNames = state.playlistNames,
         )
     } ?: video
+}
+
+internal fun reconcileVideoDownloadState(video: VideoUiModel, completedIds: Set<String>): VideoUiModel {
+    val complete = video.id in completedIds
+    val updated = if (video.isDownloaded == complete) video else video.copy(isDownloaded = complete)
+    return if (!complete && (updated.playbackUrl.isNotBlank() || updated.playbackManifest.isNotBlank())) {
+        updated.forLocalStorage()
+    } else updated
 }
 
 internal fun VideoUiModel.forLocalStorage(preservePlayback: Boolean = false) = copy(

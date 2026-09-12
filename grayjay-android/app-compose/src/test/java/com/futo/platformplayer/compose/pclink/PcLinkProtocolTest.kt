@@ -9,6 +9,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PcLinkProtocolTest {
+    @Test fun timestampsCannotExploitSignedOverflow() {
+        val now = 1_800_000_000_000L
+        assertFalse(PcLinkProtocol.isTimestampFresh(Long.MIN_VALUE + now, now))
+        assertFalse(PcLinkProtocol.isTimestampFresh(Long.MAX_VALUE, now))
+        assertTrue(PcLinkProtocol.isTimestampFresh(now - 120_000, now))
+        assertFalse(PcLinkProtocol.isTimestampFresh(now - 120_001, now))
+    }
     @Test
     fun frequentStatusMessagesStillPersistLastSeenPeriodically() {
         var persisted = 0L

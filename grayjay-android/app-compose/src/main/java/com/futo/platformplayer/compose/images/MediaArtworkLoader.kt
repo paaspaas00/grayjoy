@@ -13,6 +13,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import java.io.IOException
+import java.io.InputStream
+import java.io.ByteArrayOutputStream
 
 /** Supplies actual, bounded-size cover bitmaps to Media3's platform/AVRCP metadata bridge. */
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
@@ -31,10 +33,10 @@ internal class MediaArtworkLoader(
         return submit {
             val bytes = if (uri.scheme == "http" || uri.scheme == "https") {
                 val artwork = withTimeout(25_000) { ArtworkCache.get(app).observe(uri.toString(), headers).filterNotNull().first() }
-                (artwork.file ?: throw IOException("Cover artwork unavailable")).readBytes()
+                (artwork.file ?: throw IOException("Cover artwork unavailable")).inputStream().use(::readArtwork)
             } else if (uri.toString().startsWith("file:///android_asset/")) {
-                app.assets.open(uri.toString().removePrefix("file:///android_asset/")).use { it.readBytes() }
-            } else app.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IOException("Cover artwork unavailable")
+                app.assets.open(uri.toString().removePrefix("file:///android_asset/")).use(::readArtwork)
+            } else app.contentResolver.openInputStream(uri)?.use(::readArtwork) ?: throw IOException("Cover artwork unavailable")
             decode(bytes)
         }
     }
@@ -46,7 +48,20 @@ internal class MediaArtworkLoader(
             catch (error: Exception) { result.setException(error) }
         }
         result.addListener({ if (result.isCancelled) job.cancel() }, MoreExecutors.directExecutor())
+        // A request submitted after shutdown may be cancelled before its body ever starts.
+        job.invokeOnCompletion { if (it != null) result.cancel(false) }
         return result
+    }
+    private fun readArtwork(input: InputStream): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            if (output.size() + count > 8 * 1024 * 1024) throw IOException("Cover artwork is too large")
+            output.write(buffer, 0, count)
+        }
+        return output.toByteArray()
     }
     private fun decode(bytes: ByteArray): Bitmap {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }

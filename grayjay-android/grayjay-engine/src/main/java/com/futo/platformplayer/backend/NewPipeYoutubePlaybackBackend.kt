@@ -1,6 +1,7 @@
 package com.futo.platformplayer.backend
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -57,7 +58,9 @@ class NewPipeYoutubePlaybackBackend(
         useRequestNumber = false,
     )
     private val resolveCache = ConcurrentHashMap<ResolveCacheKey, CachedPlaybackSource>()
-    private val resolveLocks = ConcurrentHashMap<ResolveCacheKey, Mutex>()
+    // Locks outlive waiters. Removing a keyed lock before its waiters resume lets another
+    // request create a second lock and extract the same expensive video concurrently.
+    private val resolveLocks = Array(32) { Mutex() }
     @Volatile
     private var localization = Localization.DEFAULT
     @Volatile
@@ -105,23 +108,20 @@ class NewPipeYoutubePlaybackBackend(
         resolveCache[cacheKey]
             ?.takeIf { !it.isExpired() }
             ?.let { return@withContext it.source }
-        val lock = resolveLocks.getOrPut(cacheKey) { Mutex() }
+        val lock = resolveLocks[(cacheKey.hashCode() and Int.MAX_VALUE) % resolveLocks.size]
         lock.withLock {
-            try {
-                resolveCache[cacheKey]
-                    ?.takeIf { !it.isExpired() }
-                    ?.let { return@withLock it.source }
-                val source = extractPlaybackSource(
-                    youtubeUrl = cacheKey.contentUrl,
-                    preferredAudioLanguage = preferredAudioLanguage,
-                    preferOriginalAudio = preferOriginalAudio,
-                )
-                trimResolveCache()
-                resolveCache[cacheKey] = CachedPlaybackSource(source)
-                source
-            } finally {
-                resolveLocks.remove(cacheKey, lock)
-            }
+            resolveCache[cacheKey]
+                ?.takeIf { !it.isExpired() }
+                ?.let { return@withLock it.source }
+            val source = extractPlaybackSource(
+                youtubeUrl = cacheKey.contentUrl,
+                preferredAudioLanguage = preferredAudioLanguage,
+                preferOriginalAudio = preferOriginalAudio,
+            )
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            trimResolveCache()
+            resolveCache[cacheKey] = CachedPlaybackSource(source)
+            source
         }
     }
 

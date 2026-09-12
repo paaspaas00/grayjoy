@@ -16,6 +16,9 @@ internal object PcLinkProtocol {
     const val MAX_CLOCK_SKEW_MS = 2 * 60_000L
     const val STATE_STALE_AFTER_MS = 12_000L
 
+    fun isTimestampFresh(requestTime: Long, nowMs: Long): Boolean =
+        requestTime >= 0L && nowMs >= 0L && kotlin.math.abs(nowMs - requestTime) <= MAX_CLOCK_SKEW_MS
+
     fun parsePairingPayload(raw: String): PcPairingPayload? {
         val uri = runCatching { URI.create(raw.trim()) }.getOrNull() ?: return null
         if (!uri.scheme.equals(PAIR_SCHEME, ignoreCase = true)) return null

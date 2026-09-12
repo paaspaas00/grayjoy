@@ -32,6 +32,10 @@ internal fun StoryboardUiModel.frameAt(
     val usableLevels = levels.filter { level ->
         level.width > 0 && level.height > 0 && level.frameCount > 0 &&
             level.columns > 0 && level.rows > 0 && level.intervalMs > 0L &&
+            level.columns.toLong() * level.rows <= Int.MAX_VALUE &&
+            level.width.toLong() * level.columns <= 8192 &&
+            level.height.toLong() * level.rows <= 8192 &&
+            level.width.toLong() * level.columns * level.height * level.rows <= 16_777_216L &&
             (level.sheetUrlTemplate.isNotBlank() || level.sheetUrls.isNotEmpty())
     }
     val target = targetWidthPx.coerceAtLeast(1)

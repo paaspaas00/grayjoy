@@ -16,6 +16,15 @@ import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 class LegacyGrayjayBackupTest {
+    @Test fun extremeImportedTimestampsCannotWrapIntoNegativeHistoryDates() {
+        val backup = LegacyGrayjayBackupParser.parse(zipOf(mapOf(
+            "exportInfo" to "{}",
+            "stores/history" to Gson().toJson(listOf("$VIDEO_URL|||${Long.MAX_VALUE}|||0|||Video")),
+        )))
+        val timestamp = backup.buildImportLibrary(false, false, true).first.single().lastWatchedAt
+        assertTrue(timestamp > 0)
+        assertEquals(Long.MAX_VALUE / 1000 * 1000, timestamp)
+    }
     @Test
     fun parsesLegacyExportAndMaterializesLibraryData() {
         val backup = LegacyGrayjayBackupParser.parse(fixtureZip())

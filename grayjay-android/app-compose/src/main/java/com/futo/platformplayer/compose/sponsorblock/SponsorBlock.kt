@@ -7,6 +7,15 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
+import kotlin.coroutines.resumeWithException
 import java.util.concurrent.TimeUnit
 
 enum class SponsorBlockCategory(
@@ -60,6 +69,7 @@ fun sponsorSegmentToSkip(
     lastSkippedId: String?,
 ): SponsorBlockSegment? {
     if (positionMs < 0L || durationMs <= 0L) return null
+    if (segments.any { it.id in manuallyAllowedIds && it.contains(positionMs) }) return null
     return segments.firstOrNull {
         it.id !in manuallyAllowedIds &&
             it.id != lastSkippedId &&
@@ -103,26 +113,30 @@ internal fun youtubeVideoId(urlOrId: String): String? {
     if (raw.matches(Regex("[A-Za-z0-9_-]{11}"))) return raw
     val uri = runCatching { java.net.URI(raw) }.getOrNull() ?: return null
     val host = uri.host.orEmpty().lowercase()
-    if (host == "youtu.be" || host.endsWith(".youtu.be")) {
-        return uri.path.trim('/').substringBefore('/').takeIf { it.length == 11 }
+    if (uri.scheme != "https" && uri.scheme != "http") return null
+    if (host == "youtu.be" || host == "www.youtu.be") {
+        return uri.path.orEmpty().trim('/').substringBefore('/').takeIf { it.matches(YOUTUBE_ID) }
     }
-    if (!host.endsWith("youtube.com")) return null
+    if (host != "youtube.com" && !host.endsWith(".youtube.com")) return null
     val queryId = uri.rawQuery.orEmpty().split('&').firstNotNullOfOrNull { part ->
         val pieces = part.split('=', limit = 2)
         pieces.getOrNull(1)?.takeIf { pieces.firstOrNull() == "v" }
     }
-    if (queryId?.length == 11) return queryId
-    return uri.path.trim('/').split('/').let { parts ->
+    if (queryId?.matches(YOUTUBE_ID) == true) return queryId
+    return uri.path.orEmpty().trim('/').split('/').let { parts ->
         parts.getOrNull(1).takeIf {
-            parts.firstOrNull() in setOf("shorts", "live", "embed") && it?.length == 11
+            parts.firstOrNull() in setOf("shorts", "live", "embed") && it?.matches(YOUTUBE_ID) == true
         }
     }
 }
+
+private val YOUTUBE_ID = Regex("[A-Za-z0-9_-]{11}")
 
 class SponsorBlockClient(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(20, TimeUnit.SECONDS)
         .build(),
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -130,12 +144,13 @@ class SponsorBlockClient(
 
     private val cache = linkedMapOf<String, CacheEntry>()
 
-    fun load(videoId: String, categories: Set<SponsorBlockCategory>): List<SponsorBlockSegment> {
-        if (categories.isEmpty()) return emptyList()
+    suspend fun load(videoId: String, categories: Set<SponsorBlockCategory>): List<SponsorBlockSegment> = withContext(Dispatchers.IO) {
+        if (categories.isEmpty()) return@withContext emptyList()
         val categoryKey = categories.map(SponsorBlockCategory::apiValue).sorted().joinToString(",")
         val key = "$videoId|$categoryKey"
         synchronized(cache) {
-            cache[key]?.takeIf { clock() - it.storedAtMs < CACHE_TTL_MS }?.let { return it.segments }
+            cache[key]?.takeIf { clock() - it.storedAtMs in 0 until CACHE_TTL_MS }
+                ?.let { return@withContext it.segments }
         }
         val url = API_URL.toHttpUrl().newBuilder()
             .addQueryParameter("videoID", videoId)
@@ -148,17 +163,23 @@ class SponsorBlockClient(
         var lastFailure: IOException? = null
         var segments: List<SponsorBlockSegment>? = null
         repeat(2) { attempt ->
+            currentCoroutineContext().ensureActive()
             if (segments != null) return@repeat
             try {
-                segments = httpClient.newCall(request).execute().use { response ->
+                segments = httpClient.newCall(request).awaitResponse().use { response ->
                     if (response.code == 404) emptyList()
                     else {
                         if (response.code >= 500) throw IOException("SponsorBlock HTTP ${response.code}")
                         check(response.isSuccessful) { "SponsorBlock HTTP ${response.code}" }
-                        parseSponsorBlockSegments(response.body.string(), categories)
+                        val source = response.body.source()
+                        require(!source.request(MAX_RESPONSE_BYTES + 1L)) { "SponsorBlock response is too large" }
+                        val bytes = source.readByteArray()
+                        currentCoroutineContext().ensureActive()
+                        parseSponsorBlockSegments(bytes.toString(Charsets.UTF_8), categories)
                     }
                 }
             } catch (error: IOException) {
+                currentCoroutineContext().ensureActive()
                 lastFailure = error
                 if (attempt == 1) throw error
             }
@@ -168,12 +189,25 @@ class SponsorBlockClient(
             cache[key] = CacheEntry(clock(), loadedSegments)
             while (cache.size > MAX_CACHE_ENTRIES) cache.remove(cache.keys.first())
         }
-        return loadedSegments
+        loadedSegments
+    }
+
+    private suspend fun Call.awaitResponse(): Response = suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { cancel() }
+        enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (continuation.isActive) continuation.resumeWithException(e)
+            }
+            override fun onResponse(call: Call, response: Response) {
+                continuation.resume(response) { _, value, _ -> value.close() }
+            }
+        })
     }
 
     companion object {
         private const val API_URL = "https://sponsor.ajay.app/api/skipSegments"
         private const val CACHE_TTL_MS = 12 * 60 * 60 * 1_000L
         private const val MAX_CACHE_ENTRIES = 100
+        private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
     }
 }

@@ -892,6 +892,9 @@ fun GrayjayApp(
     }
     LaunchedEffect(uiState.externalNavigation?.requestId) {
         val request = uiState.externalNavigation ?: return@LaunchedEffect
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        searchAutoFocusRequested = false
         when (request.kind) {
             ExternalNavigationKind.Video -> {
                 selectedVideoId = request.contentId

@@ -6,6 +6,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SponsorBlockTest {
+    @Test fun overlappingSegmentsDoNotUndoAManualSeek() {
+        val allowed = SponsorBlockSegment("allowed", 1_000, 8_000, SponsorBlockCategory.Sponsor)
+        val overlap = SponsorBlockSegment("overlap", 2_000, 10_000, SponsorBlockCategory.Intro)
+        assertNull(sponsorSegmentToSkip(listOf(allowed, overlap), 3_000, 20_000, setOf("allowed"), null))
+        assertEquals(overlap, sponsorSegmentToSkip(listOf(allowed, overlap), 8_001, 20_000, setOf("allowed"), null))
+    }
+
+    @Test fun rejectsMalformedAndLookalikeVideoLinks() {
+        assertNull(youtubeVideoId("https://notyoutube.com/watch?v=DpJTzdBp09c"))
+        assertNull(youtubeVideoId("https://youtube.com"))
+        assertNull(youtubeVideoId("https://youtu.be"))
+        assertNull(youtubeVideoId("file://youtube.com/watch?v=DpJTzdBp09c"))
+        assertNull(youtubeVideoId("https://youtube.com/watch?v=abcdefghij!"))
+    }
     @Test
     fun videoOverrideWinsOverChannelAndGlobal() {
         val global = SponsorBlockRule(enabled = true, categories = setOf(SponsorBlockCategory.Sponsor))

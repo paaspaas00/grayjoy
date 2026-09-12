@@ -357,7 +357,7 @@ internal fun LegacyGrayjayBackup.buildImportLibrary(
         merge(
             cached.video.copy(
                 watchProgress = progress,
-                lastWatchedAt = entry.watchedAtEpochSeconds.coerceAtLeast(0L) * 1_000L,
+                lastWatchedAt = entry.watchedAtEpochSeconds.coerceIn(0L, Long.MAX_VALUE / 1_000L) * 1_000L,
             ),
         )
     }
