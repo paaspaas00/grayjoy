@@ -56,8 +56,8 @@ android {
         applicationId 'com.futo.platformplayer.compose'
         minSdk 28
         targetSdk 36
-        versionCode 2400
-        versionName '2.4.0'
+        versionCode 2401
+        versionName '2.4.1'
         buildConfigField 'String', 'GRAYJAY_ENGINE_REVISION', '"' + engineRevision + '"'
         buildConfigField 'String', 'NEWPIPE_ENGINE_VERSION', '"' + engineVersions.getProperty('newpipe.version') + '"'
         buildConfigField 'String', 'NEWPIPE_ENGINE_REVISION', '"' + engineVersions.getProperty('newpipe.commit') + '"'

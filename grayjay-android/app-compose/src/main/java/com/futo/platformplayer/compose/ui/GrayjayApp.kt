@@ -458,156 +458,62 @@ private data class SourcePresentation(
     val onSearchAutoFocusConsumed: () -> Unit,
 )
 
+@Stable
+private class GrayjayTransientUiState(
+    actionVideoId: String? = null,
+    actionIsRemotePlaylistVideo: Boolean = false,
+    actionIsQueueVideo: Boolean = false,
+    actionCanAddToQueue: Boolean = false,
+    playlistPickerVideoIds: List<String> = emptyList(),
+    profileDialogVisible: Boolean = false,
+    chromecastSheetVisible: Boolean = false,
+) {
+    var actionVideoId by mutableStateOf(actionVideoId)
+    var actionIsRemotePlaylistVideo by mutableStateOf(actionIsRemotePlaylistVideo)
+    var actionIsQueueVideo by mutableStateOf(actionIsQueueVideo)
+    var actionCanAddToQueue by mutableStateOf(actionCanAddToQueue)
+    var playlistPickerVideoIds by mutableStateOf(playlistPickerVideoIds)
+    var profileDialogVisible by mutableStateOf(profileDialogVisible)
+    var chromecastSheetVisible by mutableStateOf(chromecastSheetVisible)
+}
+
+private val GrayjayTransientUiStateSaver =
+    androidx.compose.runtime.saveable.Saver<GrayjayTransientUiState, List<Any?>>(
+        save = { state ->
+            listOf(
+                state.actionVideoId,
+                state.actionIsRemotePlaylistVideo,
+                state.actionIsQueueVideo,
+                state.actionCanAddToQueue,
+                state.playlistPickerVideoIds,
+                state.profileDialogVisible,
+                state.chromecastSheetVisible,
+            )
+        },
+        restore = { values ->
+            @Suppress("UNCHECKED_CAST")
+            GrayjayTransientUiState(
+                actionVideoId = values[0] as String?,
+                actionIsRemotePlaylistVideo = values[1] as Boolean,
+                actionIsQueueVideo = values[2] as Boolean,
+                actionCanAddToQueue = values[3] as Boolean,
+                playlistPickerVideoIds = values[4] as List<String>,
+                profileDialogVisible = values[5] as Boolean,
+                chromecastSheetVisible = values[6] as Boolean,
+            )
+        },
+    )
+
 @Composable
 fun GrayjayApp(
     uiState: GrayjayUiState,
     player: Player,
+    actions: GrayjayAppActions,
     uiLanguageTag: String = "",
-    onUiLanguageChange: (String) -> Unit = {},
     isDarkTheme: Boolean = false,
-    onDarkThemeChange: (Boolean) -> Unit = {},
-    onThemeModeChange: (ThemeMode) -> Unit = {},
-    onDynamicColorsChange: (Boolean) -> Unit,
-    onPrivateSessionChange: (Boolean) -> Unit,
-    onOpenVideo: (String) -> Unit,
-    onDismissVideoOpenDialog: () -> Unit = {},
-    onLoadChannel: (ChannelUiModel) -> Unit,
-    onChannelTabSelected: (ChannelContentTab) -> Unit = {},
-    onHomeFeedSelected: (HomeFeedType) -> Unit,
-    onHomeBrowseTabSelected: (String, String) -> Unit = { _, _ -> },
-    onHomeBrowseOptionSelected: (String, String, String) -> Unit = { _, _, _ -> },
-    onRefreshHome: () -> Unit,
-    onLoadMoreHome: () -> Unit = {},
-    onPlayQueue: (List<String>) -> Unit,
-    onQueueVideos: (List<String>) -> Unit,
-    onPlayNext: (String) -> Unit = {},
-    onPlayPlaylist: (String) -> Unit,
-    onPlayPlaylistFrom: (String, String) -> Unit,
-    onTogglePlayback: () -> Unit,
-    onSkipToNext: () -> Unit,
-    onSkipToPrevious: () -> Unit,
-    onSeekPlaybackBy: (Long) -> Unit,
-    onPlaybackSpeedChange: (Float) -> Unit,
-    onSpeedHoldStart: () -> Unit = {},
-    onSpeedHoldEnd: () -> Unit = {},
-    onUseChannelPlaybackSpeed: () -> Unit,
-    onChannelPlaybackSpeedChange: (String, Float?) -> Unit,
-    onVideoQualityChange: (Int?) -> Unit,
-    onAudioLanguageChange: (String?) -> Unit,
-    onCaptionsEnabledChange: (Boolean) -> Unit,
-    onSubtitleLanguageChange: (String?) -> Unit,
-    onRetryPlayback: () -> Unit,
-    onStoryboardLoadFailure: (String) -> Unit = {},
-    onClosePlayback: () -> Unit,
-    onToggleWatchLater: (String) -> Unit,
-    onToggleDownloaded: (String) -> Unit,
-    onToggleAudioDownloaded: (String) -> Unit,
-    onDownloadVideo: (String, Int?) -> Unit,
-    onDownloadAudio: (String, Int?) -> Unit,
-    onDownloadVideos: (List<String>, DownloadMediaType) -> Unit,
-    onDownloadPlaylist: (String, DownloadMediaType) -> Unit,
-    onCancelDownloadPlaylist: (String, DownloadMediaType) -> Unit = { _, _ -> },
-    onCreatePlaylist: (String, List<String>) -> Unit,
-    onRenamePlaylist: (String, String) -> Unit,
-    onAddVideosToPlaylist: (String, List<String>) -> Unit,
-    onRemoveVideosFromPlaylist: (String, List<String>) -> Unit,
-    onReorderPlaylist: (String, List<String>) -> Unit,
-    onRemoveVideosFromHistory: (List<String>) -> Unit,
-    onRemoveDownloads: (List<String>) -> Unit = {},
-    onRemovePlaylists: (List<String>) -> Unit = {},
-    onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit = { _, _, _ -> },
-    onSeekPlayback: (Float) -> Unit,
-    onSourceEnabledChange: (String, Boolean) -> Unit,
-    onInstallSource: (String) -> Unit,
-    onScanSourceQr: () -> Unit,
-    onRefreshSource: (String) -> Unit,
-    onClearSourceCache: (String) -> Unit,
-    onRemoveSource: (String) -> Unit,
-    onLoginSource: (SourceUiModel) -> Unit,
-    onLogoutSource: (String) -> Unit,
-    onImportYoutube: (String, YoutubeImportSelection) -> Unit,
-    onDismissYoutubeImport: () -> Unit,
-    onSearchQueryChange: (String) -> Unit,
-    onSearchSubmit: (String, SearchContentType, Set<String>) -> Unit,
-    onSourceFilterSelectionChange: (String, String, String) -> Unit = { _, _, _ -> },
-    onLoadMoreSearch: () -> Unit = {},
-    onLoadMoreChannel: () -> Unit = {},
-    onChannelSearchQueryChange: (String) -> Unit = {},
-    onLoadMoreChannelSearch: () -> Unit = {},
-    onLoadFollowingComplete: () -> Unit = {},
-    onLoadRemotePlaylist: (PlaylistUiModel) -> Unit = {},
-    onLoadMoreRemotePlaylist: () -> Unit = {},
-    onPlayRemotePlaylist: () -> Unit = {},
-    onPlayRemotePlaylistFrom: (String) -> Unit = {},
-    onDownloadRemotePlaylist: (DownloadMediaType) -> Unit = {},
-    onCancelDownloadRemotePlaylist: (DownloadMediaType) -> Unit = {},
-    onCreateLocalPlaylistFromRemote: (String) -> Unit = {},
-    onLoadMoreRecommendations: () -> Unit = {},
-    onLoadMoreComments: () -> Unit = {},
-    onOpenCommentReplies: (String) -> Unit = {},
-    onDismissCommentReplies: () -> Unit = {},
-    onLoadMoreCommentReplies: () -> Unit = {},
-    onToggleFollowing: () -> Unit,
-    onResumeFromHistory: () -> Unit = {},
-    onCreatorFollowedChange: (String, Boolean) -> Unit,
-    onChooseDatabaseImport: () -> Unit,
-    onChooseNewPipeImport: () -> Unit = {},
-    onRetryDatabaseImport: (String) -> Unit,
-    onConfirmDatabaseImport: (DatabaseImportSelection) -> Unit,
-    onDismissDatabaseImport: () -> Unit,
-    onTrustUnverifiedSource: () -> Unit,
-    onRejectUnverifiedSource: () -> Unit,
-    onSwitchProfile: (String) -> Unit,
-    onCreateProfile: (String, String) -> Unit,
-    onVerifyProfilePin: (String, String) -> Boolean,
-    onRenameProfile: (String, String) -> Unit = { _, _ -> },
-    onSetProfileDeviceCredentialProtection: (String, Boolean) -> Unit = { _, _ -> },
-    onDeleteProfile: (String) -> Unit = {},
-    onDefaultPlaybackSpeedChange: (Float) -> Unit,
-    onPerChannelPlaybackSpeedChange: (Boolean) -> Unit,
-    onHoldToSpeedChange: (Boolean) -> Unit = {},
-    onSponsorBlockEnabledChange: (Boolean) -> Unit = {},
-    onSponsorBlockSkipNoticesEnabledChange: (Boolean) -> Unit = {},
-    onSponsorBlockCategoriesChange: (Set<SponsorBlockCategory>) -> Unit = {},
-    onChannelSponsorBlockOverrideChange: (String, SponsorBlockRule?) -> Unit = { _, _ -> },
-    onVideoSponsorBlockOverrideChange: (String, SponsorBlockRule?) -> Unit = { _, _ -> },
-    onPreferredVideoQualityChange: (Int) -> Unit,
-    onPreferredAudioBitrateChange: (Int) -> Unit,
-    onPreferredAudioLanguageChange: (String) -> Unit,
-    onPreferOriginalAudioChange: (Boolean) -> Unit,
-    onPreferNewPipeForYoutubePlaybackChange: (Boolean) -> Unit,
-    onSubscriptionFetchModeChange: (SubscriptionFetchMode) -> Unit,
-    onVideoTitleLanguageModeChange: (VideoTitleLanguageMode) -> Unit,
-    onStickyCaptionsChange: (Boolean) -> Unit,
-    onShowRecommendationsChange: (Boolean) -> Unit,
-    onSearchHistoryChange: (Boolean) -> Unit,
-    onCrashLoggingChange: (Boolean) -> Unit = {},
-    onKeepScreenAwakeChange: (Boolean) -> Unit,
-    onPictureInPictureChange: (Boolean) -> Unit = {},
-    onStartChromecastDiscovery: () -> Unit = {},
-    onConnectChromecast: (String) -> Unit = {},
-    onDisconnectChromecast: () -> Unit = {},
-    onOtherAudioDuckingChange: (Boolean) -> Unit = {},
-    onOtherAudioDuckVolumeChange: (Int) -> Unit = {},
-    onScanPcPairingQr: () -> Unit = {},
-    onRemovePairedComputer: (String) -> Unit = {},
-    onPlayFromComputer: (String) -> Unit = {},
-    onToggleComputerPlayback: (String) -> Unit = {},
-    onPreviousComputerPlayback: (String) -> Unit = {},
-    onNextComputerPlayback: (String) -> Unit = {},
-    onSeekComputerPlayback: (String, Long) -> Unit = { _, _ -> },
-    onExternalNavigationHandled: (Long) -> Unit = {},
-    onCheckForUpdates: () -> Unit = {},
-    onInstallUpdate: (ReleaseUpdateUiModel) -> Unit = {},
     updateDownload: UpdateDownloadUiModel? = null,
-    onCancelUpdateDownload: () -> Unit = {},
-    onHydrateVideoMetadata: (String) -> Unit = {},
-    onHydrateChannelArtwork: (String) -> Unit = {},
-    onBrainrotShortsChange: (Boolean) -> Unit = {},
-    onRebuildContentCaches: () -> Unit = {},
     deviceIsLandscape: Boolean = false,
     pictureInPictureMode: Boolean = false,
-    onFullscreenPresentationChanged: (Boolean, Boolean) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val displayClock = rememberDisplayClock()
@@ -643,13 +549,9 @@ fun GrayjayApp(
     }
     val shortsVideoIds = remember(shortsVideos) { shortsVideos.mapTo(hashSetOf(), VideoUiModel::id) }
     var fullscreenEnteredByRotation by rememberSaveable { mutableStateOf(false) }
-    var actionVideoId by rememberSaveable { mutableStateOf<String?>(null) }
-    var actionIsRemotePlaylistVideo by rememberSaveable { mutableStateOf(false) }
-    var actionIsQueueVideo by rememberSaveable { mutableStateOf(false) }
-    var actionCanAddToQueue by rememberSaveable { mutableStateOf(false) }
-    var playlistPickerVideoIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
-    var profileDialogVisible by rememberSaveable { mutableStateOf(false) }
-    var chromecastSheetVisible by rememberSaveable { mutableStateOf(false) }
+    val transientUi = rememberSaveable(saver = GrayjayTransientUiStateSaver) {
+        GrayjayTransientUiState()
+    }
     val selected = GrayjayDestination.valueOf(destinationName)
     // Player-transition progress changes every frame. Building a combined list and linearly
     // searching it for every item in a large imported playlist made collapsing an 800-item queue
@@ -745,7 +647,7 @@ fun GrayjayApp(
                     browseHistory = emptyList()
                     nestedBackDestinationName = null
                 } else if (uiState.remotePlaylistDetail.playlist?.id != playlist.id) {
-                    onLoadRemotePlaylist(playlist)
+                    actions.onLoadRemotePlaylist(playlist)
                 }
             }
         }
@@ -813,8 +715,8 @@ fun GrayjayApp(
             onSelect(GrayjayDestination.Home)
             visitedPlaylists.clear()
             libraryFilterName = LibraryFilter.History.name
-            actionVideoId = null
-            playlistPickerVideoIds = emptyList()
+            transientUi.actionVideoId = null
+            transientUi.playlistPickerVideoIds = emptyList()
         }
     }
     val onVideoClick: (VideoUiModel) -> Unit = {
@@ -823,23 +725,23 @@ fun GrayjayApp(
             selected == GrayjayDestination.Home && uiState.home.selectedFeed == HomeFeedType.Shorts &&
             selectedChannelId == null && selectedPlaylistId == null && !uiState.chromecast.isConnected
         if (shortsModeActive) { isFullscreen = true; fullscreenEnteredByRotation = false }
-        onOpenVideo(it.id)
+        actions.onOpenVideo(it.id)
         if (it.isAvailable && it.scheduledStartAtMs <= System.currentTimeMillis()) {
             settlePlayer(0f, it.id)
         }
     }
     val onVideoLongClick: (VideoUiModel) -> Unit = {
-        actionIsRemotePlaylistVideo = false
-        actionIsQueueVideo = false
-        actionCanAddToQueue = false
-        actionVideoId = it.id
+        transientUi.actionIsRemotePlaylistVideo = false
+        transientUi.actionIsQueueVideo = false
+        transientUi.actionCanAddToQueue = false
+        transientUi.actionVideoId = it.id
     }
     val onChannelClick: (ChannelUiModel) -> Unit = {
         if (selectedChannelId != it.id || selectedVideoId != null) rememberBrowseOrigin()
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         searchAutoFocusRequested = false
-        onLoadChannel(it)
+        actions.onLoadChannel(it)
         selectedChannelId = it.id
         selectedPlaylistId = null
         selectedVideoId = null
@@ -878,7 +780,7 @@ fun GrayjayApp(
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         searchAutoFocusRequested = false
-        if (it.sourceId.isNotBlank()) onLoadRemotePlaylist(it)
+        if (it.sourceId.isNotBlank()) actions.onLoadRemotePlaylist(it)
         if (it.sourceId.isBlank()) {
             destinationName = GrayjayDestination.Library.name
             libraryFilterName = LibraryFilter.Playlists.name
@@ -921,7 +823,7 @@ fun GrayjayApp(
                 snapPlayerTransition(1f)
             }
         }
-        onExternalNavigationHandled(request.requestId)
+        actions.onExternalNavigationHandled(request.requestId)
     }
     LaunchedEffect(uiState.videoOpenDialog?.videoId) {
         val dialog = uiState.videoOpenDialog ?: return@LaunchedEffect
@@ -931,7 +833,7 @@ fun GrayjayApp(
     }
     LaunchedEffect(selected) {
         if (RELEASE_UPDATE_CHECK_ENABLED && selected == GrayjayDestination.Home) {
-            onCheckForUpdates()
+            actions.onCheckForUpdates()
         }
     }
     val onNavigateBack: () -> Unit = {
@@ -949,11 +851,11 @@ fun GrayjayApp(
             selectedVideoId = route.videoId?.takeIf { it == playbackVideo?.id }
             snapPlayerTransition(if (selectedVideoId == null) 1f else 0f)
             route.channelId?.let { id ->
-                uiState.channels.firstOrNull { it.id == id }?.let(onLoadChannel)
+                uiState.channels.firstOrNull { it.id == id }?.let(actions.onLoadChannel)
             }
             route.playlistId?.let { id -> visitedPlaylists[id] }
                 ?.takeIf { it.sourceId.isNotBlank() }
-                ?.let(onLoadRemotePlaylist)
+                ?.let(actions.onLoadRemotePlaylist)
             nestedBackDestinationName = null
         } else if (selectedChannelId != null) {
             selectedChannelId = null
@@ -992,7 +894,7 @@ fun GrayjayApp(
     val playback = PlaybackPresentation(
         activeProfileId = uiState.activeProfileId,
         uiLanguageTag = uiLanguageTag,
-        onUiLanguageChange = onUiLanguageChange,
+        onUiLanguageChange = actions.onUiLanguageChange,
         video = playbackVideo,
         queue = queueVideos,
         nowPlaying = uiState.nowPlaying,
@@ -1033,19 +935,19 @@ fun GrayjayApp(
         onTransitionRelease = { target ->
             settlePlayer(target, selectedVideoId ?: playbackVideo?.id)
         },
-        onToggle = onTogglePlayback,
-        onNext = onSkipToNext,
-        onPrevious = onSkipToPrevious,
-        onSeekBy = onSeekPlaybackBy,
-        onSpeedChange = onPlaybackSpeedChange,
-        onSpeedHoldStart = onSpeedHoldStart,
-        onSpeedHoldEnd = onSpeedHoldEnd,
-        onUseChannelSpeed = onUseChannelPlaybackSpeed,
-        onChannelSpeedChange = onChannelPlaybackSpeedChange,
-        onQualityChange = onVideoQualityChange,
-        onAudioLanguageChange = onAudioLanguageChange,
-        onCaptionsEnabledChange = onCaptionsEnabledChange,
-        onSubtitleLanguageChange = onSubtitleLanguageChange,
+        onToggle = actions.onTogglePlayback,
+        onNext = actions.onSkipToNext,
+        onPrevious = actions.onSkipToPrevious,
+        onSeekBy = actions.onSeekPlaybackBy,
+        onSpeedChange = actions.onPlaybackSpeedChange,
+        onSpeedHoldStart = actions.onSpeedHoldStart,
+        onSpeedHoldEnd = actions.onSpeedHoldEnd,
+        onUseChannelSpeed = actions.onUseChannelPlaybackSpeed,
+        onChannelSpeedChange = actions.onChannelPlaybackSpeedChange,
+        onQualityChange = actions.onVideoQualityChange,
+        onAudioLanguageChange = actions.onAudioLanguageChange,
+        onCaptionsEnabledChange = actions.onCaptionsEnabledChange,
+        onSubtitleLanguageChange = actions.onSubtitleLanguageChange,
         onEnterFullscreen = {
             fullscreenEnteredByRotation = false
             isFullscreen = true
@@ -1055,93 +957,93 @@ fun GrayjayApp(
             fullscreenEnteredByRotation = false
             isFullscreen = false
         },
-        onRetry = onRetryPlayback,
-        onStoryboardLoadFailure = onStoryboardLoadFailure,
-        onToggleFollowing = onToggleFollowing,
-        onCreatorFollowedChange = onCreatorFollowedChange,
-        onLoadChannel = onLoadChannel,
-        onChannelTabSelected = onChannelTabSelected,
-        onLoadMoreChannel = onLoadMoreChannel,
-        onChannelSearchQueryChange = onChannelSearchQueryChange,
-        onLoadMoreChannelSearch = onLoadMoreChannelSearch,
-        onLoadFollowingComplete = onLoadFollowingComplete,
-        onLoadRemotePlaylist = onLoadRemotePlaylist,
-        onLoadMoreRemotePlaylist = onLoadMoreRemotePlaylist,
+        onRetry = actions.onRetryPlayback,
+        onStoryboardLoadFailure = actions.onStoryboardLoadFailure,
+        onToggleFollowing = actions.onToggleFollowing,
+        onCreatorFollowedChange = actions.onCreatorFollowedChange,
+        onLoadChannel = actions.onLoadChannel,
+        onChannelTabSelected = actions.onChannelTabSelected,
+        onLoadMoreChannel = actions.onLoadMoreChannel,
+        onChannelSearchQueryChange = actions.onChannelSearchQueryChange,
+        onLoadMoreChannelSearch = actions.onLoadMoreChannelSearch,
+        onLoadFollowingComplete = actions.onLoadFollowingComplete,
+        onLoadRemotePlaylist = actions.onLoadRemotePlaylist,
+        onLoadMoreRemotePlaylist = actions.onLoadMoreRemotePlaylist,
         onPlayRemotePlaylist = {
-            onPlayRemotePlaylist()
+            actions.onPlayRemotePlaylist()
             uiState.remotePlaylistDetail.videos.firstOrNull()?.let { first ->
                 settlePlayer(0f, first.id)
             }
         },
         onPlayRemotePlaylistFrom = { videoId ->
-            onPlayRemotePlaylistFrom(videoId)
+            actions.onPlayRemotePlaylistFrom(videoId)
             settlePlayer(0f, videoId)
         },
-        onDownloadRemotePlaylist = onDownloadRemotePlaylist,
-        onCancelDownloadRemotePlaylist = onCancelDownloadRemotePlaylist,
-        onCreateLocalPlaylistFromRemote = onCreateLocalPlaylistFromRemote,
-        onLoadMoreRecommendations = onLoadMoreRecommendations,
-        onLoadMoreComments = onLoadMoreComments,
-        onOpenCommentReplies = onOpenCommentReplies,
-        onDismissCommentReplies = onDismissCommentReplies,
-        onLoadMoreCommentReplies = onLoadMoreCommentReplies,
+        onDownloadRemotePlaylist = actions.onDownloadRemotePlaylist,
+        onCancelDownloadRemotePlaylist = actions.onCancelDownloadRemotePlaylist,
+        onCreateLocalPlaylistFromRemote = actions.onCreateLocalPlaylistFromRemote,
+        onLoadMoreRecommendations = actions.onLoadMoreRecommendations,
+        onLoadMoreComments = actions.onLoadMoreComments,
+        onOpenCommentReplies = actions.onOpenCommentReplies,
+        onDismissCommentReplies = actions.onDismissCommentReplies,
+        onLoadMoreCommentReplies = actions.onLoadMoreCommentReplies,
         onClose = {
             restorePlaybackPlaylistDestination()
             snapPlayerTransition(1f)
             selectedVideoId = null
-            onClosePlayback()
+            actions.onClosePlayback()
         },
         onPlayQueue = { queueIds ->
             if (queueIds.isNotEmpty()) {
-                onPlayQueue(queueIds)
+                actions.onPlayQueue(queueIds)
                 settlePlayer(0f, queueIds.first())
             }
         },
-        onQueueVideos = onQueueVideos,
-        onPlayNext = onPlayNext,
+        onQueueVideos = actions.onQueueVideos,
+        onPlayNext = actions.onPlayNext,
         onPlayPlaylist = { playlistId ->
             val playlist = uiState.playlists.firstOrNull { it.id == playlistId }
             if (playlist != null && playlist.videoIds.isNotEmpty()) {
-                onPlayPlaylist(playlistId)
+                actions.onPlayPlaylist(playlistId)
                 settlePlayer(0f, playlist.videoIds.first())
             }
         },
         onPlayPlaylistFrom = { playlistId, videoId ->
             val playlist = uiState.playlists.firstOrNull { it.id == playlistId }
             if (playlist != null && videoId in playlist.videoIds) {
-                onPlayPlaylistFrom(playlistId, videoId)
+                actions.onPlayPlaylistFrom(playlistId, videoId)
                 settlePlayer(0f, videoId)
             }
         },
-        onToggleWatchLater = onToggleWatchLater,
-        onToggleDownloaded = onToggleDownloaded,
-        onToggleAudioDownloaded = onToggleAudioDownloaded,
-        onDownloadVideo = onDownloadVideo,
-        onDownloadAudio = onDownloadAudio,
-        onDownloadVideos = onDownloadVideos,
-        onDownloadPlaylist = onDownloadPlaylist,
-        onCancelDownloadPlaylist = onCancelDownloadPlaylist,
+        onToggleWatchLater = actions.onToggleWatchLater,
+        onToggleDownloaded = actions.onToggleDownloaded,
+        onToggleAudioDownloaded = actions.onToggleAudioDownloaded,
+        onDownloadVideo = actions.onDownloadVideo,
+        onDownloadAudio = actions.onDownloadAudio,
+        onDownloadVideos = actions.onDownloadVideos,
+        onDownloadPlaylist = actions.onDownloadPlaylist,
+        onCancelDownloadPlaylist = actions.onCancelDownloadPlaylist,
         onVideoLongClick = onVideoLongClick,
         onQueueVideoLongClick = { queuedVideo ->
-            actionIsRemotePlaylistVideo = false
-            actionIsQueueVideo = true
-            actionVideoId = queuedVideo.id
+            transientUi.actionIsRemotePlaylistVideo = false
+            transientUi.actionIsQueueVideo = true
+            transientUi.actionVideoId = queuedVideo.id
         },
-        onAddSelectionToPlaylist = { playlistPickerVideoIds = it },
-        onRemoveSelectionFromHistory = onRemoveVideosFromHistory,
-        onRemoveDownloads = onRemoveDownloads,
-        onRemovePlaylists = onRemovePlaylists,
-        onExportDownloads = onExportDownloads,
-        onRenamePlaylist = onRenamePlaylist,
+        onAddSelectionToPlaylist = { transientUi.playlistPickerVideoIds = it },
+        onRemoveSelectionFromHistory = actions.onRemoveVideosFromHistory,
+        onRemoveDownloads = actions.onRemoveDownloads,
+        onRemovePlaylists = actions.onRemovePlaylists,
+        onExportDownloads = actions.onExportDownloads,
+        onRenamePlaylist = actions.onRenamePlaylist,
         libraryFilter = LibraryFilter.valueOf(libraryFilterName),
         onLibraryFilterChange = { libraryFilterName = it.name },
         libraryPlaylistListState = libraryPlaylistListState,
-        onRemoveVideosFromPlaylist = onRemoveVideosFromPlaylist,
-        onReorderPlaylist = onReorderPlaylist,
-        onSeek = onSeekPlayback,
-        onResumeFromHistory = onResumeFromHistory,
+        onRemoveVideosFromPlaylist = actions.onRemoveVideosFromPlaylist,
+        onReorderPlaylist = actions.onReorderPlaylist,
+        onSeek = actions.onSeekPlayback,
+        onResumeFromHistory = actions.onResumeFromHistory,
         libraryVideos = uiState.libraryVideos,
-        onOpenProfiles = { profileDialogVisible = true },
+        onOpenProfiles = { transientUi.profileDialogVisible = true },
         defaultPlaybackSpeed = uiState.defaultPlaybackSpeed,
         perChannelPlaybackSpeedEnabled = uiState.perChannelPlaybackSpeedEnabled,
         holdToSpeedEnabled = uiState.holdToSpeedEnabled,
@@ -1170,47 +1072,47 @@ fun GrayjayApp(
         themeMode = uiState.themeMode,
         showPrivateThemeToggle = uiState.activeProfileId == "private",
         isDarkTheme = isDarkTheme,
-        onDarkThemeChange = onDarkThemeChange,
-        onDefaultPlaybackSpeedChange = onDefaultPlaybackSpeedChange,
-        onPerChannelPlaybackSpeedChange = onPerChannelPlaybackSpeedChange,
-        onHoldToSpeedChange = onHoldToSpeedChange,
-        onSponsorBlockEnabledChange = onSponsorBlockEnabledChange,
-        onSponsorBlockSkipNoticesEnabledChange = onSponsorBlockSkipNoticesEnabledChange,
-        onSponsorBlockCategoriesChange = onSponsorBlockCategoriesChange,
-        onChannelSponsorBlockOverrideChange = onChannelSponsorBlockOverrideChange,
-        onVideoSponsorBlockOverrideChange = onVideoSponsorBlockOverrideChange,
-        onPreferredVideoQualityChange = onPreferredVideoQualityChange,
-        onPreferredAudioBitrateChange = onPreferredAudioBitrateChange,
-        onPreferredAudioLanguageChange = onPreferredAudioLanguageChange,
-        onPreferOriginalAudioChange = onPreferOriginalAudioChange,
-        onPreferNewPipeForYoutubePlaybackChange = onPreferNewPipeForYoutubePlaybackChange,
-        onSubscriptionFetchModeChange = onSubscriptionFetchModeChange,
-        onVideoTitleLanguageModeChange = onVideoTitleLanguageModeChange,
-        onStickyCaptionsChange = onStickyCaptionsChange,
-        onShowRecommendationsChange = onShowRecommendationsChange,
-        onSearchHistoryChange = onSearchHistoryChange,
-        onCrashLoggingChange = onCrashLoggingChange,
-        onKeepScreenAwakeChange = onKeepScreenAwakeChange,
-        onPictureInPictureChange = onPictureInPictureChange,
-        onOtherAudioDuckingChange = onOtherAudioDuckingChange,
-        onOtherAudioDuckVolumeChange = onOtherAudioDuckVolumeChange,
+        onDarkThemeChange = actions.onDarkThemeChange,
+        onDefaultPlaybackSpeedChange = actions.onDefaultPlaybackSpeedChange,
+        onPerChannelPlaybackSpeedChange = actions.onPerChannelPlaybackSpeedChange,
+        onHoldToSpeedChange = actions.onHoldToSpeedChange,
+        onSponsorBlockEnabledChange = actions.onSponsorBlockEnabledChange,
+        onSponsorBlockSkipNoticesEnabledChange = actions.onSponsorBlockSkipNoticesEnabledChange,
+        onSponsorBlockCategoriesChange = actions.onSponsorBlockCategoriesChange,
+        onChannelSponsorBlockOverrideChange = actions.onChannelSponsorBlockOverrideChange,
+        onVideoSponsorBlockOverrideChange = actions.onVideoSponsorBlockOverrideChange,
+        onPreferredVideoQualityChange = actions.onPreferredVideoQualityChange,
+        onPreferredAudioBitrateChange = actions.onPreferredAudioBitrateChange,
+        onPreferredAudioLanguageChange = actions.onPreferredAudioLanguageChange,
+        onPreferOriginalAudioChange = actions.onPreferOriginalAudioChange,
+        onPreferNewPipeForYoutubePlaybackChange = actions.onPreferNewPipeForYoutubePlaybackChange,
+        onSubscriptionFetchModeChange = actions.onSubscriptionFetchModeChange,
+        onVideoTitleLanguageModeChange = actions.onVideoTitleLanguageModeChange,
+        onStickyCaptionsChange = actions.onStickyCaptionsChange,
+        onShowRecommendationsChange = actions.onShowRecommendationsChange,
+        onSearchHistoryChange = actions.onSearchHistoryChange,
+        onCrashLoggingChange = actions.onCrashLoggingChange,
+        onKeepScreenAwakeChange = actions.onKeepScreenAwakeChange,
+        onPictureInPictureChange = actions.onPictureInPictureChange,
+        onOtherAudioDuckingChange = actions.onOtherAudioDuckingChange,
+        onOtherAudioDuckVolumeChange = actions.onOtherAudioDuckVolumeChange,
         pcLink = uiState.pcLink,
-        onScanPcPairingQr = onScanPcPairingQr,
-        onRemovePairedComputer = onRemovePairedComputer,
-        onPlayFromComputer = onPlayFromComputer,
-        onToggleComputerPlayback = onToggleComputerPlayback,
-        onPreviousComputerPlayback = onPreviousComputerPlayback,
-        onNextComputerPlayback = onNextComputerPlayback,
-        onSeekComputerPlayback = onSeekComputerPlayback,
-        onInstallUpdate = onInstallUpdate,
+        onScanPcPairingQr = actions.onScanPcPairingQr,
+        onRemovePairedComputer = actions.onRemovePairedComputer,
+        onPlayFromComputer = actions.onPlayFromComputer,
+        onToggleComputerPlayback = actions.onToggleComputerPlayback,
+        onPreviousComputerPlayback = actions.onPreviousComputerPlayback,
+        onNextComputerPlayback = actions.onNextComputerPlayback,
+        onSeekComputerPlayback = actions.onSeekComputerPlayback,
+        onInstallUpdate = actions.onInstallUpdate,
         updateDownload = updateDownload,
-        onCancelUpdateDownload = onCancelUpdateDownload,
-        onHydrateVideoMetadata = onHydrateVideoMetadata,
-        onThemeModeChange = onThemeModeChange,
+        onCancelUpdateDownload = actions.onCancelUpdateDownload,
+        onHydrateVideoMetadata = actions.onHydrateVideoMetadata,
+        onThemeModeChange = actions.onThemeModeChange,
         chromecast = uiState.chromecast,
         onOpenChromecast = {
-            chromecastSheetVisible = true
-            onStartChromecastDiscovery()
+            transientUi.chromecastSheetVisible = true
+            actions.onStartChromecastDiscovery()
         },
     )
 
@@ -1232,7 +1134,7 @@ fun GrayjayApp(
             selectedVideoId = playbackVideo.id
             fullscreenEnteredByRotation = false
             isFullscreen = false
-            onFullscreenPresentationChanged(false, false)
+            actions.onFullscreenPresentationChanged(false, false)
         }
     }
     if (pictureInPictureMode && playbackVideo != null) {
@@ -1245,16 +1147,16 @@ fun GrayjayApp(
             isFullscreen = false,
             canGoPrevious = queueIndex > 0 || player.currentPosition > 5_000L,
             canGoNext = queueIndex >= 0 && queueIndex < uiState.playback.queueVideoIds.lastIndex,
-            onTogglePlayback = onTogglePlayback,
-            onSkipPrevious = onSkipToPrevious,
-            onSkipNext = onSkipToNext,
-            onSeekBy = onSeekPlaybackBy,
-            onSeek = onSeekPlayback,
-            onSpeedChange = onPlaybackSpeedChange,
-            onQualityChange = onVideoQualityChange,
-            onCaptionsEnabledChange = onCaptionsEnabledChange,
-            onSubtitleLanguageChange = onSubtitleLanguageChange,
-            onRetryPlayback = onRetryPlayback,
+            onTogglePlayback = actions.onTogglePlayback,
+            onSkipPrevious = actions.onSkipToPrevious,
+            onSkipNext = actions.onSkipToNext,
+            onSeekBy = actions.onSeekPlaybackBy,
+            onSeek = actions.onSeekPlayback,
+            onSpeedChange = actions.onPlaybackSpeedChange,
+            onQualityChange = actions.onVideoQualityChange,
+            onCaptionsEnabledChange = actions.onCaptionsEnabledChange,
+            onSubtitleLanguageChange = actions.onSubtitleLanguageChange,
+            onRetryPlayback = actions.onRetryPlayback,
             onFullscreen = {},
             controlsAlpha = 0f,
             modifier = Modifier.fillMaxSize(),
@@ -1264,35 +1166,35 @@ fun GrayjayApp(
     val sources = SourcePresentation(
         sources = remember(uiState.sources) { visibleSourcesForQuery(uiState.sources, "") },
         filterSelections = uiState.sourceFilterSelections,
-        onFilterSelectionChange = onSourceFilterSelectionChange,
+        onFilterSelectionChange = actions.onSourceFilterSelectionChange,
         home = uiState.home,
-        onHomeFeedSelected = onHomeFeedSelected,
-        onHomeBrowseTabSelected = onHomeBrowseTabSelected,
-        onHomeBrowseOptionSelected = onHomeBrowseOptionSelected,
-        onRefreshHome = onRefreshHome,
-        onLoadMoreHome = onLoadMoreHome,
-        onEnabledChange = onSourceEnabledChange,
+        onHomeFeedSelected = actions.onHomeFeedSelected,
+        onHomeBrowseTabSelected = actions.onHomeBrowseTabSelected,
+        onHomeBrowseOptionSelected = actions.onHomeBrowseOptionSelected,
+        onRefreshHome = actions.onRefreshHome,
+        onLoadMoreHome = actions.onLoadMoreHome,
+        onEnabledChange = actions.onSourceEnabledChange,
         isOperationInProgress = uiState.sourceOperationInProgress,
         operationMessage = uiState.sourceOperationMessage,
-        onInstall = onInstallSource,
-        onScanQr = onScanSourceQr,
-        onRefresh = onRefreshSource,
-        onClearCache = onClearSourceCache,
-        onRemove = onRemoveSource,
-        onLogin = onLoginSource,
-        onLogout = onLogoutSource,
+        onInstall = actions.onInstallSource,
+        onScanQr = actions.onScanSourceQr,
+        onRefresh = actions.onRefreshSource,
+        onClearCache = actions.onClearSourceCache,
+        onRemove = actions.onRemoveSource,
+        onLogin = actions.onLoginSource,
+        onLogout = actions.onLogoutSource,
         youtubeImport = uiState.youtubeImport,
-        onImportYoutube = onImportYoutube,
-        onDismissYoutubeImport = onDismissYoutubeImport,
+        onImportYoutube = actions.onImportYoutube,
+        onDismissYoutubeImport = actions.onDismissYoutubeImport,
         search = uiState.search,
-        onSearchQueryChange = onSearchQueryChange,
-        onSearchSubmit = onSearchSubmit,
-        onLoadMoreSearch = onLoadMoreSearch,
+        onSearchQueryChange = actions.onSearchQueryChange,
+        onSearchSubmit = actions.onSearchSubmit,
+        onLoadMoreSearch = actions.onLoadMoreSearch,
         onSearchVideoLongClick = { video ->
-            actionIsRemotePlaylistVideo = false
-            actionIsQueueVideo = false
-            actionCanAddToQueue = true
-            actionVideoId = video.id
+            transientUi.actionIsRemotePlaylistVideo = false
+            transientUi.actionIsQueueVideo = false
+            transientUi.actionCanAddToQueue = true
+            transientUi.actionVideoId = video.id
         },
         searchAutoFocusRequested = searchAutoFocusRequested,
         onSearchAutoFocusConsumed = { searchAutoFocusRequested = false },
@@ -1314,7 +1216,7 @@ fun GrayjayApp(
         heightDp = currentConfiguration.screenHeightDp,
     )
     LaunchedEffect(isFullscreen, portraitFullscreen) {
-        onFullscreenPresentationChanged(isFullscreen, portraitFullscreen)
+        actions.onFullscreenPresentationChanged(isFullscreen, portraitFullscreen)
     }
     LaunchedEffect(
         deviceIsLandscape,
@@ -1446,7 +1348,7 @@ fun GrayjayApp(
                 videos = shortsVideos, activeVideoId = fullscreenVideo.id, player = playback.player,
                 onVideoSelected = onVideoClick,
                 hasMore = uiState.home.hasMore && !uiState.home.isLoadingMore && !uiState.home.isLoading,
-                onLoadMore = onLoadMoreHome,
+                onLoadMore = actions.onLoadMoreHome,
                 content = fullscreenContent,
             )
         } else fullscreenContent()
@@ -1464,10 +1366,10 @@ fun GrayjayApp(
         LocalPageStateHolder provides pageStateHolder,
         LocalVideoCreatorClick provides onVideoCreatorClick,
         LocalChannelArtworkIndex provides channelArtworkIndex,
-        LocalChannelArtworkRequest provides onHydrateChannelArtwork,
+        LocalChannelArtworkRequest provides actions.onHydrateChannelArtwork,
         LocalDisplayClock provides displayClock,
         com.futo.platformplayer.compose.ui.screens.LocalExtraPreferences provides com.futo.platformplayer.compose.ui.screens.ExtraPreferences(
-            uiState.brainrotShortsEnabled, onBrainrotShortsChange, uiState.rebuildingCaches, onRebuildContentCaches,
+            uiState.brainrotShortsEnabled, actions.onBrainrotShortsChange, uiState.rebuildingCaches, actions.onRebuildContentCaches,
         ),
     ) {
         val navigationVideos = remember(uiState.videos, uiState.subscriptionVideos) {
@@ -1490,19 +1392,19 @@ fun GrayjayApp(
                 onChannelClick = onChannelClick,
                 onPlaylistClick = onPlaylistClick,
                 onRemotePlaylistVideoLongClick = { video ->
-                    actionIsRemotePlaylistVideo = true
-                    actionIsQueueVideo = false
-                    actionVideoId = video.id
+                    transientUi.actionIsRemotePlaylistVideo = true
+                    transientUi.actionIsQueueVideo = false
+                    transientUi.actionVideoId = video.id
                 },
                 onVideoBack = onNavigateBack,
                 nestedBackEnabled = nestedBackDestinationName != null,
                 onManageSources = onManageSources,
                 dynamicColorsEnabled = uiState.dynamicColorsEnabled,
-                onDynamicColorsChange = onDynamicColorsChange,
+                onDynamicColorsChange = actions.onDynamicColorsChange,
                 privateSessionEnabled = uiState.privateSessionEnabled,
-                onPrivateSessionChange = onPrivateSessionChange,
-                onImportDatabase = onChooseDatabaseImport,
-                onImportNewPipeDatabase = onChooseNewPipeImport,
+                onPrivateSessionChange = actions.onPrivateSessionChange,
+                onImportDatabase = actions.onChooseDatabaseImport,
+                onImportNewPipeDatabase = actions.onChooseNewPipeImport,
                 videos = navigationVideos,
                 channels = uiState.channels,
                 playlists = uiState.playlists,
@@ -1519,19 +1421,19 @@ fun GrayjayApp(
                 onChannelClick = onChannelClick,
                 onPlaylistClick = onPlaylistClick,
                 onRemotePlaylistVideoLongClick = { video ->
-                    actionIsRemotePlaylistVideo = true
-                    actionIsQueueVideo = false
-                    actionVideoId = video.id
+                    transientUi.actionIsRemotePlaylistVideo = true
+                    transientUi.actionIsQueueVideo = false
+                    transientUi.actionVideoId = video.id
                 },
                 onVideoBack = onNavigateBack,
                 nestedBackEnabled = nestedBackDestinationName != null,
                 onManageSources = onManageSources,
                 dynamicColorsEnabled = uiState.dynamicColorsEnabled,
-                onDynamicColorsChange = onDynamicColorsChange,
+                onDynamicColorsChange = actions.onDynamicColorsChange,
                 privateSessionEnabled = uiState.privateSessionEnabled,
-                onPrivateSessionChange = onPrivateSessionChange,
-                onImportDatabase = onChooseDatabaseImport,
-                onImportNewPipeDatabase = onChooseNewPipeImport,
+                onPrivateSessionChange = actions.onPrivateSessionChange,
+                onImportDatabase = actions.onChooseDatabaseImport,
+                onImportNewPipeDatabase = actions.onChooseNewPipeImport,
                 videos = navigationVideos,
                 channels = uiState.channels,
                 playlists = uiState.playlists,
@@ -1548,19 +1450,19 @@ fun GrayjayApp(
                 onChannelClick = onChannelClick,
                 onPlaylistClick = onPlaylistClick,
                 onRemotePlaylistVideoLongClick = { video ->
-                    actionIsRemotePlaylistVideo = true
-                    actionIsQueueVideo = false
-                    actionVideoId = video.id
+                    transientUi.actionIsRemotePlaylistVideo = true
+                    transientUi.actionIsQueueVideo = false
+                    transientUi.actionVideoId = video.id
                 },
                 onVideoBack = onNavigateBack,
                 nestedBackEnabled = nestedBackDestinationName != null,
                 onManageSources = onManageSources,
                 dynamicColorsEnabled = uiState.dynamicColorsEnabled,
-                onDynamicColorsChange = onDynamicColorsChange,
+                onDynamicColorsChange = actions.onDynamicColorsChange,
                 privateSessionEnabled = uiState.privateSessionEnabled,
-                onPrivateSessionChange = onPrivateSessionChange,
-                onImportDatabase = onChooseDatabaseImport,
-                onImportNewPipeDatabase = onChooseNewPipeImport,
+                onPrivateSessionChange = actions.onPrivateSessionChange,
+                onImportDatabase = actions.onChooseDatabaseImport,
+                onImportNewPipeDatabase = actions.onChooseNewPipeImport,
                 videos = navigationVideos,
                 channels = uiState.channels,
                 playlists = uiState.playlists,
@@ -1584,18 +1486,18 @@ fun GrayjayApp(
     }
     }
 
-    actionVideoId?.let(availableVideosById::get)?.let { video ->
+    transientUi.actionVideoId?.let(availableVideosById::get)?.let { video ->
         VideoActionsSheet(
             video = video,
             download = uiState.downloads[video.id],
             onDismiss = {
-                actionVideoId = null
-                actionIsRemotePlaylistVideo = false
-                actionIsQueueVideo = false
-                actionCanAddToQueue = false
+                transientUi.actionVideoId = null
+                transientUi.actionIsRemotePlaylistVideo = false
+                transientUi.actionIsQueueVideo = false
+                transientUi.actionCanAddToQueue = false
             },
-            onToggleDownload = { onToggleDownloaded(video.id) },
-            onDownloadAudio = { onToggleAudioDownloaded(video.id) },
+            onToggleDownload = { actions.onToggleDownloaded(video.id) },
+            onDownloadAudio = { actions.onToggleAudioDownloaded(video.id) },
             onShare = {
                 val shareUrl = video.shareUrl.ifBlank { video.contentUrl.ifBlank { video.id } }
                 context.startActivity(
@@ -1609,64 +1511,64 @@ fun GrayjayApp(
                     ),
                 )
             },
-            onAddToPlaylist = { playlistPickerVideoIds = listOf(video.id) },
-            onAddToQueue = if (actionCanAddToQueue) {
+            onAddToPlaylist = { transientUi.playlistPickerVideoIds = listOf(video.id) },
+            onAddToQueue = if (transientUi.actionCanAddToQueue) {
                 { playback.onQueueVideos(listOf(video.id)) }
             } else null,
-            onPlayNext = if (actionIsQueueVideo) {
+            onPlayNext = if (transientUi.actionIsQueueVideo) {
                 { playback.onPlayNext(video.id) }
             } else null,
-            onPlayFromHere = if (actionIsRemotePlaylistVideo) {
+            onPlayFromHere = if (transientUi.actionIsRemotePlaylistVideo) {
                 { playback.onPlayRemotePlaylistFrom(video.id) }
             } else null,
         )
     }
-    if (playlistPickerVideoIds.isNotEmpty()) {
+    if (transientUi.playlistPickerVideoIds.isNotEmpty()) {
         PlaylistPickerDialog(
             playlists = uiState.playlists,
-            videoIds = playlistPickerVideoIds,
-            onDismiss = { playlistPickerVideoIds = emptyList() },
-            onAdd = onAddVideosToPlaylist,
-            onCreate = onCreatePlaylist,
+            videoIds = transientUi.playlistPickerVideoIds,
+            onDismiss = { transientUi.playlistPickerVideoIds = emptyList() },
+            onAdd = actions.onAddVideosToPlaylist,
+            onCreate = actions.onCreatePlaylist,
         )
     }
     DatabaseImportDialogs(
         state = uiState.databaseImport,
-        onDismiss = onDismissDatabaseImport,
-        onPasswordSubmit = onRetryDatabaseImport,
-        onConfirm = onConfirmDatabaseImport,
+        onDismiss = actions.onDismissDatabaseImport,
+        onPasswordSubmit = actions.onRetryDatabaseImport,
+        onConfirm = actions.onConfirmDatabaseImport,
     )
     uiState.sourceTrustRequest?.let { request ->
         SourceTrustDialog(
             request = request,
-            onTrust = onTrustUnverifiedSource,
-            onReject = onRejectUnverifiedSource,
+            onTrust = actions.onTrustUnverifiedSource,
+            onReject = actions.onRejectUnverifiedSource,
         )
     }
     ProfileSwitcherDialogs(
         profiles = uiState.profiles,
         activeProfileId = uiState.activeProfileId,
-        visible = profileDialogVisible,
-        onDismiss = { profileDialogVisible = false },
-        onSwitch = onSwitchProfile,
-        onCreate = onCreateProfile,
-        onVerifyPin = onVerifyProfilePin,
-        onRename = onRenameProfile,
-        onSetDeviceCredentialProtection = onSetProfileDeviceCredentialProtection,
-        onDelete = onDeleteProfile,
+        visible = transientUi.profileDialogVisible,
+        onDismiss = { transientUi.profileDialogVisible = false },
+        onSwitch = actions.onSwitchProfile,
+        onCreate = actions.onCreateProfile,
+        onVerifyPin = actions.onVerifyProfilePin,
+        onRename = actions.onRenameProfile,
+        onSetDeviceCredentialProtection = actions.onSetProfileDeviceCredentialProtection,
+        onDelete = actions.onDeleteProfile,
         bypassProtection = BuildConfig.DEBUG && context.packageName.endsWith(".graytest"),
     )
-    if (chromecastSheetVisible) {
+    if (transientUi.chromecastSheetVisible) {
         ChromecastSheet(
             state = uiState.chromecast,
-            onConnect = onConnectChromecast,
-            onDisconnect = onDisconnectChromecast,
-            onDismiss = { chromecastSheetVisible = false },
+            onConnect = actions.onConnectChromecast,
+            onDisconnect = actions.onDisconnectChromecast,
+            onDismiss = { transientUi.chromecastSheetVisible = false },
         )
     }
     uiState.videoOpenDialog?.let { dialog ->
         AlertDialog(
-            onDismissRequest = onDismissVideoOpenDialog,
+            onDismissRequest = actions.onDismissVideoOpenDialog,
             title = {
                 Text(
                     stringResource(
@@ -1685,7 +1587,7 @@ fun GrayjayApp(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onDismissVideoOpenDialog) {
+                TextButton(onClick = actions.onDismissVideoOpenDialog) {
                     Text(stringResource(R.string.ok))
                 }
             },

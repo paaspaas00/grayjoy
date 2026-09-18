@@ -35,6 +35,7 @@ import androidx.compose.ui.test.swipe
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.futo.platformplayer.compose.ui.GrayjayApp
+import com.futo.platformplayer.compose.ui.GrayjayAppActions
 import com.futo.platformplayer.compose.ui.GrayjayUiState
 import com.futo.platformplayer.compose.ui.HomeUiState
 import com.futo.platformplayer.compose.ui.ExternalNavigationKind
@@ -99,129 +100,134 @@ class GrayjayAppTest {
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalDevicePerformanceProfile provides if (audit) DevicePerformanceProfile(false, false, true) else null,
             ) {
+                val appActions = androidx.compose.runtime.remember {
+                    GrayjayAppActions().apply {
+                        onDynamicColorsChange = {}
+                        onPreferNewPipeForYoutubePlaybackChange = {}
+                        onSubscriptionFetchModeChange = {}
+                        onVideoTitleLanguageModeChange = {}
+                        onPrivateSessionChange = { enabled ->
+                                                state.value = state.value.copy(privateSessionEnabled = enabled)
+                                            }
+                        onOpenVideo = ::openVideo
+                        onLoadChannel = { channelOpenRequests++ }
+                        onHomeFeedSelected = {}
+                        onRefreshHome = {}
+                        onPlayQueue = { ids -> ids.firstOrNull()?.let(::openVideo) }
+                        onQueueVideos = {}
+                        onPlayPlaylist = {}
+                        onPlayPlaylistFrom = { playlistId, videoId ->
+                                                state.value = state.value.copy(playbackPlaylist = state.value.playlists.firstOrNull { it.id == playlistId })
+                                                openVideo(videoId)
+                                            }
+                        onTogglePlayback = {}
+                        onSkipToNext = {}
+                        onSkipToPrevious = {}
+                        onSeekPlaybackBy = {}
+                        onPlaybackSpeedChange = {}
+                        onUseChannelPlaybackSpeed = {}
+                        onChannelPlaybackSpeedChange = { _, _ -> }
+                        onVideoQualityChange = {}
+                        onAudioLanguageChange = {}
+                        onCaptionsEnabledChange = {}
+                        onSubtitleLanguageChange = {}
+                        onRetryPlayback = {}
+                        onClosePlayback = {
+                                                state.value = state.value.copy(
+                                                    playback = PlaybackUiState(),
+                                                    nowPlaying = NowPlayingUiState(),
+                                                    playbackPlaylist = null,
+                                                )
+                                            }
+                        onToggleWatchLater = { id -> updateVideo(id) { it.copy(isWatchLater = !it.isWatchLater) } }
+                        onToggleDownloaded = { id -> updateVideo(id) { it.copy(isDownloaded = !it.isDownloaded) } }
+                        onToggleAudioDownloaded = {}
+                        onDownloadVideo = { _, _ -> }
+                        onDownloadAudio = { _, _ -> }
+                        onDownloadVideos = { _, _ -> }
+                        onDownloadPlaylist = { _, _ -> }
+                        onCreatePlaylist = { title, ids -> createPlaylist(title, ids) }
+                        onRenamePlaylist = { _, _ -> }
+                        onAddVideosToPlaylist = { playlistId, ids -> addToPlaylist(playlistId, ids) }
+                        onRemoveVideosFromPlaylist = { _, _ -> }
+                        onReorderPlaylist = { _, _ -> }
+                        onRemoveVideosFromHistory = {}
+                        onRemovePlaylists = { ids ->
+                                                state.value = state.value.copy(
+                                                    playlists = state.value.playlists.filterNot { it.id in ids },
+                                                )
+                                            }
+                        onSeekPlayback = {}
+                        onSourceEnabledChange = { id, enabled ->
+                                                state.value = state.value.copy(
+                                                    sources = state.value.sources.map {
+                                                        if (it.id == id) it.copy(isEnabled = enabled) else it
+                                                    },
+                                                )
+                                            }
+                        onInstallSource = { installedSourceUrl = it }
+                        onScanSourceQr = {}
+                        onRefreshSource = {}
+                        onClearSourceCache = {}
+                        onRemoveSource = {}
+                        onLoginSource = {}
+                        onLogoutSource = {}
+                        onImportYoutube = { _, _ -> }
+                        onDismissYoutubeImport = {}
+                        onSearchQueryChange = { query ->
+                                                state.value = state.value.copy(search = state.value.search.copy(query = query))
+                                            }
+                        onSearchSubmit = { query, type, _ ->
+                                                state.value = state.value.copy(
+                                                    search = SearchUiState(
+                                                        query = query,
+                                                        hasSearched = true,
+                                                        videos = state.value.videos.takeIf {
+                                                            type == com.futo.platformplayer.compose.ui.SearchContentType.Videos
+                                                        }.orEmpty(),
+                                                        channels = state.value.channels.takeIf {
+                                                            type == com.futo.platformplayer.compose.ui.SearchContentType.Creators
+                                                        }.orEmpty(),
+                                                        playlists = state.value.playlists.takeIf {
+                                                            type == com.futo.platformplayer.compose.ui.SearchContentType.Playlists
+                                                        }.orEmpty(),
+                                                    ),
+                                                )
+                                            }
+                        onToggleFollowing = {}
+                        onCreatorFollowedChange = { _, _ -> }
+                        onChooseDatabaseImport = { importPickerRequested = true }
+                        onChooseNewPipeImport = { newPipeImportPickerRequested = true }
+                        onRetryDatabaseImport = {}
+                        onConfirmDatabaseImport = { confirmedImport = it }
+                        onDismissDatabaseImport = {}
+                        onTrustUnverifiedSource = {
+                                                trustedUnverifiedSource = true
+                                                state.value = state.value.copy(sourceTrustRequest = null)
+                                            }
+                        onRejectUnverifiedSource = {
+                                                rejectedUnverifiedSource = true
+                                                state.value = state.value.copy(sourceTrustRequest = null)
+                                            }
+                        onSwitchProfile = {}
+                        onCreateProfile = { _, _ -> }
+                        onVerifyProfilePin = { _, _ -> true }
+                        onDefaultPlaybackSpeedChange = {}
+                        onPerChannelPlaybackSpeedChange = {}
+                        onPreferredVideoQualityChange = {}
+                        onPreferredAudioBitrateChange = {}
+                        onPreferredAudioLanguageChange = {}
+                        onPreferOriginalAudioChange = {}
+                        onStickyCaptionsChange = {}
+                        onShowRecommendationsChange = {}
+                        onSearchHistoryChange = {}
+                        onKeepScreenAwakeChange = {}
+                    }
+                }
                 GrayjayApp(
                     uiState = state.value,
                     player = player,
-                    onDynamicColorsChange = {},
-                    onPreferNewPipeForYoutubePlaybackChange = {},
-                    onSubscriptionFetchModeChange = {},
-                    onVideoTitleLanguageModeChange = {},
-                    onPrivateSessionChange = { enabled ->
-                        state.value = state.value.copy(privateSessionEnabled = enabled)
-                    },
-                    onOpenVideo = ::openVideo,
-                    onLoadChannel = { channelOpenRequests++ },
-                    onHomeFeedSelected = {},
-                    onRefreshHome = {},
-                    onPlayQueue = { ids -> ids.firstOrNull()?.let(::openVideo) },
-                    onQueueVideos = {},
-                    onPlayPlaylist = {},
-                    onPlayPlaylistFrom = { playlistId, videoId ->
-                        state.value = state.value.copy(playbackPlaylist = state.value.playlists.firstOrNull { it.id == playlistId })
-                        openVideo(videoId)
-                    },
-                    onTogglePlayback = {},
-                    onSkipToNext = {},
-                    onSkipToPrevious = {},
-                    onSeekPlaybackBy = {},
-                    onPlaybackSpeedChange = {},
-                    onUseChannelPlaybackSpeed = {},
-                    onChannelPlaybackSpeedChange = { _, _ -> },
-                    onVideoQualityChange = {},
-                    onAudioLanguageChange = {},
-                    onCaptionsEnabledChange = {},
-                    onSubtitleLanguageChange = {},
-                    onRetryPlayback = {},
-                    onClosePlayback = {
-                        state.value = state.value.copy(
-                            playback = PlaybackUiState(),
-                            nowPlaying = NowPlayingUiState(),
-                            playbackPlaylist = null,
-                        )
-                    },
-                    onToggleWatchLater = { id -> updateVideo(id) { it.copy(isWatchLater = !it.isWatchLater) } },
-                    onToggleDownloaded = { id -> updateVideo(id) { it.copy(isDownloaded = !it.isDownloaded) } },
-                    onToggleAudioDownloaded = {},
-                    onDownloadVideo = { _, _ -> },
-                    onDownloadAudio = { _, _ -> },
-                    onDownloadVideos = { _, _ -> },
-                    onDownloadPlaylist = { _, _ -> },
-                    onCreatePlaylist = { title, ids -> createPlaylist(title, ids) },
-                    onRenamePlaylist = { _, _ -> },
-                    onAddVideosToPlaylist = { playlistId, ids -> addToPlaylist(playlistId, ids) },
-                    onRemoveVideosFromPlaylist = { _, _ -> },
-                    onReorderPlaylist = { _, _ -> },
-                    onRemoveVideosFromHistory = {},
-                    onRemovePlaylists = { ids ->
-                        state.value = state.value.copy(
-                            playlists = state.value.playlists.filterNot { it.id in ids },
-                        )
-                    },
-                    onSeekPlayback = {},
-                    onSourceEnabledChange = { id, enabled ->
-                        state.value = state.value.copy(
-                            sources = state.value.sources.map {
-                                if (it.id == id) it.copy(isEnabled = enabled) else it
-                            },
-                        )
-                    },
-                    onInstallSource = { installedSourceUrl = it },
-                    onScanSourceQr = {},
-                    onRefreshSource = {},
-                    onClearSourceCache = {},
-                    onRemoveSource = {},
-                    onLoginSource = {},
-                    onLogoutSource = {},
-                    onImportYoutube = { _, _ -> },
-                    onDismissYoutubeImport = {},
-                    onSearchQueryChange = { query ->
-                        state.value = state.value.copy(search = state.value.search.copy(query = query))
-                    },
-                    onSearchSubmit = { query, type, _ ->
-                        state.value = state.value.copy(
-                            search = SearchUiState(
-                                query = query,
-                                hasSearched = true,
-                                videos = state.value.videos.takeIf {
-                                    type == com.futo.platformplayer.compose.ui.SearchContentType.Videos
-                                }.orEmpty(),
-                                channels = state.value.channels.takeIf {
-                                    type == com.futo.platformplayer.compose.ui.SearchContentType.Creators
-                                }.orEmpty(),
-                                playlists = state.value.playlists.takeIf {
-                                    type == com.futo.platformplayer.compose.ui.SearchContentType.Playlists
-                                }.orEmpty(),
-                            ),
-                        )
-                    },
-                    onToggleFollowing = {},
-                    onCreatorFollowedChange = { _, _ -> },
-                    onChooseDatabaseImport = { importPickerRequested = true },
-                    onChooseNewPipeImport = { newPipeImportPickerRequested = true },
-                    onRetryDatabaseImport = {},
-                    onConfirmDatabaseImport = { confirmedImport = it },
-                    onDismissDatabaseImport = {},
-                    onTrustUnverifiedSource = {
-                        trustedUnverifiedSource = true
-                        state.value = state.value.copy(sourceTrustRequest = null)
-                    },
-                    onRejectUnverifiedSource = {
-                        rejectedUnverifiedSource = true
-                        state.value = state.value.copy(sourceTrustRequest = null)
-                    },
-                    onSwitchProfile = {},
-                    onCreateProfile = { _, _ -> },
-                    onVerifyProfilePin = { _, _ -> true },
-                    onDefaultPlaybackSpeedChange = {},
-                    onPerChannelPlaybackSpeedChange = {},
-                    onPreferredVideoQualityChange = {},
-                    onPreferredAudioBitrateChange = {},
-                    onPreferredAudioLanguageChange = {},
-                    onPreferOriginalAudioChange = {},
-                    onStickyCaptionsChange = {},
-                    onShowRecommendationsChange = {},
-                    onSearchHistoryChange = {},
-                    onKeepScreenAwakeChange = {},
+                    actions = appActions,
                     pictureInPictureMode = pictureInPictureMode.value,
                 )
             }

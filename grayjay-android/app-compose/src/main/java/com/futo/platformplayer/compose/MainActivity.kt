@@ -37,6 +37,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentActivity
 import com.futo.platformplayer.compose.ui.GrayjayApp
+import com.futo.platformplayer.compose.ui.GrayjayAppActions
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadUiModel
@@ -239,90 +240,78 @@ class MainActivity : FragmentActivity() {
                     isAppearanceLightNavigationBars = !darkTheme
                 }
             }
-            GrayjayTheme(
-                darkTheme = darkTheme,
-                dynamicColor = uiState.dynamicColorsEnabled,
-            ) {
-                GrayjayApp(
-                    uiState = uiState,
-                    player = viewModel.player,
-                    uiLanguageTag = remember {
-                        AppLanguageManager.selectedLanguageTag(this@MainActivity)
-                    },
+            val appActions = remember(viewModel) {
+                GrayjayAppActions().apply {
                     onUiLanguageChange = { languageTag ->
                         if (languageTag != AppLanguageManager.selectedLanguageTag(this@MainActivity)) {
                             AppLanguageManager.setSelectedLanguageTag(this@MainActivity, languageTag)
                             viewModel.refreshVideoTitleLanguageConfiguration()
                             window.decorView.post { recreate() }
                         }
-                    },
-                    isDarkTheme = darkTheme,
-                    onDarkThemeChange = viewModel::setDarkThemeEnabled,
-                    onThemeModeChange = viewModel::setThemeMode,
-                    // Physical device rotation must never navigate or toggle Grayjoy fullscreen.
-                    // Fullscreen remains an explicit, app-local player action.
-                    deviceIsLandscape = false,
-                    onFullscreenPresentationChanged = ::setFullscreenPresentation,
-                    onDynamicColorsChange = viewModel::setDynamicColorsEnabled,
-                    onPrivateSessionChange = viewModel::setPrivateSessionEnabled,
-                    onOpenVideo = viewModel::openVideo,
-                    onDismissVideoOpenDialog = viewModel::dismissVideoOpenDialog,
-                    onLoadChannel = viewModel::loadChannel,
-                    onChannelTabSelected = viewModel::selectChannelTab,
-                    onHomeFeedSelected = viewModel::selectHomeFeed,
-                    onHomeBrowseTabSelected = viewModel::selectHomeBrowseTab,
-                    onHomeBrowseOptionSelected = viewModel::selectHomeBrowseOption,
-                    onRefreshHome = viewModel::refreshHome,
-                    onLoadMoreHome = viewModel::loadMoreHome,
-                    onPlayQueue = viewModel::playQueue,
-                    onQueueVideos = viewModel::enqueueVideos,
-                    onPlayNext = viewModel::playNext,
-                    onPlayPlaylist = viewModel::playPlaylist,
-                    onPlayPlaylistFrom = viewModel::playPlaylistFrom,
-                    onTogglePlayback = viewModel::togglePlayback,
-                    onSkipToNext = viewModel::skipToNext,
-                    onSkipToPrevious = viewModel::skipToPrevious,
-                    onSeekPlaybackBy = viewModel::seekPlaybackBy,
-                    onPlaybackSpeedChange = viewModel::setPlaybackSpeed,
-                    onSpeedHoldStart = viewModel::startSpeedHold,
-                    onSpeedHoldEnd = viewModel::endSpeedHold,
-                    onUseChannelPlaybackSpeed = viewModel::useChannelPlaybackSpeedForCurrentVideo,
-                    onChannelPlaybackSpeedChange = viewModel::setChannelPlaybackSpeed,
-                    onVideoQualityChange = viewModel::setVideoQuality,
-                    onAudioLanguageChange = viewModel::setAudioLanguage,
-                    onCaptionsEnabledChange = viewModel::setCaptionsEnabled,
-                    onSubtitleLanguageChange = viewModel::setSubtitleLanguage,
-                    onRetryPlayback = viewModel::retryPlayback,
-                    onStoryboardLoadFailure = viewModel::refreshStoryboard,
-                    onClosePlayback = viewModel::closePlayback,
-                    onToggleWatchLater = viewModel::toggleWatchLater,
-                    onToggleDownloaded = viewModel::toggleDownloaded,
-                    onToggleAudioDownloaded = viewModel::toggleAudioDownloaded,
-                    onDownloadVideo = viewModel::downloadVideo,
-                    onDownloadAudio = viewModel::downloadAudio,
-                    onDownloadVideos = viewModel::downloadVideos,
-                    onDownloadPlaylist = viewModel::downloadPlaylist,
-                    onCancelDownloadPlaylist = viewModel::cancelPlaylistDownload,
-                    onLoadRemotePlaylist = viewModel::loadRemotePlaylist,
-                    onLoadMoreRemotePlaylist = viewModel::loadMoreRemotePlaylist,
-                    onPlayRemotePlaylist = viewModel::playRemotePlaylist,
-                    onPlayRemotePlaylistFrom = viewModel::playRemotePlaylistFrom,
-                    onDownloadRemotePlaylist = viewModel::downloadRemotePlaylist,
-                    onCancelDownloadRemotePlaylist = viewModel::cancelRemotePlaylistDownload,
-                    onCreateLocalPlaylistFromRemote = viewModel::createLocalPlaylistFromRemote,
-                    onCreatePlaylist = viewModel::createPlaylist,
-                    onRenamePlaylist = viewModel::renamePlaylist,
-                    onAddVideosToPlaylist = viewModel::addVideosToPlaylist,
-                    onRemoveVideosFromPlaylist = viewModel::removeVideosFromPlaylist,
-                    onReorderPlaylist = viewModel::reorderPlaylist,
-                    onRemoveVideosFromHistory = viewModel::removeVideosFromHistory,
-                    onRemoveDownloads = viewModel::removeDownloads,
-                    onRemovePlaylists = viewModel::removePlaylists,
-                    onExportDownloads = viewModel::exportDownloads,
-                    onSeekPlayback = viewModel::seekPlayback,
-                    onResumeFromHistory = viewModel::resumePlaybackFromHistory,
-                    onSourceEnabledChange = viewModel::setSourceEnabled,
-                    onInstallSource = viewModel::installSource,
+                    }
+                    onDarkThemeChange = viewModel::setDarkThemeEnabled
+                    onThemeModeChange = viewModel::setThemeMode
+                    onFullscreenPresentationChanged = ::setFullscreenPresentation
+                    onDynamicColorsChange = viewModel::setDynamicColorsEnabled
+                    onPrivateSessionChange = viewModel::setPrivateSessionEnabled
+                    onOpenVideo = viewModel::openVideo
+                    onDismissVideoOpenDialog = viewModel::dismissVideoOpenDialog
+                    onLoadChannel = viewModel::loadChannel
+                    onChannelTabSelected = viewModel::selectChannelTab
+                    onHomeFeedSelected = viewModel::selectHomeFeed
+                    onHomeBrowseTabSelected = viewModel::selectHomeBrowseTab
+                    onHomeBrowseOptionSelected = viewModel::selectHomeBrowseOption
+                    onRefreshHome = viewModel::refreshHome
+                    onLoadMoreHome = viewModel::loadMoreHome
+                    onPlayQueue = viewModel::playQueue
+                    onQueueVideos = viewModel::enqueueVideos
+                    onPlayNext = viewModel::playNext
+                    onPlayPlaylist = viewModel::playPlaylist
+                    onPlayPlaylistFrom = viewModel::playPlaylistFrom
+                    onTogglePlayback = viewModel::togglePlayback
+                    onSkipToNext = viewModel::skipToNext
+                    onSkipToPrevious = viewModel::skipToPrevious
+                    onSeekPlaybackBy = viewModel::seekPlaybackBy
+                    onPlaybackSpeedChange = viewModel::setPlaybackSpeed
+                    onSpeedHoldStart = viewModel::startSpeedHold
+                    onSpeedHoldEnd = viewModel::endSpeedHold
+                    onUseChannelPlaybackSpeed = viewModel::useChannelPlaybackSpeedForCurrentVideo
+                    onChannelPlaybackSpeedChange = viewModel::setChannelPlaybackSpeed
+                    onVideoQualityChange = viewModel::setVideoQuality
+                    onAudioLanguageChange = viewModel::setAudioLanguage
+                    onCaptionsEnabledChange = viewModel::setCaptionsEnabled
+                    onSubtitleLanguageChange = viewModel::setSubtitleLanguage
+                    onRetryPlayback = viewModel::retryPlayback
+                    onStoryboardLoadFailure = viewModel::refreshStoryboard
+                    onClosePlayback = viewModel::closePlayback
+                    onToggleWatchLater = viewModel::toggleWatchLater
+                    onToggleDownloaded = viewModel::toggleDownloaded
+                    onToggleAudioDownloaded = viewModel::toggleAudioDownloaded
+                    onDownloadVideo = viewModel::downloadVideo
+                    onDownloadAudio = viewModel::downloadAudio
+                    onDownloadVideos = viewModel::downloadVideos
+                    onDownloadPlaylist = viewModel::downloadPlaylist
+                    onCancelDownloadPlaylist = viewModel::cancelPlaylistDownload
+                    onLoadRemotePlaylist = viewModel::loadRemotePlaylist
+                    onLoadMoreRemotePlaylist = viewModel::loadMoreRemotePlaylist
+                    onPlayRemotePlaylist = viewModel::playRemotePlaylist
+                    onPlayRemotePlaylistFrom = viewModel::playRemotePlaylistFrom
+                    onDownloadRemotePlaylist = viewModel::downloadRemotePlaylist
+                    onCancelDownloadRemotePlaylist = viewModel::cancelRemotePlaylistDownload
+                    onCreateLocalPlaylistFromRemote = viewModel::createLocalPlaylistFromRemote
+                    onCreatePlaylist = viewModel::createPlaylist
+                    onRenamePlaylist = viewModel::renamePlaylist
+                    onAddVideosToPlaylist = viewModel::addVideosToPlaylist
+                    onRemoveVideosFromPlaylist = viewModel::removeVideosFromPlaylist
+                    onReorderPlaylist = viewModel::reorderPlaylist
+                    onRemoveVideosFromHistory = viewModel::removeVideosFromHistory
+                    onRemoveDownloads = viewModel::removeDownloads
+                    onRemovePlaylists = viewModel::removePlaylists
+                    onExportDownloads = viewModel::exportDownloads
+                    onSeekPlayback = viewModel::seekPlayback
+                    onResumeFromHistory = viewModel::resumePlaybackFromHistory
+                    onSourceEnabledChange = viewModel::setSourceEnabled
+                    onInstallSource = viewModel::installSource
                     onScanSourceQr = {
                         ScanOptions().apply {
                             setDesiredBarcodeFormats(ScanOptions.QR_CODE)
@@ -333,85 +322,82 @@ class MainActivity : FragmentActivity() {
                             setBarcodeImageEnabled(false)
                             setCaptureActivity(QRCaptureActivity::class.java)
                         }.let(sourceQrLauncher::launch)
-                    },
-                    onRefreshSource = viewModel::refreshSource,
-                    onClearSourceCache = viewModel::clearSourceCache,
-                    onRemoveSource = viewModel::removeSource,
+                    }
+                    onRefreshSource = viewModel::refreshSource
+                    onClearSourceCache = viewModel::clearSourceCache
+                    onRemoveSource = viewModel::removeSource
                     onLoginSource = { source ->
                         sourceLoginLauncher.launch(
                             SourceLoginActivity.intent(
-                                context = this,
+                                context = this@MainActivity,
                                 sourceId = source.id,
                                 pluginId = source.engineId,
                                 configUrl = source.pluginConfigUrl,
-                                profileId = uiState.activeProfileId,
+                                profileId = viewModel.uiState.value.activeProfileId,
                             ),
                         )
-                    },
-                    onLogoutSource = viewModel::clearSourceAuthentication,
-                    onImportYoutube = viewModel::importYoutubeAccount,
-                    onDismissYoutubeImport = viewModel::dismissYoutubeImport,
-                    onSearchQueryChange = viewModel::setSearchQuery,
-                    onSearchSubmit = viewModel::submitSearch,
-                    onSourceFilterSelectionChange = viewModel::setSourceFilterSelection,
-                    onLoadMoreSearch = viewModel::loadMoreSearch,
-                    onLoadMoreChannel = viewModel::loadMoreChannel,
-                    onChannelSearchQueryChange = viewModel::setChannelSearchQuery,
-                    onLoadMoreChannelSearch = viewModel::loadMoreChannelSearch,
-                    onLoadFollowingComplete = viewModel::loadFollowingComplete,
-                    onLoadMoreRecommendations = viewModel::loadMoreRecommendations,
-                    onLoadMoreComments = viewModel::loadMoreComments,
-                    onOpenCommentReplies = viewModel::openCommentReplies,
-                    onDismissCommentReplies = viewModel::dismissCommentReplies,
-                    onLoadMoreCommentReplies = viewModel::loadMoreCommentReplies,
-                    onToggleFollowing = viewModel::toggleFollowing,
-                    onCreatorFollowedChange = viewModel::setCreatorFollowed,
-                    onChooseDatabaseImport = { databaseImportPicker.launch(arrayOf("*/*")) },
+                    }
+                    onLogoutSource = viewModel::clearSourceAuthentication
+                    onImportYoutube = viewModel::importYoutubeAccount
+                    onDismissYoutubeImport = viewModel::dismissYoutubeImport
+                    onSearchQueryChange = viewModel::setSearchQuery
+                    onSearchSubmit = viewModel::submitSearch
+                    onSourceFilterSelectionChange = viewModel::setSourceFilterSelection
+                    onLoadMoreSearch = viewModel::loadMoreSearch
+                    onLoadMoreChannel = viewModel::loadMoreChannel
+                    onChannelSearchQueryChange = viewModel::setChannelSearchQuery
+                    onLoadMoreChannelSearch = viewModel::loadMoreChannelSearch
+                    onLoadFollowingComplete = viewModel::loadFollowingComplete
+                    onLoadMoreRecommendations = viewModel::loadMoreRecommendations
+                    onLoadMoreComments = viewModel::loadMoreComments
+                    onOpenCommentReplies = viewModel::openCommentReplies
+                    onDismissCommentReplies = viewModel::dismissCommentReplies
+                    onLoadMoreCommentReplies = viewModel::loadMoreCommentReplies
+                    onToggleFollowing = viewModel::toggleFollowing
+                    onCreatorFollowedChange = viewModel::setCreatorFollowed
+                    onChooseDatabaseImport = { databaseImportPicker.launch(arrayOf("*/*")) }
                     onChooseNewPipeImport = {
                         newPipeImportPicker.launch(
                             arrayOf("application/zip", "application/x-sqlite3", "application/json", "*/*"),
                         )
-                    },
-                    onRetryDatabaseImport = viewModel::retryDatabaseImport,
-                    onConfirmDatabaseImport = viewModel::confirmDatabaseImport,
-                    onDismissDatabaseImport = viewModel::dismissDatabaseImport,
-                    onTrustUnverifiedSource = viewModel::trustUnverifiedSource,
-                    onRejectUnverifiedSource = viewModel::rejectUnverifiedSource,
-                    onSwitchProfile = viewModel::switchProfile,
-                    onCreateProfile = viewModel::createProfile,
-                    onVerifyProfilePin = viewModel::verifyProfilePin,
-                    onRenameProfile = viewModel::renameProfile,
-                    onSetProfileDeviceCredentialProtection =
-                        viewModel::setProfileDeviceCredentialProtection,
-                    onDeleteProfile = viewModel::deleteProfile,
-                    onDefaultPlaybackSpeedChange = viewModel::setDefaultPlaybackSpeed,
-                    onPerChannelPlaybackSpeedChange = viewModel::setPerChannelPlaybackSpeedEnabled,
-                    onHoldToSpeedChange = viewModel::setHoldToSpeedEnabled,
-                    onSponsorBlockEnabledChange = viewModel::setSponsorBlockEnabled,
-                    onSponsorBlockSkipNoticesEnabledChange =
-                        viewModel::setSponsorBlockSkipNoticesEnabled,
-                    onSponsorBlockCategoriesChange = viewModel::setSponsorBlockCategories,
-                    onChannelSponsorBlockOverrideChange = viewModel::setChannelSponsorBlockOverride,
-                    onVideoSponsorBlockOverrideChange = viewModel::setVideoSponsorBlockOverride,
-                    onPreferredVideoQualityChange = viewModel::setPreferredVideoQuality,
-                    onPreferredAudioBitrateChange = viewModel::setPreferredAudioBitrate,
-                    onPreferredAudioLanguageChange = viewModel::setPreferredAudioLanguage,
-                    onPreferOriginalAudioChange = viewModel::setPreferOriginalAudio,
-                    onPreferNewPipeForYoutubePlaybackChange =
-                        viewModel::setPreferNewPipeForYoutubePlayback,
-                    onSubscriptionFetchModeChange = viewModel::setSubscriptionFetchMode,
-                    onVideoTitleLanguageModeChange = viewModel::setVideoTitleLanguageMode,
-                    onStickyCaptionsChange = viewModel::setStickyCaptionsEnabled,
-                    onShowRecommendationsChange = viewModel::setShowRecommendations,
-                    onSearchHistoryChange = viewModel::setSearchHistoryEnabled,
-                    onCrashLoggingChange = viewModel::setCrashLoggingEnabled,
-                    onKeepScreenAwakeChange = viewModel::setKeepScreenAwake,
-                    onPictureInPictureChange = viewModel::setPictureInPictureEnabled,
-                    onStartChromecastDiscovery = viewModel::startChromecastDiscovery,
-                    onConnectChromecast = viewModel::connectChromecast,
-                    onDisconnectChromecast = viewModel::disconnectChromecast,
-                    onOtherAudioDuckingChange = viewModel::setOtherAudioDuckingEnabled,
-                    onOtherAudioDuckVolumeChange = viewModel::setOtherAudioDuckVolumePercent,
+                    }
+                    onRetryDatabaseImport = viewModel::retryDatabaseImport
+                    onConfirmDatabaseImport = viewModel::confirmDatabaseImport
+                    onDismissDatabaseImport = viewModel::dismissDatabaseImport
+                    onTrustUnverifiedSource = viewModel::trustUnverifiedSource
+                    onRejectUnverifiedSource = viewModel::rejectUnverifiedSource
+                    onSwitchProfile = viewModel::switchProfile
+                    onCreateProfile = viewModel::createProfile
+                    onVerifyProfilePin = viewModel::verifyProfilePin
+                    onRenameProfile = viewModel::renameProfile
+                    onSetProfileDeviceCredentialProtection = viewModel::setProfileDeviceCredentialProtection
+                    onDeleteProfile = viewModel::deleteProfile
+                    onDefaultPlaybackSpeedChange = viewModel::setDefaultPlaybackSpeed
+                    onPerChannelPlaybackSpeedChange = viewModel::setPerChannelPlaybackSpeedEnabled
+                    onHoldToSpeedChange = viewModel::setHoldToSpeedEnabled
+                    onSponsorBlockEnabledChange = viewModel::setSponsorBlockEnabled
+                    onSponsorBlockSkipNoticesEnabledChange = viewModel::setSponsorBlockSkipNoticesEnabled
+                    onSponsorBlockCategoriesChange = viewModel::setSponsorBlockCategories
+                    onChannelSponsorBlockOverrideChange = viewModel::setChannelSponsorBlockOverride
+                    onVideoSponsorBlockOverrideChange = viewModel::setVideoSponsorBlockOverride
+                    onPreferredVideoQualityChange = viewModel::setPreferredVideoQuality
+                    onPreferredAudioBitrateChange = viewModel::setPreferredAudioBitrate
+                    onPreferredAudioLanguageChange = viewModel::setPreferredAudioLanguage
+                    onPreferOriginalAudioChange = viewModel::setPreferOriginalAudio
+                    onPreferNewPipeForYoutubePlaybackChange = viewModel::setPreferNewPipeForYoutubePlayback
+                    onSubscriptionFetchModeChange = viewModel::setSubscriptionFetchMode
+                    onVideoTitleLanguageModeChange = viewModel::setVideoTitleLanguageMode
+                    onStickyCaptionsChange = viewModel::setStickyCaptionsEnabled
+                    onShowRecommendationsChange = viewModel::setShowRecommendations
+                    onSearchHistoryChange = viewModel::setSearchHistoryEnabled
+                    onCrashLoggingChange = viewModel::setCrashLoggingEnabled
+                    onKeepScreenAwakeChange = viewModel::setKeepScreenAwake
+                    onPictureInPictureChange = viewModel::setPictureInPictureEnabled
+                    onStartChromecastDiscovery = viewModel::startChromecastDiscovery
+                    onConnectChromecast = viewModel::connectChromecast
+                    onDisconnectChromecast = viewModel::disconnectChromecast
+                    onOtherAudioDuckingChange = viewModel::setOtherAudioDuckingEnabled
+                    onOtherAudioDuckVolumeChange = viewModel::setOtherAudioDuckVolumePercent
                     onScanPcPairingQr = {
                         ScanOptions().apply {
                             setDesiredBarcodeFormats(ScanOptions.QR_CODE)
@@ -422,22 +408,37 @@ class MainActivity : FragmentActivity() {
                             setBarcodeImageEnabled(false)
                             setCaptureActivity(QRCaptureActivity::class.java)
                         }.let(pcQrLauncher::launch)
+                    }
+                    onRemovePairedComputer = viewModel::removePairedComputer
+                    onPlayFromComputer = viewModel::playFromComputer
+                    onToggleComputerPlayback = viewModel::toggleComputerPlayback
+                    onPreviousComputerPlayback = viewModel::skipComputerPlaybackPrevious
+                    onNextComputerPlayback = viewModel::skipComputerPlaybackNext
+                    onSeekComputerPlayback = viewModel::seekComputerPlayback
+                    onExternalNavigationHandled = viewModel::consumeExternalNavigation
+                    onCheckForUpdates = viewModel::checkForUpdates
+                    onInstallUpdate = ::downloadAndInstallUpdate
+                    onCancelUpdateDownload = ::cancelUpdateDownload
+                    onHydrateVideoMetadata = viewModel::hydrateVideoMetadata
+                    onHydrateChannelArtwork = viewModel::hydrateChannelArtwork
+                    onBrainrotShortsChange = viewModel::setBrainrotShortsEnabled
+                    onRebuildContentCaches = viewModel::rebuildContentCaches
+                }
+            }
+            GrayjayTheme(
+                darkTheme = darkTheme,
+                dynamicColor = uiState.dynamicColorsEnabled,
+            ) {
+                GrayjayApp(
+                    uiState = uiState,
+                    player = viewModel.player,
+                    actions = appActions,
+                    uiLanguageTag = remember {
+                        AppLanguageManager.selectedLanguageTag(this@MainActivity)
                     },
-                    onRemovePairedComputer = viewModel::removePairedComputer,
-                    onPlayFromComputer = viewModel::playFromComputer,
-                    onToggleComputerPlayback = viewModel::toggleComputerPlayback,
-                    onPreviousComputerPlayback = viewModel::skipComputerPlaybackPrevious,
-                    onNextComputerPlayback = viewModel::skipComputerPlaybackNext,
-                    onSeekComputerPlayback = viewModel::seekComputerPlayback,
-                    onExternalNavigationHandled = viewModel::consumeExternalNavigation,
-                    onCheckForUpdates = viewModel::checkForUpdates,
-                    onInstallUpdate = ::downloadAndInstallUpdate,
+                    isDarkTheme = darkTheme,
                     updateDownload = updateDownloadState,
-                    onCancelUpdateDownload = ::cancelUpdateDownload,
-                    onHydrateVideoMetadata = viewModel::hydrateVideoMetadata,
-                    onHydrateChannelArtwork = viewModel::hydrateChannelArtwork,
-                    onBrainrotShortsChange = viewModel::setBrainrotShortsEnabled,
-                    onRebuildContentCaches = viewModel::rebuildContentCaches,
+                    deviceIsLandscape = false,
                     pictureInPictureMode = pictureInPictureMode,
                 )
             }
