@@ -21,7 +21,7 @@ class MainActivityOrientationTest {
     }
 
     @Test
-    fun `picture in picture requires enabled visual playback`() {
+    fun `picture in picture supports video and audio-only playback`() {
         assertTrue(
             shouldEnterPictureInPicture(
                 enabled = true,
@@ -42,7 +42,7 @@ class MainActivityOrientationTest {
                 isLoading = false,
             ),
         )
-        assertFalse(
+        assertTrue(
             shouldEnterPictureInPicture(
                 enabled = true,
                 hasVideo = true,

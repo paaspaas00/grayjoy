@@ -122,6 +122,7 @@ import androidx.compose.ui.zIndex
 import androidx.media3.common.Player
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.BuildConfig
+import com.futo.platformplayer.compose.data.LibraryExportFormat
 import com.futo.platformplayer.compose.playlistQueueFrom
 import com.futo.platformplayer.compose.sponsorblock.SponsorBlockCategory
 import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
@@ -148,6 +149,9 @@ import com.futo.platformplayer.compose.ui.screens.PlaylistPickerDialog
 import com.futo.platformplayer.compose.ui.screens.FullscreenPlayerScreen
 import com.futo.platformplayer.compose.ui.screens.PlayerSurface
 import com.futo.platformplayer.compose.ui.screens.ProfileSwitcherDialogs
+import com.futo.platformplayer.compose.ui.screens.ActiveJobsButton
+import com.futo.platformplayer.compose.ui.screens.ActiveJobsPanel
+import com.futo.platformplayer.compose.ui.screens.rememberActiveJobItems
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -258,7 +262,16 @@ private data class PlaybackPresentation(
     val followingFeedTotal: Int,
     val followingFeedError: String?,
     val downloads: Map<String, DownloadUiModel>,
+    val youtubeImport: YoutubeImportUiState,
+    val backgroundYoutubeImport: BackgroundYoutubeImportUiState,
+    val databaseImport: DatabaseImportUiState,
+    val libraryTransfer: LibraryTransferUiState,
+    val sourceOperationInProgress: Boolean,
+    val sourceOperationMessage: String?,
+    val onCancelYoutubeImportJobs: () -> Unit,
     val activePlaylistDownloads: Set<PlaylistDownloadBatchUiModel>,
+    val automaticPlaylistDownloads: Set<PlaylistDownloadBatchUiModel>,
+    val automaticPlaylistDownloadsEnabled: Boolean,
     val isPlaying: Boolean,
     val queueSize: Int,
     val transition: PlayerTransitionState,
@@ -320,6 +333,7 @@ private data class PlaybackPresentation(
     val onDownloadVideos: (List<String>, DownloadMediaType) -> Unit,
     val onDownloadPlaylist: (String, DownloadMediaType) -> Unit,
     val onCancelDownloadPlaylist: (String, DownloadMediaType) -> Unit,
+    val onPlaylistAutomaticDownloadChange: (String, DownloadMediaType, Boolean) -> Unit,
     val onVideoLongClick: (VideoUiModel) -> Unit,
     val onQueueVideoLongClick: (VideoUiModel) -> Unit,
     val onAddSelectionToPlaylist: (List<String>) -> Unit,
@@ -327,6 +341,7 @@ private data class PlaybackPresentation(
     val onRemoveDownloads: (List<String>) -> Unit,
     val onRemovePlaylists: (List<String>) -> Unit,
     val onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit,
+    val onExportLibrary: (LibraryExportFormat, Uri) -> Unit,
     val onRenamePlaylist: (String, String) -> Unit,
     val libraryFilter: LibraryFilter,
     val onLibraryFilterChange: (LibraryFilter) -> Unit,
@@ -360,6 +375,7 @@ private data class PlaybackPresentation(
     val crashLoggingEnabled: Boolean,
     val keepScreenAwake: Boolean,
     val pictureInPictureEnabled: Boolean,
+    val onAutomaticPlaylistDownloadsChange: (Boolean) -> Unit,
     val otherAudioDuckingEnabled: Boolean,
     val otherAudioDuckVolumePercent: Int,
     val themeMode: ThemeMode,
@@ -447,8 +463,13 @@ private data class SourcePresentation(
     val onLogin: (SourceUiModel) -> Unit,
     val onLogout: (String) -> Unit,
     val youtubeImport: YoutubeImportUiState,
+    val backgroundYoutubeImport: BackgroundYoutubeImportUiState,
+    val youtubeImportSchedule: YoutubeImportScheduleUiState,
     val onImportYoutube: (String, YoutubeImportSelection) -> Unit,
     val onDismissYoutubeImport: () -> Unit,
+    val onCancelYoutubeImportJobs: () -> Unit,
+    val onYoutubeImportScheduleChange:
+        (String, YoutubeImportInterval, YoutubeImportSelection) -> Unit,
     val search: SearchUiState,
     val onSearchQueryChange: (String) -> Unit,
     val onSearchSubmit: (String, SearchContentType, Set<String>) -> Unit,
@@ -912,7 +933,16 @@ fun GrayjayApp(
         followingFeedTotal = uiState.followingFeedTotal,
         followingFeedError = uiState.followingFeedError,
         downloads = uiState.downloads,
+        youtubeImport = uiState.youtubeImport,
+        backgroundYoutubeImport = uiState.backgroundYoutubeImport,
+        databaseImport = uiState.databaseImport,
+        libraryTransfer = uiState.libraryTransfer,
+        sourceOperationInProgress = uiState.sourceOperationInProgress,
+        sourceOperationMessage = uiState.sourceOperationMessage,
+        onCancelYoutubeImportJobs = actions.onCancelYoutubeImportJobs,
         activePlaylistDownloads = uiState.activePlaylistDownloads,
+        automaticPlaylistDownloads = uiState.automaticPlaylistDownloads,
+        automaticPlaylistDownloadsEnabled = uiState.automaticPlaylistDownloadsEnabled,
         isPlaying = uiState.playback.isPlaying,
         queueSize = uiState.playback.fullQueueVideoIds
             .ifEmpty { uiState.playback.queueVideoIds }
@@ -1023,6 +1053,7 @@ fun GrayjayApp(
         onDownloadVideos = actions.onDownloadVideos,
         onDownloadPlaylist = actions.onDownloadPlaylist,
         onCancelDownloadPlaylist = actions.onCancelDownloadPlaylist,
+        onPlaylistAutomaticDownloadChange = actions.onPlaylistAutomaticDownloadChange,
         onVideoLongClick = onVideoLongClick,
         onQueueVideoLongClick = { queuedVideo ->
             transientUi.actionIsRemotePlaylistVideo = false
@@ -1034,6 +1065,7 @@ fun GrayjayApp(
         onRemoveDownloads = actions.onRemoveDownloads,
         onRemovePlaylists = actions.onRemovePlaylists,
         onExportDownloads = actions.onExportDownloads,
+        onExportLibrary = actions.onExportLibrary,
         onRenamePlaylist = actions.onRenamePlaylist,
         libraryFilter = LibraryFilter.valueOf(libraryFilterName),
         onLibraryFilterChange = { libraryFilterName = it.name },
@@ -1067,6 +1099,7 @@ fun GrayjayApp(
         crashLoggingEnabled = uiState.crashLoggingEnabled,
         keepScreenAwake = uiState.keepScreenAwake,
         pictureInPictureEnabled = uiState.pictureInPictureEnabled,
+        onAutomaticPlaylistDownloadsChange = actions.onAutomaticPlaylistDownloadsChange,
         otherAudioDuckingEnabled = uiState.otherAudioDuckingEnabled,
         otherAudioDuckVolumePercent = uiState.otherAudioDuckVolumePercent,
         themeMode = uiState.themeMode,
@@ -1184,8 +1217,12 @@ fun GrayjayApp(
         onLogin = actions.onLoginSource,
         onLogout = actions.onLogoutSource,
         youtubeImport = uiState.youtubeImport,
+        backgroundYoutubeImport = uiState.backgroundYoutubeImport,
+        youtubeImportSchedule = uiState.youtubeImportSchedule,
         onImportYoutube = actions.onImportYoutube,
         onDismissYoutubeImport = actions.onDismissYoutubeImport,
+        onCancelYoutubeImportJobs = actions.onCancelYoutubeImportJobs,
+        onYoutubeImportScheduleChange = actions.onYoutubeImportScheduleChange,
         search = uiState.search,
         onSearchQueryChange = actions.onSearchQueryChange,
         onSearchSubmit = actions.onSearchSubmit,
@@ -1947,6 +1984,18 @@ private fun GrayjayScaffold(
             playback.onTransitionRelease(target)
         },
     )
+    var activeJobsExpanded by rememberSaveable { mutableStateOf(false) }
+    val activeJobs = rememberActiveJobItems(
+        youtubeImport = playback.youtubeImport,
+        backgroundYoutubeImport = playback.backgroundYoutubeImport,
+        databaseImport = playback.databaseImport,
+        downloads = playback.downloads,
+        videos = playback.libraryVideos + videos,
+        sourceOperationInProgress = playback.sourceOperationInProgress,
+        sourceOperationMessage = playback.sourceOperationMessage,
+        updateDownload = playback.updateDownload,
+        libraryTransfer = playback.libraryTransfer,
+    )
 
     Box(
         modifier.onGloballyPositioned { coordinates ->
@@ -1959,7 +2008,9 @@ private fun GrayjayScaffold(
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             topBar = {
-                if (!isRootSearch) CenterAlignedTopAppBar(
+                if (!isRootSearch) {
+                Column {
+                CenterAlignedTopAppBar(
                     expandedHeight = if (compactChrome) 56.dp else 64.dp,
                     modifier = predictiveBackTransform.then(
                         if (transitionActive) Modifier.clearAndSetSemantics { }
@@ -2052,6 +2103,11 @@ private fun GrayjayScaffold(
                                 )
                             }
                         }
+                        ActiveJobsButton(
+                            jobs = activeJobs,
+                            expanded = activeJobsExpanded,
+                            onClick = { activeJobsExpanded = !activeJobsExpanded },
+                        )
                         IconButton(onClick = playback.onOpenProfiles) {
                             Icon(
                                 Icons.Outlined.AccountCircle,
@@ -2060,6 +2116,13 @@ private fun GrayjayScaffold(
                         }
                     },
                 )
+                ActiveJobsPanel(
+                    visible = activeJobsExpanded,
+                    jobs = activeJobs,
+                    onCancelYoutubeImports = playback.onCancelYoutubeImportJobs,
+                )
+                }
+                }
             },
             bottomBar = {
                 Column(
@@ -2194,6 +2257,10 @@ private fun GrayjayScaffold(
                     activeDownloadMediaTypes = playback.activePlaylistDownloads
                         .filter { it.playlistId == animatedPlaylist.id }
                         .mapTo(mutableSetOf()) { it.mediaType },
+                    automaticDownloadMediaTypes = playback.automaticPlaylistDownloads
+                        .filter { it.playlistId == animatedPlaylist.id }
+                        .mapTo(mutableSetOf()) { it.mediaType },
+                    automaticDownloadsEnabled = playback.automaticPlaylistDownloadsEnabled,
                     onVideoClick = onVideoClick,
                     onVideoLongClick = playback.onVideoLongClick,
                     onPlayAll = { playback.onPlayPlaylist(animatedPlaylist.id) },
@@ -2216,6 +2283,13 @@ private fun GrayjayScaffold(
                         playback.onCancelDownloadPlaylist(
                             animatedPlaylist.id,
                             DownloadMediaType.Video,
+                        )
+                    },
+                    onAutomaticDownloadChange = { mediaType, enabled ->
+                        playback.onPlaylistAutomaticDownloadChange(
+                            animatedPlaylist.id,
+                            mediaType,
+                            enabled,
                         )
                     },
                     onRename = { title ->
@@ -2344,6 +2418,11 @@ private fun GrayjayScaffold(
                         onManageSources = onManageSources,
                         onImportDatabase = onImportDatabase,
                         onImportNewPipeDatabase = onImportNewPipeDatabase,
+                        onExportLibrary = playback.onExportLibrary,
+                        libraryVideos = playback.libraryVideos,
+                        downloads = playback.downloads,
+                        onRemoveDownloads = playback.onRemoveDownloads,
+                        onExportDownloads = playback.onExportDownloads,
                         activeSourceCount = sourcePresentation.sources.count {
                             it.isEnabled && it.availability != SourceAvailability.MissingPlugin
                         },
@@ -2388,6 +2467,10 @@ private fun GrayjayScaffold(
                         onKeepScreenAwakeChange = playback.onKeepScreenAwakeChange,
                         pictureInPictureEnabled = playback.pictureInPictureEnabled,
                         onPictureInPictureChange = playback.onPictureInPictureChange,
+                        automaticPlaylistDownloadsEnabled =
+                            playback.automaticPlaylistDownloadsEnabled,
+                        onAutomaticPlaylistDownloadsChange =
+                            playback.onAutomaticPlaylistDownloadsChange,
                         otherAudioDuckingEnabled = playback.otherAudioDuckingEnabled,
                         onOtherAudioDuckingChange = playback.onOtherAudioDuckingChange,
                         otherAudioDuckVolumePercent = playback.otherAudioDuckVolumePercent,
@@ -2409,8 +2492,14 @@ private fun GrayjayScaffold(
                         onLoginSource = sourcePresentation.onLogin,
                         onLogoutSource = sourcePresentation.onLogout,
                         youtubeImport = sourcePresentation.youtubeImport,
+                        backgroundYoutubeImport = sourcePresentation.backgroundYoutubeImport,
+                        youtubeImportSchedule = sourcePresentation.youtubeImportSchedule,
                         onImportYoutube = sourcePresentation.onImportYoutube,
                         onDismissYoutubeImport = sourcePresentation.onDismissYoutubeImport,
+                        onCancelYoutubeImportJobs =
+                            sourcePresentation.onCancelYoutubeImportJobs,
+                        onYoutubeImportScheduleChange =
+                            sourcePresentation.onYoutubeImportScheduleChange,
                     )
                     }
                 }

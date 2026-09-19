@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.runtime.Stable
 import com.futo.platformplayer.compose.sponsorblock.SponsorBlockCategory
 import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
+import com.futo.platformplayer.compose.data.LibraryExportFormat
 
 /**
  * Stable event surface for the root UI.
@@ -56,6 +57,8 @@ class GrayjayAppActions {
     var onDownloadVideos: (List<String>, DownloadMediaType) -> Unit = { _, _ -> }
     var onDownloadPlaylist: (String, DownloadMediaType) -> Unit = { _, _ -> }
     var onCancelDownloadPlaylist: (String, DownloadMediaType) -> Unit = { _, _ -> }
+    var onPlaylistAutomaticDownloadChange:
+        (String, DownloadMediaType, Boolean) -> Unit = { _, _, _ -> }
     var onCreatePlaylist: (String, List<String>) -> Unit = { _, _ -> }
     var onRenamePlaylist: (String, String) -> Unit = { _, _ -> }
     var onAddVideosToPlaylist: (String, List<String>) -> Unit = { _, _ -> }
@@ -76,6 +79,9 @@ class GrayjayAppActions {
     var onLogoutSource: (String) -> Unit = { _ -> }
     var onImportYoutube: (String, YoutubeImportSelection) -> Unit = { _, _ -> }
     var onDismissYoutubeImport: () -> Unit = {}
+    var onYoutubeImportScheduleChange:
+        (String, YoutubeImportInterval, YoutubeImportSelection) -> Unit = { _, _, _ -> }
+    var onCancelYoutubeImportJobs: () -> Unit = {}
     var onSearchQueryChange: (String) -> Unit = { _ -> }
     var onSearchSubmit: (String, SearchContentType, Set<String>) -> Unit = { _, _, _ -> }
     var onSourceFilterSelectionChange: (String, String, String) -> Unit = { _, _, _ -> }
@@ -101,6 +107,7 @@ class GrayjayAppActions {
     var onCreatorFollowedChange: (String, Boolean) -> Unit = { _, _ -> }
     var onChooseDatabaseImport: () -> Unit = {}
     var onChooseNewPipeImport: () -> Unit = {}
+    var onExportLibrary: (LibraryExportFormat, Uri) -> Unit = { _, _ -> }
     var onRetryDatabaseImport: (String) -> Unit = { _ -> }
     var onConfirmDatabaseImport: (DatabaseImportSelection) -> Unit = { _ -> }
     var onDismissDatabaseImport: () -> Unit = {}
@@ -133,6 +140,7 @@ class GrayjayAppActions {
     var onCrashLoggingChange: (Boolean) -> Unit = {}
     var onKeepScreenAwakeChange: (Boolean) -> Unit = { _ -> }
     var onPictureInPictureChange: (Boolean) -> Unit = {}
+    var onAutomaticPlaylistDownloadsChange: (Boolean) -> Unit = {}
     var onStartChromecastDiscovery: () -> Unit = {}
     var onConnectChromecast: (String) -> Unit = {}
     var onDisconnectChromecast: () -> Unit = {}

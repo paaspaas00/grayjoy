@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -34,6 +36,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,6 +71,9 @@ import com.futo.platformplayer.compose.ui.SourceUiModel
 import com.futo.platformplayer.compose.ui.YoutubeImportSelection
 import com.futo.platformplayer.compose.ui.YoutubeImportStageUi
 import com.futo.platformplayer.compose.ui.YoutubeImportUiState
+import com.futo.platformplayer.compose.ui.YoutubeImportInterval
+import com.futo.platformplayer.compose.ui.YoutubeImportScheduleUiState
+import com.futo.platformplayer.compose.ui.BackgroundYoutubeImportUiState
 import java.util.Locale
 
 internal fun visibleSourcesForQuery(
@@ -100,8 +106,13 @@ fun SourcesScreen(
     onLoginSource: (SourceUiModel) -> Unit,
     onLogoutSource: (String) -> Unit,
     youtubeImport: YoutubeImportUiState,
+    backgroundYoutubeImport: BackgroundYoutubeImportUiState,
+    youtubeImportSchedule: YoutubeImportScheduleUiState,
     onImportYoutube: (String, YoutubeImportSelection) -> Unit,
     onDismissYoutubeImport: () -> Unit,
+    onCancelYoutubeImportJobs: () -> Unit,
+    onYoutubeImportScheduleChange:
+        (String, YoutubeImportInterval, YoutubeImportSelection) -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
@@ -280,11 +291,32 @@ fun SourcesScreen(
     }
 
     youtubeImportSourceId?.let { sourceId ->
+        val effectiveImport = if (
+            youtubeImport.isRunning || youtubeImport.resultMessage != null ||
+            youtubeImport.warningMessage != null || youtubeImport.errorMessage != null
+        ) {
+            youtubeImport
+        } else if (backgroundYoutubeImport.isRunning) {
+            YoutubeImportUiState(
+                isRunning = true,
+                stage = backgroundYoutubeImport.stage,
+                completed = backgroundYoutubeImport.completed,
+                total = backgroundYoutubeImport.total,
+                currentItemCompleted = backgroundYoutubeImport.currentItemCompleted,
+            )
+        } else {
+            youtubeImport
+        }
         YoutubeImportSheet(
-            state = youtubeImport,
+            state = effectiveImport,
+            schedule = youtubeImportSchedule,
             onStart = { selection -> onImportYoutube(sourceId, selection) },
+            onScheduleChange = { interval, selection ->
+                onYoutubeImportScheduleChange(sourceId, interval, selection)
+            },
             onDismiss = {
-                onDismissYoutubeImport()
+                if (backgroundYoutubeImport.isRunning) onCancelYoutubeImportJobs()
+                else onDismissYoutubeImport()
                 youtubeImportSourceId = null
             },
         )
@@ -580,13 +612,26 @@ private fun SourceOption(
 @Composable
 private fun YoutubeImportSheet(
     state: YoutubeImportUiState,
+    schedule: YoutubeImportScheduleUiState,
     onStart: (YoutubeImportSelection) -> Unit,
+    onScheduleChange: (YoutubeImportInterval, YoutubeImportSelection) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var subscriptions by rememberSaveable { mutableStateOf(true) }
-    var history by rememberSaveable { mutableStateOf(true) }
-    var playlists by rememberSaveable { mutableStateOf(true) }
-    var likedVideos by rememberSaveable { mutableStateOf(true) }
+    var subscriptions by rememberSaveable(schedule.selection) {
+        mutableStateOf(schedule.selection.subscriptions)
+    }
+    var history by rememberSaveable(schedule.selection) {
+        mutableStateOf(schedule.selection.history)
+    }
+    var playlists by rememberSaveable(schedule.selection) {
+        mutableStateOf(schedule.selection.playlists)
+    }
+    var likedVideos by rememberSaveable(schedule.selection) {
+        mutableStateOf(schedule.selection.likedVideos)
+    }
+    var intervalName by rememberSaveable(schedule.interval) {
+        mutableStateOf(schedule.interval.name)
+    }
     val hasSelection = subscriptions || history || playlists || likedVideos
 
     ModalBottomSheet(
@@ -635,6 +680,64 @@ private fun YoutubeImportSheet(
                     enabled = !state.isRunning,
                     onCheckedChange = { likedVideos = it },
                 )
+
+                HorizontalDivider()
+                Text(
+                    stringResource(R.string.automatic_youtube_import),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    stringResource(R.string.automatic_youtube_import_description),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    YoutubeImportInterval.entries.forEach { interval ->
+                        FilterChip(
+                            selected = intervalName == interval.name,
+                            onClick = { intervalName = interval.name },
+                            enabled = !state.isRunning,
+                            label = {
+                                Text(
+                                    stringResource(
+                                        when (interval) {
+                                            YoutubeImportInterval.Off -> R.string.off
+                                            YoutubeImportInterval.SixHours -> R.string.every_six_hours
+                                            YoutubeImportInterval.TwelveHours -> R.string.every_twelve_hours
+                                            YoutubeImportInterval.Daily -> R.string.daily
+                                            YoutubeImportInterval.Weekly -> R.string.weekly
+                                        },
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+                OutlinedButton(
+                    onClick = {
+                        onScheduleChange(
+                            YoutubeImportInterval.valueOf(intervalName),
+                            YoutubeImportSelection(
+                                subscriptions = subscriptions,
+                                history = history,
+                                playlists = playlists,
+                                likedVideos = likedVideos,
+                            ),
+                        )
+                    },
+                    enabled = !state.isRunning && (
+                        YoutubeImportInterval.valueOf(intervalName) == YoutubeImportInterval.Off ||
+                            hasSelection
+                        ),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.save_automatic_import))
+                }
             }
 
             if (state.isRunning) {

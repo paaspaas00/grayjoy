@@ -150,6 +150,9 @@ data class GrayjayUserImportSelection(
     val history: Boolean = true,
     val playlists: Boolean = true,
     val likedVideos: Boolean = true,
+    val knownSubscriptionUrls: Set<String> = emptySet(),
+    val knownHistoryVideoUrls: Set<String> = emptySet(),
+    val knownPlaylistVideoUrls: Map<String, Set<String>> = emptyMap(),
 )
 
 data class GrayjayUserImportProgress(
@@ -1055,7 +1058,20 @@ class GrayjayPluginBackend(
         val fullRequests = AtomicInteger(0)
         val peekRequests = AtomicInteger(0)
         val directRequests = AtomicInteger(0)
-        val networkSlots = Semaphore(SUBSCRIPTION_NETWORK_CONCURRENCY)
+        val completeConcurrency = (
+            Runtime.getRuntime().availableProcessors().coerceAtLeast(2) / 2
+            ).coerceIn(2, 4)
+        val networkConcurrency = if (forceComplete) {
+            completeConcurrency
+        } else {
+            SUBSCRIPTION_NETWORK_CONCURRENCY
+        }
+        val clientConcurrency = if (forceComplete) {
+            completeConcurrency
+        } else {
+            SUBSCRIPTION_CONCURRENCY
+        }
+        val networkSlots = Semaphore(networkConcurrency)
         onProgress(0, requests.size)
         val outcomes = coroutineScope {
             requests.map { request ->
@@ -1081,7 +1097,7 @@ class GrayjayPluginBackend(
                         val basePlugin = getOrLoad(request.sourceId, endpoint)
                         val plugin = subscriptionClientPool.getClientPooled(
                             basePlugin,
-                            SUBSCRIPTION_CONCURRENCY,
+                            clientConcurrency,
                         )
                         // Prefer the plugin's dedicated lightweight feed for every channel.
                         // The previous threshold made all normal-sized YouTube subscription
@@ -1472,6 +1488,7 @@ class GrayjayPluginBackend(
                     .asSequence()
                     .map(String::trim)
                     .filter(String::isNotBlank)
+                    .filterNot(selection.knownSubscriptionUrls::contains)
                     .distinct()
                     .take(MAX_USER_IMPORT_SUBSCRIPTIONS)
                     .toList()
@@ -1535,6 +1552,7 @@ class GrayjayPluginBackend(
                         pager = pager,
                         maxItems = MAX_USER_IMPORT_HISTORY,
                         maxPages = MAX_USER_IMPORT_PAGES,
+                        stopAtKnownUrls = selection.knownHistoryVideoUrls,
                         onProgress = { count ->
                             onProgress(
                                 GrayjayUserImportProgress(
@@ -1605,6 +1623,7 @@ class GrayjayPluginBackend(
                         pager = playlist.contents,
                         maxItems = MAX_USER_IMPORT_PLAYLIST_VIDEOS,
                         maxPages = MAX_USER_IMPORT_PAGES,
+                        stopAtKnownUrls = selection.knownPlaylistVideoUrls[url].orEmpty(),
                         onProgress = { videoCount ->
                             onProgress(
                                 GrayjayUserImportProgress(
@@ -3260,15 +3279,49 @@ private suspend fun GrayjayPluginBackend.drainVideoPager(
     pager: IPager<*>,
     maxItems: Int,
     maxPages: Int,
+    stopAtKnownUrls: Set<String> = emptySet(),
     onProgress: (Int) -> Unit = {},
     onFailure: (Throwable) -> Unit = {},
-): List<IPlatformVideo> = drainUniquePager(
-    pager = pager,
-    maxItems = maxItems,
-    maxPages = maxPages,
-    maxConsecutiveEmptyPages = MAX_USER_IMPORT_EMPTY_PAGES,
-    itemOf = { item -> item as? IPlatformVideo },
-    keyOf = { video -> video.url.ifBlank { video.id.value.orEmpty() } },
-    onProgress = onProgress,
-    onFailure = onFailure,
-)
+): List<IPlatformVideo> {
+    if (stopAtKnownUrls.isEmpty()) return drainUniquePager(
+        pager = pager,
+        maxItems = maxItems,
+        maxPages = maxPages,
+        maxConsecutiveEmptyPages = MAX_USER_IMPORT_EMPTY_PAGES,
+        itemOf = { item -> item as? IPlatformVideo },
+        keyOf = { video -> video.url.ifBlank { video.id.value.orEmpty() } },
+        onProgress = onProgress,
+        onFailure = onFailure,
+    )
+
+    val imported = linkedMapOf<String, IPlatformVideo>()
+    var pages = 0
+    while (pages < maxPages && imported.size < maxItems) {
+        currentCoroutineContext().ensureActive()
+        val results = runUserImportCatching { pager.getResults() }
+            .onFailure(onFailure)
+            .getOrNull()
+            ?: break
+        var reachedKnownItem = false
+        for (item in results) {
+            val video = item as? IPlatformVideo ?: continue
+            val key = video.url.ifBlank { video.id.value.orEmpty() }
+            if (key in stopAtKnownUrls) {
+                reachedKnownItem = true
+                break
+            }
+            if (key.isNotBlank()) imported.putIfAbsent(key, video)
+            if (imported.size >= maxItems) break
+        }
+        pages += 1
+        onProgress(imported.size)
+        if (reachedKnownItem || imported.size >= maxItems) break
+        val hasMore = runUserImportCatching { pager.hasMorePages() }
+            .onFailure(onFailure)
+            .getOrNull()
+            ?: break
+        if (!hasMore) break
+        if (runUserImportCatching { pager.nextPage() }.onFailure(onFailure).isFailure) break
+    }
+    return imported.values.toList()
+}

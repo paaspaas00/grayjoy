@@ -1,5 +1,8 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,6 +22,7 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.FastForward
@@ -33,6 +37,7 @@ import androidx.compose.material.icons.outlined.ScreenLockPortrait
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.TextButton
@@ -65,6 +70,10 @@ import com.futo.platformplayer.compose.ui.audioLanguageDisplayName
 import com.futo.platformplayer.compose.ui.supportedAudioLanguageCodes
 import com.futo.platformplayer.compose.sponsorblock.SponsorBlockCategory
 import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
+import com.futo.platformplayer.compose.data.LibraryExportFormat
+import com.futo.platformplayer.compose.ui.DownloadMediaType
+import com.futo.platformplayer.compose.ui.DownloadUiModel
+import com.futo.platformplayer.compose.ui.VideoUiModel
 
 @Composable
 fun SettingsScreen(
@@ -79,6 +88,11 @@ fun SettingsScreen(
     onManageSources: () -> Unit,
     onImportDatabase: () -> Unit,
     onImportNewPipeDatabase: () -> Unit = {},
+    onExportLibrary: (LibraryExportFormat, Uri) -> Unit = { _, _ -> },
+    libraryVideos: List<VideoUiModel> = emptyList(),
+    downloads: Map<String, DownloadUiModel> = emptyMap(),
+    onRemoveDownloads: (List<String>) -> Unit = {},
+    onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit = { _, _, _ -> },
     activeSourceCount: Int,
     sources: List<com.futo.platformplayer.compose.ui.SourceUiModel> = emptyList(),
     defaultPlaybackSpeed: Float,
@@ -119,6 +133,8 @@ fun SettingsScreen(
     onKeepScreenAwakeChange: (Boolean) -> Unit,
     pictureInPictureEnabled: Boolean,
     onPictureInPictureChange: (Boolean) -> Unit,
+    automaticPlaylistDownloadsEnabled: Boolean,
+    onAutomaticPlaylistDownloadsChange: (Boolean) -> Unit,
     otherAudioDuckingEnabled: Boolean,
     onOtherAudioDuckingChange: (Boolean) -> Unit,
     otherAudioDuckVolumePercent: Int,
@@ -138,6 +154,17 @@ fun SettingsScreen(
     var showTitleLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showYoutubeBackendDialog by rememberSaveable { mutableStateOf(false) }
     var showSubscriptionFetchDialog by rememberSaveable { mutableStateOf(false) }
+    var showStorageManagement by rememberSaveable { mutableStateOf(false) }
+    var pendingExportFormatName by rememberSaveable { mutableStateOf<String?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        val format = pendingExportFormatName?.let {
+            runCatching { LibraryExportFormat.valueOf(it) }.getOrNull()
+        }
+        if (uri != null && format != null) onExportLibrary(format, uri)
+        pendingExportFormatName = null
+    }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     var showPairedComputers by rememberSaveable { mutableStateOf(false) }
@@ -340,8 +367,6 @@ fun SettingsScreen(
                     testTag = "sticky-captions",
                 )
             }
-        }
-        settingsGroup("settings-group-4", null, groupSpacing) {
             setting("keep-screen-awake", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.keep_screen_awake),
@@ -352,6 +377,8 @@ fun SettingsScreen(
                     testTag = "keep-screen-awake",
                 )
             }
+        }
+        settingsGroup("settings-group-4", null, groupSpacing) {
             setting("picture-in-picture", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.picture_in_picture),
@@ -360,6 +387,18 @@ fun SettingsScreen(
                     checked = pictureInPictureEnabled,
                     onCheckedChange = onPictureInPictureChange,
                     testTag = "picture-in-picture",
+                )
+            }
+            setting("automatic-playlist-downloads", "toggle") {
+                ToggleSetting(
+                    title = stringResource(R.string.automatic_playlist_downloads),
+                    description = stringResource(
+                        R.string.automatic_playlist_downloads_description,
+                    ),
+                    icon = Icons.Outlined.Download,
+                    checked = automaticPlaylistDownloadsEnabled,
+                    onCheckedChange = onAutomaticPlaylistDownloadsChange,
+                    testTag = "automatic-playlist-downloads",
                 )
             }
             setting("other-audio-ducking", "toggle") {
@@ -484,6 +523,39 @@ fun SettingsScreen(
                     icon = Icons.Outlined.FileUpload,
                     onClick = onImportNewPipeDatabase,
                     testTag = "import-newpipe-database",
+                )
+            }
+            setting("storage-management", "link") {
+                LinkSetting(
+                    title = stringResource(R.string.storage_management),
+                    description = stringResource(R.string.storage_management_description),
+                    icon = Icons.Outlined.Storage,
+                    onClick = { showStorageManagement = true },
+                    testTag = "storage-management",
+                )
+            }
+            setting("export-grayjay-data", "link") {
+                LinkSetting(
+                    title = stringResource(R.string.export_grayjay_data),
+                    description = stringResource(R.string.export_grayjay_data_description),
+                    icon = Icons.Outlined.FileUpload,
+                    onClick = {
+                        pendingExportFormatName = LibraryExportFormat.Grayjay.name
+                        exportLauncher.launch("Grayjoy-export.zip")
+                    },
+                    testTag = "export-grayjay-data",
+                )
+            }
+            setting("export-newpipe-data", "link") {
+                LinkSetting(
+                    title = stringResource(R.string.export_newpipe_data),
+                    description = stringResource(R.string.export_newpipe_data_description),
+                    icon = Icons.Outlined.FileUpload,
+                    onClick = {
+                        pendingExportFormatName = LibraryExportFormat.NewPipe.name
+                        exportLauncher.launch("NewPipeData-Grayjoy.zip")
+                    },
+                    testTag = "export-newpipe-data",
                 )
             }
         }
@@ -663,6 +735,15 @@ fun SettingsScreen(
                 onSubscriptionFetchModeChange(it)
                 showSubscriptionFetchDialog = false
             },
+        )
+    }
+    if (showStorageManagement) {
+        StorageManagementScreen(
+            videos = libraryVideos,
+            downloads = downloads,
+            onDismiss = { showStorageManagement = false },
+            onRemove = onRemoveDownloads,
+            onExport = onExportDownloads,
         )
     }
     if (showYoutubeBackendDialog) {

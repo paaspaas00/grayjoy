@@ -13,6 +13,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
+internal data class AccountImportPreferenceSnapshot(
+    val followedCreatorIds: Set<String>,
+    val followingInitialized: Boolean,
+    val importedChannelsJson: String,
+)
+
 internal class GrayjayPreferences(context: Context, profileId: String = "main") {
     private val appContext = context.applicationContext
     private val defaultThemeMode = if (profileId == PRIVATE_PROFILE_ID) {
@@ -245,6 +251,12 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
             preferences.edit().putBoolean(KEY_PICTURE_IN_PICTURE, value).apply()
         }
 
+    var automaticPlaylistDownloadsEnabled: Boolean
+        get() = preferences.getBoolean(KEY_AUTOMATIC_PLAYLIST_DOWNLOADS, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_AUTOMATIC_PLAYLIST_DOWNLOADS, value).apply()
+        }
+
     var otherAudioDuckingEnabled: Boolean
         get() = preferences.getBoolean(KEY_OTHER_AUDIO_DUCKING, true)
         set(value) {
@@ -335,6 +347,22 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
             .putBoolean(KEY_FOLLOWING_INITIALIZED, true)
             .putString(KEY_IMPORTED_CHANNELS, json.toString())
             .apply()
+    }
+
+    internal fun createAccountImportSnapshot() = AccountImportPreferenceSnapshot(
+        followedCreatorIds = followedCreatorIds(),
+        followingInitialized = preferences.getBoolean(KEY_FOLLOWING_INITIALIZED, false),
+        importedChannelsJson = preferences.getString(KEY_IMPORTED_CHANNELS, "[]").orEmpty(),
+    )
+
+    internal fun restoreAccountImportSnapshot(snapshot: AccountImportPreferenceSnapshot) {
+        check(
+            preferences.edit()
+                .putStringSet(KEY_FOLLOWED_CREATORS, snapshot.followedCreatorIds)
+                .putBoolean(KEY_FOLLOWING_INITIALIZED, snapshot.followingInitialized)
+                .putString(KEY_IMPORTED_CHANNELS, snapshot.importedChannelsJson)
+                .commit(),
+        ) { "Could not restore subscriptions after a cancelled import." }
     }
 
     fun loadImportedChannels(): List<ChannelUiModel> = runCatching {
@@ -453,6 +481,8 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         private const val KEY_SEARCH_HISTORY = "search_history"
         private const val KEY_KEEP_SCREEN_AWAKE = "keep_screen_awake"
         private const val KEY_PICTURE_IN_PICTURE = "picture_in_picture_enabled"
+        private const val KEY_AUTOMATIC_PLAYLIST_DOWNLOADS =
+            "automatic_playlist_downloads_enabled"
         private const val KEY_OTHER_AUDIO_DUCKING = "other_audio_ducking_enabled"
         private const val KEY_OTHER_AUDIO_DUCK_VOLUME = "other_audio_duck_volume_percent"
         private const val PRIVATE_PROFILE_ID = "private"

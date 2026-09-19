@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -125,6 +126,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
@@ -408,6 +410,7 @@ fun VideoDetailScreen(
                     state = detailListState,
                     modifier = Modifier
                         .weight(0.85f)
+                        .forwardUnconsumedVerticalDrag(detailListState)
                         .testTag("video-detail-list"),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp),
@@ -461,6 +464,7 @@ fun VideoDetailScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .forwardUnconsumedVerticalDrag(detailListState)
                     .testTag("video-detail-list"),
                 contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -827,7 +831,7 @@ internal fun PlayerSurface(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (video.playbackFromDownload && video.playbackAudioOnly) {
+        if (video.playbackAudioOnly) {
             AudioOnlySpectrogram(
                 playback = playback,
                 modifier = Modifier.fillMaxSize(),
@@ -1254,6 +1258,32 @@ internal fun PlayerSurface(
     }
 }
 
+/**
+ * Horizontal chips and nested clickable surfaces occasionally win pointer arbitration before the
+ * LazyColumn sees a mostly-vertical drag. Forward only movement left unconsumed at the final pass;
+ * ordinary list scrolling is already consumed and therefore cannot be applied twice.
+ */
+private fun Modifier.forwardUnconsumedVerticalDrag(
+    listState: androidx.compose.foundation.lazy.LazyListState,
+): Modifier = pointerInput(listState) {
+    awaitEachGesture {
+        val first = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull()
+            ?: return@awaitEachGesture
+        val pointerId = first.id
+        while (true) {
+            val change = awaitPointerEvent(PointerEventPass.Final).changes
+                .firstOrNull { it.id == pointerId }
+                ?: break
+            if (!change.pressed) break
+            val delta = change.positionChange()
+            if (!change.isConsumed && abs(delta.y) > abs(delta.x) && delta.y != 0f) {
+                listState.dispatchRawDelta(-delta.y)
+                change.consume()
+            }
+        }
+    }
+}
+
 @androidx.annotation.StringRes
 private fun sponsorBlockSkipNoticeText(category: SponsorBlockCategory): Int = when (category) {
     SponsorBlockCategory.Sponsor -> R.string.sponsorblock_skipped_sponsor
@@ -1279,7 +1309,7 @@ private fun PlayerTopActionButtons(
     onSettings: () -> Unit,
     onFullscreen: () -> Unit,
 ) {
-    Row {
+    Row(modifier = Modifier.padding(end = if (isFullscreen) 18.dp else 0.dp)) {
         IconButton(
             onClick = onSettings,
             modifier = Modifier
@@ -1726,7 +1756,7 @@ private fun AudioOnlySpectrogram(
             ) {
                 Icon(Icons.Outlined.MusicNote, contentDescription = null, modifier = Modifier.size(17.dp))
                 Text(
-                    stringResource(R.string.audio_only),
+                    stringResource(R.string.audio_label),
                     style = MaterialTheme.typography.labelLarge,
                 )
             }

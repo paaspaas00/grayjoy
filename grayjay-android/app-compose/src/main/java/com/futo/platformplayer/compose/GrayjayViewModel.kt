@@ -12,12 +12,17 @@ import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import com.futo.platformplayer.compose.background.YoutubeImportScheduler
 import com.futo.platformplayer.compose.data.ContentRepository
 import com.futo.platformplayer.compose.data.CachedHomePage
 import com.futo.platformplayer.compose.data.CachedHomeSnapshot
 import com.futo.platformplayer.compose.data.HomeCacheRepository
 import com.futo.platformplayer.compose.data.forPagerSession
 import com.futo.platformplayer.compose.data.LibraryRepository
+import com.futo.platformplayer.compose.data.LibraryBackupExporter
+import com.futo.platformplayer.compose.data.LibraryExportFormat
 import com.futo.platformplayer.compose.data.LegacyBackupPasswordRequiredException
 import com.futo.platformplayer.compose.data.LegacyGrayjayBackup
 import com.futo.platformplayer.compose.data.LegacyGrayjayBackupParser
@@ -32,6 +37,7 @@ import com.futo.platformplayer.compose.data.SourceRepository
 import com.futo.platformplayer.compose.data.visibleContentForSources
 import com.futo.platformplayer.compose.data.withLibraryState
 import com.futo.platformplayer.compose.data.buildImportLibrary
+import com.futo.platformplayer.compose.data.applyAccountImportTransaction
 import com.futo.platformplayer.compose.data.playlistTitleExists
 import com.futo.platformplayer.compose.data.uniqueRemotePlaylistTitle
 import com.futo.platformplayer.compose.casting.ChromecastManager
@@ -95,6 +101,9 @@ import com.futo.platformplayer.compose.ui.ThemeMode
 import com.futo.platformplayer.compose.ui.YoutubeImportSelection
 import com.futo.platformplayer.compose.ui.YoutubeImportStageUi
 import com.futo.platformplayer.compose.ui.YoutubeImportUiState
+import com.futo.platformplayer.compose.ui.BackgroundYoutubeImportUiState
+import com.futo.platformplayer.compose.ui.YoutubeImportInterval
+import com.futo.platformplayer.compose.ui.YoutubeImportScheduleUiState
 import com.futo.platformplayer.backend.GrayjaySignatureMismatchException
 import com.futo.platformplayer.backend.GrayjayScheduledVideoException
 import com.futo.platformplayer.engine.exceptions.ScriptLoginRequiredException
@@ -130,6 +139,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicInteger
@@ -257,6 +267,11 @@ private data class SpeedHoldSnapshot(
     val speed: Float,
     val wasPlaying: Boolean,
     val wasCasting: Boolean,
+)
+
+private data class MetadataPresentationPatch(
+    val duration: String? = null,
+    val authorThumbnailUrl: String? = null,
 )
 
 internal fun selectAudioQualityVariant(
@@ -436,6 +451,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val downloadExporter by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         GrayjoyDownloadExporter(application, downloadStore)
     }
+    private val libraryBackupExporter by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        LibraryBackupExporter(application)
+    }
     private val downloadQueue = GrayjoyDownloadQueue(application)
     private val networkMonitor = NetworkMonitor(application)
     private val offlinePlaylistStore = GrayjoyOfflinePlaylistStore(application)
@@ -530,7 +548,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var watchProgressWriteJob: Job? = null
     private var externalUrlJob: Job? = null
     private var releaseCheckJob: Job? = null
+    private var libraryExportJob: Job? = null
     private var youtubeImportJob: Job? = null
+    private var youtubeImportWorkObservationJob: Job? = null
+    private var backgroundYoutubeImportWasRunning = false
     private var pcHandoffJob: Job? = null
     private var libraryLoadJob: Job? = null
     private var pluginUpdateJob: Job? = null
@@ -560,13 +581,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var resumeLocalAfterFailedCast = false
     private var speedHoldSnapshot: SpeedHoldSnapshot? = null
     private val downloadJobs = mutableMapOf<String, Job>()
+    private val downloadBatchPreparationJobs = mutableMapOf<String, Job>()
     // Old Grayjay prepares the next queued video immediately before transferring it. Keeping
     // this single-file queue prevents signed plugin URLs for later playlist items expiring.
     private val downloadPreparationSemaphore = Semaphore(1)
     private val metadataHydrationSemaphore = Semaphore(2)
     private val metadataHydrationJobs = mutableMapOf<String, Job>()
     private val metadataHydrationAttempts = mutableSetOf<String>()
-    private val pendingMetadataDurations = linkedMapOf<String, String>()
+    private val pendingMetadataPresentations = linkedMapOf<String, MetadataPresentationPatch>()
     private var metadataHydrationPublishJob: Job? = null
     private var metadataHydrationSaveJob: Job? = null
     private val downloadPreparationStates = mutableMapOf<String, DownloadUiModel>()
@@ -626,11 +648,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             crashLoggingEnabled = CrashLogStore.isEnabled(application),
             keepScreenAwake = preferences.keepScreenAwake,
             pictureInPictureEnabled = preferences.pictureInPictureEnabled,
+            automaticPlaylistDownloadsEnabled = preferences.automaticPlaylistDownloadsEnabled,
             otherAudioDuckingEnabled = preferences.otherAudioDuckingEnabled,
             otherAudioDuckVolumePercent = preferences.otherAudioDuckVolumePercent,
             profiles = profileRepository.profiles(),
             activeProfileId = activeProfileId,
             followedCreatorIds = followedCreatorIds,
+            youtubeImportSchedule = YoutubeImportScheduler.scheduleFor(
+                application,
+                activeProfileId,
+            ),
         ),
     )
     val uiState = _uiState.asStateFlow()
@@ -675,6 +702,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             viewModelScope.launch(Dispatchers.Main.immediate) { skipToNext() }
         }
         preferences.loadImportedChannels().forEach { remoteChannels[it.id] = it }
+        observeScheduledYoutubeImports()
         allVideos.forEach(::registerRemoteChannel)
         _uiState.update { it.copy(channels = visibleKnownChannels()) }
         viewModelScope.launch {
@@ -1086,6 +1114,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(pictureInPictureEnabled = enabled) }
     }
 
+    fun setAutomaticPlaylistDownloadsEnabled(enabled: Boolean) {
+        preferences.automaticPlaylistDownloadsEnabled = enabled
+        _uiState.update { it.copy(automaticPlaylistDownloadsEnabled = enabled) }
+        if (enabled) scheduleOfflinePlaylistSync() else offlinePlaylistSyncJob?.cancel()
+    }
+
     fun setOtherAudioDuckingEnabled(enabled: Boolean) {
         preferences.otherAudioDuckingEnabled = enabled
         _uiState.update { it.copy(otherAudioDuckingEnabled = enabled) }
@@ -1448,7 +1482,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     followedChannels = followedChannels,
                     onSubscriptionProgress = { completed, total ->
                         _uiState.update { current ->
-                            val step = (total / 24).coerceAtLeast(1)
+                            // Progress-only state invalidates the complete navigation tree. Eight
+                            // meaningful updates keep feedback useful without making low-end
+                            // devices recompose dozens of times while JS parsers are also busy.
+                            val step = (total / 8).coerceAtLeast(1)
                             if (!current.followingFeedLoading ||
                                 (completed < total && completed - current.followingFeedCompleted < step)
                             ) current else current.copy(
@@ -1939,6 +1976,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         pendingPcHandoffSeek = null
         dismissYoutubeImport()
         downloadJobs.cancelAndClearJobs()
+        downloadBatchPreparationJobs.cancelAndClearJobs()
         downloadQueueRestoreJob?.cancel()
         offlinePlaylistSyncJob?.cancel()
         downloadPreparationStates.clear()
@@ -2048,12 +2086,18 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             crashLoggingEnabled = CrashLogStore.isEnabled(getApplication()),
             keepScreenAwake = preferences.keepScreenAwake,
             pictureInPictureEnabled = preferences.pictureInPictureEnabled,
+            automaticPlaylistDownloadsEnabled = preferences.automaticPlaylistDownloadsEnabled,
             otherAudioDuckingEnabled = preferences.otherAudioDuckingEnabled,
             otherAudioDuckVolumePercent = preferences.otherAudioDuckVolumePercent,
             profiles = profileRepository.profiles(),
             activeProfileId = activeProfileId,
             followedCreatorIds = followedCreatorIds,
+            youtubeImportSchedule = YoutubeImportScheduler.scheduleFor(
+                application,
+                activeProfileId,
+            ),
         )
+        observeScheduledYoutubeImports()
         restoreDownloadQueue()
         scheduleOfflinePlaylistSync()
         restoreCachedHome()
@@ -2080,6 +2124,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun deleteProfile(profileId: String) {
         if (!profileRepository.deleteProfile(profileId)) return
+        YoutubeImportScheduler.clearProfile(getApplication(), profileId)
         HomeSessionCache.clear(profileId)
         _uiState.update { it.copy(profiles = profileRepository.profiles()) }
         viewModelScope.launch(Dispatchers.IO) {
@@ -2097,6 +2142,28 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun setAppForeground(foreground: Boolean) {
         appIsForeground = foreground
         if (foreground) {
+            if (_uiState.value.backgroundYoutubeImport.isRunning) {
+                cancelYoutubeImportJobs()
+            }
+            viewModelScope.launch {
+                val running = runCatching {
+                    withContext(Dispatchers.IO) {
+                        WorkManager.getInstance(getApplication<Application>())
+                            .getWorkInfosByTag(
+                                YoutubeImportScheduler.profileTag(activeProfileId),
+                            )
+                            .get()
+                            .firstOrNull { it.state == WorkInfo.State.RUNNING }
+                    }
+                }.getOrNull()
+                running?.let { work ->
+                    YoutubeImportScheduler.cancelRunningAndReschedule(
+                        context = getApplication(),
+                        profileId = activeProfileId,
+                        workId = work.id.toString(),
+                    )
+                }
+            }
             com.futo.platformplayer.compose.images.ArtworkCache.get(getApplication()).retryFailed()
             schedulePluginUpdates()
             viewModelScope.launch {
@@ -2265,7 +2332,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun hydrateVideoMetadata(videoId: String) {
         val video = findVideo(videoId) ?: return
         if (
-            video.duration.isNotBlank() ||
+            (video.duration.isNotBlank() && video.authorThumbnailUrl.isNotBlank()) ||
             video.isLive ||
             video.scheduledStartAtMs > System.currentTimeMillis()
         ) return
@@ -2281,9 +2348,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
                 if (activeProfileId != profileAtStart) return@launchTracked
-                val resolvedDuration = resolved.duration
-                if (resolvedDuration.isBlank()) return@launchTracked
-                enqueueMetadataDuration(profileAtStart, videoId, resolvedDuration)
+                val patch = MetadataPresentationPatch(
+                    duration = resolved.duration.takeIf(String::isNotBlank),
+                    authorThumbnailUrl = resolved.authorThumbnailUrl.takeIf(String::isNotBlank),
+                )
+                if (patch.duration == null && patch.authorThumbnailUrl == null) {
+                    return@launchTracked
+                }
+                enqueueMetadataPresentation(profileAtStart, videoId, patch)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -2315,49 +2387,74 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
      * duration separately rebuilt the complete Home state several times just after a scroll
      * settled. Coalescing the small burst gives Compose one immutable list update instead.
      */
-    private fun enqueueMetadataDuration(profileId: String, videoId: String, duration: String) {
-        pendingMetadataDurations["$profileId|$videoId"] = duration
+    private fun enqueueMetadataPresentation(
+        profileId: String,
+        videoId: String,
+        patch: MetadataPresentationPatch,
+    ) {
+        pendingMetadataPresentations["$profileId|$videoId"] = patch
         if (metadataHydrationPublishJob?.isActive == true) return
         metadataHydrationPublishJob = viewModelScope.launch {
             delay(120L)
-            while (pendingMetadataDurations.isNotEmpty()) {
+            while (pendingMetadataPresentations.isNotEmpty()) {
                 val currentProfileId = activeProfileId
                 val prefix = "$currentProfileId|"
-                val pendingBatch = pendingMetadataDurations.toMap()
-                pendingMetadataDurations.clear()
-                val durations = pendingBatch.entries
+                val pendingBatch = pendingMetadataPresentations.toMap()
+                pendingMetadataPresentations.clear()
+                val presentations = pendingBatch.entries
                     .asSequence()
                     .filter { (key, _) -> key.startsWith(prefix) }
                     .associate { (key, value) -> key.removePrefix(prefix) to value }
-                if (durations.isNotEmpty()) {
+                if (presentations.isNotEmpty()) {
                     homeFeedCache.replaceAll { _, videos ->
-                        videos.applyDurations(durations)
+                        videos.applyMetadataPresentations(presentations)
+                    }
+                    remoteVideos.replaceAll { id, video ->
+                        presentations[id]?.let { video.applyMetadataPresentation(it) } ?: video
                     }
                     _uiState.update { state ->
-                        state.copy(
-                            subscriptionVideos = state.subscriptionVideos.applyDurations(durations),
-                            home = state.home.copy(
-                                videos = state.home.videos.applyDurations(durations),
-                            ),
-                        )
+                        presentations.entries.fold(state) { current, (id, value) ->
+                            updateVideoEverywhere(current, id) {
+                                it.applyMetadataPresentation(value)
+                            }
+                        }
                     }
                     metadataHydrationSaveJob?.cancel()
                     metadataHydrationSaveJob = viewModelScope.launch {
                         delay(1_200L)
-                        if (activeProfileId == currentProfileId) saveHomeToSession()
+                        if (activeProfileId == currentProfileId) {
+                            val savedPatches = presentations.mapNotNull { (id, value) ->
+                                savedVideosById[id]?.applyMetadataPresentation(value)
+                            }
+                            if (savedPatches.isNotEmpty()) {
+                                withContext(Dispatchers.IO) {
+                                    libraryRepository.saveVideos(savedPatches)
+                                }
+                                savedVideosById = savedVideosById +
+                                    savedPatches.associateBy(VideoUiModel::id)
+                            }
+                            saveHomeToSession()
+                        }
                     }
                 }
-                if (pendingMetadataDurations.isNotEmpty()) delay(120L)
+                if (pendingMetadataPresentations.isNotEmpty()) delay(120L)
             }
         }
     }
 
-    private fun List<VideoUiModel>.applyDurations(durations: Map<String, String>): List<VideoUiModel> =
+    private fun List<VideoUiModel>.applyMetadataPresentations(
+        presentations: Map<String, MetadataPresentationPatch>,
+    ): List<VideoUiModel> =
         mapIfChanged { video ->
-            durations[video.id]?.let { duration ->
-                if (video.duration == duration) video else video.copy(duration = duration)
-            } ?: video
+            presentations[video.id]?.let { video.applyMetadataPresentation(it) } ?: video
         }
+
+    private fun VideoUiModel.applyMetadataPresentation(
+        patch: MetadataPresentationPatch,
+    ): VideoUiModel = copy(
+        duration = patch.duration ?: duration,
+        authorThumbnailUrl = patch.authorThumbnailUrl ?: authorThumbnailUrl,
+    )
 
     private fun publishExternalNavigation(kind: ExternalNavigationKind, contentId: String) {
         externalNavigationRequestId += 1L
@@ -2474,13 +2571,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 if (profileAtStart != activeProfileId) {
                     error(text(R.string.profile_changed_during_import))
                 }
+                applyAccountImportTransaction(
+                    repository = libraryAtStart,
+                    preferences = preferencesAtStart,
+                    result = result,
+                    repairSyntheticHistoryDates = selection.history,
+                )
                 val importedSnapshot = withContext(Dispatchers.IO) {
-                    libraryAtStart.mergeImportedData(
-                        videos = result.videos,
-                        playlists = result.playlists,
-                        repairSyntheticHistoryDates = selection.history,
-                    )
-                    preferencesAtStart.mergeImportedSubscriptions(result.subscriptions)
                     libraryAtStart.loadSavedVideos() to libraryAtStart.loadPlaylists()
                 }
                 if (!isActive || importGeneration != youtubeImportGeneration) {
@@ -2547,6 +2644,172 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         youtubeImportJob?.cancel()
         youtubeImportJob = null
         _uiState.update { it.copy(youtubeImport = YoutubeImportUiState()) }
+    }
+
+    fun setYoutubeImportSchedule(
+        sourceId: String,
+        interval: YoutubeImportInterval,
+        selection: YoutubeImportSelection,
+    ) {
+        val schedule = YoutubeImportScheduleUiState(sourceId, interval, selection)
+        YoutubeImportScheduler.update(getApplication(), activeProfileId, schedule)
+        _uiState.update { it.copy(youtubeImportSchedule = schedule) }
+        observeScheduledYoutubeImports()
+    }
+
+    fun exportLibrary(format: LibraryExportFormat, destination: Uri) {
+        if (libraryExportJob?.isActive == true) return
+        val profileAtStart = activeProfileId
+        val repositoryAtStart = libraryRepository
+        _uiState.update {
+            it.copy(
+                libraryTransfer = com.futo.platformplayer.compose.ui.LibraryTransferUiState(
+                    isRunning = true,
+                    title = text(
+                        if (format == LibraryExportFormat.Grayjay) {
+                            R.string.export_grayjay_data
+                        } else {
+                            R.string.export_newpipe_data
+                        },
+                    ),
+                ),
+            )
+        }
+        libraryExportJob = viewModelScope.launch {
+            try {
+                val snapshot = withContext(Dispatchers.IO) {
+                    repositoryAtStart.loadSavedVideos() to repositoryAtStart.loadPlaylists()
+                }
+                if (profileAtStart != activeProfileId) throw CancellationException()
+                val channels = visibleKnownChannels().filter { it.id in followedCreatorIds }
+                withContext(Dispatchers.IO) {
+                    getApplication<Application>().contentResolver
+                        .openOutputStream(destination, "w")
+                        ?.use { output ->
+                            libraryBackupExporter.export(
+                                format = format,
+                                videos = snapshot.first,
+                                playlists = snapshot.second,
+                                channels = channels,
+                                output = output,
+                            )
+                        }
+                        ?: error(text(R.string.export_failed))
+                }
+                Toast.makeText(
+                    getApplication(),
+                    text(R.string.export_completed),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                Log.e("GrayjayViewModel", "Library export failed.", error)
+                Toast.makeText(
+                    getApplication(),
+                    error.localizedMessage ?: text(R.string.export_failed),
+                    Toast.LENGTH_LONG,
+                ).show()
+            } finally {
+                _uiState.update {
+                    it.copy(
+                        libraryTransfer = com.futo.platformplayer.compose.ui.LibraryTransferUiState(),
+                    )
+                }
+                libraryExportJob = null
+            }
+        }
+    }
+
+    fun cancelYoutubeImportJobs() {
+        if (_uiState.value.youtubeImport.isRunning) dismissYoutubeImport()
+        val background = _uiState.value.backgroundYoutubeImport
+        val workId = background.workId ?: return
+        YoutubeImportScheduler.cancelRunningAndReschedule(
+            context = getApplication(),
+            profileId = activeProfileId,
+            workId = workId,
+        )
+    }
+
+    private fun observeScheduledYoutubeImports() {
+        youtubeImportWorkObservationJob?.cancel()
+        val profileId = activeProfileId
+        backgroundYoutubeImportWasRunning = false
+        youtubeImportWorkObservationJob = viewModelScope.launch {
+            val manager = WorkManager.getInstance(getApplication<Application>())
+            while (isActive && profileId == activeProfileId) {
+                val workInfos = try {
+                    withContext(Dispatchers.IO) {
+                        manager.getWorkInfosByTag(
+                            YoutubeImportScheduler.profileTag(profileId),
+                        ).get()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    Log.w("GrayjayViewModel", "Could not observe background imports.", error)
+                    delay(2_000L)
+                    continue
+                }
+                if (profileId != activeProfileId) return@launch
+                val running = workInfos.firstOrNull { it.state == WorkInfo.State.RUNNING }
+                val hadRunningImport = backgroundYoutubeImportWasRunning
+                backgroundYoutubeImportWasRunning = running != null
+                val progress = running?.progress ?: androidx.work.Data.EMPTY
+                val stage = progress.getString(YoutubeImportScheduler.KEY_STAGE)
+                    ?.let { runCatching { YoutubeImportStageUi.valueOf(it) }.getOrNull() }
+                _uiState.update { state ->
+                    state.copy(
+                        backgroundYoutubeImport = if (running == null) {
+                            BackgroundYoutubeImportUiState()
+                        } else {
+                            BackgroundYoutubeImportUiState(
+                                isRunning = true,
+                                stage = stage,
+                                completed = progress.getInt(
+                                    YoutubeImportScheduler.KEY_COMPLETED,
+                                    0,
+                                ),
+                                total = progress.keyValueMap
+                                    .takeIf { YoutubeImportScheduler.KEY_TOTAL in it }
+                                    ?.let {
+                                        progress.getInt(YoutubeImportScheduler.KEY_TOTAL, 0)
+                                    },
+                                currentItemCompleted = progress.keyValueMap
+                                    .takeIf { YoutubeImportScheduler.KEY_CURRENT_ITEM in it }
+                                    ?.let {
+                                        progress.getInt(
+                                            YoutubeImportScheduler.KEY_CURRENT_ITEM,
+                                            0,
+                                        )
+                                    },
+                                workId = running.id.toString(),
+                            )
+                        },
+                    )
+                }
+                if (hadRunningImport && running == null) {
+                    val snapshot = withContext(Dispatchers.IO) {
+                        libraryRepository.loadSavedVideos() to
+                            libraryRepository.loadPlaylists()
+                    }
+                    followedCreatorIds = preferences.followedCreatorIds()
+                    preferences.loadImportedChannels().forEach {
+                        remoteChannels[it.id] = it
+                    }
+                    applyLibrarySnapshot(snapshot.first, snapshot.second)
+                    invalidateSubscriptionFeedCaches()
+                    _uiState.update {
+                        it.copy(
+                            channels = visibleKnownChannels(),
+                            followedCreatorIds = followedCreatorIds,
+                        )
+                    }
+                }
+                delay(if (running == null) 2_000L else 500L)
+            }
+        }
     }
 
     fun openVideo(videoId: String) = openVideoInternal(
@@ -4604,10 +4867,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun downloadVideos(videoIds: List<String>, mediaType: DownloadMediaType) {
         val profileAtStart = activeProfileId
         val repositoryAtStart = libraryRepository
+        val knownDownloads = _uiState.value.downloads
         val candidates = videoIds.distinct().mapNotNull { videoId ->
             val video = findVideo(videoId)?.takeIf(VideoUiModel::supportsOfflineDownload)
                 ?: return@mapNotNull null
-            val existing = _uiState.value.downloads[videoId]
+            val existing = knownDownloads[videoId]
             if (existing?.isComplete(mediaType) == true || existing?.isActive(mediaType) == true) {
                 null
             } else {
@@ -4615,66 +4879,82 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         if (candidates.isEmpty()) return
-
-        val batchCreatedAtMs = System.currentTimeMillis()
-        val queuedDownloads = candidates.mapIndexed { index, (video, _) ->
-            QueuedDownload(
-                profileId = profileAtStart,
-                videoId = video.id,
-                mediaType = mediaType,
-                status = DownloadStatus.Queued,
-                createdAtMs = batchCreatedAtMs + index,
-                targetVideoHeight = preferences.preferredVideoQuality.takeIf {
-                    mediaType == DownloadMediaType.Video && it > 0
-                },
-                targetAudioBitrate = preferences.preferredAudioBitrate.takeIf {
-                    mediaType == DownloadMediaType.Audio
-                },
-            )
+        val batchKey = "$profileAtStart:${mediaType.name}:${UUID.randomUUID()}"
+        val targetVideoHeight = preferences.preferredVideoQuality.takeIf {
+            mediaType == DownloadMediaType.Video && it > 0
         }
-
-        // Persist the compact queue once up front so cancellation cannot race a late bulk write.
-        downloadQueue.putAll(queuedDownloads)
-        val videoPersistence = viewModelScope.async(Dispatchers.IO) {
-            // A playlist can contain hundreds of videos. Serialize its library metadata once,
-            // off the UI thread, instead of rewriting the complete library once per item.
-            repositoryAtStart.saveVideos(candidates.map { it.first })
+        val targetAudioBitrate = preferences.preferredAudioBitrate.takeIf {
+            mediaType == DownloadMediaType.Audio
         }
-        candidates.zip(queuedDownloads).forEach { (candidate, queued) ->
-            val (video, replaceExisting) = candidate
-            startDownload(
-                videoId = video.id,
-                mediaType = mediaType,
-                replaceExisting = replaceExisting,
-                restored = queued,
-                initialVideoPersistence = videoPersistence,
-            )
+        viewModelScope.launchTracked(downloadBatchPreparationJobs, batchKey) {
+            val batchCreatedAtMs = System.currentTimeMillis()
+            val queuedDownloads = withContext(Dispatchers.Default) {
+                candidates.mapIndexed { index, (video, _) ->
+                    QueuedDownload(
+                        profileId = profileAtStart,
+                        videoId = video.id,
+                        mediaType = mediaType,
+                        status = DownloadStatus.Queued,
+                        createdAtMs = batchCreatedAtMs + index,
+                        targetVideoHeight = targetVideoHeight,
+                        targetAudioBitrate = targetAudioBitrate,
+                    )
+                }
+            }
+            // Persisting a large compact queue can require JSON serialization and a filesystem
+            // write; neither belongs in the playlist click or automatic-sync UI callback.
+            withContext(Dispatchers.IO) { downloadQueue.putAll(queuedDownloads) }
+            if (profileAtStart != activeProfileId) return@launchTracked
+            val videoPersistence = async(Dispatchers.IO) {
+                repositoryAtStart.saveVideos(candidates.map { it.first })
+            }
+            candidates.zip(queuedDownloads).forEachIndexed { index, (candidate, queued) ->
+                val (video, replaceExisting) = candidate
+                startDownload(
+                    videoId = video.id,
+                    mediaType = mediaType,
+                    replaceExisting = replaceExisting,
+                    restored = queued,
+                    initialVideoPersistence = videoPersistence,
+                )
+                if (index % 8 == 7) yield()
+            }
+            // Publish the whole batch once after yielding between small chunks.
+            syncDownloadState()
         }
-        // Publish the whole batch in one StateFlow update. Repeating this for every playlist
-        // item was the remaining source of "Grayjoy isn't responding" dialogs.
-        syncDownloadState()
     }
 
     fun downloadPlaylist(playlistId: String, mediaType: DownloadMediaType) {
-        val playlist = libraryRepository.loadPlaylists().firstOrNull { it.id == playlistId }
+        val playlist = _uiState.value.playlists.firstOrNull { it.id == playlistId }
             ?: return
         val downloadableIds = playlist.videoIds.filter {
             findVideo(it)?.supportsOfflineDownload() == true
         }
-        offlinePlaylistStore.register(
-            profileId = activeProfileId,
-            playlistId = playlistId,
-            mediaType = mediaType,
-            videoIds = downloadableIds,
-            targetVideoHeight = preferences.preferredVideoQuality.takeIf {
-                mediaType == DownloadMediaType.Video && it > 0
-            },
-        )
-        syncDownloadState()
-        downloadVideos(downloadableIds, mediaType)
+        val profileAtStart = activeProfileId
+        val key = playlistDownloadPreparationKey(profileAtStart, playlistId, mediaType)
+        val targetHeight = preferences.preferredVideoQuality.takeIf {
+            mediaType == DownloadMediaType.Video && it > 0
+        }
+        viewModelScope.launchTracked(downloadBatchPreparationJobs, key) {
+            withContext(Dispatchers.IO) {
+                offlinePlaylistStore.register(
+                    profileId = profileAtStart,
+                    playlistId = playlistId,
+                    mediaType = mediaType,
+                    videoIds = downloadableIds,
+                    targetVideoHeight = targetHeight,
+                )
+            }
+            if (profileAtStart != activeProfileId) return@launchTracked
+            syncDownloadState()
+            downloadVideos(downloadableIds, mediaType)
+        }
     }
 
     fun cancelPlaylistDownload(playlistId: String, mediaType: DownloadMediaType) {
+        downloadBatchPreparationJobs.remove(
+            playlistDownloadPreparationKey(activeProfileId, playlistId, mediaType),
+        )?.cancel()
         val cancelled = offlinePlaylistStore.remove(activeProfileId, playlistId, mediaType)
             ?: return
         pendingPlaylistCancellationIds(
@@ -4687,8 +4967,33 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         syncDownloadState()
     }
 
+    fun setPlaylistAutomaticDownload(
+        playlistId: String,
+        mediaType: DownloadMediaType,
+        enabled: Boolean,
+    ) {
+        if (enabled) {
+            downloadPlaylist(playlistId, mediaType)
+            return
+        }
+        val profileId = activeProfileId
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                offlinePlaylistStore.remove(profileId, playlistId, mediaType)
+            }
+            if (profileId == activeProfileId) syncDownloadState()
+        }
+    }
+
+    private fun playlistDownloadPreparationKey(
+        profileId: String,
+        playlistId: String,
+        mediaType: DownloadMediaType,
+    ): String = "playlist:$profileId:$playlistId:${mediaType.name}"
+
     private fun scheduleOfflinePlaylistSync() {
         offlinePlaylistSyncJob?.cancel()
+        if (!preferences.automaticPlaylistDownloadsEnabled) return
         val profileAtStart = activeProfileId
         offlinePlaylistSyncJob = viewModelScope.launch {
             delay(STARTUP_BACKGROUND_WORK_DELAY_MS)
@@ -4696,18 +5001,24 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             while (!downloadStore.isInitialized()) delay(100L)
             if (profileAtStart != activeProfileId) return@launch
 
-            val playlists = libraryRepository.loadPlaylists().associateBy { it.id }
-            val descriptors = offlinePlaylistStore.all(profileAtStart)
+            val playlists = withContext(Dispatchers.IO) {
+                libraryRepository.loadPlaylists().associateBy { it.id }
+            }
+            val descriptors = withContext(Dispatchers.IO) {
+                offlinePlaylistStore.all(profileAtStart)
+            }
             val currentOwners = mutableMapOf<DownloadMediaType, MutableMap<String, Int>>()
             val removedCandidates = mutableListOf<Pair<String, DownloadMediaType>>()
             val downloadCandidates = mutableListOf<Pair<String, DownloadMediaType>>()
+            val missingDescriptors = mutableListOf<OfflinePlaylistDownload>()
+            val updatedDescriptors = mutableListOf<OfflinePlaylistDownload>()
 
             descriptors.forEach { descriptor ->
                 val playlist = playlists[descriptor.playlistId]
                 if (playlist == null) {
                     // Missing library metadata (for example during recovery/import) is not
                     // authorization to delete the user's downloaded media.
-                    offlinePlaylistStore.remove(descriptor)
+                    missingDescriptors += descriptor
                     return@forEach
                 }
                 val currentIds = playlist.videoIds
@@ -4720,7 +5031,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     managedVideoIds = currentIds,
                     excludedVideoIds = descriptor.excludedVideoIds.intersect(currentIds),
                 )
-                offlinePlaylistStore.update(updated)
+                updatedDescriptors += updated
                 val owners = currentOwners.getOrPut(updated.mediaType) { mutableMapOf() }
                 currentIds.forEach { videoId -> owners[videoId] = owners.getOrDefault(videoId, 0) + 1 }
                 (currentIds - updated.excludedVideoIds).forEach {
@@ -4728,13 +5039,21 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
 
-            removedCandidates.distinct().forEach { (videoId, mediaType) ->
+            withContext(Dispatchers.IO) {
+                missingDescriptors.forEach(offlinePlaylistStore::remove)
+                updatedDescriptors.forEach(offlinePlaylistStore::update)
+            }
+
+            removedCandidates.distinct().forEachIndexed { index, (videoId, mediaType) ->
                 if ((currentOwners[mediaType]?.get(videoId) ?: 0) == 0) {
                     removeDownloadType(videoId, mediaType)
                 }
+                if (index % 8 == 7) yield()
             }
-            downloadCandidates.distinct().forEach { (videoId, mediaType) ->
-                if (findVideo(videoId)?.supportsOfflineDownload() != true) return@forEach
+            downloadCandidates.distinct().forEachIndexed { index, (videoId, mediaType) ->
+                if (findVideo(videoId)?.supportsOfflineDownload() != true) {
+                    return@forEachIndexed
+                }
                 val current = _uiState.value.downloads[videoId]
                 if (current?.isComplete(mediaType) != true && current?.isActive(mediaType) != true) {
                     startDownload(
@@ -4748,6 +5067,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         }?.targetVideoHeight,
                     )
                 }
+                if (index % 8 == 7) yield()
             }
         }
     }
@@ -5426,7 +5746,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (!appIsForeground || _uiState.value.rebuildingCaches) return
         val video = findVideo(videoId) ?: return
         val channel = channelForVideo(video)
-        if (!channel.id.startsWith("http") || channel.sourceId !in enabledSourceIds) return
+        if (!channel.id.startsWith("http") || channel.sourceId !in enabledSourceIds) {
+            if (video.authorThumbnailUrl.isBlank()) hydrateVideoMetadata(videoId)
+            return
+        }
         val key = "${channel.sourceId}|${channel.id}"
         val now = System.currentTimeMillis()
         val last = channelArtworkChecks[key] ?: 0L
@@ -5867,6 +6190,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         homeJob?.cancel()
         homePagingJob?.cancel()
         followingFeedJob?.cancel()
+        downloadBatchPreparationJobs.cancelAndClearJobs()
+        libraryExportJob?.cancel()
         // viewModelScope is cancelled as this method returns, so a newly scheduled debounced write
         // would never run. A final synchronous write here is safe and preserves the last position.
         watchProgressWriteJob?.cancel()
@@ -6541,6 +6866,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             descriptors = offlinePlaylistStore.all(activeProfileId),
             downloads = visibleDownloads,
         )
+        val automaticPlaylistDownloads = offlinePlaylistStore.all(activeProfileId)
+            .mapTo(mutableSetOf()) {
+                PlaylistDownloadBatchUiModel(it.playlistId, it.mediaType)
+            }
         _uiState.update { state ->
             val remoteDownloadTypes = if (state.remotePlaylistDetail.isLoadingAll) {
                 state.remotePlaylistDetail.activeDownloadMediaTypes
@@ -6554,6 +6883,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             if (
                 state.downloads == visibleDownloads &&
                 state.activePlaylistDownloads == activePlaylistDownloads &&
+                state.automaticPlaylistDownloads == automaticPlaylistDownloads &&
                 state.remotePlaylistDetail.activeDownloadMediaTypes == remoteDownloadTypes
             ) {
                 state
@@ -6561,6 +6891,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 state.copy(
                     downloads = visibleDownloads,
                     activePlaylistDownloads = activePlaylistDownloads,
+                    automaticPlaylistDownloads = automaticPlaylistDownloads,
                     remotePlaylistDetail = state.remotePlaylistDetail.copy(
                         activeDownloadMediaTypes = remoteDownloadTypes,
                     ),
@@ -7051,8 +7382,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             ?: state.home.videos.firstOrNull { it.id == videoId }
             ?: state.subscriptionVideos.firstOrNull { it.id == videoId }
             ?: state.videos.firstOrNull { it.id == videoId }
-            ?: state.libraryVideos.firstOrNull { it.id == videoId }
             ?: savedVideosById[videoId]
+            ?: state.libraryVideos.firstOrNull { it.id == videoId }
             ?: state.nowPlaying.video?.takeIf { it.id == videoId }
             ?: state.nowPlaying.recommendations.firstOrNull { it.id == videoId }
     }

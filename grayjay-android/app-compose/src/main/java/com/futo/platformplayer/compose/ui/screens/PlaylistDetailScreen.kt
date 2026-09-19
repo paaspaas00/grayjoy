@@ -31,12 +31,18 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Reorder
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -68,12 +74,15 @@ import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.ui.supportsOfflineDownload
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistDetailScreen(
     playlist: PlaylistUiModel,
     videos: List<VideoUiModel>,
     downloads: Map<String, DownloadUiModel> = emptyMap(),
     activeDownloadMediaTypes: Set<DownloadMediaType> = emptySet(),
+    automaticDownloadMediaTypes: Set<DownloadMediaType> = emptySet(),
+    automaticDownloadsEnabled: Boolean = true,
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
     onPlayAll: () -> Unit,
@@ -82,6 +91,7 @@ fun PlaylistDetailScreen(
     onDownloadAllAsVideo: (List<String>) -> Unit = {},
     onCancelDownloadAllAsAudio: () -> Unit = {},
     onCancelDownloadAllAsVideo: () -> Unit = {},
+    onAutomaticDownloadChange: (DownloadMediaType, Boolean) -> Unit = { _, _ -> },
     onRename: (String) -> Unit = {},
     onAddSelectionToPlaylist: (List<String>) -> Unit = {},
     onRemoveVideos: (List<String>) -> Unit = {},
@@ -92,6 +102,7 @@ fun PlaylistDetailScreen(
     val compactLayout = compactUi()
     var showRenameDialog by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var showReorderDialog by rememberSaveable(playlist.id) { mutableStateOf(false) }
+    var showAutomaticDownloads by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var confirmRemoval by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var selectionMode by rememberSaveable(playlist.id) { mutableStateOf(false) }
     val selectedVideoIds = remember(playlist.id) { mutableStateListOf<String>() }
@@ -160,6 +171,12 @@ fun PlaylistDetailScreen(
                             onClick = { if (videoBatchActive) onCancelDownloadAllAsVideo() else onDownloadAllAsVideo(downloadableIds) }),
                         PlaylistMenuAction(stringResource(R.string.rename_playlist), Icons.Outlined.Edit,
                             tag = "rename-current-playlist", onClick = { showRenameDialog = true }),
+                        PlaylistMenuAction(
+                            stringResource(R.string.automatic_downloads),
+                            Icons.Outlined.Settings,
+                            tag = "playlist-automatic-downloads",
+                            onClick = { showAutomaticDownloads = true },
+                        ),
                     ),
                 ) else {
                 Surface(
@@ -183,6 +200,15 @@ fun PlaylistDetailScreen(
                                 modifier = Modifier.weight(1f),
                                 style = if (compactLayout) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium,
                             )
+                            IconButton(
+                                onClick = { showAutomaticDownloads = true },
+                                modifier = Modifier.testTag("playlist-automatic-downloads"),
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Settings,
+                                    contentDescription = stringResource(R.string.automatic_downloads),
+                                )
+                            }
                             IconButton(
                                 onClick = { showRenameDialog = true },
                                 modifier = Modifier.testTag("rename-current-playlist"),
@@ -459,6 +485,81 @@ fun PlaylistDetailScreen(
                     Text(stringResource(R.string.cancel))
                 }
             },
+        )
+    }
+    if (showAutomaticDownloads) {
+        ModalBottomSheet(
+            onDismissRequest = { showAutomaticDownloads = false },
+            contentWindowInsets = { grayjoySheetInsets() },
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    stringResource(R.string.automatic_downloads),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    stringResource(R.string.playlist_automatic_downloads_description),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (!automaticDownloadsEnabled) {
+                    Text(
+                        stringResource(R.string.automatic_downloads_globally_disabled),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                PlaylistAutomaticDownloadRow(
+                    title = stringResource(R.string.audio_only),
+                    icon = Icons.Outlined.MusicNote,
+                    checked = DownloadMediaType.Audio in automaticDownloadMediaTypes,
+                    enabled = automaticDownloadsEnabled ||
+                        DownloadMediaType.Audio in automaticDownloadMediaTypes,
+                    onCheckedChange = {
+                        onAutomaticDownloadChange(DownloadMediaType.Audio, it)
+                    },
+                )
+                PlaylistAutomaticDownloadRow(
+                    title = stringResource(R.string.video),
+                    icon = Icons.Outlined.VideoLibrary,
+                    checked = DownloadMediaType.Video in automaticDownloadMediaTypes,
+                    enabled = automaticDownloadsEnabled ||
+                        DownloadMediaType.Video in automaticDownloadMediaTypes,
+                    onCheckedChange = {
+                        onAutomaticDownloadChange(DownloadMediaType.Video, it)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistAutomaticDownloadRow(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(icon, contentDescription = null)
+        Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
         )
     }
 }

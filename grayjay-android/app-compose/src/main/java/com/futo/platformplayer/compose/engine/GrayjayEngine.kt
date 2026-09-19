@@ -232,6 +232,9 @@ data class EngineUserImportSelection(
     val history: Boolean = true,
     val playlists: Boolean = true,
     val likedVideos: Boolean = true,
+    val knownSubscriptionUrls: Set<String> = emptySet(),
+    val knownHistoryVideoUrls: Set<String> = emptySet(),
+    val knownPlaylistVideoUrls: Map<String, Set<String>> = emptyMap(),
 )
 
 data class EngineUserImportProgress(
@@ -1019,6 +1022,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 history = selection.history,
                 playlists = selection.playlists,
                 likedVideos = selection.likedVideos,
+                knownSubscriptionUrls = selection.knownSubscriptionUrls,
+                knownHistoryVideoUrls = selection.knownHistoryVideoUrls,
+                knownPlaylistVideoUrls = selection.knownPlaylistVideoUrls,
             ),
         ) { progress ->
             onProgress(progress.toEngineProgress())

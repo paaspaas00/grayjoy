@@ -35,6 +35,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import com.futo.platformplayer.compose.ui.GrayjayApp
 import com.futo.platformplayer.compose.ui.GrayjayAppActions
@@ -136,6 +137,11 @@ class MainActivity : FragmentActivity() {
                 notificationPermissionPreferences.edit()
                     .putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, true)
                     .apply()
+            }
+            val crashStoragePermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) { granted ->
+                viewModel.setCrashLoggingEnabled(granted)
             }
 
             LaunchedEffect(uiState.keepScreenAwake) {
@@ -292,6 +298,7 @@ class MainActivity : FragmentActivity() {
                     onDownloadVideos = viewModel::downloadVideos
                     onDownloadPlaylist = viewModel::downloadPlaylist
                     onCancelDownloadPlaylist = viewModel::cancelPlaylistDownload
+                    onPlaylistAutomaticDownloadChange = viewModel::setPlaylistAutomaticDownload
                     onLoadRemotePlaylist = viewModel::loadRemotePlaylist
                     onLoadMoreRemotePlaylist = viewModel::loadMoreRemotePlaylist
                     onPlayRemotePlaylist = viewModel::playRemotePlaylist
@@ -340,6 +347,8 @@ class MainActivity : FragmentActivity() {
                     onLogoutSource = viewModel::clearSourceAuthentication
                     onImportYoutube = viewModel::importYoutubeAccount
                     onDismissYoutubeImport = viewModel::dismissYoutubeImport
+                    onYoutubeImportScheduleChange = viewModel::setYoutubeImportSchedule
+                    onCancelYoutubeImportJobs = viewModel::cancelYoutubeImportJobs
                     onSearchQueryChange = viewModel::setSearchQuery
                     onSearchSubmit = viewModel::submitSearch
                     onSourceFilterSelectionChange = viewModel::setSourceFilterSelection
@@ -361,6 +370,7 @@ class MainActivity : FragmentActivity() {
                             arrayOf("application/zip", "application/x-sqlite3", "application/json", "*/*"),
                         )
                     }
+                    onExportLibrary = viewModel::exportLibrary
                     onRetryDatabaseImport = viewModel::retryDatabaseImport
                     onConfirmDatabaseImport = viewModel::confirmDatabaseImport
                     onDismissDatabaseImport = viewModel::dismissDatabaseImport
@@ -390,9 +400,25 @@ class MainActivity : FragmentActivity() {
                     onStickyCaptionsChange = viewModel::setStickyCaptionsEnabled
                     onShowRecommendationsChange = viewModel::setShowRecommendations
                     onSearchHistoryChange = viewModel::setSearchHistoryEnabled
-                    onCrashLoggingChange = viewModel::setCrashLoggingEnabled
+                    onCrashLoggingChange = { enabled ->
+                        if (
+                            enabled && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                            ContextCompat.checkSelfPermission(
+                                this@MainActivity,
+                                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                            ) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            crashStoragePermissionLauncher.launch(
+                                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                            )
+                        } else {
+                            viewModel.setCrashLoggingEnabled(enabled)
+                        }
+                    }
                     onKeepScreenAwakeChange = viewModel::setKeepScreenAwake
                     onPictureInPictureChange = viewModel::setPictureInPictureEnabled
+                    onAutomaticPlaylistDownloadsChange =
+                        viewModel::setAutomaticPlaylistDownloadsEnabled
                     onStartChromecastDiscovery = viewModel::startChromecastDiscovery
                     onConnectChromecast = viewModel::connectChromecast
                     onDisconnectChromecast = viewModel::disconnectChromecast
@@ -518,6 +544,11 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyPlayerStatusBarVisibility()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -622,13 +653,16 @@ class MainActivity : FragmentActivity() {
     private fun buildPictureInPictureParams(): PictureInPictureParams {
         val state = grayjayViewModel.uiState.value
         val hasVideo = state.nowPlaying.video != null &&
-            state.playback.currentVideoId != null &&
-            state.nowPlaying.video?.playbackAudioOnly != true
+            state.playback.currentVideoId != null
         val autoEnter = shouldEnterPictureInPicture(state)
-        val videoSize = normalizedPictureInPictureAspectRatio(
-            state.playback.currentVideoWidth ?: grayjayViewModel.player.videoSize.width,
-            state.playback.currentVideoHeight ?: grayjayViewModel.player.videoSize.height,
-        )
+        val videoSize = if (state.nowPlaying.video?.playbackAudioOnly == true) {
+            16 to 9
+        } else {
+            normalizedPictureInPictureAspectRatio(
+                state.playback.currentVideoWidth ?: grayjayViewModel.player.videoSize.width,
+                state.playback.currentVideoHeight ?: grayjayViewModel.player.videoSize.height,
+            )
+        }
         return PictureInPictureParams.Builder()
             .setAspectRatio(Rational(videoSize.first, videoSize.second))
             .apply {
@@ -676,10 +710,22 @@ class MainActivity : FragmentActivity() {
 
     private fun applyPlayerStatusBarVisibility() {
         WindowCompat.getInsetsController(window, window.decorView).run {
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             if (playerLandscapeFullscreen) hide(WindowInsetsCompat.Type.statusBars())
             else show(WindowInsetsCompat.Type.statusBars())
             if (playerFullscreen) hide(WindowInsetsCompat.Type.navigationBars())
             else show(WindowInsetsCompat.Type.navigationBars())
+        }
+        @Suppress("DEPRECATION")
+        if (playerFullscreen) {
+            window.decorView.systemUiVisibility =
+                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                    android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                    android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        } else {
+            window.decorView.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         }
     }
 
@@ -727,7 +773,7 @@ internal fun shouldEnterPictureInPicture(
     isBuffering: Boolean,
     isLoading: Boolean,
     isCasting: Boolean = false,
-): Boolean = enabled && hasVideo && !audioOnly && !isCasting
+): Boolean = enabled && hasVideo && !isCasting
 
 internal fun fullscreenPlayerOrientation(
     fullscreen: Boolean,

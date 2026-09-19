@@ -43,6 +43,7 @@ data class GrayjayUiState(
     val crashLoggingEnabled: Boolean = false,
     val keepScreenAwake: Boolean = true,
     val pictureInPictureEnabled: Boolean = true,
+    val automaticPlaylistDownloadsEnabled: Boolean = true,
     val otherAudioDuckingEnabled: Boolean = true,
     val otherAudioDuckVolumePercent: Int = 35,
     val profiles: List<ProfileUiModel> = emptyList(),
@@ -52,9 +53,13 @@ data class GrayjayUiState(
     val sourceOperationMessage: String? = null,
     val sourceTrustRequest: SourceTrustRequestUiModel? = null,
     val youtubeImport: YoutubeImportUiState = YoutubeImportUiState(),
+    val youtubeImportSchedule: YoutubeImportScheduleUiState = YoutubeImportScheduleUiState(),
+    val backgroundYoutubeImport: BackgroundYoutubeImportUiState = BackgroundYoutubeImportUiState(),
     val databaseImport: DatabaseImportUiState = DatabaseImportUiState(),
+    val libraryTransfer: LibraryTransferUiState = LibraryTransferUiState(),
     val downloads: Map<String, DownloadUiModel> = emptyMap(),
     val activePlaylistDownloads: Set<PlaylistDownloadBatchUiModel> = emptySet(),
+    val automaticPlaylistDownloads: Set<PlaylistDownloadBatchUiModel> = emptySet(),
     val subscriptionVideos: List<VideoUiModel> = emptyList(),
     val followingVideos: List<VideoUiModel> = emptyList(),
     val followingFeedLoaded: Boolean = false,
@@ -438,6 +443,34 @@ data class NowPlayingUiState(
     val sponsorBlockLoading: Boolean = false,
     val sponsorBlockSkipNotice: SponsorBlockSkipNoticeUiModel? = null,
     val errorMessage: String? = null,
+)
+
+data class LibraryTransferUiState(
+    val isRunning: Boolean = false,
+    val title: String = "",
+)
+
+enum class YoutubeImportInterval(val hours: Long) {
+    Off(0),
+    SixHours(6),
+    TwelveHours(12),
+    Daily(24),
+    Weekly(24 * 7),
+}
+
+data class YoutubeImportScheduleUiState(
+    val sourceId: String = "youtube",
+    val interval: YoutubeImportInterval = YoutubeImportInterval.Off,
+    val selection: YoutubeImportSelection = YoutubeImportSelection(),
+)
+
+data class BackgroundYoutubeImportUiState(
+    val isRunning: Boolean = false,
+    val stage: YoutubeImportStageUi? = null,
+    val completed: Int = 0,
+    val total: Int? = null,
+    val currentItemCompleted: Int? = null,
+    val workId: String? = null,
 )
 
 data class SponsorBlockSkipNoticeUiModel(

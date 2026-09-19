@@ -56,8 +56,8 @@ android {
         applicationId 'com.futo.platformplayer.compose'
         minSdk 28
         targetSdk 36
-        versionCode 2401
-        versionName '2.4.1'
+        versionCode 2500
+        versionName '2.5.0'
         buildConfigField 'String', 'GRAYJAY_ENGINE_REVISION', '"' + engineRevision + '"'
         buildConfigField 'String', 'NEWPIPE_ENGINE_VERSION', '"' + engineVersions.getProperty('newpipe.version') + '"'
         buildConfigField 'String', 'NEWPIPE_ENGINE_REVISION', '"' + engineVersions.getProperty('newpipe.commit') + '"'
@@ -159,6 +159,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.10.0'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0'
+    implementation 'androidx.work:work-runtime-ktx:2.11.2'
     // Install merged Compose/Media3/Grayjoy profiles for sideloaded APKs too, so startup and the
     // first wide-screen scroll do not have to wait for Play-delivered or background dexopt.
     implementation 'androidx.profileinstaller:profileinstaller:1.4.1'

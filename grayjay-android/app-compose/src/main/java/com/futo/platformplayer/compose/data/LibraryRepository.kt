@@ -19,6 +19,11 @@ data class LibraryVideoState(
     val playlistNames: List<String> = emptyList(),
 )
 
+data class LibraryImportSnapshot(
+    val videos: List<VideoUiModel>,
+    val playlists: List<PlaylistUiModel>,
+)
+
 internal fun normalizePlaylistOrder(
     existingVideoIds: List<String>,
     requestedOrder: List<String>,
@@ -106,6 +111,11 @@ interface LibraryRepository {
         playlists: List<PlaylistUiModel>,
         repairSyntheticHistoryDates: Boolean = false,
     )
+    fun createImportSnapshot(): LibraryImportSnapshot = LibraryImportSnapshot(
+        videos = loadSavedVideos(),
+        playlists = loadPlaylists(),
+    )
+    fun restoreImportSnapshot(snapshot: LibraryImportSnapshot)
 }
 
 internal class SharedPreferencesLibraryRepository(
@@ -414,6 +424,27 @@ internal class SharedPreferencesLibraryRepository(
             }
         }
         persistPlaylistMutation(mergedPlaylists)
+    }
+
+    @Synchronized
+    override fun restoreImportSnapshot(snapshot: LibraryImportSnapshot) {
+        cachedVideos = snapshot.videos
+        cachedPlaylists = snapshot.playlists
+        val videoJson = JSONArray().apply { snapshot.videos.forEach { put(it.toJson()) } }
+        val playlistJson = JSONArray().apply { snapshot.playlists.forEach { put(it.toJson()) } }
+        check(
+            preferences.edit()
+                .putString(KEY_VIDEOS, videoJson.toString())
+                .putString(KEY_PLAYLISTS, playlistJson.toString())
+                .commit(),
+        ) { "Could not restore the library import transaction." }
+        check(
+            watchProgressPreferences.edit().clear().apply {
+                snapshot.videos.forEach { video ->
+                    putFloat(video.id, video.watchProgress.coerceIn(0f, 1f))
+                }
+            }.commit(),
+        ) { "Could not restore watch progress after a cancelled import." }
     }
 
     @Synchronized
