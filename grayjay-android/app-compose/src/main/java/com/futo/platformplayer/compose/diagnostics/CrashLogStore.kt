@@ -22,6 +22,8 @@ internal object CrashLogStore {
     private const val MAX_LOG_FILES = 10
     private const val MAX_STACK_CHARS = 256_000
     private val installed = AtomicBoolean(false)
+    @Volatile
+    private var beforeCrashHook: (() -> Unit)? = null
 
     fun isEnabled(context: Context): Boolean = context.applicationContext
         .getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
@@ -39,6 +41,7 @@ internal object CrashLogStore {
         if (!installed.compareAndSet(false, true)) return
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            runCatching { beforeCrashHook?.invoke() }
             runCatching {
                 if (isEnabled(appContext)) writeCrash(appContext, thread, throwable)
             }
@@ -49,6 +52,10 @@ internal object CrashLogStore {
                 exitProcess(10)
             }
         }
+    }
+
+    fun setBeforeCrashHook(hook: (() -> Unit)?) {
+        beforeCrashHook = hook
     }
 
     internal fun writeCrash(context: Context, thread: Thread, throwable: Throwable): File {

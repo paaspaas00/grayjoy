@@ -687,7 +687,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                         explicitOverride = false,
                     )
                     syncPlayback()
-                    PlaybackNotificationService.refresh(appContext)
+                    PlaybackNotificationService.refresh(appContext, exoPlayer)
                 }
 
                 override fun onTracksChanged(tracks: Tracks) = syncPlayback()
@@ -744,7 +744,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             // the state captured when the socket failed.
             exoPlayer.seekTo(exoPlayer.currentPosition.coerceAtLeast(0L))
             exoPlayer.prepare()
-            PlaybackNotificationService.refresh(appContext)
+            PlaybackNotificationService.refresh(appContext, exoPlayer)
             syncPlayback(videoId)
         }
         return true
@@ -1947,7 +1947,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             activeQualityVariantHeight = null
             activeQualityVariantVideoId = null
             lastError = appContext.getString(R.string.no_playable_media)
-            PlaybackNotificationService.dismiss(appContext)
+            PlaybackNotificationService.dismiss(appContext, exoPlayer)
             exoPlayer.clearMediaItems()
             syncPlayback(currentVideoId)
             return
@@ -2025,7 +2025,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         )
         exoPlayer.prepare()
         exoPlayer.playWhenReady = playWhenReady
-        PlaybackNotificationService.refresh(appContext)
+        PlaybackNotificationService.refresh(appContext, exoPlayer)
         syncPlayback(video.id)
     }
 
@@ -2053,7 +2053,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         // Playlist entries are appended lazily. Explicitly reattach the foreground notification
         // after the timeline changes so Media3 cannot leave only the MediaSession/AVRCP controls
         // alive while the visible notification disappears.
-        PlaybackNotificationService.refresh(appContext)
+        PlaybackNotificationService.refresh(appContext, exoPlayer)
     }
 
     override fun moveQueueItemNext(videoId: String) {
@@ -2530,7 +2530,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun closePlayback() {
         resetConnectivityRecovery()
-        PlaybackNotificationService.dismiss(appContext)
+        PlaybackNotificationService.dismiss(appContext, exoPlayer)
         youtubeRuntimeFallbackJob?.cancel()
         youtubeRuntimeFallbackJob = null
         youtubeResolverByVideoId.clear()
@@ -2560,7 +2560,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override fun refreshProgress() = syncPlayback()
 
     override fun release() {
-        PlaybackNotificationService.dismiss(appContext)
+        PlaybackNotificationService.dismiss(appContext, exoPlayer)
         resetConnectivityRecovery()
         connectivityRecoveryScope.cancel()
         networkMonitor.close()

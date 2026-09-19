@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose.update
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
+import com.futo.platformplayer.compose.downloads.DownloadStorageGuard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -50,9 +51,14 @@ internal class GrayjoyUpdateInstaller(private val context: Context) {
                     val expected = connection!!.contentLengthLong
                     require(expected <= MAX_APK_BYTES) { "Update is too large" }
                     val totalBytes = expected.takeIf { it > 0L }
+                    DownloadStorageGuard.requireCapacity(
+                        context,
+                        totalBytes ?: UNKNOWN_LENGTH_MIN_FREE_BYTES,
+                    )
                     onProgress(0L, totalBytes)
                     var copied = 0L
                     var lastProgressAt = 0L
+                    var lastStorageCheckAt = 0L
                     connection!!.inputStream.use { input ->
                         temporary.outputStream().use { output ->
                             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -62,6 +68,14 @@ internal class GrayjoyUpdateInstaller(private val context: Context) {
                                 if (count < 0) break
                                 copied += count
                                 require(copied <= MAX_APK_BYTES) { "Update is too large" }
+                                if (copied - lastStorageCheckAt >= STORAGE_CHECK_INTERVAL_BYTES) {
+                                    DownloadStorageGuard.requireCapacity(
+                                        context,
+                                        totalBytes?.minus(copied)?.coerceAtLeast(0L)
+                                            ?: UNKNOWN_LENGTH_MIN_FREE_BYTES,
+                                    )
+                                    lastStorageCheckAt = copied
+                                }
                                 output.write(buffer, 0, count)
                                 val now = System.currentTimeMillis()
                                 if (now - lastProgressAt >= PROGRESS_INTERVAL_MS) {
@@ -103,6 +117,8 @@ internal class GrayjoyUpdateInstaller(private val context: Context) {
     private companion object {
         const val MAX_APK_BYTES = 512L * 1024L * 1024L
         const val PROGRESS_INTERVAL_MS = 150L
+        const val STORAGE_CHECK_INTERVAL_BYTES = 4L * 1024L * 1024L
+        const val UNKNOWN_LENGTH_MIN_FREE_BYTES = 64L * 1024L * 1024L
     }
 }
 

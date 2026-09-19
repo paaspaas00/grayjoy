@@ -80,4 +80,38 @@ class LibraryBackupExporterTest {
             )
             output.toByteArray()
         }
+
+    @Test fun aliasesForOneUrlShareOneNewPipeStreamWithoutLosingPlaylistEntries() {
+        val bytes = ByteArrayOutputStream().use { output ->
+            LibraryBackupExporter(context).export(
+                LibraryExportFormat.NewPipe,
+                listOf(video, video.copy(id = "alias")),
+                listOf(playlist.copy(videoIds = listOf(video.id, "alias"))),
+                listOf(channel), output,
+            )
+            output.toByteArray()
+        }
+        val parsed = NewPipeBackupParser.parse(bytes, context.cacheDir)
+        assertEquals(1, parsed.streams.size)
+        assertEquals(1, parsed.history.size)
+    }
+
+    @Test fun cancellationDuringNewPipeExportCleansTemporaryDatabase() {
+        val before = context.cacheDir.listFiles().orEmpty().map { it.name }.toSet()
+        var checkpoints = 0
+        try {
+            LibraryBackupExporter(context).export(
+                LibraryExportFormat.NewPipe,
+                (1..200).map { video.copy(id = "id-$it", contentUrl = "https://example.test/$it") },
+                emptyList(), emptyList(), ByteArrayOutputStream(),
+            ) {
+                if (++checkpoints == 40) throw kotlinx.coroutines.CancellationException("cancel fixture")
+            }
+            throw AssertionError("Export must observe cancellation")
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            assertTrue(context.cacheDir.listFiles().orEmpty().none {
+                it.name.startsWith("grayjoy-newpipe-export-") && it.name !in before
+            })
+        }
+    }
 }

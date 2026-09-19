@@ -88,6 +88,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
+private const val DOWNLOAD_LIST_CONTENT_START_INDEX = 2
+
 internal enum class LibraryFilter(
     @param:StringRes val labelRes: Int,
     val icon: ImageVector,
@@ -126,6 +128,13 @@ internal fun videosMatchingLibraryQuery(
             video.metadata.contains(normalizedQuery, ignoreCase = true)
     }
 }
+
+internal fun downloadListItemIndex(
+    videos: List<VideoUiModel>,
+    targetVideoId: String,
+): Int? = videos.indexOfFirst { it.id == targetVideoId }
+    .takeIf { it >= 0 }
+    ?.plus(DOWNLOAD_LIST_CONTENT_START_INDEX)
 
 internal data class DownloadExportAvailability(
     val canExportVideo: Boolean,
@@ -167,6 +176,8 @@ internal fun LibraryScreen(
     selectedFilter: LibraryFilter = LibraryFilter.History,
     onSelectedFilterChange: (LibraryFilter) -> Unit = {},
     playlistListState: LazyListState = rememberLazyListState(),
+    downloadFocusVideoId: String? = null,
+    onDownloadFocusConsumed: () -> Unit = {},
 ) {
     val compactLayout = compactUi()
     var selectionMode by rememberSaveable { mutableStateOf(false) }
@@ -189,11 +200,27 @@ internal fun LibraryScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val activeFilter by rememberUpdatedState(selectedFilter)
+    var programmaticPaging by remember { mutableStateOf(false) }
+    var userPaging by remember { mutableStateOf(false) }
     val matchingPlaylists = remember(playlists, playlistQuery) {
         playlistsMatchingQuery(playlists, playlistQuery)
     }
-    val downloadVideos = remember(videos, downloads) {
-        videosForLibraryFilter(videos, LibraryFilter.Downloads, downloads)
+    // Progress changes several times per second, but membership/order change only when a job is
+    // added or removed. Key the expensive library scan/sort to that compact stable projection so
+    // an active progress bar does not rebuild the complete Download list on every tick.
+    val downloadSortKeys = remember(downloads) {
+        downloads.mapValues { (_, download) -> download.preparedAtMs ?: 0L }
+    }
+    val downloadVideos = remember(videos, downloadSortKeys) {
+        val downloadIds = downloadSortKeys.keys
+        videos.asSequence()
+            .filter { it.isDownloaded || it.id in downloadIds }
+            .sortedWith(
+                compareByDescending<VideoUiModel> { downloadSortKeys[it.id] ?: 0L }
+                    .thenBy { it.title.lowercase() }
+                    .thenBy(VideoUiModel::id),
+            )
+            .toList()
     }
 
     fun leaveSelectionMode() {
@@ -214,16 +241,20 @@ internal fun LibraryScreen(
     }
 
     LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.currentPage }
+        snapshotFlow { pagerState.isScrollInProgress to pagerState.settledPage }
             .distinctUntilChanged()
-            .collect { page ->
-                filters.getOrNull(page)?.let { filter ->
+            .collect { (scrolling, page) ->
+                if (scrolling && !programmaticPaging) userPaging = true
+                if (!scrolling && userPaging && !programmaticPaging) {
+                    userPaging = false
+                    filters.getOrNull(page)?.let { filter ->
                     if (filter != activeFilter) {
                         keyboardController?.hide()
                         focusManager.clearFocus(force = true)
                         focusedSearchFilter = null
                         onSelectedFilterChange(filter)
                         leaveSelectionMode()
+                    }
                     }
                 }
             }
@@ -235,10 +266,17 @@ internal fun LibraryScreen(
             focusManager.clearFocus(force = true)
             focusedSearchFilter = null
         }
-        if (page >= 0) filterListState.animateScrollToItem(page)
-        if (page >= 0 && page != pagerState.currentPage && !pagerState.isScrollInProgress) {
-            pagerState.animateScrollToPage(page)
+        if (page >= 0 && page != pagerState.currentPage) {
+            programmaticPaging = true
+            userPaging = false
+            try {
+                if (downloadFocusVideoId != null) pagerState.scrollToPage(page)
+                else pagerState.animateScrollToPage(page)
+            } finally {
+                programmaticPaging = false
+            }
         }
+        if (page >= 0) filterListState.animateScrollToItem(page)
     }
     PageBackHandler(enabled = focusedSearchFilter != null) {
         keyboardController?.hide()
@@ -282,7 +320,6 @@ internal fun LibraryScreen(
                     onClick = {
                         onSelectedFilterChange(filter)
                         leaveSelectionMode()
-                        coroutineScope.launch { pagerState.animateScrollToPage(page) }
                     },
                     modifier = Modifier.testTag("library-filter-${filter.name.lowercase()}"),
                     leadingIcon = { Icon(filter.icon, contentDescription = null) },
@@ -304,19 +341,13 @@ internal fun LibraryScreen(
                 key = { filters[it].name },
             ) { page ->
                 val pageFilter = filters[page]
-                val relevantDownloads = if (pageFilter == LibraryFilter.Downloads) {
-                    downloads
-                } else {
-                    emptyMap()
-                }
                 val unfilteredPageVideos = remember(
                     videos,
                     pageFilter,
-                    relevantDownloads,
                     downloadVideos,
                 ) {
                     if (pageFilter == LibraryFilter.Downloads) downloadVideos
-                    else videosForLibraryFilter(videos, pageFilter, relevantDownloads)
+                    else videosForLibraryFilter(videos, pageFilter)
                 }
                 val pageVideos = remember(unfilteredPageVideos, pageFilter, historyQuery) {
                     if (pageFilter != LibraryFilter.History || historyQuery.isBlank()) {
@@ -336,6 +367,30 @@ internal fun LibraryScreen(
                     if (focusedSearchFilter == pageFilter) {
                         delay(120L)
                         listState.animateScrollToItem(LIBRARY_SEARCH_FOCUSED_SCROLL_INDEX)
+                    }
+                }
+                LaunchedEffect(
+                    downloadFocusVideoId,
+                    pageFilter,
+                    pageVideos,
+                    isSelectedPage,
+                ) {
+                    if (
+                        pageFilter == LibraryFilter.Downloads &&
+                        isSelectedPage &&
+                        downloadFocusVideoId != null
+                    ) {
+                        val itemIndex = downloadListItemIndex(
+                            pageVideos,
+                            downloadFocusVideoId,
+                        )
+                        if (itemIndex != null) {
+                            listState.scrollToItem(itemIndex)
+                            onDownloadFocusConsumed()
+                        } else if (pageVideos.isNotEmpty()) {
+                            listState.scrollToItem(DOWNLOAD_LIST_CONTENT_START_INDEX)
+                            onDownloadFocusConsumed()
+                        }
                     }
                 }
                 LazyColumn(
@@ -514,7 +569,10 @@ internal fun LibraryScreen(
                         LibraryFilter.Downloads,
                     ) && video.id in selectedVideoIds,
                     showProgress = pageFilter == LibraryFilter.History,
-                    animateEntrance = !listState.isScrollInProgress,
+                    // Download progress invalidates active rows frequently. Per-item entrance
+                    // layers on newly visible cards turn a fast fling into repeated GPU work.
+                    animateEntrance = pageFilter != LibraryFilter.Downloads &&
+                        !listState.isScrollInProgress,
                     onClick = {
                         if (
                             pageFilter in setOf(LibraryFilter.History, LibraryFilter.Downloads) &&

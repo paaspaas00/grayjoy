@@ -21,19 +21,29 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material.icons.outlined.WorkHistory
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -45,6 +55,7 @@ import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.BackgroundYoutubeImportUiState
 import com.futo.platformplayer.compose.ui.DatabaseImportUiState
 import com.futo.platformplayer.compose.ui.DownloadUiModel
+import com.futo.platformplayer.compose.ui.DownloadStorageUiState
 import com.futo.platformplayer.compose.ui.UpdateDownloadUiModel
 import com.futo.platformplayer.compose.ui.LibraryTransferUiState
 import com.futo.platformplayer.compose.ui.VideoUiModel
@@ -58,6 +69,7 @@ internal data class ActiveJobItem(
     val progress: Float?,
     val icon: ImageVector,
     val cancellable: Boolean = false,
+    val warning: Boolean = false,
 )
 
 @Composable
@@ -71,13 +83,17 @@ internal fun rememberActiveJobItems(
     sourceOperationMessage: String?,
     updateDownload: UpdateDownloadUiModel?,
     libraryTransfer: LibraryTransferUiState,
+    downloadStorage: DownloadStorageUiState = DownloadStorageUiState(),
 ): List<ActiveJobItem> {
     val activeDownloads = remember(downloads) { downloads.values.filter(DownloadUiModel::isActive) }
-    val activeDownloadProgress = activeDownloads.mapNotNull(DownloadUiModel::progress)
+    val activeDownloadProgress = activeDownloads
+        .map { it.progress ?: 0f }
         .takeIf { it.isNotEmpty() }
         ?.average()
         ?.toFloat()
-    val downloadDetail = if (activeDownloads.size == 1) {
+    val downloadDetail = if (downloadStorage.downloadsPaused) {
+        stringResource(R.string.download_paused_low_storage)
+    } else if (activeDownloads.size == 1) {
         val id = activeDownloads.single().videoId
         videos.firstOrNull { it.id == id }?.title
             ?: stringResource(R.string.download_in_progress)
@@ -116,6 +132,8 @@ internal fun rememberActiveJobItems(
                 detail = downloadDetail,
                 progress = activeDownloadProgress,
                 icon = Icons.Outlined.Download,
+                cancellable = true,
+                warning = downloadStorage.isWarning,
             ),
         )
         if (databaseImport.isBusy) add(
@@ -167,6 +185,7 @@ internal fun rememberActiveJobItems(
 internal fun ActiveJobsButton(
     jobs: List<ActiveJobItem>,
     expanded: Boolean,
+    storageWarning: DownloadStorageUiState = DownloadStorageUiState(),
     onClick: () -> Unit,
 ) {
     val knownProgress = jobs.mapNotNull(ActiveJobItem::progress)
@@ -178,8 +197,11 @@ internal fun ActiveJobsButton(
             Icon(
                 Icons.Outlined.WorkHistory,
                 contentDescription = stringResource(R.string.background_jobs),
-                tint = if (expanded) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface,
+                tint = when {
+                    storageWarning.isWarning -> MaterialTheme.colorScheme.error
+                    expanded -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
             )
         }
         if (jobs.isNotEmpty()) {
@@ -196,6 +218,22 @@ internal fun ActiveJobsButton(
                 )
             }
         }
+        if (storageWarning.isWarning) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(19.dp),
+                shape = MaterialTheme.shapes.extraSmall,
+                color = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.error,
+            ) {
+                Icon(
+                    Icons.Outlined.WarningAmber,
+                    contentDescription = stringResource(R.string.storage_almost_full),
+                    modifier = Modifier.padding(2.dp),
+                )
+            }
+        }
     }
 }
 
@@ -204,7 +242,12 @@ internal fun ActiveJobsPanel(
     visible: Boolean,
     jobs: List<ActiveJobItem>,
     onCancelYoutubeImports: () -> Unit,
+    onCancelDownloads: () -> Unit,
+    onOpenJob: (String) -> Unit,
+    storageWarning: DownloadStorageUiState = DownloadStorageUiState(),
 ) {
+    var confirmYoutubeCancellation by rememberSaveable { mutableStateOf(false) }
+    var confirmDownloadCancellation by rememberSaveable { mutableStateOf(false) }
     AnimatedVisibility(
         visible = visible,
         enter = expandVertically() + fadeIn(),
@@ -231,16 +274,80 @@ internal fun ActiveJobsPanel(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
+                if (storageWarning.isWarning) {
+                    val context = LocalContext.current
+                    val available = android.text.format.Formatter.formatShortFileSize(
+                        context,
+                        storageWarning.availableBytes,
+                    )
+                    val required = android.text.format.Formatter.formatShortFileSize(
+                        context,
+                        storageWarning.requiredFreeBytes,
+                    )
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("active-jobs-storage-warning"),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Icon(Icons.Outlined.WarningAmber, contentDescription = null)
+                            Column {
+                                Text(
+                                    stringResource(R.string.storage_almost_full),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    if (storageWarning.downloadsPaused) {
+                                        stringResource(
+                                            R.string.storage_downloads_paused_detail,
+                                            available,
+                                            required,
+                                        )
+                                    } else {
+                                        stringResource(
+                                            R.string.storage_space_warning_detail,
+                                            available,
+                                        )
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+                }
                 if (jobs.isEmpty()) {
                     Text(
                         stringResource(R.string.no_active_jobs),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                jobs.forEachIndexed { index, job ->
-                    if (index > 0) HorizontalDivider()
+                jobs.forEach { job ->
+                    Card(
+                        onClick = { onOpenJob(job.id) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("active-job-card-${job.id}"),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (job.warning) {
+                                MaterialTheme.colorScheme.errorContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainer
+                            },
+                        ),
+                    ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
@@ -270,7 +377,12 @@ internal fun ActiveJobsPanel(
                             } ?: LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         }
                         if (job.cancellable) {
-                            IconButton(onClick = onCancelYoutubeImports) {
+                            IconButton(
+                                onClick = {
+                                    if (job.id == "downloads") confirmDownloadCancellation = true
+                                    else confirmYoutubeCancellation = true
+                                },
+                            ) {
                                 Icon(
                                     Icons.Outlined.Close,
                                     contentDescription = stringResource(R.string.cancel),
@@ -278,9 +390,50 @@ internal fun ActiveJobsPanel(
                             }
                         }
                     }
+                    }
                 }
             }
         }
+    }
+    if (confirmDownloadCancellation) {
+        AlertDialog(
+            onDismissRequest = { confirmDownloadCancellation = false },
+            title = { Text(stringResource(R.string.cancel_active_downloads_title)) },
+            text = { Text(stringResource(R.string.cancel_active_downloads_body)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmDownloadCancellation = false
+                        onCancelDownloads()
+                    },
+                ) { Text(stringResource(R.string.cancel_downloads_action)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDownloadCancellation = false }) {
+                    Text(stringResource(R.string.keep_downloading))
+                }
+            },
+        )
+    }
+    if (confirmYoutubeCancellation) {
+        AlertDialog(
+            onDismissRequest = { confirmYoutubeCancellation = false },
+            title = { Text(stringResource(R.string.cancel_youtube_import_title)) },
+            text = { Text(stringResource(R.string.cancel_youtube_import_body)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmYoutubeCancellation = false
+                        onCancelYoutubeImports()
+                    },
+                ) { Text(stringResource(R.string.cancel_import_action)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmYoutubeCancellation = false }) {
+                    Text(stringResource(R.string.continue_import_action))
+                }
+            },
+        )
     }
 }
 

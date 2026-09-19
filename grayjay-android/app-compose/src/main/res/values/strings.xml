@@ -751,5 +751,33 @@
     <string name="export_newpipe_data">Export in NewPipe format</string>
     <string name="export_newpipe_data_description">Create a NewPipe-compatible ZIP database with subscriptions, history, and playlists.</string>
     <string name="export_failed">Export failed.</string>
+    <string name="newpipe_export_unsupported_source">This library includes sources that NewPipe does not support. Use the Grayjay format to preserve all contents.</string>
     <string name="export_completed">Export completed.</string>
+    <string name="download_preparation_timed_out">The source took too long to prepare this download.</string>
+    <string name="jobs_running">Background work in progress</string>
+    <plurals name="active_jobs">
+        <item quantity="one">%d active job</item>
+        <item quantity="other">%d active jobs</item>
+    </plurals>
+    <string name="percent_complete">%1$d%%</string>
+    <string name="background_jobs_notification_description">Progress for downloads, imports, updates, and exports.</string>
+    <string name="storage_almost_full">Storage almost full</string>
+    <string name="storage_space_warning_detail">Only %1$s is available. Free some space before starting large jobs.</string>
+    <string name="storage_downloads_paused_detail">Downloads were paused safely: %1$s available, at least %2$s required.</string>
+    <string name="download_paused_low_storage">Not enough free storage; download paused safely</string>
+    <string name="download_waiting_for_network">Waiting for the network</string>
+    <string name="download_failed_retry_source">Retry or update the source.</string>
+    <string name="job_stopped_low_storage">Not enough free storage; the job was stopped safely.</string>
+    <string name="cancel_active_downloads_title">Cancel active downloads?</string>
+    <string name="cancel_active_downloads_body">Queued and incomplete transfers will be cancelled. Files that have already finished downloading will be kept.</string>
+    <string name="cancel_downloads_action">Cancel downloads</string>
+    <string name="keep_downloading">Keep downloading</string>
+    <string name="cancel_youtube_import_title">Cancel YouTube import?</string>
+    <string name="cancel_youtube_import_body">The current import will be rolled back completely. No partially imported subscriptions, history, or playlists will be kept.</string>
+    <string name="cancel_import_action">Cancel import</string>
+    <string name="continue_import_action">Continue import</string>
+    <string name="enable_job_notifications_title">Enable job notifications?</string>
+    <string name="enable_job_notifications_body">Notifications are disabled for Grayjoy. Enable them in Android settings to see download and import progress while the app is in the background.</string>
+    <string name="open_notification_settings">Open settings</string>
+    <string name="not_now">Not now</string>
 </resources>

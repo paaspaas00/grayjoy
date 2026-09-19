@@ -93,6 +93,14 @@ class LibraryFilterTest {
         )
     }
 
+    @Test
+    fun jobNavigationTargetsTheRequestedDownloadCard() {
+        val downloads = listOf("one", "two", "three").map { video(it, isDownloaded = true) }
+
+        assertEquals(3, downloadListItemIndex(downloads, "two"))
+        assertEquals(null, downloadListItemIndex(downloads, "missing"))
+    }
+
     private fun idsFor(filter: LibraryFilter) =
         videosForLibraryFilter(videos, filter).map(VideoUiModel::id)
 

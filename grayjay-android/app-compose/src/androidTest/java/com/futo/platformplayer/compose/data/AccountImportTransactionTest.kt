@@ -18,6 +18,37 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AccountImportTransactionTest {
+    @Test fun interruptedCommitIsRecoveredBeforeNextLibraryRead() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val profileId = "recovery-test-${UUID.randomUUID()}"
+        val repository = SharedPreferencesLibraryRepository(context, profileId)
+        val preferences = GrayjayPreferences(context, profileId)
+        repository.saveVideo(video("original"))
+        preferences.setCreatorFollowed("original-channel", true)
+        val journal = repository.importJournal
+        journal.begin()
+        repository.saveVideo(video("partial"))
+        preferences.setCreatorFollowed("partial-channel", true)
+        // A fresh process has no in-memory active transaction owner.
+        journal.abandonForRecovery()
+        val recovered = SharedPreferencesLibraryRepository(context, profileId)
+        assertEquals(listOf("original"), recovered.loadSavedVideos().map { it.id })
+        assertTrue(preferences.isCreatorFollowed("original-channel"))
+        assertFalse(preferences.isCreatorFollowed("partial-channel"))
+        assertFalse(journal.recoverIfNeeded())
+    }
+
+    @Test fun successfulCommitIsNotRolledBackOnNextRead() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val profile = "success-test-${UUID.randomUUID()}"
+        val repository = SharedPreferencesLibraryRepository(context, profile)
+        applyAccountImportTransaction(repository, GrayjayPreferences(context, profile),
+            EngineUserImportResult(emptyList(), listOf(video("imported")), emptyList(), 1, emptyList()), true)
+        assertEquals(listOf("imported"),
+            SharedPreferencesLibraryRepository(context, profile).loadSavedVideos().map { it.id })
+        assertFalse(repository.importJournal.recoverIfNeeded())
+    }
+
     @Test
     fun cancelledCommitRestoresLibraryAndSubscriptions() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()

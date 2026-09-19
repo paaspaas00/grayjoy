@@ -682,6 +682,7 @@ internal fun shouldCoverFullscreenOrientationHandoff(
 ): Boolean = !portraitFullscreen && viewportHeight > viewportWidth
 
 @Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun PlayerSurface(
     video: VideoUiModel,
     player: Player,

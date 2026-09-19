@@ -140,6 +140,7 @@ fun ChannelDetailScreen(
     )
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
+    val shareLabel = stringResource(R.string.share)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     PageBackHandler(enabled = searchFocused) {
@@ -271,7 +272,7 @@ fun ChannelDetailScreen(
                             type = "text/plain"
                             putExtra(Intent.EXTRA_SUBJECT, displayedChannel.name)
                             putExtra(Intent.EXTRA_TEXT, displayedChannel.id)
-                        }, context.getString(R.string.share)))
+                        }, shareLabel))
                     }))
                     if (perChannelPlaybackSpeedEnabled || displayedChannel.sourceId.equals("youtube", true)) add(PlaylistMenuAction(
                         stringResource(R.string.channel_settings), Icons.Outlined.Settings,
@@ -390,7 +391,7 @@ fun ChannelDetailScreen(
                                             putExtra(Intent.EXTRA_SUBJECT, displayedChannel.name)
                                             putExtra(Intent.EXTRA_TEXT, shareUrl)
                                         },
-                                        context.getString(R.string.share),
+                                        shareLabel,
                                     ),
                                 )
                             },

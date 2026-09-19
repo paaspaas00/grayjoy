@@ -24,6 +24,9 @@ data class LibraryImportSnapshot(
     val playlists: List<PlaylistUiModel>,
 )
 
+internal fun normalizedLibraryProgress(value: Float): Float =
+    if (value.isFinite()) value.coerceIn(0f, 1f) else 0f
+
 internal fun normalizePlaylistOrder(
     existingVideoIds: List<String>,
     requestedOrder: List<String>,
@@ -136,6 +139,26 @@ internal class SharedPreferencesLibraryRepository(
     // playlist, download, and progress operation.
     private var cachedVideos: List<VideoUiModel>? = null
     private var cachedPlaylists: List<PlaylistUiModel>? = null
+    private var cachedVideosJson: String? = null
+    private var cachedPlaylistsJson: String? = null
+    private var cachedProgressRevision = Long.MIN_VALUE
+    internal val importJournal = AccountImportJournal(context, profileId)
+    private var importRecoveryChecked = false
+
+    private fun recoverInterruptedImport() {
+        if (importRecoveryChecked) return
+        val recovered = runCatching { importJournal.recoverIfNeeded() }
+            .onFailure {
+                // Keep the recovery copy for the next attempt. A filesystem failure must not
+                // turn an otherwise readable library into a startup crash loop.
+                android.util.Log.e("LibraryRepository", "Interrupted import recovery failed", it)
+            }.getOrDefault(false)
+        if (recovered) {
+            cachedVideos = null
+            cachedPlaylists = null
+        }
+        importRecoveryChecked = true
+    }
 
     override fun load(videos: List<VideoUiModel>): Map<String, LibraryVideoState> {
         val saved = loadSavedVideos().associateBy(VideoUiModel::id)
@@ -224,7 +247,7 @@ internal class SharedPreferencesLibraryRepository(
 
     @Synchronized
     override fun recordHistory(video: VideoUiModel, progress: Float) {
-        val normalizedProgress = progress.coerceIn(0f, 1f)
+        val normalizedProgress = normalizedLibraryProgress(progress)
         val videos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
         val existing = videos[video.id]
         videos[video.id] = video.copy(
@@ -260,13 +283,15 @@ internal class SharedPreferencesLibraryRepository(
         // roughly 70 MB between GCs on a 200-item imported history and caused the visible periodic
         // playback hitch. Keep the frequently changing scalar in its own tiny preferences file;
         // readVideos() overlays it on the imported/stored JSON value for transparent migration.
-        val normalizedProgress = progress.coerceIn(0f, 1f)
+        val normalizedProgress = normalizedLibraryProgress(progress)
         cachedVideos = readVideos().map { video ->
             if (video.id == videoId) video.copy(watchProgress = normalizedProgress) else video
         }
         watchProgressPreferences.edit()
             .putFloat(videoId, normalizedProgress)
+            .putLong(KEY_PROGRESS_REVISION, watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0) + 1)
             .apply()
+        cachedProgressRevision = watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0)
     }
 
     @Synchronized
@@ -432,10 +457,12 @@ internal class SharedPreferencesLibraryRepository(
         cachedPlaylists = snapshot.playlists
         val videoJson = JSONArray().apply { snapshot.videos.forEach { put(it.toJson()) } }
         val playlistJson = JSONArray().apply { snapshot.playlists.forEach { put(it.toJson()) } }
+        cachedVideosJson = videoJson.toString()
+        cachedPlaylistsJson = playlistJson.toString()
         check(
             preferences.edit()
-                .putString(KEY_VIDEOS, videoJson.toString())
-                .putString(KEY_PLAYLISTS, playlistJson.toString())
+                .putString(KEY_VIDEOS, cachedVideosJson)
+                .putString(KEY_PLAYLISTS, cachedPlaylistsJson)
                 .commit(),
         ) { "Could not restore the library import transaction." }
         check(
@@ -497,42 +524,58 @@ internal class SharedPreferencesLibraryRepository(
     }
 
     private fun readVideos(): List<VideoUiModel> {
-        cachedVideos?.let { return it }
+        recoverInterruptedImport()
+        val storedJson = preferences.getString(KEY_VIDEOS, null)
+        val revision = watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0)
+        if (cachedVideosJson === storedJson && cachedProgressRevision == revision) {
+            cachedVideos?.let { return it }
+        }
         val progressOverrides = watchProgressPreferences.all
         return runCatching {
-            preferences.getString(KEY_VIDEOS, null)
+            storedJson
             ?.let(::JSONArray)
             ?.toVideoList()
             .orEmpty()
             .map { video ->
                 val persistedProgress = (progressOverrides[video.id] as? Number)?.toFloat()
                 if (persistedProgress == null) video else {
-                    video.copy(watchProgress = persistedProgress.coerceIn(0f, 1f))
+                    video.copy(watchProgress = normalizedLibraryProgress(persistedProgress))
                 }
             }
-        }.getOrDefault(emptyList()).also { cachedVideos = it }
+        }.getOrDefault(emptyList()).also {
+            cachedVideos = it
+            cachedVideosJson = storedJson
+            cachedProgressRevision = revision
+        }
     }
 
     private fun writeVideos(videos: List<VideoUiModel>) {
         cachedVideos = videos
         val json = JSONArray().apply { videos.forEach { put(it.toJson()) } }
-        preferences.edit().putString(KEY_VIDEOS, json.toString()).apply()
+        cachedVideosJson = json.toString()
+        preferences.edit().putString(KEY_VIDEOS, cachedVideosJson).apply()
     }
 
     private fun readPlaylists(): List<PlaylistUiModel> {
-        cachedPlaylists?.let { return it }
+        recoverInterruptedImport()
+        val storedJson = preferences.getString(KEY_PLAYLISTS, null)
+        if (cachedPlaylistsJson === storedJson) cachedPlaylists?.let { return it }
         return runCatching {
-            preferences.getString(KEY_PLAYLISTS, null)
+            storedJson
                 ?.let(::JSONArray)
                 ?.toPlaylistList(appContext.getString(R.string.local_playlist_description))
                 .orEmpty()
-        }.getOrDefault(emptyList()).also { cachedPlaylists = it }
+        }.getOrDefault(emptyList()).also {
+            cachedPlaylists = it
+            cachedPlaylistsJson = storedJson
+        }
     }
 
     private fun writePlaylists(playlists: List<PlaylistUiModel>) {
         cachedPlaylists = playlists
         val json = JSONArray().apply { playlists.forEach { put(it.toJson()) } }
-        preferences.edit().putString(KEY_PLAYLISTS, json.toString()).apply()
+        cachedPlaylistsJson = json.toString()
+        preferences.edit().putString(KEY_PLAYLISTS, cachedPlaylistsJson).apply()
     }
 
     private companion object {
@@ -540,6 +583,7 @@ internal class SharedPreferencesLibraryRepository(
         const val PROGRESS_FILE_NAME = "grayjay_compose_watch_progress_v1"
         const val KEY_VIDEOS = "saved_videos"
         const val KEY_PLAYLISTS = "playlists"
+        const val KEY_PROGRESS_REVISION = "__progress_revision"
     }
 }
 
@@ -567,6 +611,7 @@ internal fun reconcileVideoDownloadState(video: VideoUiModel, completedIds: Set<
 }
 
 internal fun VideoUiModel.forLocalStorage(preservePlayback: Boolean = false) = copy(
+    watchProgress = normalizedLibraryProgress(watchProgress),
     playbackFromDownload = false,
     playbackCacheNamespace = "",
     audioCacheNamespace = "",
@@ -693,7 +738,7 @@ internal fun VideoUiModel.toJson() = JSONObject().apply {
     put("isShort", isShort)
     put("isAvailable", isAvailable)
     put("scheduledStartAtMs", scheduledStartAtMs)
-    put("watchProgress", watchProgress.toDouble())
+    put("watchProgress", normalizedLibraryProgress(watchProgress).toDouble())
     put("isDownloaded", isDownloaded)
     put("isWatchLater", isWatchLater)
     put("isLiked", isLiked)
@@ -736,10 +781,11 @@ internal fun VideoUiModel.toJson() = JSONObject().apply {
 }
 
 internal fun JSONArray.toVideoList(): List<VideoUiModel> = buildList {
+    val seenIds = hashSetOf<String>()
     for (index in 0 until length()) {
         val json = optJSONObject(index) ?: continue
         val id = json.optString("id")
-        if (id.isBlank()) continue
+        if (id.isBlank() || !seenIds.add(id)) continue
         add(
             VideoUiModel(
                 id = id,
@@ -756,7 +802,7 @@ internal fun JSONArray.toVideoList(): List<VideoUiModel> = buildList {
                     id.contains("/shorts/", ignoreCase = true),
                 isAvailable = json.optBoolean("isAvailable", true),
                 scheduledStartAtMs = json.optLong("scheduledStartAtMs", 0L),
-                watchProgress = json.optDouble("watchProgress", 0.0).toFloat(),
+                watchProgress = normalizedLibraryProgress(json.optDouble("watchProgress", 0.0).toFloat()),
                 isDownloaded = json.optBoolean("isDownloaded"),
                 isWatchLater = json.optBoolean("isWatchLater"),
                 isLiked = json.optBoolean("isLiked"),
@@ -793,10 +839,11 @@ private fun PlaylistUiModel.toJson() = JSONObject().apply {
 }
 
 private fun JSONArray.toPlaylistList(defaultDescription: String): List<PlaylistUiModel> = buildList {
+    val seenIds = hashSetOf<String>()
     for (index in 0 until length()) {
         val json = optJSONObject(index) ?: continue
         val id = json.optString("id")
-        if (id.isBlank()) continue
+        if (id.isBlank() || !seenIds.add(id)) continue
         add(
             PlaylistUiModel(
                 id = id,

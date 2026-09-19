@@ -751,5 +751,33 @@
     <string name="export_newpipe_data">Esporta nel formato NewPipe</string>
     <string name="export_newpipe_data_description">Crea un database ZIP compatibile con NewPipe contenente iscrizioni, cronologia e playlist.</string>
     <string name="export_failed">Esportazione non riuscita.</string>
+    <string name="newpipe_export_unsupported_source">La libreria include sorgenti non supportate da NewPipe. Usa il formato Grayjay per conservare tutti i contenuti.</string>
     <string name="export_completed">Esportazione completata.</string>
+    <string name="download_preparation_timed_out">La sorgente ha impiegato troppo tempo per preparare questo download.</string>
+    <string name="jobs_running">Operazioni in background in corso</string>
+    <plurals name="active_jobs">
+        <item quantity="one">%d job attivo</item>
+        <item quantity="other">%d job attivi</item>
+    </plurals>
+    <string name="percent_complete">%1$d%%</string>
+    <string name="background_jobs_notification_description">Avanzamento di download, importazioni, aggiornamenti ed esportazioni.</string>
+    <string name="storage_almost_full">Spazio quasi esaurito</string>
+    <string name="storage_space_warning_detail">Sono disponibili solo %1$s. Libera spazio prima di avviare job di grandi dimensioni.</string>
+    <string name="storage_downloads_paused_detail">Download messi in pausa in sicurezza: %1$s disponibili, ne servono almeno %2$s.</string>
+    <string name="download_paused_low_storage">Spazio libero insufficiente; download messo in pausa in sicurezza</string>
+    <string name="download_waiting_for_network">In attesa della rete</string>
+    <string name="download_failed_retry_source">Riprova o aggiorna la sorgente.</string>
+    <string name="job_stopped_low_storage">Spazio libero insufficiente; il job è stato arrestato in sicurezza.</string>
+    <string name="cancel_active_downloads_title">Annullare i download attivi?</string>
+    <string name="cancel_active_downloads_body">I trasferimenti in coda e incompleti verranno annullati. I file già scaricati completamente saranno mantenuti.</string>
+    <string name="cancel_downloads_action">Annulla download</string>
+    <string name="keep_downloading">Continua i download</string>
+    <string name="cancel_youtube_import_title">Annullare l’importazione da YouTube?</string>
+    <string name="cancel_youtube_import_body">L’importazione corrente verrà annullata e ripristinata completamente. Non saranno mantenute iscrizioni, cronologia o playlist importate solo in parte.</string>
+    <string name="cancel_import_action">Annulla importazione</string>
+    <string name="continue_import_action">Continua importazione</string>
+    <string name="enable_job_notifications_title">Abilitare le notifiche dei job?</string>
+    <string name="enable_job_notifications_body">Le notifiche di Grayjoy sono disabilitate. Abilitale nelle impostazioni Android per vedere l’avanzamento di download e importazioni quando l’app è in background.</string>
+    <string name="open_notification_settings">Apri impostazioni</string>
+    <string name="not_now">Non ora</string>
 </resources>

@@ -114,9 +114,11 @@ class PlaybackNotificationService : Service() {
         // bootstrap first makes that race legal on Android 12+; we can remove it immediately when
         // there is no longer an attachment.
         if (!startForegroundCompat(NOTIFICATION_ID, bootstrapNotification())) {
+            foregroundStartPending = false
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        foregroundStartPending = false
         val playback = attachment
         if (playback == null) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -356,26 +358,44 @@ class PlaybackNotificationService : Service() {
             artworkHeaders: (String) -> Map<String, String> = { emptyMap() },
         ) {
             attachment = Attachment(player, mediaSession, closePlayback, artworkHeaders)
-            ContextCompat.startForegroundService(
-                context,
-                Intent(context, PlaybackNotificationService::class.java),
-            )
+            startIfAllowed(context)
         }
 
         /** Reattaches the current session after queue and media-item transitions. */
-        fun refresh(context: Context) {
-            if (attachment == null) return
-            ContextCompat.startForegroundService(
-                context,
-                Intent(context, PlaybackNotificationService::class.java),
-            )
+        fun refresh(context: Context, owner: Player) {
+            if (attachment?.player !== owner) return
+            startIfAllowed(context)
         }
 
-        fun dismiss(context: Context) {
+        fun dismiss(context: Context, owner: Player): Boolean {
+            // Account imports can own another engine/player in the same process. Releasing that
+            // engine must not detach the session which is playing in the UI or on Bluetooth.
+            if (attachment?.player !== owner) return false
             attachment = null
             NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
-            context.stopService(Intent(context, PlaybackNotificationService::class.java))
+            // A startForegroundService request already in the main-thread queue still needs its
+            // startForeground acknowledgement. Let onStartCommand post/remove the bootstrap when
+            // attachment is null; stopping it before delivery can crash the process on Android.
+            if (!foregroundStartPending) {
+                context.stopService(Intent(context, PlaybackNotificationService::class.java))
+            }
+            return true
         }
+
+        private fun startIfAllowed(context: Context) {
+            val alreadyPending = foregroundStartPending
+            foregroundStartPending = true
+            try {
+                ContextCompat.startForegroundService(
+                    context, Intent(context, PlaybackNotificationService::class.java),
+                )
+            } catch (error: RuntimeException) {
+                foregroundStartPending = alreadyPending
+                Log.w(TAG, "Could not start playback notification; retaining player attachment", error)
+            }
+        }
+
+        private var foregroundStartPending = false
 
         fun toggleAttachedPlayback() {
             attachment?.player?.let { player ->

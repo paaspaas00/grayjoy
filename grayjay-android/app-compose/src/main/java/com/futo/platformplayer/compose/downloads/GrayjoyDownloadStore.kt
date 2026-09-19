@@ -61,6 +61,7 @@ import kotlin.coroutines.resumeWithException
  * are only unique inside one manifest, so using them globally lets one downloaded video satisfy
  * another video's requests. Scope every new cache resource to its actual media URI.
  */
+@OptIn(UnstableApi::class)
 private val SCOPED_CACHE_KEY_FACTORY = CacheKeyFactory { dataSpec ->
     buildString {
         append(dataSpec.uri)
@@ -114,6 +115,7 @@ private val CACHE_IDENTITY_QUERY_PARAMETERS = setOf(
     "offset",
 )
 
+@OptIn(UnstableApi::class)
 private fun namespacedCacheKeyFactory(namespace: String) = CacheKeyFactory { dataSpec ->
     buildString {
         append(namespace)
@@ -126,6 +128,7 @@ private fun namespacedCacheKeyFactory(namespace: String) = CacheKeyFactory { dat
     }
 }
 
+@OptIn(UnstableApi::class)
 private fun legacyNamespacedCacheKeyFactory(namespace: String) = CacheKeyFactory { dataSpec ->
     "$namespace|${SCOPED_CACHE_KEY_FACTORY.buildCacheKey(dataSpec)}"
 }
@@ -135,6 +138,7 @@ private data class PreviousRootCache(
     val cacheKey: String,
 )
 
+@OptIn(UnstableApi::class)
 private fun resumableNamespacedCacheKeyFactory(
     namespace: String,
     cache: SimpleCache,
@@ -173,6 +177,7 @@ internal fun rawDashManifestContainsAudio(manifest: String): Boolean =
  * downloader. Preserve that sentinel for HLS while still rejecting genuinely empty DASH
  * manifests.
  */
+@OptIn(UnstableApi::class)
 internal fun validatedAdaptiveStreamKeys(
     isHlsManifest: Boolean,
     hasSelectedTracks: Boolean,
@@ -186,6 +191,7 @@ internal fun validatedAdaptiveStreamKeys(
 
 private const val INLINE_MANIFEST_FRAGMENT_PREFIX = "grayjoy-inline-manifest-"
 
+@OptIn(UnstableApi::class)
 internal data class OfflinePlaybackPart(
     val mediaType: DownloadMediaType,
     val name: String,
@@ -231,13 +237,14 @@ internal fun aggregateDownloadStatus(
     hasDownloadingRequest: Boolean,
     hasStoppedRequest: Boolean,
     waitingForRequirements: Boolean = false,
+    managerPaused: Boolean = false,
 ): DownloadStatus = when {
     removing -> DownloadStatus.Removing
     hasFailedRequest -> DownloadStatus.Failed
     hasRemovingRequest -> DownloadStatus.Removing
     validatedComplete -> DownloadStatus.Completed
     media3Complete -> DownloadStatus.Failed
-    waitingForRequirements -> DownloadStatus.Paused
+    waitingForRequirements || managerPaused -> DownloadStatus.Paused
     hasDownloadingRequest -> DownloadStatus.Downloading
     hasStoppedRequest -> DownloadStatus.Paused
     else -> DownloadStatus.Queued
@@ -347,6 +354,10 @@ internal fun VideoUiModel.withOfflinePlayback(
 @OptIn(UnstableApi::class)
 class GrayjoyDownloadStore private constructor(context: Context) {
     private val appContext = context.applicationContext
+    private val runtimePreferences = appContext.getSharedPreferences(
+        RUNTIME_PREFERENCES,
+        Context.MODE_PRIVATE,
+    )
     private val completedCatalogPreferences = appContext.getSharedPreferences(
         COMPLETED_CATALOG_PREFERENCES,
         Context.MODE_PRIVATE,
@@ -360,16 +371,21 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         NoOpCacheEvictor(),
         databaseProvider,
     )
-    private val downloadsById = linkedMapOf<String, Download>()
-    private val removingGroups = mutableSetOf<DownloadGroupKey>()
+    private val downloadsById = ConcurrentHashMap<String, Download>()
+    private val removingGroups = ConcurrentHashMap.newKeySet<DownloadGroupKey>()
+    private val metadataCache = ConcurrentHashMap<String, Pair<ByteArray, DownloadRequestMetadata?>>()
     private val requestDataSourceFactories = ConcurrentHashMap<String, DataSource.Factory>()
     private val previousRootCaches = ConcurrentHashMap<String, PreviousRootCache>()
     private val failureMessages = mutableMapOf<String, String>()
     private val handler = Handler(Looper.getMainLooper())
     private var unmetRequirements = 0
     private var tickerRunning = false
+    private var storagePausedByGuard = false
+    private var lastStorageCheckMs = 0L
     private val _downloads = MutableStateFlow<List<DownloadUiModel>>(emptyList())
     val downloads: StateFlow<List<DownloadUiModel>> = _downloads.asStateFlow()
+    private val _storageStatus = MutableStateFlow(DownloadStorageGuard.inspect(appContext))
+    internal val storageStatus: StateFlow<DownloadStorageStatus> = _storageStatus.asStateFlow()
 
     internal val downloadManager = DownloadManager(
         appContext,
@@ -381,72 +397,174 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             requestDataSourceFactories::get,
             previousRootCaches::get,
         ),
-    ).apply {
-        maxParallelDownloads = 2
-        // Pause whenever no network is available. RequirementsWatcher resumes the same cached
-        // request (and therefore its current byte position) on Wi-Fi or mobile data.
-        requirements = Requirements(Requirements.NETWORK)
-        addListener(
-            object : DownloadManager.Listener {
-                override fun onInitialized(downloadManager: DownloadManager) {
-                    reloadDownloadIndex()
-                    holdPluginDownloadsForRehydration()
-                    initialized.complete(Unit)
-                    resumeDownloads()
-                }
+    )
 
-                override fun onDownloadChanged(
-                    downloadManager: DownloadManager,
-                    download: Download,
-                    finalException: Exception?,
-                ) {
-                    downloadsById[download.request.id] = download
-                    if (download.state == Download.STATE_COMPLETED) {
-                        releaseRequestDataSourceFactory(download.request.id)
-                    }
-                    if (finalException == null) failureMessages.remove(download.request.id)
-                    else failureMessages[download.request.id] =
-                        finalException.localizedMessage ?: finalException.javaClass.simpleName
-                    publishDownloads()
-                }
-
-                override fun onRequirementsStateChanged(
-                    downloadManager: DownloadManager,
-                    requirements: Requirements,
-                    notMetRequirements: Int,
-                ) {
-                    unmetRequirements = notMetRequirements
-                    publishDownloads()
-                }
-
-                override fun onDownloadRemoved(
-                    downloadManager: DownloadManager,
-                    download: Download,
-                ) {
-                    val removedMetadata = DownloadRequestMetadata.from(download.request.data)
-                    downloadsById.remove(download.request.id)
-                    failureMessages.remove(download.request.id)
-                    releaseRequestDataSourceFactory(download.request.id)
-                    previousRootCaches.remove(download.request.id)
-                    cleanupCacheIfUnused()
-                    removedMetadata?.let { metadata ->
-                        val key = DownloadGroupKey(
-                            metadata.profileId,
-                            metadata.videoId,
-                            metadata.mediaType,
-                        )
-                        val groupStillExists = downloadsById.values.any { remaining ->
-                            DownloadRequestMetadata.from(remaining.request.data)?.let {
-                                it.profileId == key.profileId && it.videoId == key.videoId &&
-                                    it.mediaType == key.mediaType
-                            } == true
+    init {
+        // The cache is constructed on IO. DownloadManager itself belongs to the main looper:
+        // configure it there, after its property has been assigned, before releasing downloads.
+        handler.post {
+            downloadManager.apply {
+                maxParallelDownloads = 2
+                // Pause whenever no network is available. RequirementsWatcher resumes the same cached
+                // request (and therefore its current byte position) on Wi-Fi or mobile data.
+                requirements = Requirements(
+                    Requirements.NETWORK or Requirements.DEVICE_STORAGE_NOT_LOW,
+                )
+                addListener(
+                    object : DownloadManager.Listener {
+                        override fun onInitialized(downloadManager: DownloadManager) {
+                            initializeDownloadManager()
                         }
-                        if (!groupStillExists) removingGroups.remove(key)
-                    }
-                    publishDownloads()
-                }
-            },
+
+                        override fun onDownloadChanged(
+                            downloadManager: DownloadManager,
+                            download: Download,
+                            finalException: Exception?,
+                        ) {
+                            downloadsById[download.request.id] = download
+                            if (download.state == Download.STATE_COMPLETED) {
+                                releaseRequestDataSourceFactory(download.request.id)
+                            }
+                            if (finalException == null) failureMessages.remove(download.request.id)
+                            else failureMessages[download.request.id] =
+                                finalException.localizedMessage ?: finalException.javaClass.simpleName
+                            publishDownloads()
+                        }
+
+                        override fun onRequirementsStateChanged(
+                            downloadManager: DownloadManager,
+                            requirements: Requirements,
+                            notMetRequirements: Int,
+                        ) {
+                            unmetRequirements = notMetRequirements
+                            publishDownloads()
+                        }
+
+                        override fun onDownloadsPausedChanged(
+                            downloadManager: DownloadManager,
+                            downloadsPaused: Boolean,
+                        ) {
+                            publishDownloads()
+                        }
+
+                        override fun onDownloadRemoved(
+                            downloadManager: DownloadManager,
+                            download: Download,
+                        ) {
+                            val removedMetadata = metadataFor(download.request)
+                            downloadsById.remove(download.request.id)
+                            metadataCache.remove(download.request.id)
+                            failureMessages.remove(download.request.id)
+                            releaseRequestDataSourceFactory(download.request.id)
+                            previousRootCaches.remove(download.request.id)
+                            cleanupCacheIfUnused()
+                            removedMetadata?.let { metadata ->
+                                val key = DownloadGroupKey(
+                                    metadata.profileId,
+                                    metadata.videoId,
+                                    metadata.mediaType,
+                                )
+                                val groupStillExists = downloadsById.values.any { remaining ->
+                                    metadataFor(remaining.request)?.let {
+                                        it.profileId == key.profileId && it.videoId == key.videoId &&
+                                            it.mediaType == key.mediaType
+                                    } == true
+                                }
+                                if (!groupStillExists) removingGroups.remove(key)
+                            }
+                            publishDownloads()
+                        }
+                    },
+                )
+                if (isInitialized) initializeDownloadManager()
+            }
+        }
+    }
+
+    private fun initializeDownloadManager() {
+        if (initialized.isCompleted) return
+        reloadDownloadIndex()
+        holdPluginDownloadsForRehydration()
+        val storage = refreshStorageStatus(force = true)
+        initialized.complete(Unit)
+        if (isHeldUntilAppRestore() || storage.downloadsPaused) {
+            downloadManager.pauseDownloads()
+        } else {
+            downloadManager.resumeDownloads()
+        }
+    }
+
+    fun pauseAll() {
+        runtimePreferences.edit().putBoolean(KEY_HOLD_UNTIL_APP_RESTORE, true).commit()
+        if (Looper.myLooper() == downloadManager.applicationLooper) {
+            downloadManager.pauseDownloads()
+        } else {
+            handler.post { downloadManager.pauseDownloads() }
+        }
+    }
+
+    /**
+     * Releases the process-start/crash hold after the app has rebuilt its persistent queue and
+     * reattached any source-specific transports. Requests with their own rehydration stop reason
+     * remain stopped until [enqueue] replaces them with a valid runtime data source.
+     */
+    fun resumeAfterAppRestore() {
+        runtimePreferences.edit().putBoolean(KEY_HOLD_UNTIL_APP_RESTORE, false).commit()
+        refreshStorageStatus(force = true)
+        resumeIfAllowed()
+    }
+
+    private fun isHeldUntilAppRestore(): Boolean = runtimePreferences.getBoolean(
+        KEY_HOLD_UNTIL_APP_RESTORE,
+        false,
+    )
+
+    private fun resumeIfAllowed() {
+        if (canResumeManagedDownloads(isHeldUntilAppRestore(), storagePausedByGuard)) {
+            downloadManager.resumeDownloads()
+        }
+    }
+
+    /** Cheap enough for a foreground poll; StatFs itself is rate-limited while downloading. */
+    internal fun refreshStorageStatus(force: Boolean = false): DownloadStorageStatus {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastStorageCheckMs < STORAGE_CHECK_INTERVAL_MS) {
+            return _storageStatus.value
+        }
+        lastStorageCheckMs = now
+        val knownRemainingBytes = downloadsById.values.asSequence()
+            .filter { download ->
+                download.state in ACTIVE_STATES ||
+                    (storagePausedByGuard && download.state == Download.STATE_STOPPED)
+            }
+            .map { download ->
+                download.contentLength
+                    .takeIf { it > 0L }
+                    ?.minus(download.bytesDownloaded)
+                    ?.coerceAtLeast(0L)
+                    ?: 0L
+            }
+            .fold(0L) { total, bytes ->
+                if (Long.MAX_VALUE - total < bytes) Long.MAX_VALUE else total + bytes
+            }
+        val next = DownloadStorageGuard.inspect(
+            context = appContext,
+            knownRemainingBytes = knownRemainingBytes,
+            wasPaused = storagePausedByGuard,
         )
+        _storageStatus.value = next
+        when {
+            next.downloadsPaused && !storagePausedByGuard -> {
+                storagePausedByGuard = true
+                downloadManager.pauseDownloads()
+                startProgressTicker()
+            }
+            !next.downloadsPaused && storagePausedByGuard -> {
+                storagePausedByGuard = false
+                resumeIfAllowed()
+            }
+        }
+        return next
     }
 
     /**
@@ -491,6 +609,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         preferredVideoHeight: Int? = null,
         preferredAudioBitrate: Int? = null,
     ) {
+        initialized.await()
         require(!video.isLive) { "Live streams cannot be downloaded." }
         require(video.supportsOfflineDownload()) { "DRM-protected streams cannot be downloaded." }
         removingGroups.remove(DownloadGroupKey(profileId, video.id, mediaType))
@@ -562,7 +681,8 @@ class GrayjoyDownloadStore private constructor(context: Context) {
                 downloadManager.setStopReason(prepared.request.id, Download.STOP_REASON_NONE)
                 submittedRequestIds += prepared.request.id
             }
-            downloadManager.resumeDownloads()
+            refreshStorageStatus(force = true)
+            resumeIfAllowed()
         } catch (error: Throwable) {
             submittedRequestIds
                 .filterNot(existingById::containsKey)
@@ -682,6 +802,10 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         videoId: String,
         mediaType: DownloadMediaType? = null,
     ) {
+        if (Looper.myLooper() != downloadManager.applicationLooper) {
+            handler.post { remove(profileId, videoId, mediaType) }
+            return
+        }
         val recordKeys = completedRecords.keys.filter { key ->
             key.profileId == profileId && key.videoId == videoId &&
                 (mediaType == null || key.mediaType == mediaType)
@@ -691,7 +815,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             saveCompletedRecords()
         }
         downloadsById.values.mapNotNull { download ->
-            DownloadRequestMetadata.from(download.request.data)?.let { metadata ->
+            metadataFor(download.request)?.let { metadata ->
                 DownloadGroupKey(metadata.profileId, metadata.videoId, metadata.mediaType)
             }
         }.filterTo(removingGroups) { key ->
@@ -700,7 +824,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         }
         downloadsById.values
             .filter { download ->
-                DownloadRequestMetadata.from(download.request.data)?.let {
+                metadataFor(download.request)?.let {
                     it.profileId == profileId && it.videoId == videoId &&
                         (mediaType == null || it.mediaType == mediaType)
                 } == true
@@ -723,7 +847,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         reconcileCompletedCatalog()
         return downloadsById.values
             .mapNotNull { download ->
-                DownloadRequestMetadata.from(download.request.data)?.let { it to download }
+                metadataFor(download.request)?.let { it to download }
             }
             .groupBy { (metadata, _) ->
                 DownloadGroupKey(metadata.profileId, metadata.videoId, metadata.mediaType)
@@ -753,7 +877,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         if (completedRequestIds.isEmpty()) return null
         val parts = downloadsById.values.mapNotNull { download ->
             if (download.request.id !in completedRequestIds) return@mapNotNull null
-            val metadata = DownloadRequestMetadata.from(download.request.data)
+            val metadata = metadataFor(download.request)
                 ?.takeIf { it.profileId == profileId && it.videoId == video.id }
                 ?: return@mapNotNull null
             OfflinePlaybackPart(
@@ -779,7 +903,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         mediaType: DownloadMediaType? = null,
     ): Boolean =
         downloadsById.values.any { download ->
-            DownloadRequestMetadata.from(download.request.data)?.let { metadata ->
+            metadataFor(download.request)?.let { metadata ->
                 metadata.profileId == profileId && metadata.videoId == videoId &&
                     (mediaType == null || metadata.mediaType == mediaType)
             } == true
@@ -792,7 +916,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         excludingMediaType: DownloadMediaType? = null,
     ): Boolean = downloadsById.values.any { download ->
         if (download.state !in ACTIVE_STATES) return@any false
-        val metadata = DownloadRequestMetadata.from(download.request.data) ?: return@any false
+        val metadata = metadataFor(download.request) ?: return@any false
         if (metadata.profileId != profileId) return@any false
         val isExcludedRecoveryGroup = isExcludedRecoveryTransfer(
             transferVideoId = metadata.videoId,
@@ -831,7 +955,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
                 while (cursor.moveToNext()) {
                     val download = cursor.download
                     downloadsById[download.request.id] = download
-                    val metadata = DownloadRequestMetadata.from(download.request.data)
+                    val metadata = metadataFor(download.request)
                     val persistedPrevious = metadata
                         ?.legacyRootCacheKey
                         ?.takeIf(String::isNotBlank)
@@ -859,7 +983,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             .filter { download ->
                 download.state != Download.STATE_COMPLETED &&
                     download.state != Download.STATE_REMOVING &&
-                    DownloadRequestMetadata.from(download.request.data)?.let { metadata ->
+                    metadataFor(download.request)?.let { metadata ->
                         metadata.requiresPluginTransport ||
                             metadata.rawManifest.contains("grayjay.internal") ||
                             download.request.uri.host == "grayjay.internal"
@@ -890,7 +1014,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         if (!downloadManager.isInitialized) return
         val groups = downloadsById.values
             .mapNotNull { download ->
-                DownloadRequestMetadata.from(download.request.data)?.let { metadata ->
+                metadataFor(download.request)?.let { metadata ->
                     DownloadGroupKey(metadata.profileId, metadata.videoId, metadata.mediaType) to
                         (metadata to download)
                 }
@@ -999,11 +1123,27 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         completedCatalogPreferences.edit().putString(COMPLETED_CATALOG_KEY, array.toString()).apply()
     }
 
+    private fun metadataFor(request: DownloadRequest): DownloadRequestMetadata? {
+        val cached = metadataCache[request.id]
+        if (cached != null && cached.first === request.data) return cached.second
+        return DownloadRequestMetadata.from(request.data).also {
+            metadataCache[request.id] = request.data to it
+        }
+    }
+
+    @Synchronized
     private fun publishDownloads() {
+        refreshStorageStatus()
         reconcileCompletedCatalog()
-        val perType = downloadsById.values
+        val entriesByVideo = downloadsById.values.toList()
+        val updatedAt = mutableMapOf<Pair<String, String>, Long>()
+        val perType = entriesByVideo
             .mapNotNull { download ->
-                DownloadRequestMetadata.from(download.request.data)?.let { it to download }
+                metadataFor(download.request)?.let {
+                    val key = it.profileId to it.videoId
+                    updatedAt[key] = maxOf(updatedAt[key] ?: Long.MIN_VALUE, download.updateTimeMs)
+                    it to download
+                }
             }
             .groupBy { (metadata, _) ->
                 DownloadGroupKey(metadata.profileId, metadata.videoId, metadata.mediaType)
@@ -1013,13 +1153,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             .groupBy { snapshot -> snapshot.profileId to snapshot.videoId }
             .map { (_, snapshots) -> combineMediaTypes(snapshots) }
             .sortedByDescending { snapshot ->
-                downloadsById.values
-                    .filter { download ->
-                        DownloadRequestMetadata.from(download.request.data)?.let {
-                            it.profileId == snapshot.profileId && it.videoId == snapshot.videoId
-                        } == true
-                    }
-                    .maxOfOrNull(Download::updateTimeMs) ?: 0L
+                updatedAt[snapshot.profileId to snapshot.videoId] ?: 0L
             }
         if (downloadsById.values.any { it.state in ACTIVE_STATES }) startProgressTicker()
     }
@@ -1061,6 +1195,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             media3Complete = media3Complete,
             hasDownloadingRequest = downloads.any { it.state == Download.STATE_DOWNLOADING },
             hasStoppedRequest = downloads.any { it.state == Download.STATE_STOPPED },
+            managerPaused = downloadManager.downloadsPaused,
             waitingForRequirements = unmetRequirements != 0 && downloads.any {
                 it.state == Download.STATE_QUEUED ||
                     it.state == Download.STATE_DOWNLOADING ||
@@ -1079,9 +1214,12 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             totalParts = expectedParts,
             errorMessage = entries.firstNotNullOfOrNull { (_, download) ->
                 failureMessages[download.request.id]
-            } ?: if (media3Complete && !complete) {
-                appContext.getString(R.string.download_failed)
-            } else null,
+            } ?: when {
+                status == DownloadStatus.Paused && storagePausedByGuard ->
+                    appContext.getString(R.string.download_paused_low_storage)
+                media3Complete && !complete -> appContext.getString(R.string.download_failed)
+                else -> null
+            },
             requiresPluginTransport = entries.any { it.first.requiresPluginTransport } ||
                 metadata.rawManifest.contains("grayjay.internal") ||
                 entries.any { (_, download) -> download.request.uri.host == "grayjay.internal" },
@@ -1126,8 +1264,14 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             object : Runnable {
                 override fun run() {
                     publishDownloads()
-                    if (downloadsById.values.any { it.state in ACTIVE_STATES }) {
-                        handler.postDelayed(this, 750L)
+                    val hasActiveTransfer = downloadsById.values.any {
+                        it.state in ACTIVE_STATES
+                    }
+                    if (hasActiveTransfer || storagePausedByGuard) {
+                        handler.postDelayed(
+                            this,
+                            if (hasActiveTransfer) 750L else STORAGE_CHECK_INTERVAL_MS,
+                        )
                     } else {
                         tickerRunning = false
                     }
@@ -1245,6 +1389,9 @@ class GrayjoyDownloadStore private constructor(context: Context) {
 
     companion object {
         private const val DOWNLOAD_INDEX_NAME = "grayjoy_offline"
+        private const val RUNTIME_PREFERENCES = "grayjoy_download_runtime_v1"
+        private const val KEY_HOLD_UNTIL_APP_RESTORE = "hold_until_app_restore"
+        private const val STORAGE_CHECK_INTERVAL_MS = 5_000L
         private const val DOWNLOAD_REQUEST_SCHEMA_VERSION = 3
         private const val COMPLETED_CATALOG_PREFERENCES = "grayjoy_completed_downloads_v1"
         private const val COMPLETED_CATALOG_KEY = "records"
@@ -1268,6 +1415,17 @@ class GrayjoyDownloadStore private constructor(context: Context) {
 
         fun get(context: Context): GrayjoyDownloadStore = instance ?: synchronized(this) {
             instance ?: GrayjoyDownloadStore(context).also { instance = it }
+        }
+
+        fun pauseIfCreated() { instance?.pauseAll() }
+
+        /** Must run from Application.onCreate before DownloadService can initialize Media3. */
+        fun holdUntilAppRestore(context: Context) {
+            context.applicationContext
+                .getSharedPreferences(RUNTIME_PREFERENCES, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_HOLD_UNTIL_APP_RESTORE, true)
+                .commit()
         }
 
         private fun downloadId(
@@ -1402,6 +1560,7 @@ private class RequestAwareDownloaderFactory(
     }
 }
 
+@OptIn(UnstableApi::class)
 private class ManifestAwareDataSourceFactory(
     private val manifestUri: Uri,
     private val manifest: ByteArray,

@@ -1,6 +1,7 @@
 package com.futo.platformplayer.compose
 
 import com.futo.platformplayer.compose.downloads.OfflinePlaylistDownload
+import com.futo.platformplayer.compose.downloads.QueuedDownload
 import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadUiModel
@@ -83,6 +84,45 @@ class PlaylistDownloadBatchTest {
                     ),
                 ),
             ),
+        )
+    }
+
+    @Test
+    fun globalCancellationSelectsOnlyIncompleteMediaTypes() {
+        val queued = listOf(
+            QueuedDownload(
+                profileId = "main",
+                videoId = "queued",
+                mediaType = DownloadMediaType.Video,
+                status = DownloadStatus.Queued,
+                createdAtMs = 1L,
+            ),
+            QueuedDownload(
+                profileId = "main",
+                videoId = "failed",
+                mediaType = DownloadMediaType.Video,
+                status = DownloadStatus.Failed,
+                createdAtMs = 2L,
+            ),
+        )
+        val downloads = listOf(
+            completed("complete", DownloadMediaType.Video),
+            DownloadUiModel(
+                profileId = "main",
+                videoId = "mixed",
+                mediaType = DownloadMediaType.Audio,
+                status = DownloadStatus.Downloading,
+                completedMediaTypes = setOf(DownloadMediaType.Video),
+                activeMediaTypes = setOf(DownloadMediaType.Audio),
+            ),
+        )
+
+        assertEquals(
+            setOf(
+                "queued" to DownloadMediaType.Video,
+                "mixed" to DownloadMediaType.Audio,
+            ),
+            cancellableDownloadPairs(queued, downloads),
         )
     }
 

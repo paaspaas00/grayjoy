@@ -24,6 +24,14 @@ class GrayjoyDownloadService : DownloadService(
     R.string.download_notification_channel,
     0,
 ) {
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        com.futo.platformplayer.compose.jobs.RunningJobs.pause()
+        GrayjoyDownloadStore.holdUntilAppRestore(this)
+        GrayjoyDownloadStore.pauseIfCreated()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
     private val notificationHelper by lazy { DownloadNotificationHelper(this, CHANNEL_ID) }
     private val scheduler by lazy { PlatformScheduler(this, DOWNLOAD_JOB_ID) }
 

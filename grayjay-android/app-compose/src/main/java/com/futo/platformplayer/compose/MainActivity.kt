@@ -48,6 +48,12 @@ import com.futo.platformplayer.compose.ui.UpdateDownloadUiModel
 import com.futo.platformplayer.compose.update.GrayjoyUpdateInstaller
 import com.futo.platformplayer.compose.ui.theme.GrayjayTheme
 import com.futo.platformplayer.compose.playback.PictureInPictureActionReceiver
+import com.futo.platformplayer.compose.jobs.GrayjoyActiveJobsService
+import com.futo.platformplayer.compose.jobs.activeJobsSnapshot
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import com.futo.platformplayer.compose.downloads.InsufficientStorageException
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import androidx.media3.ui.PlayerView
@@ -93,9 +99,28 @@ class MainActivity : FragmentActivity() {
         pendingExternalContentUrl = intent.externalContentUrlOrNull()
         pendingPcPairingUrl = intent.pcPairingUrlOrNull()
         enableEdgeToEdge()
+        // UI state collection stops at onStop. Job notifications must keep following progress
+        // while the screen is locked or another app is in front, and disappear on completion.
+        lifecycleScope.launch {
+            combine(grayjayViewModel.uiState, snapshotFlow { updateDownloadState }) { state, update ->
+                activeJobsSnapshot(this@MainActivity, state, update)
+            }.distinctUntilChanged().collect { jobs ->
+                if (jobs.count > 0) {
+                    GrayjoyActiveJobsService.update(
+                        this@MainActivity, jobs.count, jobs.percent / 100f, jobs.description,
+                    )
+                } else {
+                    GrayjoyActiveJobsService.stop(this@MainActivity)
+                }
+            }
+        }
         setContent {
             val viewModel = grayjayViewModel
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            var notificationPermissionRequestedThisSession by remember {
+                mutableStateOf(false)
+            }
+            var showJobNotificationSettings by remember { mutableStateOf(false) }
             val databaseImportPicker = rememberLauncherForActivityResult(
                 ActivityResultContracts.OpenDocument(),
             ) { uri ->
@@ -188,7 +213,9 @@ class MainActivity : FragmentActivity() {
                 }
                 pendingPcPairingUrl = null
             }
-            val hasActiveDownloads = uiState.downloads.values.any { it.isActive }
+            val activeJobCount = activeJobsSnapshot(
+                this@MainActivity, uiState, updateDownloadState,
+            ).count
             var pendingDownloadCompletionKeys by remember(uiState.activeProfileId) {
                 mutableStateOf(emptySet<DownloadCompletionKey>())
             }
@@ -208,13 +235,24 @@ class MainActivity : FragmentActivity() {
             }
             LaunchedEffect(
                 uiState.nowPlaying.video?.id,
-                hasActiveDownloads,
+                activeJobCount,
                 uiState.pcLink.pairedComputers.size,
             ) {
+                val notificationPreviouslyRequested = notificationPermissionPreferences
+                    .getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
+                val canRetryForActiveJob = activeJobCount > 0 &&
+                    !notificationPermissionRequestedThisSession &&
+                    (
+                        !notificationPreviouslyRequested ||
+                            androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(
+                                this@MainActivity,
+                                Manifest.permission.POST_NOTIFICATIONS,
+                            )
+                        )
                 if (
                     (
                         uiState.nowPlaying.video != null ||
-                            hasActiveDownloads ||
+                            activeJobCount > 0 ||
                             uiState.pcLink.pairedComputers.isNotEmpty()
                         ) &&
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -222,15 +260,29 @@ class MainActivity : FragmentActivity() {
                         this@MainActivity,
                         Manifest.permission.POST_NOTIFICATIONS,
                     ) != PackageManager.PERMISSION_GRANTED &&
-                    !notificationPermissionPreferences.getBoolean(
-                        KEY_NOTIFICATION_PERMISSION_REQUESTED,
-                        false,
-                    )
+                    (!notificationPreviouslyRequested || canRetryForActiveJob)
                 ) {
+                    notificationPermissionRequestedThisSession = true
                     notificationPermissionPreferences.edit()
                         .putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, true)
                         .apply()
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else if (
+                    activeJobCount > 0 &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(
+                        this@MainActivity,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                    ) != PackageManager.PERMISSION_GRANTED &&
+                    notificationPreviouslyRequested &&
+                    !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(
+                        this@MainActivity,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                    ) &&
+                    !notificationPermissionRequestedThisSession
+                ) {
+                    notificationPermissionRequestedThisSession = true
+                    showJobNotificationSettings = true
                 }
             }
 
@@ -298,6 +350,7 @@ class MainActivity : FragmentActivity() {
                     onDownloadVideos = viewModel::downloadVideos
                     onDownloadPlaylist = viewModel::downloadPlaylist
                     onCancelDownloadPlaylist = viewModel::cancelPlaylistDownload
+                    onCancelActiveDownloads = viewModel::cancelActiveDownloads
                     onPlaylistAutomaticDownloadChange = viewModel::setPlaylistAutomaticDownload
                     onLoadRemotePlaylist = viewModel::loadRemotePlaylist
                     onLoadMoreRemotePlaylist = viewModel::loadMoreRemotePlaylist
@@ -467,6 +520,43 @@ class MainActivity : FragmentActivity() {
                     deviceIsLandscape = false,
                     pictureInPictureMode = pictureInPictureMode,
                 )
+                if (showJobNotificationSettings) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showJobNotificationSettings = false },
+                        title = {
+                            androidx.compose.material3.Text(
+                                getString(R.string.enable_job_notifications_title),
+                            )
+                        },
+                        text = {
+                            androidx.compose.material3.Text(
+                                getString(R.string.enable_job_notifications_body),
+                            )
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.Button(
+                                onClick = {
+                                    showJobNotificationSettings = false
+                                    startActivity(
+                                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName),
+                                    )
+                                },
+                            ) {
+                                androidx.compose.material3.Text(
+                                    getString(R.string.open_notification_settings),
+                                )
+                            }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = { showJobNotificationSettings = false },
+                            ) {
+                                androidx.compose.material3.Text(getString(R.string.not_now))
+                            }
+                        },
+                    )
+                }
             }
         }
     }
@@ -586,6 +676,14 @@ class MainActivity : FragmentActivity() {
                 installPendingUpdateIfAllowed()
             } catch (_: CancellationException) {
                 if (generation == updateDownloadGeneration) updateDownloadState = null
+            } catch (_: InsufficientStorageException) {
+                if (generation != updateDownloadGeneration) return@launch
+                updateDownloadState = null
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.job_stopped_low_storage),
+                    Toast.LENGTH_LONG,
+                ).show()
             } catch (_: Throwable) {
                 if (generation != updateDownloadGeneration) return@launch
                 updateDownloadState = null

@@ -152,7 +152,15 @@ class YoutubeAccountImportWorker(
         val profileId = inputData.getString(KEY_PROFILE_ID).orEmpty()
         val sourceId = inputData.getString(KEY_SOURCE_ID).orEmpty()
         if (profileId.isBlank() || sourceId.isBlank()) return Result.failure()
-        setForeground(createForegroundInfo())
+        try {
+            setForeground(createForegroundInfo())
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: RuntimeException) {
+            // Android may have exhausted the foreground-service budget. A retry must not turn
+            // this periodic import into a permanently failed worker.
+            return Result.retry()
+        }
 
         val preferences = GrayjayPreferences(applicationContext, profileId)
         val repository = SharedPreferencesLibraryRepository(applicationContext, profileId)

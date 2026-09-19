@@ -66,6 +66,7 @@ import com.futo.platformplayer.compose.pclink.PcPlaybackState
 import com.futo.platformplayer.compose.pclink.PcRemoteCommandType
 import com.futo.platformplayer.compose.ui.DownloadStatus
 import com.futo.platformplayer.compose.ui.DownloadMediaType
+import com.futo.platformplayer.compose.ui.DownloadStorageUiState
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.ExternalNavigationKind
 import com.futo.platformplayer.compose.ui.ExternalNavigationUiModel
@@ -131,6 +132,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.currentCoroutineContext
@@ -140,6 +142,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicInteger
@@ -222,6 +226,36 @@ internal fun pendingPlaylistCancellationIds(
             downloads[videoId]?.isComplete(cancelled.mediaType) != true &&
                 videoId !in stillOwned
         }
+}
+
+internal fun cancellableDownloadPairs(
+    queued: Collection<QueuedDownload>,
+    downloads: Collection<DownloadUiModel>,
+): Set<Pair<String, DownloadMediaType>> = buildSet {
+    queued.asSequence()
+        .filter { it.status in setOf(
+            DownloadStatus.Preparing,
+            DownloadStatus.Queued,
+            DownloadStatus.Downloading,
+            DownloadStatus.Paused,
+            DownloadStatus.Removing,
+        ) }
+        .forEach { add(it.videoId to it.mediaType) }
+    downloads.forEach { download ->
+        download.activeMediaTypes.forEach { mediaType ->
+            add(download.videoId to mediaType)
+        }
+        if (download.activeMediaTypes.isEmpty() && download.isActive) {
+            add(download.videoId to download.mediaType)
+        }
+    }
+    // Queue rows can briefly coexist with a completed Media3 request after hand-off. Cancelling
+    // the batch must not remove media which finished between the UI snapshot and this action.
+    downloads.forEach { download ->
+        DownloadMediaType.entries.filter(download::isComplete).forEach { mediaType ->
+            remove(download.videoId to mediaType)
+        }
+    }
 }
 
 internal fun preparedQueueItemsAhead(
@@ -428,6 +462,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         getApplication<Application>().resources.getQuantityString(id, quantity, *args)
 
     private val contentRepository: ContentRepository = LocalContentRepository()
+    private val crashPauseHook: () -> Unit = { pauseJobsForTermination() }
+    private var jobsNeedRestoration = false
     private val content = contentRepository.snapshot()
     private val profileRepository = ProfileRepository(application)
     private var activeProfileId = profileRepository.activeProfileId()
@@ -664,6 +700,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     val player get() = engine.player
 
     init {
+        CrashLogStore.setBeforeCrashHook(crashPauseHook)
+        com.futo.platformplayer.compose.jobs.RunningJobs.register(crashPauseHook)
         engine.player.addListener(sponsorSeekListener)
         engine.setProfile(activeProfileId)
         configureVideoTitleLanguage()
@@ -818,6 +856,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             while (isActive) {
                 delay(5_000)
+                downloadStore.refreshStorageStatus()
                 // Timeline and mini-player clocks read Media3 locally. Only the much less frequent
                 // history checkpoint belongs in the root state, otherwise every wide tablet page
                 // and its navigation chrome recomposes once per second during playback.
@@ -830,6 +869,23 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             delay(STARTUP_BACKGROUND_WORK_DELAY_MS)
             downloadStore.downloads.collect {
                 libraryLoadJob?.join()
+                syncDownloadState()
+            }
+        }
+        viewModelScope.launch {
+            delay(STARTUP_BACKGROUND_WORK_DELAY_MS)
+            val store = withContext(Dispatchers.IO) { downloadStore }
+            store.storageStatus.collect { storage ->
+                _uiState.update { state ->
+                    state.copy(
+                        downloadStorage = DownloadStorageUiState(
+                            availableBytes = storage.availableBytes,
+                            requiredFreeBytes = storage.requiredFreeBytes,
+                            isWarning = storage.isWarning,
+                            downloadsPaused = storage.downloadsPaused,
+                        ),
+                    )
+                }
                 syncDownloadState()
             }
         }
@@ -1933,6 +1989,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private suspend fun switchProfileInternal(profileId: String) {
         if (profileId == activeProfileId) return
+        libraryExportJob?.cancel()
         dismissDatabaseImport()
         endSpeedHold()
         suppressChromecastHandoff = chromecastManager.state.value.isConnected
@@ -1996,6 +2053,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
         homePagerSessionId = UUID.randomUUID().toString()
         activeProfileId = profileId
+        jobsNeedRestoration = false
         profileRepository.setActiveProfile(profileId)
         val application = getApplication<Application>()
         preferences = GrayjayPreferences(application, activeProfileId)
@@ -2142,6 +2200,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun setAppForeground(foreground: Boolean) {
         appIsForeground = foreground
         if (foreground) {
+            if (jobsNeedRestoration) {
+                jobsNeedRestoration = false
+                _uiState.update { it.copy(backgroundJobsSuspended = false) }
+                restoreDownloadQueue()
+            }
             if (_uiState.value.backgroundYoutubeImport.isRunning) {
                 cancelYoutubeImportJobs()
             }
@@ -2676,6 +2739,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         libraryExportJob = viewModelScope.launch {
+            val exportContext = currentCoroutineContext()
+            val exportJob = exportContext[Job]
+            var completed = false
             try {
                 val snapshot = withContext(Dispatchers.IO) {
                     repositoryAtStart.loadSavedVideos() to repositoryAtStart.loadPlaylists()
@@ -2692,10 +2758,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                                 playlists = snapshot.second,
                                 channels = channels,
                                 output = output,
+                                checkActive = { exportContext.ensureActive() },
                             )
                         }
                         ?: error(text(R.string.export_failed))
                 }
+                completed = true
                 Toast.makeText(
                     getApplication(),
                     text(R.string.export_completed),
@@ -2711,12 +2779,21 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     Toast.LENGTH_LONG,
                 ).show()
             } finally {
-                _uiState.update {
+                if (!completed) withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                    runCatching {
+                        android.provider.DocumentsContract.deleteDocument(
+                            getApplication<Application>().contentResolver, destination,
+                        )
+                    }
+                }
+                if (libraryExportJob === exportJob) {
+                if (profileAtStart == activeProfileId) _uiState.update {
                     it.copy(
                         libraryTransfer = com.futo.platformplayer.compose.ui.LibraryTransferUiState(),
                     )
                 }
                 libraryExportJob = null
+                }
             }
         }
     }
@@ -4985,6 +5062,33 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** Cancels pending/active transfers while deliberately retaining every completed media type. */
+    fun cancelActiveDownloads() {
+        val profileId = activeProfileId
+        offlinePlaylistSyncJob?.cancel()
+        downloadQueueRestoreJob?.cancel()
+        downloadBatchPreparationJobs.cancelAndClearJobs()
+        val activePairs = cancellableDownloadPairs(
+            queued = downloadQueue.all(profileId),
+            downloads = _uiState.value.downloads.values + downloadStore.snapshotsFor(profileId).values,
+        )
+        if (activePairs.isEmpty()) return
+
+        // Detach automatic playlist ownership first, otherwise its synchronizer would enqueue the
+        // same cancelled work again. This never removes already completed media.
+        offlinePlaylistStore.all(profileId)
+            .filter { descriptor ->
+                (descriptor.managedVideoIds - descriptor.excludedVideoIds).any { videoId ->
+                    videoId to descriptor.mediaType in activePairs
+                }
+            }
+            .forEach(offlinePlaylistStore::remove)
+        activePairs.forEach { (videoId, mediaType) ->
+            performDownloadRemoval(videoId, mediaType)
+        }
+        syncDownloadState()
+    }
+
     private fun playlistDownloadPreparationKey(
         profileId: String,
         playlistId: String,
@@ -5043,14 +5147,19 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 missingDescriptors.forEach(offlinePlaylistStore::remove)
                 updatedDescriptors.forEach(offlinePlaylistStore::update)
             }
+            if (profileAtStart != activeProfileId) return@launch
 
             removedCandidates.distinct().forEachIndexed { index, (videoId, mediaType) ->
+                ensureActive()
+                if (profileAtStart != activeProfileId) return@launch
                 if ((currentOwners[mediaType]?.get(videoId) ?: 0) == 0) {
                     removeDownloadType(videoId, mediaType)
                 }
                 if (index % 8 == 7) yield()
             }
             downloadCandidates.distinct().forEachIndexed { index, (videoId, mediaType) ->
+                ensureActive()
+                if (profileAtStart != activeProfileId) return@launch
                 if (findVideo(videoId)?.supportsOfflineDownload() != true) {
                     return@forEachIndexed
                 }
@@ -5171,6 +5280,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             // library once per item. A large imported library could therefore monopolize the
             // main thread for several seconds and trigger an ANR during app startup.
             syncDownloadState()
+            // Application startup deliberately holds Media3 downloads. Release them only after
+            // queued items have been reconstructed and plugin-backed requests are being
+            // rehydrated, so a crash/service restart cannot resume with missing runtime state.
+            downloadStore.resumeAfterAppRestore()
         }
     }
 
@@ -5184,6 +5297,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         initialVideoPersistence: Deferred<Unit>? = null,
     ) {
         val video = findVideo(videoId) ?: return
+        if (jobsNeedRestoration && restored == null) {
+            jobsNeedRestoration = false
+            _uiState.update { it.copy(backgroundJobsSuspended = false) }
+            restoreDownloadQueue()
+        }
         val profileAtStart = activeProfileId
         val repositoryAtStart = libraryRepository
         val isRestoredDownload = restored != null
@@ -5242,6 +5360,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     videoId = videoId,
                     mediaType = mediaType,
                     status = DownloadStatus.Paused,
+                    errorMessage = text(R.string.download_waiting_for_network),
                     activeMediaTypes = setOf(mediaType),
                     targetVideoHeight = selectedVideoHeight,
                     targetAudioBitrate = selectedAudioBitrate,
@@ -5255,6 +5374,33 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         createdAtMs = createdAtMs,
                         targetVideoHeight = selectedVideoHeight,
                         targetAudioBitrate = selectedAudioBitrate,
+                        errorMessage = text(R.string.download_waiting_for_network),
+                    ),
+                )
+                syncDownloadState()
+            }
+
+            fun markWaitingForStorage() {
+                downloadPreparationStates[jobKey] = DownloadUiModel(
+                    profileId = profileAtStart,
+                    videoId = videoId,
+                    mediaType = mediaType,
+                    status = DownloadStatus.Paused,
+                    errorMessage = text(R.string.download_paused_low_storage),
+                    activeMediaTypes = setOf(mediaType),
+                    targetVideoHeight = selectedVideoHeight,
+                    targetAudioBitrate = selectedAudioBitrate,
+                )
+                downloadQueue.put(
+                    QueuedDownload(
+                        profileId = profileAtStart,
+                        videoId = videoId,
+                        mediaType = mediaType,
+                        status = DownloadStatus.Paused,
+                        createdAtMs = createdAtMs,
+                        targetVideoHeight = selectedVideoHeight,
+                        targetAudioBitrate = selectedAudioBitrate,
+                        errorMessage = text(R.string.download_paused_low_storage),
                     ),
                 )
                 syncDownloadState()
@@ -5272,7 +5418,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     if (profileAtStart != activeProfileId) return@download
                 }
                 var connectivityRetry = 0
+                var preparationTimeoutRetry = 0
                 while (true) {
+                    if (downloadStore.storageStatus.value.downloadsPaused) {
+                        markWaitingForStorage()
+                        downloadStore.storageStatus.first { !it.downloadsPaused }
+                        if (profileAtStart != activeProfileId) return@download
+                    }
                     if (!networkMonitor.isAvailable()) {
                         markWaitingForNetwork()
                         networkMonitor.awaitAvailable()
@@ -5334,31 +5486,73 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                                 qualityVariants = emptyList(),
                                 audioQualityVariants = emptyList(),
                             )
-                            val resolved = resolveWithAudioPreferences(
-                                freshVideo,
-                                priority = EngineResolvePriority.Download,
-                            )
+                            val resolved = withTimeout(DOWNLOAD_RESOLVE_TIMEOUT_MS) {
+                                resolveWithAudioPreferences(
+                                    freshVideo,
+                                    priority = EngineResolvePriority.Download,
+                                )
+                            }
                             if (profileAtStart != activeProfileId) return@download
                             val storedDescriptor = if (mediaType == DownloadMediaType.Audio) {
                                 resolved.asAudioDownloadDescriptor(selectedAudioBitrate)
                             } else {
                                 resolved.downloadDescriptor(selectedVideoHeight)
                             }
-                            libraryRepository.saveDownloadDescriptor(storedDescriptor)
+                            withContext(Dispatchers.IO) {
+                                repositoryAtStart.saveDownloadDescriptor(storedDescriptor)
+                            }
+                            if (profileAtStart != activeProfileId) return@download
                             reloadLibrary()
-                            downloadStore.enqueue(
-                                profileId = profileAtStart,
-                                video = storedDescriptor,
-                                mediaType = mediaType,
-                                preferredVideoHeight = selectedVideoHeight,
-                                preferredAudioBitrate = selectedAudioBitrate,
-                            )
-                            while (!downloadStore.hasDownloadRecord(profileAtStart, videoId, mediaType)) {
-                                delay(50L)
+                            withTimeout(DOWNLOAD_ENQUEUE_TIMEOUT_MS) {
+                                downloadStore.enqueue(
+                                    profileId = profileAtStart,
+                                    video = storedDescriptor,
+                                    mediaType = mediaType,
+                                    preferredVideoHeight = selectedVideoHeight,
+                                    preferredAudioBitrate = selectedAudioBitrate,
+                                )
+                                while (!downloadStore.hasDownloadRecord(
+                                        profileAtStart,
+                                        videoId,
+                                        mediaType,
+                                    )
+                                ) {
+                                    delay(50L)
+                                }
                             }
                             downloadQueue.remove(profileAtStart, videoId, mediaType)
                         }
                         break
+                    } catch (timeout: TimeoutCancellationException) {
+                        preparationTimeoutRetry += 1
+                        if (preparationTimeoutRetry >= DOWNLOAD_PREPARATION_MAX_ATTEMPTS) {
+                            throw IllegalStateException(
+                                text(R.string.download_preparation_timed_out),
+                                timeout,
+                            )
+                        }
+                        Log.w(
+                            "GrayjayViewModel",
+                            "Download preparation timed out for $videoId; allowing the next " +
+                                "queued item to run before retry $preparationTimeoutRetry.",
+                            timeout,
+                        )
+                        downloadPreparationStates[jobKey] = downloadPreparationStates[jobKey]
+                            ?.copy(status = DownloadStatus.Queued)
+                            ?: return@download
+                        downloadQueue.put(
+                            QueuedDownload(
+                                profileId = profileAtStart,
+                                videoId = videoId,
+                                mediaType = mediaType,
+                                status = DownloadStatus.Queued,
+                                createdAtMs = createdAtMs,
+                                targetVideoHeight = selectedVideoHeight,
+                                targetAudioBitrate = selectedAudioBitrate,
+                            ),
+                        )
+                        syncDownloadState()
+                        delay(DOWNLOAD_PREPARATION_RETRY_DELAY_MS * preparationTimeoutRetry)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Throwable) {
@@ -5378,17 +5572,28 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 throw error
             } catch (error: Throwable) {
                 if (profileAtStart != activeProfileId) return@download
+                Log.e(
+                    "GrayjayViewModel",
+                    "Download preparation failed for $videoId ($mediaType).",
+                    error,
+                )
                 if (downloadStore.snapshotsFor(profileAtStart)[videoId] == null) {
                     libraryRepository.clearDownloadDescriptor(videoId)
                     reloadLibrary()
                 }
-                val errorMessage = when (error.message) {
-                    "Live streams cannot be downloaded." -> text(R.string.live_download_unsupported)
-                    "This source returned no downloadable media." -> text(R.string.download_no_media)
-                    "This source returned no downloadable audio." -> text(R.string.download_no_audio)
-                    "DRM-protected streams cannot be downloaded." ->
+                val errorMessage = when {
+                    error.message == "Live streams cannot be downloaded." ->
+                        text(R.string.live_download_unsupported)
+                    error.message == "This source returned no downloadable media." ->
+                        text(R.string.download_no_media)
+                    error.message == "This source returned no downloadable audio." ->
+                        text(R.string.download_no_audio)
+                    error.message == "DRM-protected streams cannot be downloaded." ->
                         text(R.string.download_drm_unsupported)
-                    else -> error.localizedMessage ?: text(R.string.download_failed)
+                    error is IllegalStateException &&
+                        error.cause is TimeoutCancellationException ->
+                        text(R.string.download_preparation_timed_out)
+                    else -> text(R.string.download_failed_retry_source)
                 }
                 downloadPreparationStates[jobKey] = DownloadUiModel(
                     profileId = profileAtStart,
@@ -6167,6 +6372,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun onCleared() {
+        CrashLogStore.setBeforeCrashHook(null)
+        com.futo.platformplayer.compose.jobs.RunningJobs.unregister(crashPauseHook)
+        com.futo.platformplayer.compose.jobs.GrayjoyActiveJobsService.stop(getApplication())
         sponsorBlockJob?.cancel()
         sponsorBlockPlaybackMonitorJob?.cancel()
         sponsorBlockNoticeJob?.cancel()
@@ -6201,6 +6409,36 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         networkMonitor.close()
         engine.release()
         super.onCleared()
+    }
+
+    private fun pauseJobsForTermination() {
+        downloadQueue.pauseActive(activeProfileId)
+        GrayjoyDownloadStore.holdUntilAppRestore(getApplication())
+        GrayjoyDownloadStore.pauseIfCreated()
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post { pauseJobsOnMain() }
+        } else {
+            pauseJobsOnMain()
+        }
+    }
+
+    private fun pauseJobsOnMain() {
+        jobsNeedRestoration = true
+        downloadJobs.cancelAndClearJobs()
+        downloadBatchPreparationJobs.cancelAndClearJobs()
+        downloadQueueRestoreJob?.cancel()
+        offlinePlaylistSyncJob?.cancel()
+        downloadPreparationStates.replaceAll { _, value ->
+            if (value.isActive) value.copy(status = DownloadStatus.Paused) else value
+        }
+        cancelYoutubeImportJobs()
+        libraryExportJob?.cancel()
+        databaseImportJobs.cancelAndClearJobs()
+        _uiState.update { it.copy(
+            backgroundJobsSuspended = true,
+            databaseImport = it.databaseImport.copy(isBusy = false),
+        ) }
+        syncDownloadState()
     }
 
     private suspend fun installSourceForImport(configUrl: String): SourceUiModel {
@@ -7502,6 +7740,10 @@ internal fun externalContentLabel(url: String): String =
     }.getOrNull() ?: url
 
 private const val DOWNLOAD_PREPARATION_TTL_MS = 15L * 60L * 1_000L
+private const val DOWNLOAD_RESOLVE_TIMEOUT_MS = 60_000L
+private const val DOWNLOAD_ENQUEUE_TIMEOUT_MS = 60_000L
+private const val DOWNLOAD_PREPARATION_RETRY_DELAY_MS = 1_500L
+private const val DOWNLOAD_PREPARATION_MAX_ATTEMPTS = 2
 private const val STARTUP_BACKGROUND_WORK_DELAY_MS = 750L
 private const val PLUGIN_UPDATE_CHECK_INTERVAL_MS = 6L * 60L * 60L * 1_000L
 private const val MAX_GRAYJAY_IMPORT_BYTES = 128 * 1024 * 1024

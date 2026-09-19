@@ -5,6 +5,7 @@ import androidx.media3.common.StreamKey
 import com.futo.platformplayer.api.media.models.playback.IPlaybackTracker
 import com.futo.platformplayer.api.media.platforms.js.models.JSRequestExecutor
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 data class VideoUiModel(
     val id: String,
     val title: String,

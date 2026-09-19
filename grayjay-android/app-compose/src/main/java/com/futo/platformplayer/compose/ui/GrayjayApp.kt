@@ -262,6 +262,7 @@ private data class PlaybackPresentation(
     val followingFeedTotal: Int,
     val followingFeedError: String?,
     val downloads: Map<String, DownloadUiModel>,
+    val downloadStorage: DownloadStorageUiState,
     val youtubeImport: YoutubeImportUiState,
     val backgroundYoutubeImport: BackgroundYoutubeImportUiState,
     val databaseImport: DatabaseImportUiState,
@@ -269,6 +270,13 @@ private data class PlaybackPresentation(
     val sourceOperationInProgress: Boolean,
     val sourceOperationMessage: String?,
     val onCancelYoutubeImportJobs: () -> Unit,
+    val onCancelActiveDownloads: () -> Unit,
+    val onOpenActiveJob: (String) -> Unit,
+    val pageSlideDirection: Int,
+    val pageSlideRequest: Long,
+    val onPageSlideConsumed: () -> Unit,
+    val downloadFocusVideoId: String?,
+    val onDownloadFocusConsumed: () -> Unit,
     val activePlaylistDownloads: Set<PlaylistDownloadBatchUiModel>,
     val automaticPlaylistDownloads: Set<PlaylistDownloadBatchUiModel>,
     val automaticPlaylistDownloadsEnabled: Boolean,
@@ -498,6 +506,17 @@ private class GrayjayTransientUiState(
     var chromecastSheetVisible by mutableStateOf(chromecastSheetVisible)
 }
 
+internal fun activeDownloadNavigationTarget(
+    downloads: Collection<DownloadUiModel>,
+): String? = listOf(
+    DownloadStatus.Downloading,
+    DownloadStatus.Preparing,
+    DownloadStatus.Queued,
+    DownloadStatus.Paused,
+).firstNotNullOfOrNull { status ->
+    downloads.firstOrNull { it.status == status }?.videoId
+} ?: downloads.firstOrNull(DownloadUiModel::isActive)?.videoId
+
 private val GrayjayTransientUiStateSaver =
     androidx.compose.runtime.saveable.Saver<GrayjayTransientUiState, List<Any?>>(
         save = { state ->
@@ -543,6 +562,7 @@ fun GrayjayApp(
         ChannelArtworkIndex(listOfNotNull(uiState.channelDetail.channel) + uiState.channels)
     }
     val shareVideoLabel = stringResource(R.string.share_video)
+    val creatorLabel = stringResource(R.string.creator)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var destinationName by rememberSaveable { mutableStateOf(GrayjayDestination.Home.name) }
@@ -556,6 +576,9 @@ fun GrayjayApp(
     var navigationProfileId by rememberSaveable { mutableStateOf(uiState.activeProfileId) }
     var searchAutoFocusRequested by rememberSaveable { mutableStateOf(false) }
     var libraryFilterName by rememberSaveable { mutableStateOf(LibraryFilter.History.name) }
+    var pendingPageSlideDirection by rememberSaveable { mutableStateOf(0) }
+    var pageSlideRequest by rememberSaveable { mutableStateOf(0L) }
+    var pendingDownloadFocusId by rememberSaveable { mutableStateOf<String?>(null) }
     val libraryPlaylistListState = rememberLazyListState()
     var nestedBackDestinationName by rememberSaveable { mutableStateOf<String?>(null) }
     var isFullscreen by rememberSaveable { mutableStateOf(false) }
@@ -771,7 +794,7 @@ fun GrayjayApp(
     val latestChannels by rememberUpdatedState(uiState.channels)
     val latestSources by rememberUpdatedState(uiState.sources)
     val latestOnChannelClick by rememberUpdatedState(onChannelClick)
-    val onVideoCreatorClick: (VideoUiModel) -> Unit = remember(context) {
+    val onVideoCreatorClick: (VideoUiModel) -> Unit = remember(context, creatorLabel) {
         { video ->
             val candidateIds = setOf(
                 video.authorUrl,
@@ -788,7 +811,7 @@ fun GrayjayApp(
                     source = latestSources.firstOrNull { it.id == video.sourceId }?.name
                         ?: video.sourceName.ifBlank { video.sourceId },
                     unreadCount = 0,
-                    followerCount = context.getString(R.string.creator),
+                    followerCount = creatorLabel,
                     description = "",
                     thumbnailUrl = video.authorThumbnailUrl,
                 )
@@ -933,6 +956,7 @@ fun GrayjayApp(
         followingFeedTotal = uiState.followingFeedTotal,
         followingFeedError = uiState.followingFeedError,
         downloads = uiState.downloads,
+        downloadStorage = uiState.downloadStorage,
         youtubeImport = uiState.youtubeImport,
         backgroundYoutubeImport = uiState.backgroundYoutubeImport,
         databaseImport = uiState.databaseImport,
@@ -940,6 +964,35 @@ fun GrayjayApp(
         sourceOperationInProgress = uiState.sourceOperationInProgress,
         sourceOperationMessage = uiState.sourceOperationMessage,
         onCancelYoutubeImportJobs = actions.onCancelYoutubeImportJobs,
+        onCancelActiveDownloads = actions.onCancelActiveDownloads,
+        onOpenActiveJob = { jobId ->
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            if (jobId == "downloads") {
+                pendingPageSlideDirection = -1
+                pageSlideRequest++
+                pendingDownloadFocusId = activeDownloadNavigationTarget(
+                    uiState.downloads.values,
+                )
+            }
+            destinationName = when (jobId) {
+                "downloads" -> GrayjayDestination.Library.name
+                "youtube-import", "youtube-import-background", "source-operation" ->
+                    GrayjayDestination.Sources.name
+                else -> GrayjayDestination.Settings.name
+            }
+            if (jobId == "downloads") libraryFilterName = LibraryFilter.Downloads.name
+            nestedBackDestinationName = null
+            selectedChannelId = null
+            selectedPlaylistId = null
+            selectedVideoId = null
+            snapPlayerTransition(1f)
+        },
+        pageSlideDirection = pendingPageSlideDirection,
+        pageSlideRequest = pageSlideRequest,
+        onPageSlideConsumed = { pendingPageSlideDirection = 0 },
+        downloadFocusVideoId = pendingDownloadFocusId,
+        onDownloadFocusConsumed = { pendingDownloadFocusId = null },
         activePlaylistDownloads = uiState.activePlaylistDownloads,
         automaticPlaylistDownloads = uiState.automaticPlaylistDownloads,
         automaticPlaylistDownloadsEnabled = uiState.automaticPlaylistDownloadsEnabled,
@@ -1995,6 +2048,7 @@ private fun GrayjayScaffold(
         sourceOperationMessage = playback.sourceOperationMessage,
         updateDownload = playback.updateDownload,
         libraryTransfer = playback.libraryTransfer,
+        downloadStorage = playback.downloadStorage,
     )
 
     Box(
@@ -2106,6 +2160,7 @@ private fun GrayjayScaffold(
                         ActiveJobsButton(
                             jobs = activeJobs,
                             expanded = activeJobsExpanded,
+                            storageWarning = playback.downloadStorage,
                             onClick = { activeJobsExpanded = !activeJobsExpanded },
                         )
                         IconButton(onClick = playback.onOpenProfiles) {
@@ -2120,6 +2175,12 @@ private fun GrayjayScaffold(
                     visible = activeJobsExpanded,
                     jobs = activeJobs,
                     onCancelYoutubeImports = playback.onCancelYoutubeImportJobs,
+                    onCancelDownloads = playback.onCancelActiveDownloads,
+                    onOpenJob = { jobId ->
+                        activeJobsExpanded = false
+                        playback.onOpenActiveJob(jobId)
+                    },
+                    storageWarning = playback.downloadStorage,
                 )
                 }
                 }
@@ -2191,8 +2252,18 @@ private fun GrayjayScaffold(
                     selectedPlaylist != null -> "playlist:${selectedPlaylist.id}"
                     else -> "destination:${selected.name}"
                 }
+                LaunchedEffect(contentPageKey, playback.pageSlideDirection) {
+                    if (playback.pageSlideDirection != 0) {
+                        // QuickPageTransition captures the request for this page. Clear it on the
+                        // next frame so unrelated navigation returns to the regular short fade.
+                        androidx.compose.runtime.withFrameNanos { }
+                        playback.onPageSlideConsumed()
+                    }
+                }
                 QuickPageTransition(
                     targetKey = contentPageKey,
+                    horizontalSlideDirection = playback.pageSlideDirection,
+                    animationRequest = playback.pageSlideRequest,
                     modifier = Modifier.align(Alignment.TopCenter).widthIn(max = 760.dp).fillMaxSize(),
                 ) { animatedPageKey ->
                 pageStateHolder.SaveableStateProvider("${playback.activeProfileId}:$animatedPageKey") {
@@ -2404,6 +2475,8 @@ private fun GrayjayScaffold(
                         selectedFilter = playback.libraryFilter,
                         onSelectedFilterChange = playback.onLibraryFilterChange,
                         playlistListState = playback.libraryPlaylistListState,
+                        downloadFocusVideoId = playback.downloadFocusVideoId,
+                        onDownloadFocusConsumed = playback.onDownloadFocusConsumed,
                     )
                     GrayjayDestination.Settings -> SettingsScreen(
                         sources = sourcePresentation.sources,

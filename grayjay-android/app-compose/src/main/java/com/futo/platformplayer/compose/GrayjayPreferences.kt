@@ -290,6 +290,7 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
     fun isCreatorFollowed(creatorId: String): Boolean =
         creatorId.isNotBlank() && creatorId in followedCreatorIds()
 
+    @Synchronized
     fun setCreatorFollowed(creatorId: String, followed: Boolean) {
         if (creatorId.isBlank()) return
         val updated = followedCreatorIds().toMutableSet()
@@ -300,6 +301,7 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
     fun followedCreatorIds(): Set<String> =
         preferences.getStringSet(KEY_FOLLOWED_CREATORS, emptySet()).orEmpty().toSet()
 
+    @Synchronized
     fun initializeFollowedCreators(defaultCreatorIds: Set<String>): Set<String> {
         if (preferences.getBoolean(KEY_FOLLOWING_INITIALIZED, false)) return followedCreatorIds()
         val initialized = followedCreatorIds() + defaultCreatorIds.filter(String::isNotBlank)
@@ -310,6 +312,7 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         return initialized
     }
 
+    @Synchronized
     fun mergeImportedSubscriptions(channels: List<ChannelUiModel>) {
         if (channels.isEmpty()) return
         val currentChannels = loadImportedChannels().associateByTo(linkedMapOf(), ChannelUiModel::id)

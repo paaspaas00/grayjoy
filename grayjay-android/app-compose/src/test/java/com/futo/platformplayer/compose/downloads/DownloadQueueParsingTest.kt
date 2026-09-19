@@ -14,7 +14,7 @@ class DownloadQueueParsingTest {
             {"profileId":"main","videoId":"two","mediaType":"Video","status":"Paused"}
         ]""", 123L)
         assertEquals(listOf("one", "two"), records.map { it.videoId })
-        assertEquals(DownloadStatus.Queued, records[0].status)
+        assertEquals(DownloadStatus.Paused, records[0].status)
         assertEquals(DownloadStatus.Paused, records[1].status)
         assertEquals(123L, records[0].createdAtMs)
     }
@@ -24,7 +24,7 @@ class DownloadQueueParsingTest {
         val record = parseDownloadQueueRecords("""[
             {"profileId":"main","videoId":"one","mediaType":"Audio","status":"Unknown", "targetAudioBitrate":{}, "errorMessage":null}
         ]""").single()
-        assertEquals(DownloadStatus.Queued, record.status)
+        assertEquals(DownloadStatus.Paused, record.status)
         assertNull(record.targetAudioBitrate)
         assertNull(record.errorMessage)
     }

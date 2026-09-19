@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.screens.ActiveJobsButton
@@ -15,6 +16,9 @@ import com.futo.platformplayer.compose.ui.theme.GrayjayTheme
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import com.futo.platformplayer.compose.ui.DownloadMediaType
+import com.futo.platformplayer.compose.ui.DownloadStatus
+import com.futo.platformplayer.compose.ui.DownloadUiModel
 
 class ActiveJobsHeaderTest {
     @get:Rule
@@ -56,6 +60,8 @@ class ActiveJobsHeaderTest {
                         visible = true,
                         jobs = jobs,
                         onCancelYoutubeImports = { cancelled = true },
+                        onCancelDownloads = {},
+                        onOpenJob = {},
                     )
                 }
             }
@@ -64,6 +70,98 @@ class ActiveJobsHeaderTest {
         composeRule.onNodeWithText(importTitle).assertIsDisplayed()
         composeRule.onNodeWithText(progressLabel).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(cancel).performClick()
+        composeRule.onNodeWithText(
+            composeRule.activity.getString(R.string.cancel_youtube_import_title),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            composeRule.activity.getString(R.string.cancel_import_action),
+        ).performClick()
         composeRule.runOnIdle { assertTrue(cancelled) }
+    }
+
+    @Test
+    fun downloadCancellationRequiresConfirmation() {
+        var cancelled = false
+        var opened = false
+        composeRule.setContent {
+            GrayjayTheme(dynamicColor = false, darkTheme = false) {
+                val jobs = rememberActiveJobItems(
+                    youtubeImport = YoutubeImportUiState(),
+                    backgroundYoutubeImport = BackgroundYoutubeImportUiState(),
+                    databaseImport = DatabaseImportUiState(),
+                    downloads = mapOf(
+                        "video" to DownloadUiModel(
+                            profileId = "main",
+                            videoId = "video",
+                            mediaType = DownloadMediaType.Video,
+                            status = DownloadStatus.Queued,
+                            activeMediaTypes = setOf(DownloadMediaType.Video),
+                        ),
+                    ),
+                    videos = emptyList(),
+                    sourceOperationInProgress = false,
+                    sourceOperationMessage = null,
+                    updateDownload = null,
+                    libraryTransfer = LibraryTransferUiState(),
+                )
+                ActiveJobsPanel(
+                    visible = true,
+                    jobs = jobs,
+                    onCancelYoutubeImports = {},
+                    onCancelDownloads = { cancelled = true },
+                    onOpenJob = { opened = it == "downloads" },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("active-job-card-downloads").performClick()
+        composeRule.runOnIdle { assertTrue(opened) }
+        composeRule.onNodeWithContentDescription(
+            composeRule.activity.getString(R.string.cancel),
+        ).performClick()
+        composeRule.onNodeWithText(
+            composeRule.activity.getString(R.string.cancel_active_downloads_title),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            composeRule.activity.getString(R.string.cancel_downloads_action),
+        ).performClick()
+        composeRule.runOnIdle { assertTrue(cancelled) }
+    }
+
+    @Test
+    fun lowStorageWarningIsVisibleInButtonAndPanel() {
+        val storage = DownloadStorageUiState(
+            availableBytes = 128L * 1024L * 1024L,
+            requiredFreeBytes = 512L * 1024L * 1024L,
+            isWarning = true,
+            downloadsPaused = true,
+        )
+        composeRule.setContent {
+            GrayjayTheme(dynamicColor = false, darkTheme = false) {
+                Column {
+                    ActiveJobsButton(
+                        jobs = emptyList(),
+                        expanded = true,
+                        storageWarning = storage,
+                        onClick = {},
+                    )
+                    ActiveJobsPanel(
+                        visible = true,
+                        jobs = emptyList(),
+                        onCancelYoutubeImports = {},
+                        onCancelDownloads = {},
+                        onOpenJob = {},
+                        storageWarning = storage,
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithContentDescription(
+            composeRule.activity.getString(R.string.storage_almost_full),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithTag("active-jobs-storage-warning").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            composeRule.activity.getString(R.string.storage_almost_full),
+        ).assertIsDisplayed()
     }
 }

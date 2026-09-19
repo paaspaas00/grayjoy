@@ -285,17 +285,50 @@ internal fun downloadStatusText(
         },
     )
     val progress = download.progress?.let { " ${(it * 100f).toInt().coerceIn(0, 100)}%" }.orEmpty()
-    val detail = download.errorMessage?.takeUnless { message ->
-        message.contains("Exception", ignoreCase = true) ||
-            message.contains("Unable to resolve host", ignoreCase = true) ||
-            message.contains("grayjay.internal", ignoreCase = true)
-    }
-    return if (effectiveStatus == DownloadStatus.Failed && !detail.isNullOrBlank()) {
+    val detail = download.errorMessage
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?.let { message ->
+            if (isTechnicalDownloadError(message)) {
+                stringResource(R.string.download_failed_retry_source)
+            } else {
+                message.replace(DOWNLOAD_ERROR_WHITESPACE, " ").take(180)
+            }
+        }
+    return if (
+        effectiveStatus in setOf(DownloadStatus.Failed, DownloadStatus.Paused) &&
+        !detail.isNullOrBlank()
+    ) {
         "$label: $detail"
     } else {
         "$label$progress"
     }
 }
+
+internal fun isTechnicalDownloadError(message: String): Boolean {
+    val normalized = message.lowercase()
+    return TECHNICAL_DOWNLOAD_ERROR_MARKERS.any(normalized::contains) ||
+        TECHNICAL_DOWNLOAD_ERROR_CODE.containsMatchIn(message)
+}
+
+private val TECHNICAL_DOWNLOAD_ERROR_MARKERS = listOf(
+    "exception",
+    "unable to resolve host",
+    "grayjay.internal",
+    "java.",
+    "kotlin.",
+    "failed to get video details",
+    "both youtube playback engines failed",
+    "botguard",
+    "json response",
+    "manifest returned",
+    "http status",
+    "response code",
+    "stack trace",
+)
+
+private val TECHNICAL_DOWNLOAD_ERROR_CODE = Regex("""\(\d+\)\[[^]]+]""")
+private val DOWNLOAD_ERROR_WHITESPACE = Regex("\\s+")
 
 @Composable
 private fun VideoAction(

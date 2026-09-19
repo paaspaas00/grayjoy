@@ -16,17 +16,34 @@ import androidx.compose.ui.graphics.graphicsLayer
 internal fun QuickPageTransition(
     targetKey: String,
     modifier: Modifier = Modifier,
+    horizontalSlideDirection: Int = 0,
+    animationRequest: Long = 0L,
     content: @Composable (String) -> Unit,
 ) {
     key(targetKey) {
+        // Capture the one-shot navigation request. Its caller can clear the pending direction
+        // immediately without snapping a transition that is already being drawn.
+        val slideDirection = remember(animationRequest) { horizontalSlideDirection.coerceIn(-1, 1) }
         val progress = remember { Animatable(0f) }
-        LaunchedEffect(Unit) {
-            progress.animateTo(1f, tween(140, easing = FastOutSlowInEasing))
+        LaunchedEffect(animationRequest) {
+            progress.snapTo(0f)
+            progress.animateTo(
+                1f,
+                tween(
+                    durationMillis = if (slideDirection == 0) 140 else 220,
+                    easing = FastOutSlowInEasing,
+                ),
+            )
         }
         Box(modifier.graphicsLayer {
             // Read animation state during drawing, not composition or measurement.
-            alpha = progress.value
-            val scale = 0.985f + 0.015f * progress.value
+            alpha = if (slideDirection == 0) progress.value else 0.78f + 0.22f * progress.value
+            translationX = size.width * slideDirection * (1f - progress.value)
+            val scale = if (slideDirection == 0) {
+                0.985f + 0.015f * progress.value
+            } else {
+                1f
+            }
             scaleX = scale
             scaleY = scale
         }) {

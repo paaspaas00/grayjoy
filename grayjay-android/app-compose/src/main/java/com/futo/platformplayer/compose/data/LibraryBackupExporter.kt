@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose.data
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
@@ -15,6 +16,22 @@ import java.util.zip.ZipOutputStream
 
 enum class LibraryExportFormat { Grayjay, NewPipe }
 
+internal fun safeExportProgress(value: Float): Double =
+    if (value.isFinite()) value.toDouble().coerceIn(0.0, 1.0) else 0.0
+
+internal fun exportDurationSeconds(duration: String): Long {
+    val fields = duration.split(':')
+    if (fields.size !in 1..3) return 0L
+    var seconds = 0L
+    for ((index, field) in fields.withIndex()) {
+        val number = field.toLongOrNull()?.takeIf { it >= 0 } ?: return 0L
+        if (index > 0 && number >= 60) return 0L
+        if (seconds > (Long.MAX_VALUE / 1000L - number) / 60L) return 0L
+        seconds = seconds * 60L + number
+    }
+    return seconds.takeIf { it <= Long.MAX_VALUE / 1000L } ?: 0L
+}
+
 internal class LibraryBackupExporter(private val context: Context) {
     fun export(
         format: LibraryExportFormat,
@@ -22,10 +39,16 @@ internal class LibraryBackupExporter(private val context: Context) {
         playlists: List<PlaylistUiModel>,
         channels: List<ChannelUiModel>,
         output: OutputStream,
+        checkActive: () -> Unit = {},
     ) {
+        checkActive()
+        if (format == LibraryExportFormat.NewPipe) {
+            (videos.map { it.sourceId } + channels.map { it.sourceId }).distinct()
+                .forEach { it.newPipeServiceId() }
+        }
         when (format) {
-            LibraryExportFormat.Grayjay -> exportGrayjay(videos, playlists, channels, output)
-            LibraryExportFormat.NewPipe -> exportNewPipe(videos, playlists, channels, output)
+            LibraryExportFormat.Grayjay -> exportGrayjay(videos, playlists, channels, output, checkActive)
+            LibraryExportFormat.NewPipe -> exportNewPipe(videos, playlists, channels, output, checkActive)
         }
     }
 
@@ -34,6 +57,7 @@ internal class LibraryBackupExporter(private val context: Context) {
         playlists: List<PlaylistUiModel>,
         channels: List<ChannelUiModel>,
         output: OutputStream,
+        checkActive: () -> Unit,
     ) {
         val byId = videos.associateBy(VideoUiModel::id)
         ZipOutputStream(output.buffered()).use { zip ->
@@ -59,8 +83,9 @@ internal class LibraryBackupExporter(private val context: Context) {
                 "stores/history",
                 JSONArray(
                     videos.filter { it.lastWatchedAt > 0L }.map { video ->
+                        checkActive()
                         val durationSeconds = video.durationSeconds()
-                        val positionSeconds = (durationSeconds * video.watchProgress)
+                        val positionSeconds = (durationSeconds * safeExportProgress(video.watchProgress))
                             .toLong()
                             .coerceAtLeast(0L)
                         listOf(
@@ -76,6 +101,7 @@ internal class LibraryBackupExporter(private val context: Context) {
                 "stores/playlists",
                 JSONArray(
                     playlists.map { playlist ->
+                        checkActive()
                         buildString {
                             append(playlist.title)
                             append(":::")
@@ -90,7 +116,7 @@ internal class LibraryBackupExporter(private val context: Context) {
             )
             zip.writeTextEntry(
                 "cache_videos",
-                JSONArray().apply { videos.forEach { put(it.toGrayjayCacheJson()) } }.toString(),
+                JSONArray().apply { videos.forEach { checkActive(); put(it.toGrayjayCacheJson()) } }.toString(),
             )
             zip.writeTextEntry(
                 "cache_channels",
@@ -107,13 +133,22 @@ internal class LibraryBackupExporter(private val context: Context) {
         playlists: List<PlaylistUiModel>,
         channels: List<ChannelUiModel>,
         output: OutputStream,
+        checkActive: () -> Unit,
     ) {
         val databaseFile = File.createTempFile("grayjoy-newpipe-export-", ".db", context.cacheDir)
         try {
-            createNewPipeDatabase(databaseFile, videos, playlists, channels)
+            createNewPipeDatabase(databaseFile, videos, playlists, channels, checkActive)
             ZipOutputStream(output.buffered()).use { zip ->
                 zip.putNextEntry(ZipEntry("newpipe.db"))
-                databaseFile.inputStream().use { it.copyTo(zip, 64 * 1024) }
+                databaseFile.inputStream().use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        checkActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        zip.write(buffer, 0, count)
+                    }
+                }
                 zip.closeEntry()
             }
         } finally {
@@ -129,6 +164,7 @@ internal class LibraryBackupExporter(private val context: Context) {
         videos: List<VideoUiModel>,
         playlists: List<PlaylistUiModel>,
         channels: List<ChannelUiModel>,
+        checkActive: () -> Unit,
     ) {
         destination.delete()
         val database = SQLiteDatabase.openOrCreateDatabase(destination, null)
@@ -147,6 +183,7 @@ internal class LibraryBackupExporter(private val context: Context) {
             database.version = NEWPIPE_SCHEMA_VERSION
 
             channels.distinctBy(ChannelUiModel::id).forEach { channel ->
+                checkActive()
                 database.insertOrThrow(
                     "subscriptions",
                     null,
@@ -163,8 +200,11 @@ internal class LibraryBackupExporter(private val context: Context) {
             }
 
             val streamIds = linkedMapOf<String, Long>()
+            val idsByUrl = mutableMapOf<Pair<Int, String>, Long>()
             videos.distinctBy(VideoUiModel::id).forEach { video ->
-                val id = database.insertOrThrow(
+                checkActive()
+                val identity = video.sourceId.newPipeServiceId() to video.portableUrl()
+                val id = idsByUrl.getOrPut(identity) { database.insertOrThrow(
                     "streams",
                     null,
                     ContentValues().apply {
@@ -188,10 +228,10 @@ internal class LibraryBackupExporter(private val context: Context) {
                         video.publishedAtMs.takeIf { it > 0L }?.let { put("upload_date", it) }
                         put("is_upload_date_approximation", 1)
                     },
-                )
+                ) }
                 streamIds[video.id] = id
                 if (video.lastWatchedAt > 0L) {
-                    database.insertOrThrow(
+                    database.insertWithOnConflict(
                         "stream_history",
                         null,
                         ContentValues().apply {
@@ -199,6 +239,7 @@ internal class LibraryBackupExporter(private val context: Context) {
                             put("access_date", video.lastWatchedAt)
                             put("repeat_count", 1)
                         },
+                        SQLiteDatabase.CONFLICT_IGNORE,
                     )
                     database.insertWithOnConflict(
                         "stream_state",
@@ -207,7 +248,7 @@ internal class LibraryBackupExporter(private val context: Context) {
                             put("stream_id", id)
                             put(
                                 "progress_time",
-                                (video.durationSeconds() * 1_000L * video.watchProgress)
+                                (video.durationSeconds() * 1_000L * safeExportProgress(video.watchProgress))
                                     .toLong()
                                     .coerceAtLeast(0L),
                             )
@@ -218,6 +259,7 @@ internal class LibraryBackupExporter(private val context: Context) {
             }
 
             playlists.forEachIndexed { displayIndex, playlist ->
+                checkActive()
                 val playlistId = database.insertOrThrow(
                     "playlists",
                     null,
@@ -229,6 +271,7 @@ internal class LibraryBackupExporter(private val context: Context) {
                     },
                 )
                 playlist.videoIds.forEachIndexed { joinIndex, videoId ->
+                    checkActive()
                     val streamId = streamIds[videoId] ?: return@forEachIndexed
                     database.insertOrThrow(
                         "playlist_stream_join",
@@ -258,15 +301,7 @@ internal class LibraryBackupExporter(private val context: Context) {
         shareUrl.ifBlank { id }
     }
 
-    private fun VideoUiModel.durationSeconds(): Long {
-        val parts = duration.split(':').mapNotNull(String::toLongOrNull)
-        return when (parts.size) {
-            3 -> parts[0] * 3_600L + parts[1] * 60L + parts[2]
-            2 -> parts[0] * 60L + parts[1]
-            1 -> parts[0]
-            else -> 0L
-        }.coerceAtLeast(0L)
-    }
+    private fun VideoUiModel.durationSeconds(): Long = exportDurationSeconds(duration)
 
     private fun VideoUiModel.toGrayjayCacheJson() = JSONObject().apply {
         put("url", portableUrl())
@@ -304,10 +339,11 @@ internal class LibraryBackupExporter(private val context: Context) {
     private fun String.newPipeServiceId(): Int = when (lowercase()) {
         "youtube" -> 0
         "soundcloud" -> 1
+        "media_ccc", "mediaccc" -> 2
         "peertube" -> 3
         "bandcamp" -> 4
         "bilibili" -> 5
-        else -> 0
+        else -> error(context.getString(R.string.newpipe_export_unsupported_source))
     }
 
     private companion object {

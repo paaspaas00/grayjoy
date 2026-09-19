@@ -58,6 +58,8 @@ data class GrayjayUiState(
     val databaseImport: DatabaseImportUiState = DatabaseImportUiState(),
     val libraryTransfer: LibraryTransferUiState = LibraryTransferUiState(),
     val downloads: Map<String, DownloadUiModel> = emptyMap(),
+    val downloadStorage: DownloadStorageUiState = DownloadStorageUiState(),
+    val backgroundJobsSuspended: Boolean = false,
     val activePlaylistDownloads: Set<PlaylistDownloadBatchUiModel> = emptySet(),
     val automaticPlaylistDownloads: Set<PlaylistDownloadBatchUiModel> = emptySet(),
     val subscriptionVideos: List<VideoUiModel> = emptyList(),
@@ -78,6 +80,13 @@ data class GrayjayUiState(
     val externalNavigation: ExternalNavigationUiModel? = null,
     val availableUpdate: ReleaseUpdateUiModel? = null,
     val videoOpenDialog: VideoOpenDialogUiModel? = null,
+)
+
+data class DownloadStorageUiState(
+    val availableBytes: Long = Long.MAX_VALUE,
+    val requiredFreeBytes: Long = 0L,
+    val isWarning: Boolean = false,
+    val downloadsPaused: Boolean = false,
 )
 
 data class VideoOpenDialogUiModel(

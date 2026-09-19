@@ -69,12 +69,34 @@ internal class GrayjoyDownloadQueue(context: Context) {
         mediaType: DownloadMediaType,
     ): QueuedDownload? = records[key(profileId, videoId, mediaType)]
 
+    @Synchronized
+    fun pauseActive(profileId: String): Boolean {
+        var changed = false
+        records.replaceAll { _, record ->
+            if (
+                record.profileId == profileId &&
+                record.status in setOf(
+                    DownloadStatus.Preparing,
+                    DownloadStatus.Queued,
+                    DownloadStatus.Downloading,
+                )
+            ) {
+                changed = true
+                record.copy(status = DownloadStatus.Paused)
+            } else {
+                record
+            }
+        }
+        if (changed) save(commit = true)
+        return changed
+    }
+
     private fun load(): List<QueuedDownload> {
         val raw = preferences.getString(KEY_RECORDS, null) ?: return emptyList()
         return parseDownloadQueueRecords(raw)
     }
 
-    private fun save() {
+    private fun save(commit: Boolean = false) {
         val array = JSONArray().apply {
             records.values.forEach { record ->
                 put(
@@ -91,7 +113,9 @@ internal class GrayjoyDownloadQueue(context: Context) {
                 )
             }
         }
-        preferences.edit().putString(KEY_RECORDS, array.toString()).apply()
+        preferences.edit().putString(KEY_RECORDS, array.toString()).let { editor ->
+            if (commit) editor.commit() else editor.apply()
+        }
     }
 
     private fun QueuedDownload.key(): String = key(profileId, videoId, mediaType)
@@ -123,7 +147,17 @@ internal fun parseDownloadQueueRecords(raw: String, nowMs: Long = System.current
                 profileId = profileId,
                 videoId = videoId,
                 mediaType = mediaType,
-                status = if (status == DownloadStatus.Preparing) DownloadStatus.Queued else status,
+                status = if (
+                    status in setOf(
+                        DownloadStatus.Preparing,
+                        DownloadStatus.Queued,
+                        DownloadStatus.Downloading,
+                    )
+                ) {
+                    DownloadStatus.Paused
+                } else {
+                    status
+                },
                 createdAtMs = runCatching { json.get("createdAtMs")?.asLong }.getOrNull() ?: nowMs,
                 targetVideoHeight = runCatching { json.get("targetVideoHeight")?.asInt }.getOrNull()?.takeIf { it > 0 },
                 targetAudioBitrate = runCatching { json.get("targetAudioBitrate")?.asInt }.getOrNull()?.takeIf { it > 0 },
