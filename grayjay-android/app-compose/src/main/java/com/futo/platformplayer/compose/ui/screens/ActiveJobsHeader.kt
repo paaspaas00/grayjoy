@@ -84,6 +84,7 @@ internal fun rememberActiveJobItems(
     updateDownload: UpdateDownloadUiModel?,
     libraryTransfer: LibraryTransferUiState,
     downloadStorage: DownloadStorageUiState = DownloadStorageUiState(),
+    mediaExports: List<com.futo.platformplayer.compose.ui.MediaExportUiState> = emptyList(),
 ): List<ActiveJobItem> {
     val activeDownloads = remember(downloads) { downloads.values.filter(DownloadUiModel::isActive) }
     val activeDownloadProgress = activeDownloads
@@ -105,6 +106,21 @@ internal fun rememberActiveJobItems(
         )
     }
     return buildList {
+        mediaExports.forEach { export ->
+            val stage = stringResource(when (export.stage) {
+                com.futo.platformplayer.compose.downloads.MediaExportStage.Preparing -> R.string.export_preparing
+                com.futo.platformplayer.compose.downloads.MediaExportStage.Converting -> R.string.export_converting
+                com.futo.platformplayer.compose.downloads.MediaExportStage.Copying -> R.string.export_copying
+            })
+            add(ActiveJobItem(
+                id = "media-export:${export.id}",
+                title = stringResource(R.string.export_downloaded_media),
+                detail = "${minOf(export.completed + 1, export.total)}/${export.total} · $stage · ${export.currentTitle}",
+                progress = export.progress,
+                icon = Icons.Outlined.FileUpload,
+                cancellable = true,
+            ))
+        }
         if (youtubeImport.isRunning) add(
             ActiveJobItem(
                 id = "youtube-import",
@@ -245,8 +261,10 @@ internal fun ActiveJobsPanel(
     onCancelDownloads: () -> Unit,
     onOpenJob: (String) -> Unit,
     storageWarning: DownloadStorageUiState = DownloadStorageUiState(),
+    onCancelMediaExport: (String) -> Unit = {},
 ) {
     var confirmYoutubeCancellation by rememberSaveable { mutableStateOf(false) }
+    var pendingExportCancellation by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmDownloadCancellation by rememberSaveable { mutableStateOf(false) }
     AnimatedVisibility(
         visible = visible,
@@ -379,7 +397,9 @@ internal fun ActiveJobsPanel(
                         if (job.cancellable) {
                             IconButton(
                                 onClick = {
-                                    if (job.id == "downloads") confirmDownloadCancellation = true
+                                    if (job.id.startsWith("media-export:")) {
+                                        pendingExportCancellation = job.id.removePrefix("media-export:")
+                                    } else if (job.id == "downloads") confirmDownloadCancellation = true
                                     else confirmYoutubeCancellation = true
                                 },
                             ) {
@@ -394,6 +414,20 @@ internal fun ActiveJobsPanel(
                 }
             }
         }
+    }
+    pendingExportCancellation?.let { exportId ->
+        AlertDialog(
+            onDismissRequest = { pendingExportCancellation = null },
+            title = { Text(stringResource(R.string.cancel_media_export_title)) },
+            text = { Text(stringResource(R.string.cancel_media_export_body)) },
+            confirmButton = { TextButton(onClick = {
+                pendingExportCancellation = null
+                onCancelMediaExport(exportId)
+            }) { Text(stringResource(R.string.cancel)) } },
+            dismissButton = { TextButton(onClick = { pendingExportCancellation = null }) {
+                Text(stringResource(R.string.continue_action))
+            } },
+        )
     }
     if (confirmDownloadCancellation) {
         AlertDialog(

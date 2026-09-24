@@ -619,6 +619,8 @@
     <string name="automatic_with_value">Automatic · %1$s</string>
     <string name="original_audio">Original audio</string>
     <string name="audio_language_change_failed">Could not change the audio language.</string>
+    <string name="video_quality_change_failed">Could not change the video quality. The previous quality is still selected.</string>
+    <string name="library_recovery_write_blocked">Changes could not be saved safely. Check free storage and reopen the app; recovery data has been preserved.</string>
     <string name="app_language">App language</string>
     <string name="system_default_language">Android system default</string>
     <string name="app_language_description">%1$s · Grayjoy restarts when the language changes.</string>
@@ -716,6 +718,16 @@
     <string name="sponsorblock_skipped_music_offtopic">Non-music section skipped</string>
     <string name="sponsorblock_skipped_filler">Filler skipped</string>
     <string name="background_jobs">Active jobs</string>
+    <string name="export_downloaded_media">Export downloaded media</string>
+    <string name="export_preparing">Preparing</string>
+    <string name="export_converting">Creating media file</string>
+    <string name="export_copying">Copying to folder</string>
+    <string name="cancel_media_export_title">Cancel export?</string>
+    <string name="cancel_media_export_body">Completed exports and the original downloads will be kept. The current incomplete file will be removed.</string>
+    <string name="choose_source_profile">Choose Crunchyroll profile</string>
+    <string name="choose_source_profile_description">Choose your profile on the website, then confirm it for this Grayjoy profile.</string>
+    <string name="choose_source_profile_instructions">On the website, open your avatar → Switch Profile. Choose the profile you want, then tap “Use this profile”.</string>
+    <string name="use_selected_source_profile">Use this profile</string>
     <string name="no_active_jobs">No active jobs.</string>
     <plurals name="active_downloads">
         <item quantity="one">%d active download</item>

@@ -76,6 +76,8 @@ internal fun uniqueRemotePlaylistTitle(
 }
 
 interface LibraryRepository {
+    /** Shared by every repository and account-import transaction for the same profile. */
+    val transactionLock: Any get() = this
     fun load(videos: List<VideoUiModel>): Map<String, LibraryVideoState>
     fun loadSavedVideos(): List<VideoUiModel>
     fun loadPlaylists(): List<PlaylistUiModel>
@@ -126,6 +128,7 @@ internal class SharedPreferencesLibraryRepository(
     profileId: String = "main",
 ) : LibraryRepository {
     private val appContext = context.applicationContext
+    override val transactionLock: Any = profileDataLock(context, profileId)
     private val preferences = context.getSharedPreferences(
         if (profileId == "main") FILE_NAME else "${FILE_NAME}_$profileId",
         Context.MODE_PRIVATE,
@@ -149,8 +152,8 @@ internal class SharedPreferencesLibraryRepository(
         if (importRecoveryChecked) return
         val recovered = runCatching { importJournal.recoverIfNeeded() }
             .onFailure {
-                // Keep the recovery copy for the next attempt. A filesystem failure must not
-                // turn an otherwise readable library into a startup crash loop.
+                // Reads remain available even if the filesystem also refuses quarantine. Every
+                // mutation checks the journal separately and then fails closed until safe.
                 android.util.Log.e("LibraryRepository", "Interrupted import recovery failed", it)
             }.getOrDefault(false)
         if (recovered) {
@@ -175,91 +178,106 @@ internal class SharedPreferencesLibraryRepository(
         }
     }
 
-    @Synchronized
-    override fun loadSavedVideos(): List<VideoUiModel> = readVideos()
-        .sortedWith(compareByDescending<VideoUiModel> { it.lastWatchedAt }.thenBy(VideoUiModel::title))
+    override fun loadSavedVideos(): List<VideoUiModel> = synchronized(transactionLock) {
+        readVideos().sortedWith(compareByDescending<VideoUiModel> { it.lastWatchedAt }.thenBy(VideoUiModel::title))
+    }
 
-    @Synchronized
-    override fun loadPlaylists(): List<PlaylistUiModel> = readPlaylists()
+    override fun loadPlaylists(): List<PlaylistUiModel> = synchronized(transactionLock) { readPlaylists() }
+
+    override fun createImportSnapshot(): LibraryImportSnapshot = synchronized(transactionLock) {
+        importJournal.ensureWritable()
+        LibraryImportSnapshot(loadSavedVideos(), loadPlaylists())
+    }
 
     override fun saveVideo(video: VideoUiModel) = saveVideos(listOf(video))
 
-    @Synchronized
     override fun saveVideos(videos: Collection<VideoUiModel>) {
-        if (videos.isEmpty()) return
-        val savedVideos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
-        mergeSavedVideos(savedVideos, videos)
-        writeVideos(savedVideos.values.toList())
-    }
-
-    @Synchronized
-    override fun saveDownloadDescriptor(video: VideoUiModel) {
-        val videos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
-        val existing = videos[video.id]
-        videos[video.id] = video.copy(
-            isWatchLater = existing?.isWatchLater ?: video.isWatchLater,
-            isDownloaded = existing?.isDownloaded ?: false,
-            isLiked = existing?.isLiked ?: video.isLiked,
-            watchProgress = existing?.watchProgress ?: video.watchProgress,
-            lastWatchedAt = existing?.lastWatchedAt ?: video.lastWatchedAt,
-            playlistNames = existing?.playlistNames ?: video.playlistNames,
-        ).forLocalStorage(preservePlayback = true)
-        writeVideos(videos.values.toList())
-    }
-
-    @Synchronized
-    override fun clearDownloadDescriptor(videoId: String) {
-        updateVideo(videoId) {
-            it.copy(
-                playbackUrl = "",
-                playbackCacheNamespace = "",
-                audioCacheNamespace = "",
-                playbackStreamKeys = emptyList(),
-                audioStreamKeys = emptyList(),
-                playbackMimeType = "",
-                playbackManifest = "",
-                audioUrl = "",
-                audioRequestHeaders = emptyMap(),
-                audioDataSourceFactory = null,
-                audioDownloadUrl = "",
-                audioDownloadMimeType = "",
-                audioDownloadManifest = "",
-                audioDownloadRequestHeaders = emptyMap(),
-                audioDownloadDataSourceFactory = null,
-                playbackRequestHeaders = emptyMap(),
-                playbackDataSourceFactory = null,
-                subtitleTracks = emptyList(),
-                qualityVariants = emptyList(),
-                audioQualityVariants = emptyList(),
-            )
+        return synchronized(transactionLock) {
+            if (videos.isEmpty()) return
+            importJournal.ensureWritable()
+            val savedVideos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
+            mergeSavedVideos(savedVideos, videos)
+            writeVideos(savedVideos.values.toList())
         }
     }
 
-    @Synchronized
-    override fun reconcileDownloads(completedIds: Set<String>): Boolean {
-        val videos = readVideos()
-        val updated = videos.map { reconcileVideoDownloadState(it, completedIds) }
-        if (updated == videos) return false
-        // One library serialization even if hundreds of downloads completed while we were away.
-        writeVideos(updated)
-        return true
+    override fun saveDownloadDescriptor(video: VideoUiModel) {
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val videos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
+            val existing = videos[video.id]
+            videos[video.id] = video.copy(
+                isWatchLater = existing?.isWatchLater ?: video.isWatchLater,
+                isDownloaded = existing?.isDownloaded ?: false,
+                isLiked = existing?.isLiked ?: video.isLiked,
+                watchProgress = existing?.watchProgress ?: video.watchProgress,
+                lastWatchedAt = existing?.lastWatchedAt ?: video.lastWatchedAt,
+                playlistNames = existing?.playlistNames ?: video.playlistNames,
+            ).forLocalStorage(preservePlayback = true)
+            writeVideos(videos.values.toList())
+        }
     }
 
-    @Synchronized
+    override fun clearDownloadDescriptor(videoId: String) {
+        return synchronized(transactionLock) {
+            updateVideo(videoId) {
+                it.copy(
+                    playbackUrl = "",
+                    playbackCacheNamespace = "",
+                    audioCacheNamespace = "",
+                    playbackStreamKeys = emptyList(),
+                    audioStreamKeys = emptyList(),
+                    playbackMimeType = "",
+                    playbackManifest = "",
+                    audioUrl = "",
+                    audioRequestHeaders = emptyMap(),
+                    audioDataSourceFactory = null,
+                    audioDownloadUrl = "",
+                    audioDownloadMimeType = "",
+                    audioDownloadManifest = "",
+                    audioDownloadRequestHeaders = emptyMap(),
+                    audioDownloadDataSourceFactory = null,
+                    playbackRequestHeaders = emptyMap(),
+                    playbackDataSourceFactory = null,
+                    subtitleTracks = emptyList(),
+                    qualityVariants = emptyList(),
+                    audioQualityVariants = emptyList(),
+                )
+            }
+        }
+    }
+
+    override fun reconcileDownloads(completedIds: Set<String>): Boolean {
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val videos = readVideos()
+            val updated = videos.map { reconcileVideoDownloadState(it, completedIds) }
+            if (updated == videos) return false
+            // One library serialization even if hundreds of downloads completed while we were away.
+            writeVideos(updated)
+            return true
+        }
+    }
+
     override fun recordHistory(video: VideoUiModel, progress: Float) {
-        val normalizedProgress = normalizedLibraryProgress(progress)
-        val videos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
-        val existing = videos[video.id]
-        videos[video.id] = video.copy(
-            watchProgress = normalizedProgress,
-            isWatchLater = existing?.isWatchLater ?: video.isWatchLater,
-            isDownloaded = existing?.isDownloaded ?: video.isDownloaded,
-            isLiked = existing?.isLiked ?: video.isLiked,
-            playlistNames = existing?.playlistNames ?: video.playlistNames,
-            lastWatchedAt = System.currentTimeMillis(),
-        ).preservingStoredPlayback(existing)
-        writeVideos(videos.values.toList())
-        watchProgressPreferences.edit().putFloat(video.id, normalizedProgress).apply()
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val normalizedProgress = normalizedLibraryProgress(progress)
+            val videos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
+            val existing = videos[video.id]
+            videos[video.id] = video.copy(
+                watchProgress = normalizedProgress,
+                isWatchLater = existing?.isWatchLater ?: video.isWatchLater,
+                isDownloaded = existing?.isDownloaded ?: video.isDownloaded,
+                isLiked = existing?.isLiked ?: video.isLiked,
+                playlistNames = existing?.playlistNames ?: video.playlistNames,
+                lastWatchedAt = System.currentTimeMillis(),
+            ).preservingStoredPlayback(existing)
+            writeVideos(videos.values.toList())
+            watchProgressPreferences.edit().putFloat(video.id, normalizedProgress)
+                .putLong(KEY_PROGRESS_REVISION, nextProgressRevision()).apply()
+            cachedProgressRevision = watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0L)
+        }
     }
 
     override fun setWatchLater(videoId: String, enabled: Boolean) =
@@ -277,211 +295,239 @@ internal class SharedPreferencesLibraryRepository(
     override fun setScheduledStart(videoId: String, scheduledStartAtMs: Long) =
         updateVideo(videoId) { it.copy(scheduledStartAtMs = scheduledStartAtMs.coerceAtLeast(0L)) }
 
-    @Synchronized
     override fun setWatchProgress(videoId: String, progress: Float) {
-        // The history itself is one large JSON value. Rewriting it every five seconds allocated
-        // roughly 70 MB between GCs on a 200-item imported history and caused the visible periodic
-        // playback hitch. Keep the frequently changing scalar in its own tiny preferences file;
-        // readVideos() overlays it on the imported/stored JSON value for transparent migration.
-        val normalizedProgress = normalizedLibraryProgress(progress)
-        cachedVideos = readVideos().map { video ->
-            if (video.id == videoId) video.copy(watchProgress = normalizedProgress) else video
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            // The history itself is one large JSON value. Rewriting it every five seconds allocated
+            // roughly 70 MB between GCs on a 200-item imported history and caused the visible periodic
+            // playback hitch. Keep the frequently changing scalar in its own tiny preferences file;
+            // readVideos() overlays it on the imported/stored JSON value for transparent migration.
+            val normalizedProgress = normalizedLibraryProgress(progress)
+            cachedVideos = readVideos().map { video ->
+                if (video.id == videoId) video.copy(watchProgress = normalizedProgress) else video
+            }
+            watchProgressPreferences.edit()
+                .putFloat(videoId, normalizedProgress)
+                .putLong(KEY_PROGRESS_REVISION, nextProgressRevision())
+                .apply()
+            cachedProgressRevision = watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0)
         }
-        watchProgressPreferences.edit()
-            .putFloat(videoId, normalizedProgress)
-            .putLong(KEY_PROGRESS_REVISION, watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0) + 1)
-            .apply()
-        cachedProgressRevision = watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0)
     }
 
-    @Synchronized
     override fun removeFromHistory(videoIds: Collection<String>) {
-        val removedIds = videoIds.toSet()
-        if (removedIds.isEmpty()) return
-        val videos = readVideos().mapNotNull { video ->
-            if (video.id !in removedIds) return@mapNotNull video
-            val withoutHistory = video.copy(watchProgress = 0f, lastWatchedAt = 0L)
-            withoutHistory.takeIf {
-                it.isWatchLater || it.isDownloaded || it.isLiked || it.playlistNames.isNotEmpty()
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val removedIds = videoIds.toSet()
+            if (removedIds.isEmpty()) return
+            val videos = readVideos().mapNotNull { video ->
+                if (video.id !in removedIds) return@mapNotNull video
+                val withoutHistory = video.copy(watchProgress = 0f, lastWatchedAt = 0L)
+                withoutHistory.takeIf {
+                    it.isWatchLater || it.isDownloaded || it.isLiked || it.playlistNames.isNotEmpty()
+                }
             }
+            writeVideos(videos)
+            val retainedIds = videos.mapTo(mutableSetOf(), VideoUiModel::id)
+            watchProgressPreferences.edit().apply {
+                putLong(KEY_PROGRESS_REVISION, nextProgressRevision())
+                removedIds.forEach { videoId ->
+                    if (videoId in retainedIds) putFloat(videoId, 0f) else remove(videoId)
+                }
+            }.apply()
+            cachedProgressRevision = watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0L)
         }
-        writeVideos(videos)
-        val retainedIds = videos.mapTo(mutableSetOf(), VideoUiModel::id)
-        watchProgressPreferences.edit().apply {
-            removedIds.forEach { videoId ->
-                if (videoId in retainedIds) putFloat(videoId, 0f) else remove(videoId)
-            }
-        }.apply()
     }
 
-    @Synchronized
     override fun createPlaylist(title: String, videos: List<VideoUiModel>): PlaylistUiModel? {
-        val normalizedTitle = title.trim().ifBlank { appContext.getString(R.string.new_playlist) }
-            .take(80)
-        val playlists = readPlaylists()
-        if (playlistTitleExists(normalizedTitle, playlists.map(PlaylistUiModel::title))) return null
-        val playlist = PlaylistUiModel(
-            id = UUID.randomUUID().toString(),
-            title = normalizedTitle,
-            description = appContext.getString(R.string.local_playlist_description),
-            videoIds = videos.map(VideoUiModel::id).distinct(),
-        )
-        persistPlaylistMutation(playlists + playlist, videos)
-        return playlist
-    }
-
-    @Synchronized
-    override fun renamePlaylist(playlistId: String, title: String): PlaylistUiModel? {
-        val playlists = readPlaylists()
-        val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
-        val normalizedTitle = title.trim().take(80)
-        if (normalizedTitle.isBlank()) return null
-        if (
-            playlistTitleExists(
-                normalizedTitle,
-                playlists.filterNot { it.id == playlistId }.map(PlaylistUiModel::title),
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val normalizedTitle = title.trim().ifBlank { appContext.getString(R.string.new_playlist) }
+                .take(80)
+            val playlists = readPlaylists()
+            if (playlistTitleExists(normalizedTitle, playlists.map(PlaylistUiModel::title))) return null
+            val playlist = PlaylistUiModel(
+                id = UUID.randomUUID().toString(),
+                title = normalizedTitle,
+                description = appContext.getString(R.string.local_playlist_description),
+                videoIds = videos.map(VideoUiModel::id).distinct(),
             )
-        ) return null
-        val renamed = existing.copy(title = normalizedTitle)
-        persistPlaylistMutation(playlists.map { if (it.id == playlistId) renamed else it })
-        return renamed
+            persistPlaylistMutation(playlists + playlist, videos)
+            return playlist
+        }
     }
 
-    @Synchronized
+    override fun renamePlaylist(playlistId: String, title: String): PlaylistUiModel? {
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val playlists = readPlaylists()
+            val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
+            val normalizedTitle = title.trim().take(80)
+            if (normalizedTitle.isBlank()) return null
+            if (
+                playlistTitleExists(
+                    normalizedTitle,
+                    playlists.filterNot { it.id == playlistId }.map(PlaylistUiModel::title),
+                )
+            ) return null
+            val renamed = existing.copy(title = normalizedTitle)
+            persistPlaylistMutation(playlists.map { if (it.id == playlistId) renamed else it })
+            return renamed
+        }
+    }
+
     override fun removePlaylists(playlistIds: Collection<String>): Int {
-        val removedIds = playlistIds.toSet()
-        if (removedIds.isEmpty()) return 0
-        val playlists = readPlaylists()
-        val retained = playlists.filterNot { it.id in removedIds }
-        val removedCount = playlists.size - retained.size
-        if (removedCount == 0) return 0
-        persistPlaylistMutation(retained)
-        return removedCount
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val removedIds = playlistIds.toSet()
+            if (removedIds.isEmpty()) return 0
+            val playlists = readPlaylists()
+            val retained = playlists.filterNot { it.id in removedIds }
+            val removedCount = playlists.size - retained.size
+            if (removedCount == 0) return 0
+            persistPlaylistMutation(retained)
+            return removedCount
+        }
     }
 
-    @Synchronized
     override fun addVideosToPlaylist(
         playlistId: String,
         videos: List<VideoUiModel>,
     ): PlaylistUiModel? {
-        val playlists = readPlaylists()
-        val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
-        val updated = existing.copy(
-            videoIds = (existing.videoIds + videos.map(VideoUiModel::id)).distinct(),
-        )
-        persistPlaylistMutation(
-            playlists = playlists.map { if (it.id == playlistId) updated else it },
-            incomingVideos = videos,
-        )
-        return updated
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val playlists = readPlaylists()
+            val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
+            val updated = existing.copy(
+                videoIds = (existing.videoIds + videos.map(VideoUiModel::id)).distinct(),
+            )
+            persistPlaylistMutation(
+                playlists = playlists.map { if (it.id == playlistId) updated else it },
+                incomingVideos = videos,
+            )
+            return updated
+        }
     }
 
-    @Synchronized
     override fun removeVideosFromPlaylist(
         playlistId: String,
         videoIds: Collection<String>,
     ): PlaylistUiModel? {
-        val playlists = readPlaylists()
-        val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
-        val removedIds = videoIds.toSet()
-        val updated = existing.copy(videoIds = existing.videoIds.filterNot(removedIds::contains))
-        persistPlaylistMutation(playlists.map { if (it.id == playlistId) updated else it })
-        return updated
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val playlists = readPlaylists()
+            val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
+            val removedIds = videoIds.toSet()
+            val updated = existing.copy(videoIds = existing.videoIds.filterNot(removedIds::contains))
+            persistPlaylistMutation(playlists.map { if (it.id == playlistId) updated else it })
+            return updated
+        }
     }
 
-    @Synchronized
     override fun reorderPlaylist(
         playlistId: String,
         orderedVideoIds: List<String>,
     ): PlaylistUiModel? {
-        val playlists = readPlaylists()
-        val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
-        val normalizedOrder = normalizePlaylistOrder(existing.videoIds, orderedVideoIds)
-        val updated = existing.copy(videoIds = normalizedOrder)
-        persistPlaylistMutation(playlists.map { if (it.id == playlistId) updated else it })
-        return updated
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val playlists = readPlaylists()
+            val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
+            val normalizedOrder = normalizePlaylistOrder(existing.videoIds, orderedVideoIds)
+            val updated = existing.copy(videoIds = normalizedOrder)
+            persistPlaylistMutation(playlists.map { if (it.id == playlistId) updated else it })
+            return updated
+        }
     }
 
-    @Synchronized
     override fun mergeImportedData(
         videos: List<VideoUiModel>,
         playlists: List<PlaylistUiModel>,
         repairSyntheticHistoryDates: Boolean,
     ) {
-        val mergedVideos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
-        val syntheticHistoryIds = if (repairSyntheticHistoryDates) {
-            syntheticHistoryFallbackIds(mergedVideos.values)
-        } else {
-            emptySet()
-        }
-        videos.forEach { imported ->
-            val existing = mergedVideos[imported.id]
-            mergedVideos[imported.id] = if (existing == null) {
-                imported.forLocalStorage()
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val mergedVideos = readVideos().associateByTo(linkedMapOf(), VideoUiModel::id)
+            val syntheticHistoryIds = if (repairSyntheticHistoryDates) {
+                syntheticHistoryFallbackIds(mergedVideos.values)
             } else {
-                existing.mergeImported(
-                    imported = imported,
-                    preferImportedHistory = imported.id in syntheticHistoryIds,
-                ).forLocalStorage()
+                emptySet()
             }
-        }
-        writeVideos(mergedVideos.values.toList())
-        watchProgressPreferences.edit().apply {
             videos.forEach { imported ->
-                mergedVideos[imported.id]?.let { merged ->
-                    putFloat(imported.id, merged.watchProgress.coerceIn(0f, 1f))
+                val existing = mergedVideos[imported.id]
+                mergedVideos[imported.id] = if (existing == null) {
+                    imported.forLocalStorage()
+                } else {
+                    existing.mergeImported(
+                        imported = imported,
+                        preferImportedHistory = imported.id in syntheticHistoryIds,
+                    ).forLocalStorage()
                 }
             }
-        }.apply()
+            writeVideos(mergedVideos.values.toList())
+            watchProgressPreferences.edit().apply {
+                putLong(KEY_PROGRESS_REVISION, nextProgressRevision())
+                videos.forEach { imported ->
+                    mergedVideos[imported.id]?.let { merged ->
+                        putFloat(imported.id, normalizedLibraryProgress(merged.watchProgress))
+                    }
+                }
+            }.apply()
+            cachedProgressRevision = watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0L)
 
-        val mergedPlaylists = readPlaylists().toMutableList()
-        playlists.forEach { imported ->
-            val index = mergedPlaylists.indexOfFirst {
-                it.id == imported.id || it.title.equals(imported.title, ignoreCase = true)
+            val mergedPlaylists = readPlaylists().toMutableList()
+            playlists.forEach { imported ->
+                val index = mergedPlaylists.indexOfFirst {
+                    it.id == imported.id || it.title.equals(imported.title, ignoreCase = true)
+                }
+                if (index < 0) {
+                    mergedPlaylists += imported
+                } else {
+                    val existing = mergedPlaylists[index]
+                    mergedPlaylists[index] = existing.copy(
+                        videoIds = (existing.videoIds + imported.videoIds).distinct(),
+                    )
+                }
             }
-            if (index < 0) {
-                mergedPlaylists += imported
-            } else {
-                val existing = mergedPlaylists[index]
-                mergedPlaylists[index] = existing.copy(
-                    videoIds = (existing.videoIds + imported.videoIds).distinct(),
-                )
-            }
+            persistPlaylistMutation(mergedPlaylists)
         }
-        persistPlaylistMutation(mergedPlaylists)
     }
 
-    @Synchronized
     override fun restoreImportSnapshot(snapshot: LibraryImportSnapshot) {
-        cachedVideos = snapshot.videos
-        cachedPlaylists = snapshot.playlists
-        val videoJson = JSONArray().apply { snapshot.videos.forEach { put(it.toJson()) } }
-        val playlistJson = JSONArray().apply { snapshot.playlists.forEach { put(it.toJson()) } }
-        cachedVideosJson = videoJson.toString()
-        cachedPlaylistsJson = playlistJson.toString()
-        check(
-            preferences.edit()
-                .putString(KEY_VIDEOS, cachedVideosJson)
-                .putString(KEY_PLAYLISTS, cachedPlaylistsJson)
-                .commit(),
-        ) { "Could not restore the library import transaction." }
-        check(
-            watchProgressPreferences.edit().clear().apply {
-                snapshot.videos.forEach { video ->
-                    putFloat(video.id, video.watchProgress.coerceIn(0f, 1f))
-                }
-            }.commit(),
-        ) { "Could not restore watch progress after a cancelled import." }
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            cachedVideos = snapshot.videos
+            cachedPlaylists = snapshot.playlists
+            val videoJson = JSONArray().apply { snapshot.videos.forEach { put(it.toJson()) } }
+            val playlistJson = JSONArray().apply { snapshot.playlists.forEach { put(it.toJson()) } }
+            cachedVideosJson = videoJson.toString()
+            cachedPlaylistsJson = playlistJson.toString()
+            check(
+                preferences.edit()
+                    .putString(KEY_VIDEOS, cachedVideosJson)
+                    .putString(KEY_PLAYLISTS, cachedPlaylistsJson)
+                    .commit(),
+            ) { "Could not restore the library import transaction." }
+            check(
+                watchProgressPreferences.edit().clear().apply {
+                    putLong(KEY_PROGRESS_REVISION, nextProgressRevision())
+                    snapshot.videos.forEach { video ->
+                        putFloat(video.id, normalizedLibraryProgress(video.watchProgress))
+                    }
+                }.commit(),
+            ) { "Could not restore watch progress after a cancelled import." }
+            cachedProgressRevision = watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0L)
+        }
     }
 
-    @Synchronized
     private fun updateVideo(videoId: String, transform: (VideoUiModel) -> VideoUiModel) {
-        val videos = readVideos()
-        val index = videos.indexOfFirst { it.id == videoId }
-        if (index < 0) return
-        val updated = transform(videos[index])
-        if (updated == videos[index]) return
-        writeVideos(videos.toMutableList().apply { this[index] = updated })
+        return synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val videos = readVideos()
+            val index = videos.indexOfFirst { it.id == videoId }
+            if (index < 0) return
+            val updated = transform(videos[index])
+            if (updated == videos[index]) return
+            writeVideos(videos.toMutableList().apply { this[index] = updated })
+        }
     }
 
     private fun persistPlaylistMutation(
@@ -550,6 +596,7 @@ internal class SharedPreferencesLibraryRepository(
     }
 
     private fun writeVideos(videos: List<VideoUiModel>) {
+        importJournal.ensureWritable()
         cachedVideos = videos
         val json = JSONArray().apply { videos.forEach { put(it.toJson()) } }
         cachedVideosJson = json.toString()
@@ -572,11 +619,15 @@ internal class SharedPreferencesLibraryRepository(
     }
 
     private fun writePlaylists(playlists: List<PlaylistUiModel>) {
+        importJournal.ensureWritable()
         cachedPlaylists = playlists
         val json = JSONArray().apply { playlists.forEach { put(it.toJson()) } }
         cachedPlaylistsJson = json.toString()
         preferences.edit().putString(KEY_PLAYLISTS, cachedPlaylistsJson).apply()
     }
+
+    private fun nextProgressRevision(): Long =
+        watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0L) + 1L
 
     private companion object {
         const val FILE_NAME = "grayjay_compose_library_v2"

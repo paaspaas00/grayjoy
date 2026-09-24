@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -535,6 +536,15 @@ private fun SourceOptionsSheet(
                     icon = { Icon(Icons.Outlined.Download, contentDescription = null) },
                     enabled = source.isAuthenticated && !isBusy,
                     onClick = onImportYoutube,
+                )
+            }
+            if (source.id.equals("crunchyroll", ignoreCase = true) && source.isAuthenticated) {
+                SourceOption(
+                    title = stringResource(R.string.choose_source_profile),
+                    body = stringResource(R.string.choose_source_profile_description),
+                    icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+                    enabled = !isBusy,
+                    onClick = onLogin,
                 )
             }
             SourceOption(

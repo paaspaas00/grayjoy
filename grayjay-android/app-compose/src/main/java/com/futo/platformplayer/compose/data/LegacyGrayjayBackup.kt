@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose.data
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.engine.sourceIdHintForUrl
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -364,17 +365,7 @@ internal fun LegacyGrayjayBackup.buildImportLibrary(
     return videos.values.toList() to importedPlaylists
 }
 
-private fun inferSourceId(url: String): String = when {
-    "youtube.com" in url || "youtu.be" in url -> "youtube"
-    "odysee.com" in url -> "odysee"
-    "rumble.com" in url -> "rumble"
-    "twitch.tv" in url -> "twitch"
-    "soundcloud.com" in url -> "soundcloud"
-    "bilibili.com" in url -> "bilibili"
-    "dailymotion.com" in url || "dai.ly" in url -> "dailymotion"
-    "bitchute.com" in url -> "bitchute"
-    else -> "youtube"
-}
+private fun inferSourceId(url: String): String = sourceIdHintForUrl(url) ?: "unknown"
 
 private fun String?.parseArrayOrEmpty(): JsonArray = runCatching {
     this?.let(JsonParser::parseString)?.takeIf(JsonElement::isJsonArray)?.asJsonArray

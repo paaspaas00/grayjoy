@@ -267,10 +267,12 @@ private data class PlaybackPresentation(
     val backgroundYoutubeImport: BackgroundYoutubeImportUiState,
     val databaseImport: DatabaseImportUiState,
     val libraryTransfer: LibraryTransferUiState,
+    val mediaExports: List<MediaExportUiState>,
     val sourceOperationInProgress: Boolean,
     val sourceOperationMessage: String?,
     val onCancelYoutubeImportJobs: () -> Unit,
     val onCancelActiveDownloads: () -> Unit,
+    val onCancelMediaExport: (String) -> Unit,
     val onOpenActiveJob: (String) -> Unit,
     val pageSlideDirection: Int,
     val pageSlideRequest: Long,
@@ -961,10 +963,12 @@ fun GrayjayApp(
         backgroundYoutubeImport = uiState.backgroundYoutubeImport,
         databaseImport = uiState.databaseImport,
         libraryTransfer = uiState.libraryTransfer,
+        mediaExports = uiState.mediaExports,
         sourceOperationInProgress = uiState.sourceOperationInProgress,
         sourceOperationMessage = uiState.sourceOperationMessage,
         onCancelYoutubeImportJobs = actions.onCancelYoutubeImportJobs,
         onCancelActiveDownloads = actions.onCancelActiveDownloads,
+        onCancelMediaExport = actions.onCancelMediaExport,
         onOpenActiveJob = { jobId ->
             focusManager.clearFocus(force = true)
             keyboardController?.hide()
@@ -975,13 +979,14 @@ fun GrayjayApp(
                     uiState.downloads.values,
                 )
             }
-            destinationName = when (jobId) {
+            val destinationJob = if (jobId.startsWith("media-export:")) "downloads" else jobId
+            destinationName = when (destinationJob) {
                 "downloads" -> GrayjayDestination.Library.name
                 "youtube-import", "youtube-import-background", "source-operation" ->
                     GrayjayDestination.Sources.name
                 else -> GrayjayDestination.Settings.name
             }
-            if (jobId == "downloads") libraryFilterName = LibraryFilter.Downloads.name
+            if (destinationJob == "downloads") libraryFilterName = LibraryFilter.Downloads.name
             nestedBackDestinationName = null
             selectedChannelId = null
             selectedPlaylistId = null
@@ -2048,6 +2053,7 @@ private fun GrayjayScaffold(
         sourceOperationMessage = playback.sourceOperationMessage,
         updateDownload = playback.updateDownload,
         libraryTransfer = playback.libraryTransfer,
+        mediaExports = playback.mediaExports,
         downloadStorage = playback.downloadStorage,
     )
 
@@ -2176,6 +2182,7 @@ private fun GrayjayScaffold(
                     jobs = activeJobs,
                     onCancelYoutubeImports = playback.onCancelYoutubeImportJobs,
                     onCancelDownloads = playback.onCancelActiveDownloads,
+                    onCancelMediaExport = playback.onCancelMediaExport,
                     onOpenJob = { jobId ->
                         activeJobsExpanded = false
                         playback.onOpenActiveJob(jobId)

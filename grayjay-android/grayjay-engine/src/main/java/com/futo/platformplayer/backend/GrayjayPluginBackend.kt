@@ -678,6 +678,7 @@ class GrayjayPluginBackend(
     private val resolvedVideoDetails = BoundedSessionCache<String, CachedVideoDetails>(24)
     private val commentHandles = ConcurrentHashMap<String, CommentHandle>()
     private val loadMutex = Mutex()
+    private val clientEpoch = PluginClientEpoch()
     @Volatile
     private var profileId: String = "main"
     @Volatile
@@ -709,9 +710,7 @@ class GrayjayPluginBackend(
         // Runtime localization is injected when the YouTube script is registered. Drop only
         // that parent client so the next request gets the new language without touching other
         // sources or the active Media3 playback item.
-        sourceAliases.remove(YOUTUBE_PLUGIN_ID)?.let { alias ->
-            runCatching { clients.remove(alias)?.disable() }
-        }
+        invalidateRuntimeClient(YOUTUBE_PLUGIN_ID)
     }
 
     suspend fun search(
@@ -1721,11 +1720,15 @@ class GrayjayPluginBackend(
         } else {
             MAIN_CLIENT_CONCURRENCY
         }
+        var sourceGeneration = clientEpoch.snapshot()
+        val resolutionProfile = clientEpoch.current(sourceGeneration) { profileId }
         var plugin = resolvePool.getClientPooled(
             getOrLoad(sourceId, endpoint),
             resolveConcurrency,
         ) as JSClient
         val detailsResult = runCatching { plugin.getContentDetails(contentUrl) }
+        currentCoroutineContext().ensureActive()
+        clientEpoch.current(sourceGeneration) { Unit }
         val rawDetails = detailsResult.getOrElse { error ->
             if (endpoint.pluginId == YOUTUBE_PLUGIN_ID) {
                 youtubeScheduledStartMs(contentUrl)?.let { startAtMs ->
@@ -1742,6 +1745,12 @@ class GrayjayPluginBackend(
                     put("composeLegacyAgeFallback", "true")
                 }
                 setPluginSettings(endpoint.pluginId, updatedSettings)
+                sourceGeneration = clientEpoch.snapshot()
+                clientEpoch.current(sourceGeneration) {
+                    if (profileId != resolutionProfile) {
+                        throw SourceSessionChangedException()
+                    }
+                }
                 plugin = resolvePool.getClientPooled(
                     getOrLoad(sourceId, endpoint),
                     resolveConcurrency,
@@ -1760,15 +1769,21 @@ class GrayjayPluginBackend(
         }
         val details = rawDetails as? IPlatformVideoDetails
             ?: error("The source returned content that is not playable video.")
-        resolvedVideoDetails[
-            videoDetailsCacheKey(sourceId, details.url.ifBlank { contentUrl })
-        ] = CachedVideoDetails(
-            plugin = plugin,
-            details = details,
-            cachedAtMs = System.currentTimeMillis(),
-        )
-        if (endpoint.pluginId == YOUTUBE_PLUGIN_ID && details.duration > 0L) {
-            storyboardDurations[storyboardCacheKey(contentUrl)] = details.duration
+        currentCoroutineContext().ensureActive()
+        clientEpoch.current(sourceGeneration) {
+            // Synchronous plugin code can finish after cancellation/profile change. Never
+            // cache its credentials or result under whichever profile happens to be current.
+            resolvedVideoDetails[
+                "$resolutionProfile:$sourceId:${details.url.ifBlank { contentUrl }}"
+            ] = CachedVideoDetails(
+                plugin = plugin,
+                details = details,
+                cachedAtMs = System.currentTimeMillis(),
+            )
+            if (endpoint.pluginId == YOUTUBE_PLUGIN_ID && details.duration > 0L) {
+                storyboardDurations["$resolutionProfile:${youtubeVideoId(contentUrl).orEmpty()}"] =
+                    details.duration
+            }
         }
 
         val descriptorSources = details.video.videoSources
@@ -2111,6 +2126,11 @@ class GrayjayPluginBackend(
             }
             .getOrNull()
 
+        currentCoroutineContext().ensureActive()
+        val cachedStoryboard = clientEpoch.current(sourceGeneration) {
+            cachedYouTubeStoryboard(contentUrl)
+        }
+
         GrayjayPlaybackSource(
             contentUrl = details.url.ifBlank { contentUrl },
             shareUrl = details.shareUrl.ifBlank { details.url.ifBlank { contentUrl } },
@@ -2154,7 +2174,7 @@ class GrayjayPluginBackend(
             // Seek previews are auxiliary UI. Never hold playback behind a second watch-page
             // request; return a warm cache hit now and let Compose request a miss after Media3
             // has started preparing the stream.
-            storyboard = cachedYouTubeStoryboard(contentUrl),
+            storyboard = cachedStoryboard,
             isDrmProtected = widevineSource != null,
             drmLicenseUri = widevineSource?.licenseUri,
             drmLicenseRequestExecutor = drmLicenseRequestExecutor,
@@ -2475,8 +2495,7 @@ class GrayjayPluginBackend(
     }
 
     fun clearPlugin(alias: String, pluginId: String) {
-        runCatching { clients.remove(alias)?.disable() }
-        sourceAliases.remove(pluginId)
+        invalidateRuntimeClient(pluginId, alias)
         clearPluginTrust(pluginId)
         val root = pluginDirectory.canonicalFile
         val target = File(root, pluginId).canonicalFile
@@ -2488,22 +2507,21 @@ class GrayjayPluginBackend(
             settings.forEach { (key, value) -> put(key, value ?: JSONObject.NULL) }
         }
         pluginSettings.edit().putString(profileKey(pluginId), json.toString()).apply()
-        sourceAliases.remove(pluginId)?.let { alias ->
-            runCatching { clients.remove(alias)?.disable() }
-        }
+        invalidateRuntimeClient(pluginId)
     }
 
     fun setProfile(profileId: String) {
         if (this.profileId == profileId) return
-        pagerSessions.clear()
-        clients.values.forEach { runCatching { it.disable() } }
-        clients.clear()
-        sourceAliases.clear()
-        storyboardCache.clear()
-        storyboardFailures.clear()
-        storyboardDurations.clear()
-        resolvedVideoDetails.clear()
-        this.profileId = profileId
+        val obsolete = clientEpoch.invalidate {
+            clients.values.toList().also {
+                clients.clear()
+                sourceAliases.clear()
+                invalidateContentCaches()
+                commentHandles.clear()
+                this.profileId = profileId
+            }
+        }
+        obsolete.forEach { runCatching { it.disable() } }
     }
 
     fun invalidateContentCaches() {
@@ -2524,8 +2542,8 @@ class GrayjayPluginBackend(
     }
 
     fun reloadAuthentication(alias: String, pluginId: String) {
-        runCatching { clients.remove(alias)?.disable() }
-        sourceAliases.remove(pluginId)
+        invalidateContentCaches()
+        invalidateRuntimeClient(pluginId, alias)
         if (isAuthenticated(pluginId)) {
             val settings = loadPluginSettings(pluginId)
             if (settings.remove("composeLegacyAgeFallback") != null) {
@@ -2546,8 +2564,13 @@ class GrayjayPluginBackend(
     }
 
     fun release() {
-        clients.values.forEach { runCatching { it.disable() } }
-        clients.clear()
+        val obsolete = clientEpoch.invalidate {
+            clients.values.toList().also {
+                clients.clear()
+                sourceAliases.clear()
+            }
+        }
+        obsolete.forEach { runCatching { it.disable() } }
         pendingUntrustedPlugins.clear()
         pagerSessions.clear()
         storyboardCache.clear()
@@ -2580,7 +2603,8 @@ class GrayjayPluginBackend(
         durationSeconds: Long,
     ): GrayjayStoryboard? {
         val videoId = youtubeVideoId(contentUrl) ?: return null
-        val cacheKey = "$profileId:$videoId"
+        val lookupProfile = profileId
+        val cacheKey = "$lookupProfile:$videoId"
         val now = System.currentTimeMillis()
         storyboardCache[cacheKey]?.takeIf {
             now - it.cachedAtMs < STORYBOARD_CACHE_TTL_MS
@@ -2593,7 +2617,10 @@ class GrayjayPluginBackend(
             // Use the same profile-scoped auth/cookie machinery as the JS source host.
             // Storyboard sprite URLs themselves are signed and are then cached by Glide.
             val descriptor = StatePlugins.instance.getPlugin(YOUTUBE_PLUGIN_ID)
-            val auth = descriptor?.getAuth()
+            // The global descriptor can outlive a profile switch or source logout.
+            val auth = descriptor?.let {
+                GrayjayPluginAuthStore.load(appContext, lookupProfile, YOUTUBE_PLUGIN_ID)
+            }
             val watchUrl = "https://www.youtube.com/watch?v=$videoId" +
                 "&hl=en&bpctr=9999999999&has_verified=1"
             val authenticatedHtml = auth?.let {
@@ -2697,26 +2724,48 @@ class GrayjayPluginBackend(
     }
 
     private suspend fun getOrLoad(alias: String, endpoint: PluginEndpoint): JSClient {
-        clients[alias]?.let { return it }
+        val generation = clientEpoch.snapshot()
+        clientEpoch.current(generation) { clients[alias] }?.let { return it }
         return loadMutex.withLock {
-            clients[alias]?.let { return@withLock it }
+            val currentProfile = clientEpoch.current(generation) {
+                clients[alias] to profileId
+            }
+            currentProfile.first?.let { return@withLock it }
             val (config, configText, scriptText) = loadPluginPayload(endpoint)
+            currentCoroutineContext().ensureActive()
             cachePlugin(config.id, configText, scriptText)
             val descriptor = SourcePluginDescriptor(
                 config,
-                auth = GrayjayPluginAuthStore.load(appContext, profileId, config.id),
+                auth = GrayjayPluginAuthStore.load(appContext, currentProfile.second, config.id),
                 flags = listOf(SourcePluginDescriptor.FLAG_EMBEDDED),
-                settings = loadPluginSettings(config.id),
+                settings = loadPluginSettings(config.id, currentProfile.second),
             )
             val runtimeScript = scriptText.withComposeCompatibility(endpoint.pluginId)
-            StatePlugins.instance.register(descriptor, runtimeScript)
-            JSClient(appContext, descriptor, null, runtimeScript).also { plugin ->
+            val plugin = JSClient(appContext, descriptor, null, runtimeScript)
+            try {
+                clientEpoch.current(generation) { Unit }
                 plugin.initialize()
                 plugin.enable()
-                clients[alias] = plugin
-                sourceAliases[plugin.id] = alias
+                currentCoroutineContext().ensureActive()
+                clientEpoch.current(generation) {
+                    StatePlugins.instance.register(descriptor, runtimeScript)
+                    clients[alias] = plugin
+                    sourceAliases[plugin.id] = alias
+                }
+                plugin
+            } catch (error: Throwable) {
+                runCatching { plugin.disable() }
+                throw error
             }
         }
+    }
+
+    private fun invalidateRuntimeClient(pluginId: String, alias: String? = null) {
+        val obsolete = clientEpoch.invalidate {
+            val knownAlias = sourceAliases.remove(pluginId)
+            listOfNotNull(alias, knownAlias).distinct().mapNotNull(clients::remove)
+        }
+        obsolete.forEach { runCatching { it.disable() } }
     }
 
     private fun downloadPlugin(configUrl: String): Pair<String, String> {
@@ -2737,9 +2786,7 @@ class GrayjayPluginBackend(
         } else {
             clearPluginTrust(config.id)
         }
-        sourceAliases.remove(config.id)?.let { alias ->
-            runCatching { clients.remove(alias)?.disable() }
-        }
+        invalidateRuntimeClient(config.id)
         val companionConfiguration = loadOptionalCompanionConfiguration(config.sourceUrl.orEmpty())
         return GrayjayPluginMetadata(
             pluginId = config.id,
@@ -2851,10 +2898,10 @@ class GrayjayPluginBackend(
         }
     }
 
-    private fun loadPluginSettings(pluginId: String): HashMap<String, String?> {
+    private fun loadPluginSettings(pluginId: String, targetProfile: String = profileId): HashMap<String, String?> {
         val json = runCatching {
-            val raw = pluginSettings.getString(profileKey(pluginId), null)
-                ?: if (profileId == "main") pluginSettings.getString(pluginId, "{}") else "{}"
+            val raw = pluginSettings.getString("$targetProfile:$pluginId", null)
+                ?: if (targetProfile == "main") pluginSettings.getString(pluginId, "{}") else "{}"
             JSONObject(raw ?: "{}")
         }.getOrElse { JSONObject() }
         return hashMapOf<String, String?>().apply {

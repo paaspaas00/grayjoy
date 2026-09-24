@@ -620,6 +620,8 @@
     <string name="automatic_with_value">Automatica · %1$s</string>
     <string name="original_audio">Audio originale</string>
     <string name="audio_language_change_failed">Impossibile cambiare la lingua audio.</string>
+    <string name="video_quality_change_failed">Impossibile cambiare la qualità video. Rimane selezionata la qualità precedente.</string>
+    <string name="library_recovery_write_blocked">Impossibile salvare le modifiche in sicurezza. Controlla lo spazio libero e riapri l’app; i dati di recupero sono stati conservati.</string>
     <string name="app_language">Lingua dell’app</string>
     <string name="system_default_language">Predefinita di sistema Android</string>
     <string name="app_language_description">%1$s · Grayjoy si riavvia quando cambi lingua.</string>
@@ -716,6 +718,16 @@
     <string name="sponsorblock_skipped_music_offtopic">Parte non musicale saltata</string>
     <string name="sponsorblock_skipped_filler">Riempitivo saltato</string>
     <string name="background_jobs">Job attivi</string>
+    <string name="export_downloaded_media">Esportazione dei download</string>
+    <string name="export_preparing">Preparazione</string>
+    <string name="export_converting">Creazione del file multimediale</string>
+    <string name="export_copying">Copia nella cartella</string>
+    <string name="cancel_media_export_title">Annullare l’esportazione?</string>
+    <string name="cancel_media_export_body">I file già esportati e i download originali verranno conservati. Il file incompleto verrà eliminato.</string>
+    <string name="choose_source_profile">Scegli profilo Crunchyroll</string>
+    <string name="choose_source_profile_description">Scegli il profilo sul sito, poi confermalo per questo profilo di Grayjoy.</string>
+    <string name="choose_source_profile_instructions">Sul sito, apri l’avatar → Cambia profilo. Scegli quello desiderato, poi premi “Usa questo profilo”.</string>
+    <string name="use_selected_source_profile">Usa questo profilo</string>
     <string name="no_active_jobs">Nessun job attivo.</string>
     <plurals name="active_downloads">
         <item quantity="one">%d download attivo</item>

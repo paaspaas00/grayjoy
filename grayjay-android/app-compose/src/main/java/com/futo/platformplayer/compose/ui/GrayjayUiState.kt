@@ -57,6 +57,7 @@ data class GrayjayUiState(
     val backgroundYoutubeImport: BackgroundYoutubeImportUiState = BackgroundYoutubeImportUiState(),
     val databaseImport: DatabaseImportUiState = DatabaseImportUiState(),
     val libraryTransfer: LibraryTransferUiState = LibraryTransferUiState(),
+    val mediaExports: List<MediaExportUiState> = emptyList(),
     val downloads: Map<String, DownloadUiModel> = emptyMap(),
     val downloadStorage: DownloadStorageUiState = DownloadStorageUiState(),
     val backgroundJobsSuspended: Boolean = false,
@@ -457,6 +458,17 @@ data class NowPlayingUiState(
 data class LibraryTransferUiState(
     val isRunning: Boolean = false,
     val title: String = "",
+)
+
+data class MediaExportUiState(
+    val id: String,
+    val mediaType: DownloadMediaType,
+    val completed: Int = 0,
+    val total: Int,
+    val currentTitle: String = "",
+    val stage: com.futo.platformplayer.compose.downloads.MediaExportStage =
+        com.futo.platformplayer.compose.downloads.MediaExportStage.Preparing,
+    val progress: Float = 0f,
 )
 
 enum class YoutubeImportInterval(val hours: Long) {

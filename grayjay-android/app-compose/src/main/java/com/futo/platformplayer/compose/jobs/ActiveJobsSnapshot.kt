@@ -40,6 +40,9 @@ internal fun activeJobsSnapshot(
     addJob(state.databaseImport.isBusy, context.getString(R.string.importing_data))
     addJob(state.sourceOperationInProgress, context.getString(R.string.source_operation))
     addJob(state.libraryTransfer.isRunning, state.libraryTransfer.title)
+    state.mediaExports.forEach {
+        addJob(true, context.getString(R.string.export_downloaded_media) + " · " + it.currentTitle, it.progress)
+    }
     update?.let {
         addJob(true, context.getString(R.string.downloading_update_version, it.versionName),
             it.totalBytes?.takeIf { size -> size > 0 }?.let { size ->

@@ -6,6 +6,23 @@ import org.junit.Test
 import kotlin.random.Random
 
 class TrackedJobsTest {
+    @Test fun sharedPreparationFailureDoesNotCancelParentOrSiblingConsumers() = runBlocking {
+        val expected = java.io.IOException("Simulated library write failure")
+        val result = asyncJobResult { throw expected }
+        repeat(3) { assertSame(expected, result.await().exceptionOrNull()) }
+        assertTrue(currentCoroutineContext().isActive)
+        assertEquals(42, asyncJobResult { 42 }.await().getOrThrow())
+    }
+
+    @Test fun cancellingSharedPreparationRemainsCancellation() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val result = asyncJobResult { started.complete(Unit); awaitCancellation() }
+        started.await()
+        result.cancelAndJoin()
+        assertTrue(result.isCancelled)
+        assertTrue(currentCoroutineContext().isActive)
+    }
+
     @Test fun cancelledCleanupCannotRemoveItsReplacement() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val jobs = mutableMapOf<String, Job>()

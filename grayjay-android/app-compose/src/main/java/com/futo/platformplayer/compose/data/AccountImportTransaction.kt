@@ -24,8 +24,8 @@ internal suspend fun applyAccountImportTransaction(
 ) = accountImportMutex.withLock {
     withContext(Dispatchers.IO) {
         val coroutine = currentCoroutineContext()
-        synchronized(repository) {
-            synchronized(preferences) {
+        synchronized(repository.transactionLock) {
+            synchronized(preferences.accountImportLock) {
                 coroutine.ensureActive()
                 val librarySnapshot = repository.createImportSnapshot()
                 val preferenceSnapshot = preferences.createAccountImportSnapshot()

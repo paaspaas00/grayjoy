@@ -252,7 +252,11 @@ data class EngineUserImportResult(
     val warnings: List<String>,
 )
 
-enum class EngineResolvePriority { UserPlayback, Download, BackgroundMetadata }
+enum class EngineResolvePriority {
+    UserPlayback, Download, BackgroundMetadata;
+
+    internal val tracksPlaybackRecovery: Boolean get() = this == UserPlayback
+}
 
 internal enum class YoutubePlaybackResolver { Grayjay, NewPipe }
 
@@ -643,12 +647,15 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private val youtubeRuntimeFallbackAttempted = ConcurrentHashMap.newKeySet<String>()
     private val youtubeFallbackScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var youtubeRuntimeFallbackJob: Job? = null
+    private var youtubeFallbackGeneration = 0L
+    private var youtubeFallbackVideoId: String? = null
     private val networkMonitor = NetworkMonitor(appContext)
     private val connectivityRecoveryScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var connectivityRecoveryJob: Job? = null
     private var connectivityRecoveryVideoId: String? = null
     private var connectivityRecoveryAttempt = 0
     private var connectivityRecoveryPending = false
+    private val playbackRecoveryGuard = PlaybackRecoveryGuard()
     private var activePluginDataSources: Set<JSHttpDataSource.Factory> = emptySet()
     private var openedVideos: List<VideoUiModel> = emptyList()
     private var activeQualityVariantHeight: Int? = null
@@ -674,9 +681,20 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     syncPlayback()
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    if (youtubeFallbackVideoId != null && mediaItem?.mediaId != youtubeFallbackVideoId) {
+                        // A queued track change supersedes recovery for the previous item. Even
+                        // if the user returns to it before resolution finishes, that old result
+                        // must not replace the newer source or its selected audio language.
+                        youtubeFallbackVideoId?.let(youtubeRuntimeFallbackAttempted::remove)
+                        youtubeFallbackGeneration++
+                        youtubeFallbackVideoId = null
+                        youtubeRuntimeFallbackJob?.cancel()
+                        youtubeRuntimeFallbackJob = null
+                    }
                     if (mediaItem?.mediaId != connectivityRecoveryVideoId) {
                         resetConnectivityRecovery()
                     }
+                    playbackRecoveryGuard.reset()
                     updateAudioSpectrumAnalysis(mediaItem?.mediaId)
                     val video = openedVideos.firstOrNull { it.id == mediaItem?.mediaId }
                     switchPlaybackTracker(video)
@@ -698,7 +716,21 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     syncPlayback()
 
                 override fun onPlayerError(error: PlaybackException) {
-                    if (scheduleConnectivityRecovery(error)) return
+                    val videoId = exoPlayer.currentMediaItem?.mediaId
+                    val repeatedOnlineFailure = videoId != null &&
+                        playbackRecoveryGuard.recordFailure(
+                            videoId, exoPlayer.currentPosition.coerceAtLeast(0L), networkMonitor.isAvailable(),
+                        )
+                    val onlineYoutube = networkMonitor.isAvailable() &&
+                        openedVideos.firstOrNull { it.id == videoId }?.let {
+                            it.isYoutubeVideo() && !it.playbackFromDownload
+                        } == true
+                    // Re-preparing a persistently truncated URL forever starves the dual-engine
+                    // fallback. Escalate repeated failures without losing the playback position.
+                    if (repeatedOnlineFailure && onlineYoutube) {
+                        resetConnectivityRecovery()
+                        if (startYoutubeRuntimeFallback(error)) return
+                    } else if (scheduleConnectivityRecovery(error)) return
                     resetConnectivityRecovery()
                     if (startYoutubeRuntimeFallback(error)) return
                     val rootCause = generateSequence<Throwable>(error) { it.cause }.last()
@@ -797,8 +829,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         if (!youtubeRuntimeFallbackAttempted.add(videoId)) return false
 
         val fallbackResolver = YoutubePlaybackResolver.entries.first { it != currentResolver }
-        val positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
-        val playWhenReady = exoPlayer.playWhenReady
+        val fallbackGeneration = ++youtubeFallbackGeneration
         val originalCause = generateSequence<Throwable>(error) { it.cause }.last()
         Log.w(
             TAG,
@@ -807,10 +838,12 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             originalCause,
         )
         lastError = null
+        youtubeFallbackVideoId = videoId
         syncPlayback(videoId)
         youtubeRuntimeFallbackJob?.cancel()
         youtubeRuntimeFallbackJob = youtubeFallbackScope.launch {
             try {
+                _backendNotices.tryEmit(EngineBackendNotice("playback", originalCause.localizedMessage))
                 val source = resolveYoutubeWith(
                     resolver = fallbackResolver,
                     video = request.video,
@@ -820,19 +853,21 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 check(source.videoUrl.isNotBlank() || !source.rawDashManifest.isNullOrBlank()) {
                     "${fallbackResolver.name} returned no playable YouTube stream."
                 }
-                if (exoPlayer.currentMediaItem?.mediaId != videoId) return@launch
-                youtubeResolverByVideoId[videoId] = fallbackResolver
+                if (fallbackGeneration != youtubeFallbackGeneration ||
+                    exoPlayer.currentMediaItem?.mediaId != videoId) return@launch
                 replaceCurrent(
                     video = request.video.withPlaybackSource(source),
-                    positionMs = positionMs,
-                    playWhenReady = playWhenReady,
+                    positionMs = exoPlayer.currentPosition.coerceAtLeast(0L),
+                    playWhenReady = exoPlayer.playWhenReady,
                 )
+                youtubeResolverByVideoId[videoId] = fallbackResolver
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (fallbackError: Throwable) {
                 Log.e(TAG, "Both YouTube playback engines failed for $videoId.", fallbackError)
-                if (exoPlayer.currentMediaItem?.mediaId == videoId) {
-                    if (fallbackError.isRecoverableConnectivityFailure()) {
+                if (fallbackGeneration == youtubeFallbackGeneration &&
+                    exoPlayer.currentMediaItem?.mediaId == videoId) {
+                    if (!networkMonitor.isAvailable() && fallbackError.isRecoverableConnectivityFailure()) {
                         // Resolution itself failed while offline. Retry the current source after
                         // recovery and allow the alternate resolver to be attempted again if the
                         // original stream still fails for a non-network reason.
@@ -848,6 +883,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                         }
                     }
                     syncPlayback(videoId)
+                }
+            } finally {
+                if (fallbackGeneration == youtubeFallbackGeneration) {
+                    youtubeFallbackVideoId = null
+                    syncPlayback()
                 }
             }
         }
@@ -1569,33 +1609,42 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         preferOriginalAudio: Boolean,
         priority: EngineResolvePriority,
     ): VideoUiModel {
-        if (video.playbackUrl.isNotBlank()) return video
-        val dualEnginePlayback = video.isYoutubeVideo() &&
+        val routedVideo = repairLegacyVideoSource(video).let { repaired ->
+            if (repaired.sourceId == video.sourceId) repaired else repaired.copy(
+                sourceIconUrl = pluginEndpoints[repaired.sourceId]?.iconUrl.orEmpty(),
+            )
+        }
+        if (routedVideo.playbackUrl.isNotBlank()) return routedVideo
+        val dualEnginePlayback = routedVideo.isYoutubeVideo() &&
             (priority == EngineResolvePriority.UserPlayback || useNewPipeYoutubeBackend)
         val source = if (dualEnginePlayback) {
             val resolved = resolveYoutubeWithFallback(
-                video = video,
+                video = routedVideo,
                 preferredAudioLanguage = preferredAudioLanguage,
                 preferOriginalAudio = preferOriginalAudio,
             )
-            youtubeResolverByVideoId[video.id] = resolved.resolver
-            youtubeResolveRequestByVideoId[video.id] = YoutubeResolveRequest(
-                video = video,
-                preferredAudioLanguage = preferredAudioLanguage,
-                preferOriginalAudio = preferOriginalAudio,
-            )
-            youtubeRuntimeFallbackAttempted.remove(video.id)
+            if (priority.tracksPlaybackRecovery) {
+                // Metadata hydration/downloads may resolve this same video concurrently with
+                // playback. They must not replace its selected audio/resolver or reset retries.
+                youtubeResolverByVideoId[routedVideo.id] = resolved.resolver
+                youtubeResolveRequestByVideoId[routedVideo.id] = YoutubeResolveRequest(
+                    video = routedVideo,
+                    preferredAudioLanguage = preferredAudioLanguage,
+                    preferOriginalAudio = preferOriginalAudio,
+                )
+                youtubeRuntimeFallbackAttempted.remove(routedVideo.id)
+            }
             Log.i(TAG, "Resolved YouTube playback with ${resolved.resolver.name}.")
             resolved.source
         } else {
             resolveWithGrayjayPlugin(
-                video = video,
+                video = routedVideo,
                 preferredAudioLanguage = preferredAudioLanguage,
                 preferOriginalAudio = preferOriginalAudio,
                 backgroundMetadata = priority == EngineResolvePriority.BackgroundMetadata,
             )
         }
-        return video.withPlaybackSource(source)
+        return routedVideo.withPlaybackSource(source)
     }
 
     private suspend fun resolveYoutubeWithFallback(
@@ -1799,7 +1848,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     )
 
     private fun VideoUiModel.isYoutubeVideo(): Boolean =
-        sourceId.equals("youtube", ignoreCase = true)
+        sourceId.equals("youtube", ignoreCase = true) &&
+            isYoutubeContentReference(contentUrl.ifBlank { id })
 
     override fun configureVideoTitleLanguage(preferOriginal: Boolean, languageTag: String) {
         preferOriginalVideoTitles = preferOriginal
@@ -1930,17 +1980,20 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         currentVideoId: String,
         playWhenReady: Boolean,
     ) {
+        youtubeFallbackGeneration++
+        youtubeFallbackVideoId = null
+        youtubeRuntimeFallbackJob?.cancel()
+        youtubeRuntimeFallbackJob = null
+        playbackRecoveryGuard.reset()
         resetConnectivityRecovery()
         val playableVideos = videos.filter {
             it.playbackUrl.isNotBlank() || it.playbackManifest.isNotBlank()
         }
         val nextPluginDataSources = playableVideos.pluginDataSourceFactories()
-        activePluginDataSources
-            .filterNot(nextPluginDataSources::contains)
-            .forEach(JSHttpDataSource.Factory::closeExecutors)
-        activePluginDataSources = nextPluginDataSources
         val currentIndex = playableVideos.indexOfFirst { it.id == currentVideoId }
         if (currentIndex == -1) {
+            activePluginDataSources.forEach(JSHttpDataSource.Factory::closeExecutors)
+            activePluginDataSources = emptySet()
             audioSpectrumAnalyzer.setEnabled(false)
             queueIds = listOf(currentVideoId)
             openedVideos = emptyList()
@@ -1953,20 +2006,26 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             return
         }
 
-        queueIds = playableVideos.map(VideoUiModel::id)
-        openedVideos = playableVideos
-        updateAudioSpectrumAnalysis(currentVideoId)
         val automaticVariantHeights = playableVideos.map {
             it.nearestQualityVariantHeight(AUTOMATIC_VIDEO_HEIGHT)
         }
+        // Parsing a plugin-provided manifest can fail synchronously. Keep the previous
+        // player/source ownership intact until the replacement is fully constructed.
+        val mediaSources = playableVideos.mapIndexed { index, video ->
+            video.buildMediaSource(automaticVariantHeights[index])
+        }
+        activePluginDataSources
+            .filterNot(nextPluginDataSources::contains)
+            .forEach(JSHttpDataSource.Factory::closeExecutors)
+        activePluginDataSources = nextPluginDataSources
+        queueIds = playableVideos.map(VideoUiModel::id)
+        openedVideos = playableVideos
+        updateAudioSpectrumAnalysis(currentVideoId)
         activeQualityVariantHeight = automaticVariantHeights[currentIndex]
         activeQualityVariantVideoId = currentVideoId.takeIf {
             activeQualityVariantHeight != null
         }
         lastError = null
-        val mediaSources = playableVideos.mapIndexed { index, video ->
-            video.buildMediaSource(automaticVariantHeights[index])
-        }
         captionsEnabled = false
         selectedSubtitleLanguage = null
         selectedSubtitleTrackIndex = null
@@ -2006,20 +2065,21 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             ?: return
         if (openedVideos.getOrNull(currentIndex)?.id != video.id) return
 
-        lastError = null
         val updated = openedVideos.toMutableList().apply { this[currentIndex] = video }
         val nextPluginDataSources = updated.pluginDataSourceFactories()
+        val targetHeight = selectedVideoQuality ?: AUTOMATIC_VIDEO_HEIGHT
+        val mediaSources = updated.map { queuedVideo ->
+            queuedVideo.buildMediaSource(queuedVideo.nearestQualityVariantHeight(targetHeight))
+        }
+        lastError = null
         activePluginDataSources
             .filterNot(nextPluginDataSources::contains)
             .forEach(JSHttpDataSource.Factory::closeExecutors)
         openedVideos = updated
         activePluginDataSources = nextPluginDataSources
         selectedAudioLanguage = video.resolvedAudioLanguage
-        val targetHeight = selectedVideoQuality ?: AUTOMATIC_VIDEO_HEIGHT
         exoPlayer.setMediaSources(
-            updated.map { queuedVideo ->
-                queuedVideo.buildMediaSource(queuedVideo.nearestQualityVariantHeight(targetHeight))
-            },
+            mediaSources,
             currentIndex,
             positionMs.coerceAtLeast(0L),
         )
@@ -2034,19 +2094,22 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         if (exoPlayer.mediaItemCount == 0) return
         val existingIds = openedVideos.mapTo(mutableSetOf(), VideoUiModel::id)
         val additions = videos.filter {
-            it.id !in existingIds &&
-                (it.playbackUrl.isNotBlank() || it.playbackManifest.isNotBlank())
+            (it.playbackUrl.isNotBlank() || it.playbackManifest.isNotBlank()) &&
+                existingIds.add(it.id)
         }
         if (additions.isEmpty()) return
 
-        activePluginDataSources = activePluginDataSources + additions.pluginDataSourceFactories()
         val targetHeight = selectedVideoQuality ?: AUTOMATIC_VIDEO_HEIGHT
-        additions.forEach { video ->
+        val mediaSources = additions.map { video ->
+            video.buildMediaSource(video.nearestQualityVariantHeight(targetHeight))
+        }
+        activePluginDataSources = activePluginDataSources + additions.pluginDataSourceFactories()
+        additions.forEachIndexed { additionIndex, video ->
             val index = queueInsertionIndex(queueIds, orderedVideoIds, video.id)
             openedVideos = openedVideos.toMutableList().apply { add(index, video) }
             queueIds = queueIds.toMutableList().apply { add(index, video.id) }
             exoPlayer.addMediaSource(
-                index, video.buildMediaSource(video.nearestQualityVariantHeight(targetHeight)),
+                index, mediaSources[additionIndex],
             )
         }
         syncPlayback()
@@ -2340,19 +2403,19 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override fun seekBy(deltaMs: Long) {
         if (exoPlayer.mediaItemCount == 0) return
         val duration = exoPlayer.duration.takeIf { it != C.TIME_UNSET && it > 0 }
-        val target = (exoPlayer.currentPosition + deltaMs).coerceAtLeast(0L)
-        exoPlayer.seekTo(if (duration == null) target else target.coerceAtMost(duration))
+        exoPlayer.seekTo(clampedSeekPosition(exoPlayer.currentPosition, deltaMs, duration))
         syncPlayback()
     }
 
     override fun seekToFraction(fraction: Float) {
+        if (!fraction.isFinite()) return
         val duration = exoPlayer.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
         exoPlayer.seekTo((duration * fraction.coerceIn(0f, 1f)).toLong())
         syncPlayback()
     }
 
     override fun setPlaybackSpeed(speed: Float) {
-        exoPlayer.setPlaybackSpeed(speed.coerceIn(0.25f, 3f))
+        exoPlayer.setPlaybackSpeed(normalizedPlaybackSpeed(speed))
         syncPlayback()
     }
 
@@ -2370,7 +2433,6 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             ?.let { openedVideos[it].nearestQualityVariantHeight(targetHeight) }
         val hasPluginVariant = nextVariantHeight != null
 
-        selectedVideoQuality = requestedHeight
         val nextVariantVideoId = currentVideoId.takeIf { nextVariantHeight != null }
         if (
             (activeQualityVariantHeight != nextVariantHeight ||
@@ -2379,11 +2441,14 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         ) {
             val currentPosition = exoPlayer.currentPosition.coerceAtLeast(0L)
             val shouldPlay = exoPlayer.playWhenReady
-            activeQualityVariantHeight = nextVariantHeight
-            activeQualityVariantVideoId = nextVariantVideoId
             val sources = openedVideos.map { video ->
                 video.buildMediaSource(video.nearestQualityVariantHeight(targetHeight))
             }
+            // Do not advertise the new quality or destroy the previous source until every
+            // manifest has parsed successfully. The caller can report a rejected selection.
+            activeQualityVariantHeight = nextVariantHeight
+            activeQualityVariantVideoId = nextVariantVideoId
+            lastError = null
             exoPlayer.setMediaSources(sources, currentVideoIndex, currentPosition)
             exoPlayer.prepare()
             exoPlayer.playWhenReady = shouldPlay
@@ -2391,6 +2456,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             activeQualityVariantHeight = nextVariantHeight
             activeQualityVariantVideoId = nextVariantVideoId
         }
+
+        selectedVideoQuality = requestedHeight
 
         Log.i(
             TAG,
@@ -2529,6 +2596,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun closePlayback() {
+        youtubeFallbackGeneration++
+        youtubeFallbackVideoId = null
         resetConnectivityRecovery()
         PlaybackNotificationService.dismiss(appContext, exoPlayer)
         youtubeRuntimeFallbackJob?.cancel()
@@ -2560,6 +2629,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override fun refreshProgress() = syncPlayback()
 
     override fun release() {
+        youtubeFallbackGeneration++
+        youtubeFallbackVideoId = null
         PlaybackNotificationService.dismiss(appContext, exoPlayer)
         resetConnectivityRecovery()
         connectivityRecoveryScope.cancel()
@@ -2699,7 +2770,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             queueVideoIds = queueIds,
             isPlaying = exoPlayer.playWhenReady && exoPlayer.playbackState != Player.STATE_ENDED,
             isBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING ||
-                connectivityRecoveryPending,
+                connectivityRecoveryPending || (currentVideoId != null && currentVideoId == youtubeFallbackVideoId),
             positionMs = exoPlayer.currentPosition.coerceAtLeast(0L),
             durationMs = duration,
             bufferedPercentage = exoPlayer.bufferedPercentage.coerceIn(0, 100),
@@ -3006,7 +3077,12 @@ private fun String.toDisplayName(): String =
     split('-').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
 
 internal fun sourceIdHintForUrl(url: String): String? {
-    val host = runCatching { URI.create(url).host?.lowercase() }.getOrNull().orEmpty()
+    val uri = runCatching { URI.create(url.trim()) }.getOrNull() ?: return null
+    if (uri.scheme.equals("lbry", true) && uri.rawSchemeSpecificPart.orEmpty().trim('/').isNotBlank()) {
+        return "odysee"
+    }
+    if (!uri.scheme.equals("http", true) && !uri.scheme.equals("https", true)) return null
+    val host = uri.host?.lowercase(java.util.Locale.ROOT).orEmpty()
     return when {
         host == "youtu.be" || host.endsWith(".youtube.com") || host == "youtube.com" -> "youtube"
         host == "odysee.com" || host.endsWith(".odysee.com") -> "odysee"
@@ -3022,6 +3098,7 @@ internal fun sourceIdHintForUrl(url: String): String? {
             host == "dai.ly" -> "dailymotion"
         host == "bitchute.com" || host.endsWith(".bitchute.com") -> "bitchute"
         host == "patreon.com" || host.endsWith(".patreon.com") -> "patreon"
+        host == "crunchyroll.com" || host.endsWith(".crunchyroll.com") -> "crunchyroll"
         else -> null
     }
 }

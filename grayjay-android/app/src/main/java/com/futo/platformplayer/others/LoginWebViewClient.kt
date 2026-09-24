@@ -58,8 +58,9 @@ open class LoginWebViewClient : WebViewClient {
     }
 
     //TODO: Use new WebViewRequirementExtractor when time to test extensively
+    @Synchronized
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-        if(request == null)
+        if(request == null || request.url.host == null)
             return super.shouldInterceptRequest(view, request as WebResourceRequest?);
 
         if (_authConfig.allowedDomains != null && !_authConfig.allowedDomains.contains(request.url.host)) {
@@ -202,8 +203,10 @@ open class LoginWebViewClient : WebViewClient {
 
         if (urlFound && headersFound && domainHeadersFound && cookiesFound) {
             onLogin.emit(SourceAuth(
-                cookieMap = cookiesFoundMap,
-                headers = headersFoundMap, /*.associate { headerToFind ->
+                // WebView invokes this on request threads. Never share its mutable collectors
+                // with the UI or persistence code after this synchronized callback returns.
+                cookieMap = HashMap(cookiesFoundMap.mapValues { HashMap(it.value) }),
+                headers = headersFoundMap.mapValues { it.value.toMap() }, /*.associate { headerToFind ->
                     headerToFind to headersFoundMap.firstNotNullOf { requestHeader ->
                         if (requestHeader.key.equals(headerToFind, ignoreCase = true))
                             requestHeader.value

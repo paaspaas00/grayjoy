@@ -58,6 +58,7 @@ class GrayjayAppActions {
     var onDownloadPlaylist: (String, DownloadMediaType) -> Unit = { _, _ -> }
     var onCancelDownloadPlaylist: (String, DownloadMediaType) -> Unit = { _, _ -> }
     var onCancelActiveDownloads: () -> Unit = {}
+    var onCancelMediaExport: (String) -> Unit = {}
     var onPlaylistAutomaticDownloadChange:
         (String, DownloadMediaType, Boolean) -> Unit = { _, _, _ -> }
     var onCreatePlaylist: (String, List<String>) -> Unit = { _, _ -> }

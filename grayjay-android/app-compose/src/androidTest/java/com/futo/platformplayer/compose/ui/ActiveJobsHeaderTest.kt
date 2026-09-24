@@ -24,6 +24,42 @@ class ActiveJobsHeaderTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    @Test fun mediaExportHasProgressAndItsOwnCancellation() {
+        var cancelled: String? = null
+        composeRule.setContent {
+            GrayjayTheme(dynamicColor = false, darkTheme = false) {
+                val jobs = rememberActiveJobItems(
+                    youtubeImport = YoutubeImportUiState(),
+                    backgroundYoutubeImport = BackgroundYoutubeImportUiState(),
+                    databaseImport = DatabaseImportUiState(),
+                    downloads = emptyMap(), videos = emptyList(),
+                    sourceOperationInProgress = false, sourceOperationMessage = null,
+                    updateDownload = null, libraryTransfer = LibraryTransferUiState(),
+                    mediaExports = listOf(MediaExportUiState(
+                        id = "fixture", mediaType = DownloadMediaType.Audio, completed = 1,
+                        total = 4, currentTitle = "Export fixture", progress = 0.4f,
+                    )),
+                )
+                ActiveJobsPanel(
+                    visible = true, jobs = jobs,
+                    onCancelYoutubeImports = { error("Wrong cancellation target") },
+                    onCancelDownloads = { error("Must preserve original downloads") },
+                    onOpenJob = {},
+                    onCancelMediaExport = { cancelled = it },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("active-job-card-media-export:fixture").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(
+            composeRule.activity.getString(R.string.cancel),
+        ).performClick()
+        composeRule.onNodeWithText(
+            composeRule.activity.getString(R.string.cancel_media_export_title),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.cancel)).performClick()
+        composeRule.runOnIdle { org.junit.Assert.assertEquals("fixture", cancelled) }
+    }
+
     @Test
     fun youtubeImportProgressAndCancellationAreAvailableFromHeader() {
         var cancelled = false

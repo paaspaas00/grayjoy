@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebStorage
 import android.webkit.RenderProcessGoneDetail
 import android.widget.Button
 import android.widget.LinearLayout
@@ -28,13 +29,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 
 class SourceLoginActivity : ComponentActivity() {
     private var webView: WebView? = null
     private val loginCompleted = AtomicBoolean(false)
     private var channelWarningShown = false
+    private var pendingProfileAuth: SourceAuth? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,10 +51,9 @@ class SourceLoginActivity : ComponentActivity() {
         lifecycleScope.launch {
             val config = runCatching {
                 val cached = File(filesDir, "grayjay-js-plugins/$pluginId/config.json")
-                val text = withContext(Dispatchers.IO) {
-                    if (cached.isFile) cached.readText() else URL(configUrl).readText()
+                withContext(Dispatchers.IO) {
+                    SourcePluginConfig.fromJson(loadSourceLoginConfig(cached, configUrl), configUrl)
                 }
-                SourcePluginConfig.fromJson(text, configUrl)
             }.getOrElse {
                 if (it is CancellationException) throw it
                 finishWithError(it.localizedMessage ?: getString(R.string.source_login_page_failed))
@@ -64,7 +64,10 @@ class SourceLoginActivity : ComponentActivity() {
                 finishWithError(getString(R.string.source_does_not_support_login, config.name))
                 return@launch
             }
-            showWebLogin(config, profileId, sourceId)
+            val savedAuth = withContext(Dispatchers.IO) {
+                GrayjayPluginAuthStore.load(this@SourceLoginActivity, profileId, config.id)
+            }
+            showWebLogin(config, profileId, sourceId, savedAuth)
         }
     }
 
@@ -81,16 +84,44 @@ class SourceLoginActivity : ComponentActivity() {
         config: SourcePluginConfig,
         profileId: String,
         sourceId: String,
+        savedAuth: SourceAuth?,
     ) {
         val authConfig = requireNotNull(config.authentication)
+        val chooseAccountProfile = sourceId.equals("crunchyroll", ignoreCase = true)
+        pendingProfileAuth = savedAuth
         val statusText = TextView(this).apply {
             text = getString(R.string.sign_in_to_source_name, config.name)
-            maxLines = 2
+            maxLines = if (chooseAccountProfile) 4 else 2
             setPadding(24, 18, 12, 18)
         }
         val close = Button(this).apply {
             text = getString(R.string.close)
             setOnClickListener { finish() }
+        }
+        val useProfile = Button(this).apply {
+            text = getString(R.string.use_selected_source_profile)
+            isEnabled = false
+            visibility = if (chooseAccountProfile) android.view.View.VISIBLE else android.view.View.GONE
+            setOnClickListener {
+                val latest = pendingProfileAuth ?: return@setOnClickListener
+                val manager = CookieManager.getInstance()
+                val cookies = hashMapOf<String, HashMap<String, String>>()
+                latest.cookieMap.orEmpty().forEach { (domain, values) ->
+                    if (domain.trimStart('.').let { it == "crunchyroll.com" || it.endsWith(".crunchyroll.com") }) {
+                        cookies[domain] = HashMap(values)
+                    }
+                }
+                val current = parseCookies(manager.getCookie("https://www.crunchyroll.com/"))
+                val sessionCookie = current["etp_rt"]?.takeIf(String::isNotBlank)
+                    ?: return@setOnClickListener
+                // Replace every captured copy: a stale parent-domain refresh cookie must not
+                // override the profile selected on the website.
+                cookies.values.forEach { it["etp_rt"] = sessionCookie }
+                cookies.getOrPut(".crunchyroll.com") { hashMapOf() }.putAll(current)
+                completeLogin(profileId, config.id, sourceId, SourceAuth(
+                    cookieMap = cookies, headers = latest.headers, userAgent = latest.userAgent,
+                ))
+            }
         }
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -111,6 +142,14 @@ class SourceLoginActivity : ComponentActivity() {
             setAcceptThirdPartyCookies(browser, true)
         }
         val client = object : LoginWebViewClient(config, browser.settings.userAgentString) {
+            override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+                super.doUpdateVisitedHistory(view, url, isReload)
+                // Profile selection can be an SPA navigation without onPageFinished.
+                if (chooseAccountProfile && webView === view) {
+                    useProfile.isEnabled = pendingProfileAuth != null &&
+                        isSourceProfileConfirmationPage(url.orEmpty())
+                }
+            }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 // This WebView can never be reused after renderer termination.
                 val wasCurrent = webView === view
@@ -124,13 +163,18 @@ class SourceLoginActivity : ComponentActivity() {
         client.onPageLoaded.subscribe { _, url ->
             if (isFinishing || isDestroyed || webView !== browser) return@subscribe
             val pageUri = Uri.parse(url.orEmpty())
+            if (chooseAccountProfile) {
+                statusText.text = getString(R.string.choose_source_profile_instructions)
+                useProfile.isEnabled = pendingProfileAuth != null &&
+                    isSourceProfileConfirmationPage(url.orEmpty())
+            }
             val isChannelSwitcher = url.orEmpty().contains("/channel_switcher", ignoreCase = true) ||
                 (
                     config.name.equals("Youtube", ignoreCase = true) &&
                         pageUri.host.orEmpty().endsWith(".youtube.com", ignoreCase = true) &&
                         pageUri.path == "/account"
                     )
-            statusText.text = when {
+            if (!chooseAccountProfile) statusText.text = when {
                 isChannelSwitcher ->
                     getString(R.string.select_youtube_channel_to_finish)
                 Uri.parse(url.orEmpty()).host.orEmpty().contains("accounts.google", ignoreCase = true) ->
@@ -159,13 +203,22 @@ class SourceLoginActivity : ComponentActivity() {
         }
         client.onLogin.subscribe { auth ->
             runOnUiThread {
-                completeLogin(profileId, config.id, sourceId, auth)
+                if (isFinishing || isDestroyed || webView !== browser || loginCompleted.get()) {
+                    return@runOnUiThread
+                }
+                if (chooseAccountProfile) {
+                    pendingProfileAuth = auth
+                    useProfile.isEnabled = isSourceProfileConfirmationPage(browser.url.orEmpty())
+                } else {
+                    completeLogin(profileId, config.id, sourceId, auth)
+                }
             }
         }
         browser.webViewClient = client
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(toolbar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(useProfile, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(browser, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
@@ -175,7 +228,31 @@ class SourceLoginActivity : ComponentActivity() {
         }
         setContentView(root)
         ViewCompat.requestApplyInsets(root)
-        browser.loadUrl(authConfig.loginUrl)
+        val openLogin = {
+            if (!isFinishing && !isDestroyed && webView === browser) {
+                browser.loadUrl(if (chooseAccountProfile && savedAuth != null) {
+                    "https://www.crunchyroll.com/"
+                } else authConfig.loginUrl)
+            }
+        }
+        val seedCookies = sourceLoginCookieSeeds(savedAuth)
+        // CookieManager is app-wide, while plugin credentials belong to a Grayjoy profile.
+        // Finish clearing the previous web session before restoring only this profile's cookies.
+        // This does not remove the saved authentication of any source or profile.
+        val cookieManager = CookieManager.getInstance()
+        WebStorage.getInstance().deleteAllData()
+        cookieManager.removeAllCookies {
+            if (!isFinishing && !isDestroyed && webView === browser) {
+                if (seedCookies.isEmpty()) openLogin() else {
+                    val remaining = java.util.concurrent.atomic.AtomicInteger(seedCookies.size)
+                    seedCookies.forEach { (url, cookie) ->
+                        cookieManager.setCookie(url, cookie) {
+                            if (remaining.decrementAndGet() == 0) runOnUiThread { openLogin() }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun maybeCompleteYoutubeLogin(
@@ -243,17 +320,27 @@ class SourceLoginActivity : ComponentActivity() {
     ) {
         if (isFinishing || isDestroyed || webView == null) return
         if (!loginCompleted.compareAndSet(false, true)) return
-        GrayjayPluginAuthStore.save(this, profileId, pluginId, auth)
-        CookieManager.getInstance().flush()
-        setResult(
-            Activity.RESULT_OK,
-            Intent().putExtra(EXTRA_SOURCE_ID, sourceId),
-        )
-        finish()
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    GrayjayPluginAuthStore.save(this@SourceLoginActivity, profileId, pluginId, auth)
+                    CookieManager.getInstance().flush()
+                }
+                setResult(
+                    Activity.RESULT_OK,
+                    Intent().putExtra(EXTRA_SOURCE_ID, sourceId),
+                )
+                finish()
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                finishWithError(error.localizedMessage ?: getString(R.string.source_login_page_failed))
+            }
+        }
     }
 
     private fun finishWithError(message: String) {
         if (isFinishing || isDestroyed) return
+        disposeWebView()
         setResult(Activity.RESULT_CANCELED, Intent().putExtra(EXTRA_ERROR, message))
         setContentView(
             TextView(this).apply {
@@ -265,6 +352,11 @@ class SourceLoginActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        disposeWebView()
+        super.onDestroy()
+    }
+
+    private fun disposeWebView() {
         val browser = webView
         webView = null
         browser?.apply {
@@ -273,7 +365,6 @@ class SourceLoginActivity : ComponentActivity() {
             stopLoading()
             destroy()
         }
-        super.onDestroy()
     }
 
     companion object {
@@ -293,3 +384,11 @@ class SourceLoginActivity : ComponentActivity() {
             }
     }
 }
+
+internal fun isSourceProfileConfirmationPage(url: String): Boolean = runCatching {
+    val uri = java.net.URI(url)
+    val host = uri.host.orEmpty().lowercase()
+    val path = uri.path.orEmpty().lowercase()
+    uri.scheme == "https" && (host == "www.crunchyroll.com" || host == "crunchyroll.com") &&
+        !path.contains("login") && !path.contains("profile")
+}.getOrDefault(false)

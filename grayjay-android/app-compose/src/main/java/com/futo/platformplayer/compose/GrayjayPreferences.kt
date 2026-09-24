@@ -21,6 +21,8 @@ internal data class AccountImportPreferenceSnapshot(
 
 internal class GrayjayPreferences(context: Context, profileId: String = "main") {
     private val appContext = context.applicationContext
+    private val storageProfileId = profileId
+    internal val accountImportLock: Any = com.futo.platformplayer.compose.data.profileDataLock(context, profileId)
     private val defaultThemeMode = if (profileId == PRIVATE_PROFILE_ID) {
         ThemeMode.Dark
     } else {
@@ -52,9 +54,12 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         }
 
     var defaultPlaybackSpeed: Float
-        get() = preferences.getFloat(KEY_DEFAULT_PLAYBACK_SPEED, 1f)
+        get() = com.futo.platformplayer.compose.engine.normalizedPlaybackSpeed(
+            preferences.getFloat(KEY_DEFAULT_PLAYBACK_SPEED, 1f),
+        )
         set(value) {
-            preferences.edit().putFloat(KEY_DEFAULT_PLAYBACK_SPEED, value.coerceIn(0.25f, 3f)).apply()
+            preferences.edit().putFloat(KEY_DEFAULT_PLAYBACK_SPEED,
+                com.futo.platformplayer.compose.engine.normalizedPlaybackSpeed(value)).apply()
         }
 
     var perChannelPlaybackSpeedEnabled: Boolean
@@ -290,75 +295,86 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
     fun isCreatorFollowed(creatorId: String): Boolean =
         creatorId.isNotBlank() && creatorId in followedCreatorIds()
 
-    @Synchronized
     fun setCreatorFollowed(creatorId: String, followed: Boolean) {
-        if (creatorId.isBlank()) return
-        val updated = followedCreatorIds().toMutableSet()
-        if (followed) updated += creatorId else updated -= creatorId
-        preferences.edit().putStringSet(KEY_FOLLOWED_CREATORS, updated).apply()
-    }
-
-    fun followedCreatorIds(): Set<String> =
-        preferences.getStringSet(KEY_FOLLOWED_CREATORS, emptySet()).orEmpty().toSet()
-
-    @Synchronized
-    fun initializeFollowedCreators(defaultCreatorIds: Set<String>): Set<String> {
-        if (preferences.getBoolean(KEY_FOLLOWING_INITIALIZED, false)) return followedCreatorIds()
-        val initialized = followedCreatorIds() + defaultCreatorIds.filter(String::isNotBlank)
-        preferences.edit()
-            .putStringSet(KEY_FOLLOWED_CREATORS, initialized)
-            .putBoolean(KEY_FOLLOWING_INITIALIZED, true)
-            .apply()
-        return initialized
-    }
-
-    @Synchronized
-    fun mergeImportedSubscriptions(channels: List<ChannelUiModel>) {
-        if (channels.isEmpty()) return
-        val currentChannels = loadImportedChannels().associateByTo(linkedMapOf(), ChannelUiModel::id)
-        channels.forEach { imported ->
-            val current = currentChannels[imported.id]
-            currentChannels[imported.id] = if (current == null) imported else current.copy(
-                name = imported.name.ifBlank { current.name },
-                sourceId = imported.sourceId.ifBlank { current.sourceId },
-                source = imported.source.ifBlank { current.source },
-                followerCount = imported.followerCount.takeUnless { it == "Creator" }
-                    ?: current.followerCount,
-                description = imported.description.ifBlank { current.description },
-                thumbnailUrl = imported.thumbnailUrl.ifBlank { current.thumbnailUrl },
-            )
+        return synchronized(accountImportLock) {
+            if (creatorId.isBlank()) return
+            com.futo.platformplayer.compose.data.ensureAccountImportWritesAllowed(appContext, storageProfileId)
+            val updated = followedCreatorIds().toMutableSet()
+            if (followed) updated += creatorId else updated -= creatorId
+            preferences.edit().putStringSet(KEY_FOLLOWED_CREATORS, updated).apply()
         }
-        val followed = followedCreatorIds() + channels.map(ChannelUiModel::id).filter(String::isNotBlank)
-        val json = JSONArray().apply {
-            currentChannels.values.forEach { channel ->
-                put(
-                    JSONObject().apply {
-                        put("id", channel.id)
-                        put("name", channel.name)
-                        put("sourceId", channel.sourceId)
-                        put("source", channel.source)
-                        put("unreadCount", channel.unreadCount)
-                        put("followerCount", channel.followerCount)
-                        put("description", channel.description)
-                        put("thumbnailUrl", channel.thumbnailUrl)
-                    },
+    }
+
+    fun followedCreatorIds(): Set<String> = synchronized(accountImportLock) {
+        preferences.getStringSet(KEY_FOLLOWED_CREATORS, emptySet()).orEmpty().toSet()
+    }
+
+    fun initializeFollowedCreators(defaultCreatorIds: Set<String>): Set<String> {
+        return synchronized(accountImportLock) {
+            if (preferences.getBoolean(KEY_FOLLOWING_INITIALIZED, false)) return followedCreatorIds()
+            try {
+                com.futo.platformplayer.compose.data.ensureAccountImportWritesAllowed(appContext, storageProfileId)
+            } catch (_: com.futo.platformplayer.compose.data.AccountImportRecoveryBlockedException) {
+                return followedCreatorIds()
+            }
+            val initialized = followedCreatorIds() + defaultCreatorIds.filter(String::isNotBlank)
+            preferences.edit()
+                .putStringSet(KEY_FOLLOWED_CREATORS, initialized)
+                .putBoolean(KEY_FOLLOWING_INITIALIZED, true)
+                .apply()
+            return initialized
+        }
+    }
+
+    fun mergeImportedSubscriptions(channels: List<ChannelUiModel>) {
+        return synchronized(accountImportLock) {
+            if (channels.isEmpty()) return
+            com.futo.platformplayer.compose.data.ensureAccountImportWritesAllowed(appContext, storageProfileId)
+            val currentChannels = loadImportedChannels().associateByTo(linkedMapOf(), ChannelUiModel::id)
+            channels.forEach { imported ->
+                val current = currentChannels[imported.id]
+                currentChannels[imported.id] = if (current == null) imported else current.copy(
+                    name = imported.name.ifBlank { current.name },
+                    sourceId = imported.sourceId.ifBlank { current.sourceId },
+                    source = imported.source.ifBlank { current.source },
+                    followerCount = imported.followerCount.takeUnless { it == "Creator" }
+                        ?: current.followerCount,
+                    description = imported.description.ifBlank { current.description },
+                    thumbnailUrl = imported.thumbnailUrl.ifBlank { current.thumbnailUrl },
                 )
             }
+            val followed = followedCreatorIds() + channels.map(ChannelUiModel::id).filter(String::isNotBlank)
+            val json = JSONArray().apply {
+                currentChannels.values.forEach { channel ->
+                    put(
+                        JSONObject().apply {
+                            put("id", channel.id)
+                            put("name", channel.name)
+                            put("sourceId", channel.sourceId)
+                            put("source", channel.source)
+                            put("unreadCount", channel.unreadCount)
+                            put("followerCount", channel.followerCount)
+                            put("description", channel.description)
+                            put("thumbnailUrl", channel.thumbnailUrl)
+                        },
+                    )
+                }
+            }
+            preferences.edit()
+                .putStringSet(KEY_FOLLOWED_CREATORS, followed)
+                .putBoolean(KEY_FOLLOWING_INITIALIZED, true)
+                .putString(KEY_IMPORTED_CHANNELS, json.toString())
+                .apply()
         }
-        preferences.edit()
-            .putStringSet(KEY_FOLLOWED_CREATORS, followed)
-            .putBoolean(KEY_FOLLOWING_INITIALIZED, true)
-            .putString(KEY_IMPORTED_CHANNELS, json.toString())
-            .apply()
     }
 
-    internal fun createAccountImportSnapshot() = AccountImportPreferenceSnapshot(
+    internal fun createAccountImportSnapshot() = synchronized(accountImportLock) { AccountImportPreferenceSnapshot(
         followedCreatorIds = followedCreatorIds(),
         followingInitialized = preferences.getBoolean(KEY_FOLLOWING_INITIALIZED, false),
         importedChannelsJson = preferences.getString(KEY_IMPORTED_CHANNELS, "[]").orEmpty(),
-    )
+    ) }
 
-    internal fun restoreAccountImportSnapshot(snapshot: AccountImportPreferenceSnapshot) {
+    internal fun restoreAccountImportSnapshot(snapshot: AccountImportPreferenceSnapshot) = synchronized(accountImportLock) {
         check(
             preferences.edit()
                 .putStringSet(KEY_FOLLOWED_CREATORS, snapshot.followedCreatorIds)
@@ -368,7 +384,7 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         ) { "Could not restore subscriptions after a cancelled import." }
     }
 
-    fun loadImportedChannels(): List<ChannelUiModel> = runCatching {
+    fun loadImportedChannels(): List<ChannelUiModel> = synchronized(accountImportLock) { runCatching {
         val array = JSONArray(preferences.getString(KEY_IMPORTED_CHANNELS, "[]"))
         buildList {
             for (index in 0 until array.length()) {
@@ -389,7 +405,7 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
                 )
             }
         }
-    }.getOrDefault(emptyList())
+    }.getOrDefault(emptyList()) }
 
     private fun playbackSpeedMap(key: String): Map<String, Float> = runCatching {
         val json = JSONObject(preferences.getString(key, "{}").orEmpty())
@@ -405,7 +421,7 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         if (id.isBlank()) return
         val updated = playbackSpeedMap(key).toMutableMap()
         if (speed == null) updated.remove(id)
-        else updated[id] = speed.coerceIn(0.25f, 3f)
+        else updated[id] = com.futo.platformplayer.compose.engine.normalizedPlaybackSpeed(speed)
         val json = JSONObject().apply {
             updated.forEach { (entryId, entrySpeed) -> put(entryId, entrySpeed.toDouble()) }
         }

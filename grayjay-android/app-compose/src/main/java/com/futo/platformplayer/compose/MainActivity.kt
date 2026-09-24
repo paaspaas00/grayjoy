@@ -351,6 +351,7 @@ class MainActivity : FragmentActivity() {
                     onDownloadPlaylist = viewModel::downloadPlaylist
                     onCancelDownloadPlaylist = viewModel::cancelPlaylistDownload
                     onCancelActiveDownloads = viewModel::cancelActiveDownloads
+                    onCancelMediaExport = viewModel::cancelMediaExport
                     onPlaylistAutomaticDownloadChange = viewModel::setPlaylistAutomaticDownload
                     onLoadRemotePlaylist = viewModel::loadRemotePlaylist
                     onLoadMoreRemotePlaylist = viewModel::loadMoreRemotePlaylist
