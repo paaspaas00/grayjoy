@@ -1,5 +1,7 @@
 package com.futo.platformplayer.compose.engine
 
+import com.futo.platformplayer.compose.shorts.withoutShortsPrefixCache
+
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
@@ -253,9 +255,9 @@ data class EngineUserImportResult(
 )
 
 enum class EngineResolvePriority {
-    UserPlayback, Download, BackgroundMetadata;
+    UserPlayback, Download, BackgroundMetadata, Prefetch;
 
-    internal val tracksPlaybackRecovery: Boolean get() = this == UserPlayback
+    internal val tracksPlaybackRecovery: Boolean get() = this == UserPlayback || this == Prefetch
 }
 
 internal enum class YoutubePlaybackResolver { Grayjay, NewPipe }
@@ -437,6 +439,7 @@ interface GrayjayEngine {
     suspend fun loadMoreComments(continuationId: String): EngineCommentPage
     suspend fun loadCommentReplies(commentId: String): EngineCommentPage
     fun open(videos: List<VideoUiModel>, currentVideoId: String, playWhenReady: Boolean)
+    fun retainPrefetchedPlaybackSources(videos: List<VideoUiModel>) = Unit
     fun replaceCurrent(video: VideoUiModel, positionMs: Long, playWhenReady: Boolean)
     fun appendToQueue(videos: List<VideoUiModel>, orderedVideoIds: List<String> = emptyList())
     fun moveQueueItemNext(videoId: String)
@@ -645,6 +648,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private val youtubeResolveRequestByVideoId =
         ConcurrentHashMap<String, YoutubeResolveRequest>()
     private val youtubeRuntimeFallbackAttempted = ConcurrentHashMap.newKeySet<String>()
+    private val speculativePlaybackIds = ConcurrentHashMap.newKeySet<String>()
     private val youtubeFallbackScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var youtubeRuntimeFallbackJob: Job? = null
     private var youtubeFallbackGeneration = 0L
@@ -657,6 +661,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private var connectivityRecoveryPending = false
     private val playbackRecoveryGuard = PlaybackRecoveryGuard()
     private var activePluginDataSources: Set<JSHttpDataSource.Factory> = emptySet()
+    private var prefetchedPluginDataSources: Set<JSHttpDataSource.Factory> = emptySet()
     private var openedVideos: List<VideoUiModel> = emptyList()
     private var activeQualityVariantHeight: Int? = null
     private var activeQualityVariantVideoId: String? = null
@@ -1616,12 +1621,13 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         }
         if (routedVideo.playbackUrl.isNotBlank()) return routedVideo
         val dualEnginePlayback = routedVideo.isYoutubeVideo() &&
-            (priority == EngineResolvePriority.UserPlayback || useNewPipeYoutubeBackend)
+            (priority.tracksPlaybackRecovery || useNewPipeYoutubeBackend)
         val source = if (dualEnginePlayback) {
             val resolved = resolveYoutubeWithFallback(
                 video = routedVideo,
                 preferredAudioLanguage = preferredAudioLanguage,
                 preferOriginalAudio = preferOriginalAudio,
+                backgroundMetadata = priority == EngineResolvePriority.Prefetch,
             )
             if (priority.tracksPlaybackRecovery) {
                 // Metadata hydration/downloads may resolve this same video concurrently with
@@ -1633,6 +1639,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     preferOriginalAudio = preferOriginalAudio,
                 )
                 youtubeRuntimeFallbackAttempted.remove(routedVideo.id)
+                if (priority == EngineResolvePriority.Prefetch) speculativePlaybackIds.add(routedVideo.id)
+                else speculativePlaybackIds.remove(routedVideo.id)
             }
             Log.i(TAG, "Resolved YouTube playback with ${resolved.resolver.name}.")
             resolved.source
@@ -1641,7 +1649,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 video = routedVideo,
                 preferredAudioLanguage = preferredAudioLanguage,
                 preferOriginalAudio = preferOriginalAudio,
-                backgroundMetadata = priority == EngineResolvePriority.BackgroundMetadata,
+                backgroundMetadata = priority == EngineResolvePriority.BackgroundMetadata || priority == EngineResolvePriority.Prefetch,
             )
         }
         return routedVideo.withPlaybackSource(source)
@@ -1652,6 +1660,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         preferredAudioLanguage: String?,
         preferOriginalAudio: Boolean,
         forcedFirst: YoutubePlaybackResolver? = null,
+        backgroundMetadata: Boolean = false,
     ): ResolvedYoutubePlayback {
         val order = forcedFirst?.let { first ->
             listOf(first, YoutubePlaybackResolver.entries.first { it != first })
@@ -1662,6 +1671,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     video = video,
                     preferredAudioLanguage = preferredAudioLanguage,
                     preferOriginalAudio = preferOriginalAudio,
+                    backgroundMetadata = backgroundMetadata,
                 ).also { source ->
                     check(source.videoUrl.isNotBlank() || !source.rawDashManifest.isNullOrBlank()) {
                         "${resolver.name} returned no playable YouTube stream."
@@ -1687,12 +1697,13 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         video: VideoUiModel,
         preferredAudioLanguage: String?,
         preferOriginalAudio: Boolean,
+        backgroundMetadata: Boolean = false,
     ): GrayjayPlaybackSource = when (resolver) {
         YoutubePlaybackResolver.Grayjay -> resolveWithGrayjayPlugin(
             video = video,
             preferredAudioLanguage = preferredAudioLanguage,
             preferOriginalAudio = preferOriginalAudio,
-            backgroundMetadata = false,
+            backgroundMetadata = backgroundMetadata,
         )
         YoutubePlaybackResolver.NewPipe -> newPipeYoutubeBackend.resolve(
             contentUrl = video.contentUrl.ifBlank { video.id },
@@ -1778,6 +1789,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             contentUrl = source.contentUrl,
             thumbnailUrl = source.thumbnailUrl.orEmpty().ifBlank { thumbnailUrl },
             description = source.description,
+            isMusic = source.isMusic ?: isMusic,
             shareUrl = source.shareUrl,
             authorUrl = source.authorUrl,
             authorThumbnailUrl = source.authorThumbnailUrl.orEmpty(),
@@ -1992,7 +2004,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val nextPluginDataSources = playableVideos.pluginDataSourceFactories()
         val currentIndex = playableVideos.indexOfFirst { it.id == currentVideoId }
         if (currentIndex == -1) {
-            activePluginDataSources.forEach(JSHttpDataSource.Factory::closeExecutors)
+            activePluginDataSources.filterNot(prefetchedPluginDataSources::contains).forEach(JSHttpDataSource.Factory::closeExecutors)
             activePluginDataSources = emptySet()
             audioSpectrumAnalyzer.setEnabled(false)
             queueIds = listOf(currentVideoId)
@@ -2016,6 +2028,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         }
         activePluginDataSources
             .filterNot(nextPluginDataSources::contains)
+            .filterNot(prefetchedPluginDataSources::contains)
             .forEach(JSHttpDataSource.Factory::closeExecutors)
         activePluginDataSources = nextPluginDataSources
         queueIds = playableVideos.map(VideoUiModel::id)
@@ -2074,6 +2087,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         lastError = null
         activePluginDataSources
             .filterNot(nextPluginDataSources::contains)
+            .filterNot(prefetchedPluginDataSources::contains)
             .forEach(JSHttpDataSource.Factory::closeExecutors)
         openedVideos = updated
         activePluginDataSources = nextPluginDataSources
@@ -2142,18 +2156,32 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 .thenBy(VideoQualityUiModel::height),
         )?.height
 
+    override fun retainPrefetchedPlaybackSources(videos: List<VideoUiModel>) {
+        val retained = videos.pluginDataSourceFactories()
+        prefetchedPluginDataSources.filterNot(retained::contains).filterNot(activePluginDataSources::contains)
+            .forEach(JSHttpDataSource.Factory::closeExecutors)
+        prefetchedPluginDataSources = retained
+        val retainedIds = (videos + openedVideos).mapTo(HashSet()) { it.id }
+        speculativePlaybackIds.toList().filterNot(retainedIds::contains).forEach { id ->
+            speculativePlaybackIds.remove(id)
+            youtubeResolverByVideoId.remove(id)
+            youtubeResolveRequestByVideoId.remove(id)
+            youtubeRuntimeFallbackAttempted.remove(id)
+        }
+    }
+
     private fun List<VideoUiModel>.pluginDataSourceFactories(): Set<JSHttpDataSource.Factory> = (
-        mapNotNull { it.playbackDataSourceFactory as? JSHttpDataSource.Factory } +
-            mapNotNull { it.audioDataSourceFactory as? JSHttpDataSource.Factory } +
-            mapNotNull { it.audioDownloadDataSourceFactory as? JSHttpDataSource.Factory } +
+        mapNotNull { it.playbackDataSourceFactory?.withoutShortsPrefixCache() as? JSHttpDataSource.Factory } +
+            mapNotNull { it.audioDataSourceFactory?.withoutShortsPrefixCache() as? JSHttpDataSource.Factory } +
+            mapNotNull { it.audioDownloadDataSourceFactory?.withoutShortsPrefixCache() as? JSHttpDataSource.Factory } +
             flatMap { video ->
                 video.qualityVariants.mapNotNull {
-                    it.playbackDataSourceFactory as? JSHttpDataSource.Factory
+                    it.playbackDataSourceFactory?.withoutShortsPrefixCache() as? JSHttpDataSource.Factory
                 }
             } +
             flatMap { video ->
                 video.audioQualityVariants.mapNotNull {
-                    it.playbackDataSourceFactory as? JSHttpDataSource.Factory
+                    it.playbackDataSourceFactory?.withoutShortsPrefixCache() as? JSHttpDataSource.Factory
                 }
             }
         ).toSet()
@@ -2237,7 +2265,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 ByteArrayInputStream(video.playbackManifest.toByteArray()),
             )
             video.dashMediaSourceFactory().createMediaSource(manifest, mediaItem)
-        } else if (video.playbackDataSourceFactory is NewPipeYoutubeHttpDataSource.Factory) {
+        } else if (video.playbackDataSourceFactory?.withoutShortsPrefixCache() is NewPipeYoutubeHttpDataSource.Factory) {
             ProgressiveMediaSource.Factory(video.dataSourceFactory())
                 // NewPipe uses 64 KiB instead of Media3's much larger default so LoadControl is
                 // consulted frequently and a progressive YouTube connection cannot consume the
@@ -2605,11 +2633,13 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         youtubeResolverByVideoId.clear()
         youtubeResolveRequestByVideoId.clear()
         youtubeRuntimeFallbackAttempted.clear()
+        speculativePlaybackIds.clear()
         concludePlaybackTracker()
         audioSpectrumAnalyzer.setEnabled(false)
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
-        activePluginDataSources.forEach(JSHttpDataSource.Factory::closeExecutors)
+        (activePluginDataSources + prefetchedPluginDataSources).forEach(JSHttpDataSource.Factory::closeExecutors)
+        prefetchedPluginDataSources = emptySet()
         activePluginDataSources = emptySet()
         queueIds = emptyList()
         openedVideos = emptyList()
@@ -2643,7 +2673,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         playbackTrackerUpdateJob?.cancel()
         otherAudioDuckingController.release()
         audioSpectrumAnalyzer.setEnabled(false)
-        activePluginDataSources.forEach(JSHttpDataSource.Factory::closeExecutors)
+        (activePluginDataSources + prefetchedPluginDataSources).forEach(JSHttpDataSource.Factory::closeExecutors)
+        prefetchedPluginDataSources = emptySet()
         activePluginDataSources = emptySet()
         mediaSession.release()
         mediaArtworkLoader.close()

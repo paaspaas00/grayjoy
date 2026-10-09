@@ -792,4 +792,10 @@
     <string name="enable_job_notifications_body">Le notifiche di Grayjoy sono disabilitate. Abilitale nelle impostazioni Android per vedere l’avanzamento di download e importazioni quando l’app è in background.</string>
     <string name="open_notification_settings">Apri impostazioni</string>
     <string name="not_now">Non ora</string>
+    <string name="history_music_all">Tutti</string>
+    <string name="history_music_only">Musica</string>
+    <string name="history_music_exclude">Non musicali</string>
+    <string name="history_music_unknown_hint">I video senza una categoria YouTube riconosciuta restano in Tutti.</string>
+    <string name="history_music_identify_more">Identifica altri video</string>
+    <string name="history_music_identifying">Identificazione %1$d / %2$d</string>
 </resources>

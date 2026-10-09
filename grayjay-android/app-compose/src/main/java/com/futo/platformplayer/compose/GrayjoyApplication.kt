@@ -12,11 +12,11 @@ class GrayjoyApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLogStore.install(this)
         // A process can disappear without any lifecycle callback (force-stop, native crash, or
         // process kill). Hold persisted Media3 transfers before any service can recreate the
         // download manager. The ViewModel releases this hold only after it has restored the
         // queue and the plugin-backed data sources required by unfinished downloads.
         GrayjoyDownloadStore.holdUntilAppRestore(this)
-        CrashLogStore.install(this)
     }
 }

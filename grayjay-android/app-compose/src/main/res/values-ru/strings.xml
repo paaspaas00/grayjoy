@@ -642,4 +642,10 @@
     <string name="sponsorblock_skipped_preview">Анонс или повтор пропущен</string>
     <string name="sponsorblock_skipped_music_offtopic">Немузыкальная часть пропущена</string>
     <string name="sponsorblock_skipped_filler">Заполнитель пропущен</string>
+    <string name="history_music_all">Все</string>
+    <string name="history_music_only">Музыка</string>
+    <string name="history_music_exclude">Не музыка</string>
+    <string name="history_music_unknown_hint">Видео без распознанной категории YouTube остаются в разделе «Все».</string>
+    <string name="history_music_identify_more">Определить другие видео</string>
+    <string name="history_music_identifying">Определение %1$d / %2$d</string>
 </resources>

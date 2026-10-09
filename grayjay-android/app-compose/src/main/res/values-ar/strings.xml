@@ -642,4 +642,10 @@
     <string name="sponsorblock_skipped_preview">تم تخطي المعاينة أو الملخص</string>
     <string name="sponsorblock_skipped_music_offtopic">تم تخطي القسم غير الموسيقي</string>
     <string name="sponsorblock_skipped_filler">تم تخطي الحشو</string>
+    <string name="history_music_all">الكل</string>
+    <string name="history_music_only">موسيقى</string>
+    <string name="history_music_exclude">غير موسيقية</string>
+    <string name="history_music_unknown_hint">تبقى الفيديوهات التي لا يُعرف تصنيفها على YouTube ضمن «الكل».</string>
+    <string name="history_music_identify_more">تحديد نوع فيديوهات أخرى</string>
+    <string name="history_music_identifying">جارٍ تحديد النوع: %1$d / %2$d</string>
 </resources>

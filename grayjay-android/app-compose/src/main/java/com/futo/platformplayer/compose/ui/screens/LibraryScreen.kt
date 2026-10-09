@@ -9,6 +9,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +57,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -84,11 +87,22 @@ import com.futo.platformplayer.compose.ui.DownloadMediaType
 import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.ui.HistoryMusicScanUiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 private const val DOWNLOAD_LIST_CONTENT_START_INDEX = 2
+
+internal enum class HistoryMusicFilter(@param:StringRes val labelRes: Int) {
+    All(R.string.history_music_all), Music(R.string.history_music_only), NonMusic(R.string.history_music_exclude),
+}
+
+internal fun videosForHistoryMusicFilter(videos: List<VideoUiModel>, filter: HistoryMusicFilter) = when (filter) {
+    HistoryMusicFilter.All -> videos
+    HistoryMusicFilter.Music -> videos.filter { it.isMusic == true }
+    HistoryMusicFilter.NonMusic -> videos.filter { it.isMusic == false }
+}
 
 internal enum class LibraryFilter(
     @param:StringRes val labelRes: Int,
@@ -178,6 +192,8 @@ internal fun LibraryScreen(
     playlistListState: LazyListState = rememberLazyListState(),
     downloadFocusVideoId: String? = null,
     onDownloadFocusConsumed: () -> Unit = {},
+    historyMusicScan: HistoryMusicScanUiState = HistoryMusicScanUiState(),
+    onRequestHistoryMusicClassification: (List<String>) -> Unit = {},
 ) {
     val compactLayout = compactUi()
     var selectionMode by rememberSaveable { mutableStateOf(false) }
@@ -187,6 +203,11 @@ internal fun LibraryScreen(
     var renamingPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
     var playlistQuery by rememberSaveable { mutableStateOf("") }
     var historyQuery by rememberSaveable { mutableStateOf("") }
+    var historyMusicFilter by rememberSaveable { mutableStateOf(HistoryMusicFilter.All) }
+    val currentMusicClassificationRequest by rememberUpdatedState(onRequestHistoryMusicClassification)
+    DisposableEffect(Unit) {
+        onDispose { currentMusicClassificationRequest(emptyList()) }
+    }
     var focusedSearchFilter by remember { mutableStateOf<LibraryFilter?>(null) }
     val selectedVideoIds = remember { mutableStateListOf<String>() }
     val selectedPlaylistIds = remember { mutableStateListOf<String>() }
@@ -260,6 +281,7 @@ internal fun LibraryScreen(
             }
     }
     LaunchedEffect(selectedFilter) {
+        if (selectedFilter != LibraryFilter.History) currentMusicClassificationRequest(emptyList())
         val page = filters.indexOf(selectedFilter)
         if (selectedFilter !in setOf(LibraryFilter.History, LibraryFilter.Playlists)) {
             keyboardController?.hide()
@@ -349,11 +371,21 @@ internal fun LibraryScreen(
                     if (pageFilter == LibraryFilter.Downloads) downloadVideos
                     else videosForLibraryFilter(videos, pageFilter)
                 }
-                val pageVideos = remember(unfilteredPageVideos, pageFilter, historyQuery) {
+                val musicFilteredPageVideos = remember(unfilteredPageVideos, pageFilter, historyMusicFilter) {
+                    if (pageFilter == LibraryFilter.History) {
+                        videosForHistoryMusicFilter(unfilteredPageVideos, historyMusicFilter)
+                    } else unfilteredPageVideos
+                }
+                val unknownHistoryIds = remember(unfilteredPageVideos, pageFilter, historyQuery) {
+                    if (pageFilter == LibraryFilter.History) videosMatchingLibraryQuery(unfilteredPageVideos, historyQuery)
+                        .filter { it.sourceId.equals("youtube", true) && it.isMusic == null }.map(VideoUiModel::id)
+                    else emptyList()
+                }
+                val pageVideos = remember(musicFilteredPageVideos, pageFilter, historyQuery) {
                     if (pageFilter != LibraryFilter.History || historyQuery.isBlank()) {
-                        unfilteredPageVideos
+                        musicFilteredPageVideos
                     } else {
-                        videosMatchingLibraryQuery(unfilteredPageVideos, historyQuery)
+                        videosMatchingLibraryQuery(musicFilteredPageVideos, historyQuery)
                     }
                 }
                 val isSelectedPage = pageFilter == selectedFilter
@@ -464,21 +496,25 @@ internal fun LibraryScreen(
         }
         item {
             if (compactLayout) {
-                val count = if (pageFilter == LibraryFilter.Playlists) playlists.size else unfilteredPageVideos.size
+                val count = if (pageFilter == LibraryFilter.Playlists) playlists.size else musicFilteredPageVideos.size
                 Text(pluralStringResource(if (pageFilter == LibraryFilter.Playlists) R.plurals.playlist_count else R.plurals.video_count, count, count),
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else LibrarySummary(
                 filter = pageFilter,
-                videos = unfilteredPageVideos,
+                videos = musicFilteredPageVideos,
                 playlistCount = playlists.size,
             )
         }
         if (pageFilter in setOf(LibraryFilter.History, LibraryFilter.Playlists)) {
             stickyHeader(key = "library-search-${pageFilter.name}") {
+                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
                 LibrarySearchField(
                     query = if (pageFilter == LibraryFilter.History) historyQuery else playlistQuery,
                     onQueryChange = { value ->
-                        if (pageFilter == LibraryFilter.History) historyQuery = value
+                        if (pageFilter == LibraryFilter.History) {
+                            historyQuery = value
+                            currentMusicClassificationRequest(emptyList())
+                        }
                         else playlistQuery = value
                     },
                     labelRes = if (pageFilter == LibraryFilter.History) {
@@ -500,6 +536,50 @@ internal fun LibraryScreen(
                         .background(MaterialTheme.colorScheme.background)
                         .padding(vertical = 6.dp),
                 )
+                if (pageFilter == LibraryFilter.History) {
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        HistoryMusicFilter.entries.forEach { musicFilter ->
+                            FilterChip(
+                                selected = historyMusicFilter == musicFilter,
+                                onClick = {
+                                    historyMusicFilter = musicFilter
+                                    leaveSelectionMode()
+                                    currentMusicClassificationRequest(
+                                        if (musicFilter == HistoryMusicFilter.All) emptyList() else unknownHistoryIds,
+                                    )
+                                },
+                                label = { Text(stringResource(musicFilter.labelRes)) },
+                                modifier = Modifier.testTag("history-music-${musicFilter.name.lowercase()}"),
+                            )
+                        }
+                    }
+                }
+                }
+            }
+        }
+        if (pageFilter == LibraryFilter.History && historyMusicFilter != HistoryMusicFilter.All &&
+            (unknownHistoryIds.isNotEmpty() || historyMusicScan.isRunning)) {
+            item(key = "history-music-identification") {
+                Column {
+                    Text(stringResource(R.string.history_music_unknown_hint),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (historyMusicScan.isRunning) {
+                        TextButton(onClick = { currentMusicClassificationRequest(emptyList()) },
+                            modifier = Modifier.testTag("history-music-cancel")) {
+                            Text(stringResource(R.string.history_music_identifying,
+                                historyMusicScan.completed, historyMusicScan.total))
+                            Text(" · " + stringResource(R.string.cancel))
+                        }
+                    } else if (unknownHistoryIds.any { it !in historyMusicScan.attemptedVideoIds }) {
+                        TextButton(onClick = { currentMusicClassificationRequest(unknownHistoryIds) },
+                            modifier = Modifier.testTag("history-music-identify")) {
+                            Text(stringResource(R.string.history_music_identify_more))
+                        }
+                    }
+                }
             }
         }
         if (pageFilter == LibraryFilter.Playlists) {
@@ -600,7 +680,8 @@ internal fun LibraryScreen(
             (pageFilter == LibraryFilter.Playlists && playlists.isEmpty()) ||
             (pageFilter != LibraryFilter.Playlists &&
                 pageVideos.isEmpty() &&
-                !(pageFilter == LibraryFilter.History && historyQuery.isNotBlank()))
+                !(pageFilter == LibraryFilter.History &&
+                    (historyQuery.isNotBlank() || historyMusicFilter != HistoryMusicFilter.All)))
         ) {
             item {
                 Text(
@@ -613,7 +694,7 @@ internal fun LibraryScreen(
         }
         if (
             pageFilter == LibraryFilter.History &&
-            historyQuery.isNotBlank() &&
+            (historyQuery.isNotBlank() || historyMusicFilter != HistoryMusicFilter.All) &&
             unfilteredPageVideos.isNotEmpty() &&
             pageVideos.isEmpty()
         ) {

@@ -642,4 +642,10 @@
     <string name="sponsorblock_skipped_preview">已跳过预告或回顾</string>
     <string name="sponsorblock_skipped_music_offtopic">已跳过非音乐部分</string>
     <string name="sponsorblock_skipped_filler">已跳过填充内容</string>
+    <string name="history_music_all">全部</string>
+    <string name="history_music_only">音乐</string>
+    <string name="history_music_exclude">非音乐</string>
+    <string name="history_music_unknown_hint">YouTube 分类未知的视频仍显示在“全部”中。</string>
+    <string name="history_music_identify_more">识别更多视频</string>
+    <string name="history_music_identifying">正在识别 %1$d / %2$d</string>
 </resources>

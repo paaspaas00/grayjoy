@@ -98,7 +98,7 @@ internal object YouTubeStoryboardParser {
      * entry as the object made the old parser consume an unrelated `spec` property and disabled
      * seek previews even though YouTube returned a valid storyboard.
      */
-    private fun extractJsonObjectString(
+    internal fun extractJsonObjectString(
         source: String,
         objectMarker: String,
         propertyName: String,

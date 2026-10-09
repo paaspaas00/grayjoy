@@ -268,6 +268,8 @@ private data class PlaybackPresentation(
     val databaseImport: DatabaseImportUiState,
     val libraryTransfer: LibraryTransferUiState,
     val mediaExports: List<MediaExportUiState>,
+    val historyMusicScan: HistoryMusicScanUiState,
+    val onRequestHistoryMusicClassification: (List<String>) -> Unit,
     val sourceOperationInProgress: Boolean,
     val sourceOperationMessage: String?,
     val onCancelYoutubeImportJobs: () -> Unit,
@@ -567,6 +569,7 @@ fun GrayjayApp(
     val creatorLabel = stringResource(R.string.creator)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val backDispatcher = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     var destinationName by rememberSaveable { mutableStateOf(GrayjayDestination.Home.name) }
     var selectedVideoId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedChannelId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -574,7 +577,12 @@ fun GrayjayApp(
     var browseHistory by rememberSaveable(stateSaver = BrowseHistorySaver) {
         mutableStateOf(emptyList<BrowseRoute>())
     }
-    val visitedPlaylists = remember { androidx.compose.runtime.mutableStateMapOf<String, PlaylistUiModel>() }
+    val visitedPlaylists = rememberSaveable(saver = VisitedPlaylistsSaver) {
+        androidx.compose.runtime.mutableStateMapOf<String, PlaylistUiModel>()
+    }
+    val visitedChannels = rememberSaveable(saver = VisitedChannelsSaver) {
+        androidx.compose.runtime.mutableStateMapOf<String, ChannelUiModel>()
+    }
     var navigationProfileId by rememberSaveable { mutableStateOf(uiState.activeProfileId) }
     var searchAutoFocusRequested by rememberSaveable { mutableStateOf(false) }
     var libraryFilterName by rememberSaveable { mutableStateOf(LibraryFilter.History.name) }
@@ -641,6 +649,7 @@ fun GrayjayApp(
         ?: selectedVideoId?.let(availableVideosById::get)
     val selectedChannel = uiState.channels.firstOrNull { it.id == selectedChannelId }
         ?: uiState.channelDetail.channel?.takeIf { it.id == selectedChannelId }
+        ?: visitedChannels[selectedChannelId]
     val selectedPlaylist = uiState.playlists.firstOrNull { it.id == selectedPlaylistId }
         ?: uiState.remotePlaylistDetail.playlist?.takeIf { it.id == selectedPlaylistId }
         ?: (uiState.search.playlists + uiState.channelDetail.playlists)
@@ -654,7 +663,7 @@ fun GrayjayApp(
     val playbackVideo = uiState.nowPlaying.video?.takeIf {
         uiState.nowPlaying.isLoadingPlayback || it.id == uiState.playback.currentVideoId
     } ?: availableVideosById[uiState.playback.currentVideoId]
-    val playerTransition = remember { PlayerTransitionState(1f) }
+    val playerTransition = remember { PlayerTransitionState(initialPlayerTransitionProgress(selectedVideoId)) }
     LaunchedEffect(playerTransition) {
         snapshotFlow {
             Triple(
@@ -685,6 +694,13 @@ fun GrayjayApp(
                 ?: playingPlaylist.takeIf { it.sourceId.isNotBlank() }
             if (playlist != null) {
                 visitedPlaylists[playlist.id] = playlist
+                if (playlist.sourceId.isNotBlank()) {
+                    selectedChannel?.let { visitedChannels[it.id] = it }
+                    selectedPlaylist?.let { visitedPlaylists[it.id] = it }
+                    browseHistory = historyForRemotePlaybackPlaylistReturn(browseHistory,
+                        BrowseRoute(destinationName, selectedChannelId, selectedPlaylistId,
+                            libraryFilterName, parentDestination = nestedBackDestinationName), playlist.id)
+                }
                 selectedChannelId = null
                 selectedPlaylistId = playlist.id
                 if (playlist.sourceId.isBlank()) {
@@ -700,7 +716,9 @@ fun GrayjayApp(
     }
     val settlePlayer: (Float, String?) -> Unit = { target, videoId ->
         playerTransitionJob?.cancel()
-        if (target == 1f) restorePlaybackPlaylistDestination()
+        if (shouldRestorePlaylistOnPlayerSettle(playerTransition.target, target)) {
+            restorePlaybackPlaylistDestination()
+        }
         if (target == 0f) {
             focusManager.clearFocus(force = true)
             keyboardController?.hide()
@@ -739,8 +757,9 @@ fun GrayjayApp(
         // Clear focus before switching pages so disposal cannot steal the incoming field's focus.
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        searchAutoFocusRequested = it == GrayjayDestination.Search &&
-            selected != GrayjayDestination.Search
+        // Entering a tab is not a request to type. Focus is explicit and must not come back
+        // merely because the user returns from a detail page, fullscreen or PiP.
+        searchAutoFocusRequested = false
         destinationName = it.name
         selectedVideoId = null
         snapPlayerTransition(1f)
@@ -751,19 +770,40 @@ fun GrayjayApp(
     }
     fun currentBrowseRoute() = BrowseRoute(
         destinationName, selectedChannelId, selectedPlaylistId, libraryFilterName, selectedVideoId,
+        nestedBackDestinationName,
     )
     fun rememberBrowseOrigin() {
+        selectedChannel?.let { visitedChannels[it.id] = it }
+        selectedPlaylist?.let { visitedPlaylists[it.id] = it }
         browseHistory = appendBrowseRoute(browseHistory, currentBrowseRoute())
+    }
+    LaunchedEffect(browseHistory, selectedChannelId, selectedPlaylistId, uiState.playbackPlaylist?.id) {
+        val channelIds = browseHistory.mapNotNullTo(mutableSetOf()) { it.channelId }
+            .apply { selectedChannelId?.let(::add) }
+        val playlistIds = browseHistory.mapNotNullTo(mutableSetOf()) { it.playlistId }
+            .apply { selectedPlaylistId?.let(::add); uiState.playbackPlaylist?.id?.let(::add) }
+        visitedChannels.keys.toList().filterNot(channelIds::contains).forEach(visitedChannels::remove)
+        visitedPlaylists.keys.toList().filterNot(playlistIds::contains).forEach(visitedPlaylists::remove)
     }
     LaunchedEffect(uiState.activeProfileId) {
         if (navigationProfileId != uiState.activeProfileId) {
             navigationProfileId = uiState.activeProfileId
             onSelect(GrayjayDestination.Home)
             visitedPlaylists.clear()
+            visitedChannels.clear()
             libraryFilterName = LibraryFilter.History.name
             transientUi.actionVideoId = null
             transientUi.playlistPickerVideoIds = emptyList()
         }
+    }
+    LaunchedEffect(uiState.activeProfileId, selectedChannelId, selectedPlaylistId, selectedVideoId,
+        uiState.channelDetail.channelId, uiState.remotePlaylistDetail.playlist?.id) {
+        if (navigationProfileId != uiState.activeProfileId || selectedVideoId != null) return@LaunchedEffect
+        // Backend/auth/cache changes invalidate detail snapshots while this route can stay open.
+        // Rebind the visible route instead of leaving an empty channel or playlist indefinitely.
+        selectedChannel?.takeIf { uiState.channelDetail.channelId != it.id }?.let(actions.onLoadChannel)
+        selectedPlaylist?.takeIf { it.sourceId.isNotBlank() && uiState.remotePlaylistDetail.playlist?.id != it.id }
+            ?.let(actions.onLoadRemotePlaylist)
     }
     val onVideoClick: (VideoUiModel) -> Unit = {
         searchAutoFocusRequested = false
@@ -784,6 +824,7 @@ fun GrayjayApp(
     }
     val onChannelClick: (ChannelUiModel) -> Unit = {
         if (selectedChannelId != it.id || selectedVideoId != null) rememberBrowseOrigin()
+        visitedChannels[it.id] = it
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         searchAutoFocusRequested = false
@@ -846,17 +887,21 @@ fun GrayjayApp(
         when (request.kind) {
             ExternalNavigationKind.Video -> {
                 selectedVideoId = request.contentId
-                selectedChannelId = null
-                selectedPlaylistId = null
                 settlePlayer(0f, request.contentId)
             }
             ExternalNavigationKind.Channel -> {
+                if (selectedChannelId != request.contentId || selectedVideoId != null) rememberBrowseOrigin()
+                uiState.channelDetail.channel?.takeIf { it.id == request.contentId }
+                    ?.let { visitedChannels[it.id] = it }
                 selectedChannelId = request.contentId
                 selectedVideoId = null
                 selectedPlaylistId = null
                 snapPlayerTransition(1f)
             }
             ExternalNavigationKind.Playlist -> {
+                if (selectedPlaylistId != request.contentId || selectedVideoId != null) rememberBrowseOrigin()
+                uiState.remotePlaylistDetail.playlist?.takeIf { it.id == request.contentId }
+                    ?.let { visitedPlaylists[it.id] = it }
                 if (uiState.playlists.any { it.id == request.contentId && it.sourceId.isBlank() }) {
                     destinationName = GrayjayDestination.Library.name
                     libraryFilterName = LibraryFilter.Playlists.name
@@ -885,6 +930,7 @@ fun GrayjayApp(
     val onNavigateBack: () -> Unit = {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
+        searchAutoFocusRequested = false
         if (selectedVideoId != null) {
             settlePlayer(1f, selectedVideoId)
         } else if (browseHistory.isNotEmpty()) {
@@ -897,12 +943,12 @@ fun GrayjayApp(
             selectedVideoId = route.videoId?.takeIf { it == playbackVideo?.id }
             snapPlayerTransition(if (selectedVideoId == null) 1f else 0f)
             route.channelId?.let { id ->
-                uiState.channels.firstOrNull { it.id == id }?.let(actions.onLoadChannel)
+                (uiState.channels.firstOrNull { it.id == id } ?: visitedChannels[id])?.let(actions.onLoadChannel)
             }
             route.playlistId?.let { id -> visitedPlaylists[id] }
                 ?.takeIf { it.sourceId.isNotBlank() }
                 ?.let(actions.onLoadRemotePlaylist)
-            nestedBackDestinationName = null
+            nestedBackDestinationName = route.parentDestination
         } else if (selectedChannelId != null) {
             selectedChannelId = null
         } else if (selectedPlaylistId != null) {
@@ -925,6 +971,10 @@ fun GrayjayApp(
             }
             nestedBackDestinationName = null
         }
+    }
+    val onHeaderBack: () -> Unit = {
+        // Header and gesture both honor page-local selection/focus handlers before popping routes.
+        if (backDispatcher != null) backDispatcher.onBackPressed() else onNavigateBack()
     }
     val onManageSources: () -> Unit = {
         rememberBrowseOrigin()
@@ -964,6 +1014,8 @@ fun GrayjayApp(
         databaseImport = uiState.databaseImport,
         libraryTransfer = uiState.libraryTransfer,
         mediaExports = uiState.mediaExports,
+        historyMusicScan = uiState.historyMusicScan,
+        onRequestHistoryMusicClassification = actions.onRequestHistoryMusicClassification,
         sourceOperationInProgress = uiState.sourceOperationInProgress,
         sourceOperationMessage = uiState.sourceOperationMessage,
         onCancelYoutubeImportJobs = actions.onCancelYoutubeImportJobs,
@@ -980,12 +1032,17 @@ fun GrayjayApp(
                 )
             }
             val destinationJob = if (jobId.startsWith("media-export:")) "downloads" else jobId
-            destinationName = when (destinationJob) {
+            val targetDestination = when (destinationJob) {
                 "downloads" -> GrayjayDestination.Library.name
                 "youtube-import", "youtube-import-background", "source-operation" ->
                     GrayjayDestination.Sources.name
                 else -> GrayjayDestination.Settings.name
             }
+            val targetFilter = if (destinationJob == "downloads") LibraryFilter.Downloads.name else libraryFilterName
+            browseHistory = browseHistoryForShortcut(browseHistory, currentBrowseRoute(),
+                BrowseRoute(targetDestination, libraryFilter = targetFilter))
+            destinationName = targetDestination
+            searchAutoFocusRequested = false
             if (destinationJob == "downloads") libraryFilterName = LibraryFilter.Downloads.name
             nestedBackDestinationName = null
             selectedChannelId = null
@@ -1059,13 +1116,9 @@ fun GrayjayApp(
         onLoadMoreRemotePlaylist = actions.onLoadMoreRemotePlaylist,
         onPlayRemotePlaylist = {
             actions.onPlayRemotePlaylist()
-            uiState.remotePlaylistDetail.videos.firstOrNull()?.let { first ->
-                settlePlayer(0f, first.id)
-            }
         },
         onPlayRemotePlaylistFrom = { videoId ->
             actions.onPlayRemotePlaylistFrom(videoId)
-            settlePlayer(0f, videoId)
         },
         onDownloadRemotePlaylist = actions.onDownloadRemotePlaylist,
         onCancelDownloadRemotePlaylist = actions.onCancelDownloadRemotePlaylist,
@@ -1076,9 +1129,14 @@ fun GrayjayApp(
         onDismissCommentReplies = actions.onDismissCommentReplies,
         onLoadMoreCommentReplies = actions.onLoadMoreCommentReplies,
         onClose = {
-            restorePlaybackPlaylistDestination()
+            if (shouldRestorePlaylistWhenClosingPlayer(selectedVideoId, isFullscreen)) {
+                restorePlaybackPlaylistDestination()
+            }
             snapPlayerTransition(1f)
             selectedVideoId = null
+            isFullscreen = false
+            fullscreenEnteredByRotation = false
+            shortsModeActive = false
             actions.onClosePlayback()
         },
         onPlayQueue = { queueIds ->
@@ -1126,7 +1184,11 @@ fun GrayjayApp(
         onExportLibrary = actions.onExportLibrary,
         onRenamePlaylist = actions.onRenamePlaylist,
         libraryFilter = LibraryFilter.valueOf(libraryFilterName),
-        onLibraryFilterChange = { libraryFilterName = it.name },
+        onLibraryFilterChange = {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            libraryFilterName = it.name
+        },
         libraryPlaylistListState = libraryPlaylistListState,
         onRemoveVideosFromPlaylist = actions.onRemoveVideosFromPlaylist,
         onReorderPlaylist = actions.onReorderPlaylist,
@@ -1211,6 +1273,8 @@ fun GrayjayApp(
         if (uiState.playback.currentVideoId == null && uiState.nowPlaying.video == null) {
             snapPlayerTransition(1f)
             selectedVideoId = null
+            isFullscreen = false
+            fullscreenEnteredByRotation = false
         }
         if (selectedVideoId != null && !uiState.nowPlaying.isLoadingPlayback) {
             uiState.playback.currentVideoId?.let { selectedVideoId = it }
@@ -1444,6 +1508,7 @@ fun GrayjayApp(
                 onVideoSelected = onVideoClick,
                 hasMore = uiState.home.hasMore && !uiState.home.isLoadingMore && !uiState.home.isLoading,
                 onLoadMore = actions.onLoadMoreHome,
+                onPrefetchWindowChanged = actions.onShortsPrefetchWindowChanged,
                 content = fullscreenContent,
             )
         } else fullscreenContent()
@@ -1491,8 +1556,8 @@ fun GrayjayApp(
                     transientUi.actionIsQueueVideo = false
                     transientUi.actionVideoId = video.id
                 },
-                onVideoBack = onNavigateBack,
-                nestedBackEnabled = nestedBackDestinationName != null,
+                onVideoBack = onHeaderBack,
+                nestedBackEnabled = nestedBackDestinationName != null || browseHistory.isNotEmpty(),
                 onManageSources = onManageSources,
                 dynamicColorsEnabled = uiState.dynamicColorsEnabled,
                 onDynamicColorsChange = actions.onDynamicColorsChange,
@@ -1520,8 +1585,8 @@ fun GrayjayApp(
                     transientUi.actionIsQueueVideo = false
                     transientUi.actionVideoId = video.id
                 },
-                onVideoBack = onNavigateBack,
-                nestedBackEnabled = nestedBackDestinationName != null,
+                onVideoBack = onHeaderBack,
+                nestedBackEnabled = nestedBackDestinationName != null || browseHistory.isNotEmpty(),
                 onManageSources = onManageSources,
                 dynamicColorsEnabled = uiState.dynamicColorsEnabled,
                 onDynamicColorsChange = actions.onDynamicColorsChange,
@@ -1549,8 +1614,8 @@ fun GrayjayApp(
                     transientUi.actionIsQueueVideo = false
                     transientUi.actionVideoId = video.id
                 },
-                onVideoBack = onNavigateBack,
-                nestedBackEnabled = nestedBackDestinationName != null,
+                onVideoBack = onHeaderBack,
+                nestedBackEnabled = nestedBackDestinationName != null || browseHistory.isNotEmpty(),
                 onManageSources = onManageSources,
                 dynamicColorsEnabled = uiState.dynamicColorsEnabled,
                 onDynamicColorsChange = actions.onDynamicColorsChange,
@@ -2121,7 +2186,7 @@ private fun GrayjayScaffold(
                                 }
                             }
                             if (hasBack) {
-                                IconButton(onClick = onVideoBack) {
+                                IconButton(onClick = onVideoBack, modifier = Modifier.testTag("browse-back")) {
                                     Icon(
                                         Icons.AutoMirrored.Outlined.ArrowBack,
                                         contentDescription = stringResource(R.string.back),
@@ -2280,7 +2345,7 @@ private fun GrayjayScaffold(
                 val animatedChannel = animatedPageKey
                     .takeIf { it.startsWith("channel:") }
                     ?.substringAfter("channel:")
-                    ?.let { id -> channels.firstOrNull { it.id == id } }
+                    ?.let { id -> selectedChannel?.takeIf { it.id == id } ?: channels.firstOrNull { it.id == id } }
                 val animatedPlaylist = animatedPageKey
                     .takeIf { it.startsWith("playlist:") }
                     ?.substringAfter("playlist:")
@@ -2462,6 +2527,8 @@ private fun GrayjayScaffold(
                         onNavigationMenuClick = onToggleDrawer ?: {},
                     )
                     GrayjayDestination.Library -> LibraryScreen(
+                        historyMusicScan = playback.historyMusicScan,
+                        onRequestHistoryMusicClassification = playback.onRequestHistoryMusicClassification,
                         videos = playback.libraryVideos,
                         playlists = playlists,
                         downloads = playback.downloads,

@@ -85,4 +85,19 @@ class LibraryPersistenceTest {
         assertTrue(repository.loadPlaylists().isEmpty())
         assertTrue(repository.loadSavedVideos().single().playlistNames.isEmpty())
     }
+
+    @Test
+    fun musicClassificationPersistsAndSparseRefreshCannotEraseIt() {
+        val repository = SharedPreferencesLibraryRepository(context, profileId)
+        fun video(id: String, isMusic: Boolean?) = VideoUiModel(id, id, "Creator", "", "1:00", isMusic = isMusic)
+        repository.saveVideos(listOf(video("music", true), video("talk", false), video("unknown", null)))
+        repository.recordHistory(video("music", null))
+        repository.saveVideo(video("talk", null))
+        val saved = SharedPreferencesLibraryRepository(context, profileId).loadSavedVideos().associateBy(VideoUiModel::id)
+        assertEquals(true, saved.getValue("music").isMusic)
+        assertEquals(false, saved.getValue("talk").isMusic)
+        assertNull(saved.getValue("unknown").isMusic)
+        repository.saveVideo(video("music", false))
+        assertEquals(false, repository.loadSavedVideos().first { it.id == "music" }.isMusic)
+    }
 }

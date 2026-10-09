@@ -8,7 +8,7 @@ import java.util.Random
 class PlaybackInputValidationTest {
     @Test fun backgroundResolutionCannotResetPlaybackRecovery() {
         assertEquals(
-            listOf(EngineResolvePriority.UserPlayback),
+            listOf(EngineResolvePriority.UserPlayback, EngineResolvePriority.Prefetch),
             EngineResolvePriority.entries.filter { it.tracksPlaybackRecovery },
         )
     }

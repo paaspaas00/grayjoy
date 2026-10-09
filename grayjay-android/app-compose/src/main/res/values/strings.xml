@@ -792,4 +792,10 @@
     <string name="enable_job_notifications_body">Notifications are disabled for Grayjoy. Enable them in Android settings to see download and import progress while the app is in the background.</string>
     <string name="open_notification_settings">Open settings</string>
     <string name="not_now">Not now</string>
+    <string name="history_music_all">All</string>
+    <string name="history_music_only">Music</string>
+    <string name="history_music_exclude">Non-music</string>
+    <string name="history_music_unknown_hint">Videos without a known YouTube category remain in All.</string>
+    <string name="history_music_identify_more">Identify more videos</string>
+    <string name="history_music_identifying">Identifying %1$d / %2$d</string>
 </resources>

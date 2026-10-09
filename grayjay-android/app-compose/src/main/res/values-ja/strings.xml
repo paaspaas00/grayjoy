@@ -642,4 +642,10 @@
     <string name="sponsorblock_skipped_preview">予告または振り返りをスキップしました</string>
     <string name="sponsorblock_skipped_music_offtopic">音楽以外の部分をスキップしました</string>
     <string name="sponsorblock_skipped_filler">余分な部分をスキップしました</string>
+    <string name="history_music_all">すべて</string>
+    <string name="history_music_only">音楽</string>
+    <string name="history_music_exclude">音楽以外</string>
+    <string name="history_music_unknown_hint">YouTube のカテゴリを判別できない動画は「すべて」に表示されます。</string>
+    <string name="history_music_identify_more">ほかの動画を判別</string>
+    <string name="history_music_identifying">判別中 %1$d / %2$d</string>
 </resources>

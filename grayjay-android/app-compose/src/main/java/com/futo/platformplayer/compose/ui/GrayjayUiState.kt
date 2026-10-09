@@ -9,6 +9,7 @@ import com.futo.platformplayer.compose.sponsorblock.SponsorBlockSegment
 data class GrayjayUiState(
     val videos: List<VideoUiModel> = emptyList(),
     val libraryVideos: List<VideoUiModel> = emptyList(),
+    val historyMusicScan: HistoryMusicScanUiState = HistoryMusicScanUiState(),
     val channels: List<ChannelUiModel> = emptyList(),
     val playlists: List<PlaylistUiModel> = emptyList(),
     val playbackPlaylist: PlaylistUiModel? = null,
@@ -453,6 +454,13 @@ data class NowPlayingUiState(
     val sponsorBlockLoading: Boolean = false,
     val sponsorBlockSkipNotice: SponsorBlockSkipNoticeUiModel? = null,
     val errorMessage: String? = null,
+)
+
+data class HistoryMusicScanUiState(
+    val completed: Int = 0,
+    val total: Int = 0,
+    val isRunning: Boolean = false,
+    val attemptedVideoIds: Set<String> = emptySet(),
 )
 
 data class LibraryTransferUiState(

@@ -67,6 +67,8 @@ class GrayjayAppActions {
     var onRemoveVideosFromPlaylist: (String, List<String>) -> Unit = { _, _ -> }
     var onReorderPlaylist: (String, List<String>) -> Unit = { _, _ -> }
     var onRemoveVideosFromHistory: (List<String>) -> Unit = { _ -> }
+    var onRequestHistoryMusicClassification: (List<String>) -> Unit = {}
+    var onShortsPrefetchWindowChanged: (List<String>) -> Unit = {}
     var onRemoveDownloads: (List<String>) -> Unit = {}
     var onRemovePlaylists: (List<String>) -> Unit = {}
     var onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit = { _, _, _ -> }

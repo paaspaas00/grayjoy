@@ -17,6 +17,7 @@ data class LibraryVideoState(
     val isLiked: Boolean = false,
     val lastWatchedAt: Long = 0L,
     val playlistNames: List<String> = emptyList(),
+    val isMusic: Boolean? = null,
 )
 
 data class LibraryImportSnapshot(
@@ -174,6 +175,7 @@ internal class SharedPreferencesLibraryRepository(
                 isLiked = stored?.isLiked ?: video.isLiked,
                 lastWatchedAt = stored?.lastWatchedAt ?: video.lastWatchedAt,
                 playlistNames = stored?.playlistNames ?: video.playlistNames,
+                isMusic = video.isMusic ?: stored?.isMusic,
             )
         }
     }
@@ -213,6 +215,7 @@ internal class SharedPreferencesLibraryRepository(
                 watchProgress = existing?.watchProgress ?: video.watchProgress,
                 lastWatchedAt = existing?.lastWatchedAt ?: video.lastWatchedAt,
                 playlistNames = existing?.playlistNames ?: video.playlistNames,
+                isMusic = video.isMusic ?: existing?.isMusic,
             ).forLocalStorage(preservePlayback = true)
             writeVideos(videos.values.toList())
         }
@@ -272,6 +275,7 @@ internal class SharedPreferencesLibraryRepository(
                 isLiked = existing?.isLiked ?: video.isLiked,
                 playlistNames = existing?.playlistNames ?: video.playlistNames,
                 lastWatchedAt = System.currentTimeMillis(),
+                isMusic = video.isMusic ?: existing?.isMusic,
             ).preservingStoredPlayback(existing)
             writeVideos(videos.values.toList())
             watchProgressPreferences.edit().putFloat(video.id, normalizedProgress)
@@ -565,6 +569,7 @@ internal class SharedPreferencesLibraryRepository(
                 watchProgress = existing?.watchProgress ?: video.watchProgress,
                 lastWatchedAt = existing?.lastWatchedAt ?: video.lastWatchedAt,
                 playlistNames = existing?.playlistNames ?: video.playlistNames,
+                isMusic = video.isMusic ?: existing?.isMusic,
             ).preservingStoredPlayback(existing)
         }
     }
@@ -649,6 +654,7 @@ internal fun List<VideoUiModel>.withLibraryState(
             isLiked = state.isLiked,
             lastWatchedAt = state.lastWatchedAt,
             playlistNames = state.playlistNames,
+            isMusic = video.isMusic ?: state.isMusic,
         )
     } ?: video
 }
@@ -750,6 +756,7 @@ private fun VideoUiModel.mergeImported(
         sourceId = if (sourceId.isBlank()) imported.sourceId else sourceId,
         isLive = isLive || imported.isLive,
         isShort = isShort || imported.isShort,
+        isMusic = isMusic ?: imported.isMusic,
         isAvailable = isAvailable && imported.isAvailable,
         scheduledStartAtMs = maxOf(scheduledStartAtMs, imported.scheduledStartAtMs),
         watchProgress = if (importedHistoryIsNewer) imported.watchProgress else watchProgress,
@@ -787,6 +794,7 @@ internal fun VideoUiModel.toJson() = JSONObject().apply {
     put("sourceId", sourceId)
     put("isLive", isLive)
     put("isShort", isShort)
+    put("isMusic", isMusic ?: JSONObject.NULL)
     put("isAvailable", isAvailable)
     put("scheduledStartAtMs", scheduledStartAtMs)
     put("watchProgress", normalizedLibraryProgress(watchProgress).toDouble())
@@ -851,6 +859,7 @@ internal fun JSONArray.toVideoList(): List<VideoUiModel> = buildList {
                 isLive = json.optBoolean("isLive"),
                 isShort = json.optBoolean("isShort") ||
                     id.contains("/shorts/", ignoreCase = true),
+                isMusic = if (json.isNull("isMusic")) null else json.opt("isMusic") as? Boolean,
                 isAvailable = json.optBoolean("isAvailable", true),
                 scheduledStartAtMs = json.optLong("scheduledStartAtMs", 0L),
                 watchProgress = normalizedLibraryProgress(json.optDouble("watchProgress", 0.0).toFloat()),

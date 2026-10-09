@@ -40,6 +40,7 @@ import com.futo.platformplayer.api.media.platforms.js.models.sources.JSDashManif
 import com.futo.platformplayer.api.media.platforms.js.models.sources.JSAudioUrlRangeSource
 import com.futo.platformplayer.api.media.platforms.js.models.sources.JSVideoUrlRangeSource
 import com.futo.platformplayer.api.media.platforms.js.models.JSRequestExecutor
+import com.futo.platformplayer.api.media.platforms.js.models.JSContent
 import com.futo.platformplayer.builders.DashBuilder
 import com.futo.platformplayer.engine.exceptions.ScriptLoginRequiredException
 import com.futo.platformplayer.states.StateApp
@@ -269,6 +270,7 @@ data class GrayjayPlaybackSource(
     val isAudioOnly: Boolean = false,
     /** The selected video representation already contains its audio track. */
     val videoHasMuxedAudio: Boolean = false,
+    val isMusic: Boolean? = null,
 )
 
 enum class GrayjayStreamType { Hls, Dash, Progressive }
@@ -2155,6 +2157,14 @@ class GrayjayPluginBackend(
             authorThumbnailUrl = details.author.thumbnail,
             authorSubscribers = details.author.subscribers,
             description = cleanPluginDescription(details.description),
+            isMusic = if (endpoint.pluginId == YOUTUBE_PLUGIN_ID) {
+                runCatching {
+                    plugin.busy {
+                        youtubeMusicClassification((details as? JSContent)?.getUnderlyingObject()
+                            ?.getString("__grayjoyYoutubeCategory"))
+                    }
+                }.getOrNull()
+            } else null,
             thumbnailUrl = details.thumbnails.getHQThumbnail(),
             durationSeconds = details.duration,
             viewCount = details.viewCount,
@@ -2915,7 +2925,7 @@ class GrayjayPluginBackend(
 
     private fun String.withComposeCompatibility(pluginId: String): String {
         if (pluginId != YOUTUBE_PLUGIN_ID) return this
-        var patched = replace(
+        var patched = withYoutubeMusicMetadata().replace(
             "true/*_settings?.use_session_client*/ && canBatchDummy",
             "!(_settings?.composeLegacyAgeFallback) && canBatchDummy",
         )

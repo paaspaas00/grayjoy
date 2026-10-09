@@ -642,4 +642,10 @@
     <string name="sponsorblock_skipped_preview">Vorschau oder Rückblick übersprungen</string>
     <string name="sponsorblock_skipped_music_offtopic">Nichtmusikalischer Abschnitt übersprungen</string>
     <string name="sponsorblock_skipped_filler">Füllmaterial übersprungen</string>
+    <string name="history_music_all">Alle</string>
+    <string name="history_music_only">Musik</string>
+    <string name="history_music_exclude">Keine Musik</string>
+    <string name="history_music_unknown_hint">Videos ohne erkannte YouTube-Kategorie bleiben unter Alle.</string>
+    <string name="history_music_identify_more">Weitere Videos erkennen</string>
+    <string name="history_music_identifying">Erkennung %1$d / %2$d</string>
 </resources>

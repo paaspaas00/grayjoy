@@ -642,4 +642,10 @@
     <string name="sponsorblock_skipped_preview">미리보기 또는 요약을 건너뛰었습니다</string>
     <string name="sponsorblock_skipped_music_offtopic">음악 외 구간을 건너뛰었습니다</string>
     <string name="sponsorblock_skipped_filler">불필요한 부분을 건너뛰었습니다</string>
+    <string name="history_music_all">전체</string>
+    <string name="history_music_only">음악</string>
+    <string name="history_music_exclude">음악 외</string>
+    <string name="history_music_unknown_hint">YouTube 카테고리를 확인할 수 없는 동영상은 전체에 표시됩니다.</string>
+    <string name="history_music_identify_more">다른 동영상 분류</string>
+    <string name="history_music_identifying">분류 중 %1$d / %2$d</string>
 </resources>

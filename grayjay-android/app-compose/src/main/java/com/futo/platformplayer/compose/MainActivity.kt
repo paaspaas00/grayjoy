@@ -366,6 +366,8 @@ class MainActivity : FragmentActivity() {
                     onRemoveVideosFromPlaylist = viewModel::removeVideosFromPlaylist
                     onReorderPlaylist = viewModel::reorderPlaylist
                     onRemoveVideosFromHistory = viewModel::removeVideosFromHistory
+                    onRequestHistoryMusicClassification = viewModel::requestHistoryMusicClassification
+                    onShortsPrefetchWindowChanged = viewModel::updateShortsPrefetchWindow
                     onRemoveDownloads = viewModel::removeDownloads
                     onRemovePlaylists = viewModel::removePlaylists
                     onExportDownloads = viewModel::exportDownloads

@@ -642,4 +642,10 @@
     <string name="sponsorblock_skipped_preview">Avance o resumen omitido</string>
     <string name="sponsorblock_skipped_music_offtopic">Sección no musical omitida</string>
     <string name="sponsorblock_skipped_filler">Relleno omitido</string>
+    <string name="history_music_all">Todos</string>
+    <string name="history_music_only">Música</string>
+    <string name="history_music_exclude">No musicales</string>
+    <string name="history_music_unknown_hint">Los vídeos sin una categoría de YouTube reconocida permanecen en Todos.</string>
+    <string name="history_music_identify_more">Identificar más vídeos</string>
+    <string name="history_music_identifying">Identificando %1$d / %2$d</string>
 </resources>

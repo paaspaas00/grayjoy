@@ -8,6 +8,24 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class LibraryFilterTest {
+    @Test
+    fun musicFiltersDistinguishUnknownAndPreserveHistoryOrderAndSearch() {
+        val history = listOf(
+            video("new-music").copy(isMusic = true, title = "Evening set"),
+            video("unknown").copy(isMusic = null, title = "Evening music"),
+            video("talk").copy(isMusic = false, title = "Evening talk"),
+            video("old-music").copy(isMusic = true, title = "Morning set"),
+        )
+        assertEquals(history, videosForHistoryMusicFilter(history, HistoryMusicFilter.All))
+        assertEquals(listOf("new-music", "old-music"),
+            videosForHistoryMusicFilter(history, HistoryMusicFilter.Music).map(VideoUiModel::id))
+        assertEquals(listOf("talk"),
+            videosForHistoryMusicFilter(history, HistoryMusicFilter.NonMusic).map(VideoUiModel::id))
+        assertEquals(listOf("new-music"), videosMatchingLibraryQuery(
+            videosForHistoryMusicFilter(history, HistoryMusicFilter.Music), "Evening",
+        ).map(VideoUiModel::id))
+    }
+
     private val videos = listOf(
         video(id = "watch-later", isWatchLater = true),
         video(id = "download", isDownloaded = true),

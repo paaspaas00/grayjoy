@@ -18,6 +18,8 @@ data class VideoUiModel(
     val sourceId: String = "youtube",
     val isLive: Boolean = false,
     val isShort: Boolean = false,
+    /** YouTube category metadata: null is unclassified, not non-music. */
+    val isMusic: Boolean? = null,
     val isAvailable: Boolean = true,
     val scheduledStartAtMs: Long = 0L,
     val isDrmProtected: Boolean = false,

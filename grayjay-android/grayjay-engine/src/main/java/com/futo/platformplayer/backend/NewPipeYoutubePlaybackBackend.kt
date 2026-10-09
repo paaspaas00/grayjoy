@@ -302,6 +302,7 @@ class NewPipeYoutubePlaybackBackend(
             authorThumbnailUrl = uploaderAvatars.bestImageUrl(),
             authorSubscribers = uploaderSubscriberCount.takeIf { it >= 0L },
             description = cleanNewPipeDescription(description),
+            isMusic = youtubeMusicClassification(category),
             thumbnailUrl = thumbnails.bestImageUrl(),
             durationSeconds = duration.coerceAtLeast(0L),
             viewCount = viewCount.coerceAtLeast(0L),
