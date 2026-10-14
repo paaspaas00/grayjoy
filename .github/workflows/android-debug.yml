@@ -2,6 +2,12 @@ name: Build APKs
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing version tag to build and publish as a draft (leave empty for artifacts only)
+        required: false
+        default: ""
+        type: string
   push:
     tags:
       - "v*"
@@ -10,7 +16,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: grayjoy-build-${{ github.ref }}
+  group: grayjoy-build-${{ inputs.release_tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -18,10 +24,21 @@ jobs:
     name: Build Grayjoy debug and release APKs
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
 
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Validate release tag
+        if: env.RELEASE_TAG != ''
+        shell: bash
+        run: |
+          [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "${RELEASE_TAG}^{commit}")"
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
@@ -46,7 +63,12 @@ jobs:
         run: chmod +x gradlew
 
       - name: Install voice native build tools
-        run: sdkmanager "ndk;28.1.13356709" "cmake;3.22.1"
+        shell: bash
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          manager="${sdk}/cmdline-tools/latest/bin/sdkmanager"
+          test -x "${manager}"
+          "${manager}" "ndk;28.1.13356709" "cmake;3.22.1"
 
       - name: Prepare release signing
         id: signing
@@ -136,8 +158,8 @@ jobs:
         id: package
         shell: bash
         run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            version="${GITHUB_REF_NAME}"
+          if [[ -n "${RELEASE_TAG}" ]]; then
+            version="${RELEASE_TAG}"
           else
             version="manual-${GITHUB_RUN_NUMBER}"
           fi
@@ -199,36 +221,36 @@ jobs:
           retention-days: 30
 
       - name: Publish tagged GitHub release
-        if: github.ref_type == 'tag'
+        if: env.RELEASE_TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
           CHECKSUM_PATH: ${{ steps.package.outputs.checksum_path }}
         shell: bash
         run: |
-          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" release/* --clobber --repo "${GITHUB_REPOSITORY}"
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release/* --clobber --repo "${GITHUB_REPOSITORY}"
           else
             variants=(arm64-v8a armeabi-v7a x86 x86_64 universal)
             assets=()
             for variant in "${variants[@]}"; do
-              assets+=("release/Grayjoy-${GITHUB_REF_NAME}-${variant}-debug.apk#Grayjoy ${GITHUB_REF_NAME} ${variant} debug APK")
-              assets+=("release/Grayjoy-${GITHUB_REF_NAME}-${variant}-release.apk#Grayjoy ${GITHUB_REF_NAME} ${variant} signed release APK")
+              assets+=("release/Grayjoy-${RELEASE_TAG}-${variant}-debug.apk#Grayjoy ${RELEASE_TAG} ${variant} debug APK")
+              assets+=("release/Grayjoy-${RELEASE_TAG}-${variant}-release.apk#Grayjoy ${RELEASE_TAG} ${variant} signed release APK")
             done
-            assets+=("release/Grayjoy-Link-${GITHUB_REF_NAME}.zip#Grayjoy Link ${GITHUB_REF_NAME} Chromium extension")
-            assets+=("release/GrayjoyVoice-${GITHUB_REF_NAME}-universal-debug.apk#Grayjoy Voice ${GITHUB_REF_NAME} ARM64 and x86-64 debug APK")
-            assets+=("release/GrayjoyVoice-${GITHUB_REF_NAME}-universal-release.apk#Grayjoy Voice ${GITHUB_REF_NAME} ARM64 and x86-64 signed release APK")
+            assets+=("release/Grayjoy-Link-${RELEASE_TAG}.zip#Grayjoy Link ${RELEASE_TAG} Chromium extension")
+            assets+=("release/GrayjoyVoice-${RELEASE_TAG}-universal-debug.apk#Grayjoy Voice ${RELEASE_TAG} ARM64 and x86-64 debug APK")
+            assets+=("release/GrayjoyVoice-${RELEASE_TAG}-universal-release.apk#Grayjoy Voice ${RELEASE_TAG} ARM64 and x86-64 signed release APK")
             assets+=("${CHECKSUM_PATH}#SHA-256 checksums")
 
-            notes=".github/release-notes/${GITHUB_REF_NAME}.it.md"
+            notes=".github/release-notes/${RELEASE_TAG}.it.md"
             if [[ ! -s "${notes}" ]]; then
               echo "Missing Italian release notes: ${notes}" >&2
               exit 1
             fi
 
-            gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
+            gh release create "${RELEASE_TAG}" "${assets[@]}" \
               --verify-tag \
               --draft \
-              --title "Grayjoy ${GITHUB_REF_NAME}" \
+              --title "Grayjoy ${RELEASE_TAG}" \
               --notes-file "${notes}" \
               --repo "${GITHUB_REPOSITORY}"
           fi
