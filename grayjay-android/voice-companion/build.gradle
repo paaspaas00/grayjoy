@@ -5,6 +5,11 @@ plugins {
 }
 
 def suffix = providers.gradleProperty('GRAYJOY_DEBUG_APPLICATION_ID_SUFFIX').getOrNull() ?: ''
+def releaseSigning = ['STORE_FILE', 'STORE_PASSWORD', 'KEY_ALIAS', 'KEY_PASSWORD'].collectEntries { name ->
+    def key = 'GRAYJOY_RELEASE_' + name
+    [(name): providers.gradleProperty(key).orElse(providers.environmentVariable(key)).getOrNull()]
+}
+def hasReleaseSigning = releaseSigning.values().every { it != null && !it.trim().isEmpty() }
 def sherpaAar = layout.buildDirectory.file('dependencies/sherpa-onnx-1.13.8.aar')
 def downloadSherpa = tasks.register('downloadSherpa') {
     outputs.file(sherpaAar)
@@ -46,8 +51,19 @@ android {
         externalNativeBuild { cmake { cppFlags '-std=c++17 -O3'; arguments '-DCMAKE_BUILD_TYPE=Release', '-DANDROID_STL=c++_shared' } }
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseSigning.STORE_FILE)
+                storePassword releaseSigning.STORE_PASSWORD
+                keyAlias releaseSigning.KEY_ALIAS
+                keyPassword releaseSigning.KEY_PASSWORD
+            }
+        }
+    }
     buildTypes {
         debug {
+            if (hasReleaseSigning) signingConfig signingConfigs.release
             if (suffix) {
                 applicationIdSuffix suffix
                 manifestPlaceholders.grayjoyPackage = 'com.futo.platformplayer.compose' + suffix
@@ -55,7 +71,10 @@ android {
                 buildConfigField 'String', 'GRAYJOY_PACKAGE', '"com.futo.platformplayer.compose' + suffix + '"'
             }
         }
-        release { minifyEnabled false }
+        release {
+            minifyEnabled false
+            if (hasReleaseSigning) signingConfig signingConfigs.release
+        }
     }
     externalNativeBuild { cmake {
         path file('src/main/cpp/CMakeLists.txt'); version '3.22.1'
@@ -70,13 +89,6 @@ android {
     }
     kotlinOptions { jvmTarget = '17' }
     packaging { resources { excludes += '/META-INF/{AL2.0,LGPL2.1}' } }
-}
-
-afterEvaluate {
-    // A companion can authenticate only when signed by the same identity as Grayjoy.
-    def host = project(':app-compose').android
-    android.buildTypes.debug.signingConfig = host.buildTypes.debug.signingConfig
-    android.buildTypes.release.signingConfig = host.buildTypes.release.signingConfig
 }
 
 dependencies {

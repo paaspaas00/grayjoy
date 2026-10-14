@@ -16,7 +16,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: grayjoy-build-${{ inputs.release_tag || github.ref }}
+  group: grayjoy-build-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -105,6 +105,34 @@ jobs:
           GRAYJOY_RELEASE_KEY_ALIAS: ${{ secrets.GRAYJOY_RELEASE_KEY_ALIAS }}
           GRAYJOY_RELEASE_KEY_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_KEY_PASSWORD }}
         run: ./gradlew --no-daemon :app-compose:testDebugUnitTest :grayjay-engine:testDebugUnitTest :voice-companion:testDebugUnitTest :app-compose:assembleDebug :app-compose:assembleRelease :voice-companion:assembleDebug :voice-companion:assembleRelease
+
+      - name: Sign voice companion APKs
+        env:
+          GRAYJOY_RELEASE_STORE_FILE: ${{ steps.signing.outputs.store_file }}
+          GRAYJOY_RELEASE_STORE_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_STORE_PASSWORD }}
+          GRAYJOY_RELEASE_KEY_ALIAS: ${{ secrets.GRAYJOY_RELEASE_KEY_ALIAS }}
+          GRAYJOY_RELEASE_KEY_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          apksigner="$(find "${ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          for variant in debug release; do
+            directory="grayjay-android/voice-companion/build/outputs/apk/${variant}"
+            target="${directory}/voice-companion-${variant}.apk"
+            input="${target}"
+            if [[ ! -f "${input}" ]]; then
+              input="${directory}/voice-companion-${variant}-unsigned.apk"
+            fi
+            test -f "${input}"
+            temporary="${directory}/voice-companion-${variant}-signed.apk"
+            "${apksigner}" sign \
+              --ks "${GRAYJOY_RELEASE_STORE_FILE}" \
+              --ks-key-alias "${GRAYJOY_RELEASE_KEY_ALIAS}" \
+              --ks-pass env:GRAYJOY_RELEASE_STORE_PASSWORD \
+              --key-pass env:GRAYJOY_RELEASE_KEY_PASSWORD \
+              --v4-signing-enabled false \
+              --out "${temporary}" "${input}"
+            mv "${temporary}" "${target}"
+          done
 
       - name: Verify APK signatures and signing identity
         shell: bash
