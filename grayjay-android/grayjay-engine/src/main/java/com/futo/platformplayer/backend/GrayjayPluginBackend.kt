@@ -2735,6 +2735,7 @@ class GrayjayPluginBackend(
 
     private suspend fun getOrLoad(alias: String, endpoint: PluginEndpoint): JSClient {
         val generation = clientEpoch.snapshot()
+        NativeHttpRuntime.ensureInitialized(appContext)
         clientEpoch.current(generation) { clients[alias] }?.let { return it }
         return loadMutex.withLock {
             val currentProfile = clientEpoch.current(generation) {

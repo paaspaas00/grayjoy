@@ -169,6 +169,7 @@ fun SettingsScreen(
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     var showPairedComputers by rememberSaveable { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
+    var showVoiceControl by rememberSaveable { mutableStateOf(false) }
     val extras = LocalExtraPreferences.current
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val groupSpacing = if (performance.compactContent) 10.dp else 16.dp
@@ -563,6 +564,10 @@ fun SettingsScreen(
             LinkSetting(stringResource(R.string.advanced_settings), stringResource(R.string.advanced_settings_description), Icons.Outlined.BugReport,
                 { showAdvanced = true }, "advanced-settings")
         }
+        item(key = "voice-preferences") {
+            LinkSetting(stringResource(R.string.voice_control), stringResource(R.string.voice_control_description),
+                Icons.Outlined.MusicNote, { showVoiceControl = true }, "voice-control-settings")
+        }
         item {
             Column(
                 modifier = Modifier
@@ -590,6 +595,7 @@ fun SettingsScreen(
     }
 
     if (showAdvanced) AdvancedPreferencesDialog(sources, onDismiss = { showAdvanced = false })
+    if (showVoiceControl) VoiceControlPreferences(onDismiss = { showVoiceControl = false })
     if (showSponsorBlockDialog) {
         AlertDialog(
             onDismissRequest = { showSponsorBlockDialog = false },

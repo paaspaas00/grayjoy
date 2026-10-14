@@ -90,7 +90,8 @@ internal fun selectReleaseApkUrl(
     supportedAbis: List<String>,
 ): String? {
     val candidates = assets.filter { asset ->
-        asset.name.endsWith("-release.apk", ignoreCase = true) &&
+        Regex("(?i)^Grayjoy-v?\\d+\\.\\d+\\.\\d+-(arm64-v8a|armeabi-v7a|x86|x86_64|universal)-release\\.apk$")
+            .matches(asset.name) &&
             asset.downloadUrl.startsWith("https://")
     }
     val variants = supportedAbis.mapNotNull { abi ->

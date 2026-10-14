@@ -156,7 +156,7 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(pagerState, browseTabs) {
+    LaunchedEffect(pagerState, feeds, browseTabs) {
         snapshotFlow { pagerState.settledPage }
             .distinctUntilChanged()
             .collect { page ->
@@ -175,7 +175,7 @@ fun HomeScreen(
                 }
             }
     }
-    LaunchedEffect(home.selectedFeed, home.browseSourceId, home.browseGroupId, browseTabs) {
+    LaunchedEffect(home.selectedFeed, home.browseSourceId, home.browseGroupId, feeds, browseTabs) {
         val selectedPage = browseTabs.indexOfFirst {
             it.sourceId == home.browseSourceId && it.groupId == home.browseGroupId
         }.takeIf { it >= 0 }?.plus(feeds.size)
@@ -451,8 +451,10 @@ fun HomeScreen(
                         item {
                             Text(
                                 when (feed) {
-                                    HomeFeedType.Subscriptions ->
-                                        stringResource(R.string.home_empty_subscriptions)
+                                    HomeFeedType.Subscriptions -> stringResource(
+                                        if (pageHome.subscriptionsTotal > 0) R.string.home_empty_feed
+                                        else R.string.home_empty_subscriptions,
+                                    )
                                     HomeFeedType.Shorts -> stringResource(R.string.home_empty_feed)
                                     HomeFeedType.Live -> stringResource(R.string.home_empty_live)
                                     else -> stringResource(R.string.home_empty_feed)

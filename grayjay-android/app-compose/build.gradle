@@ -56,8 +56,8 @@ android {
         applicationId 'com.futo.platformplayer.compose'
         minSdk 28
         targetSdk 36
-        versionCode 2700
-        versionName '2.7.0'
+        versionCode 3000
+        versionName '3.0.0'
         buildConfigField 'String', 'GRAYJAY_ENGINE_REVISION', '"' + engineRevision + '"'
         buildConfigField 'String', 'NEWPIPE_ENGINE_VERSION', '"' + engineVersions.getProperty('newpipe.version') + '"'
         buildConfigField 'String', 'NEWPIPE_ENGINE_REVISION', '"' + engineVersions.getProperty('newpipe.commit') + '"'
@@ -172,6 +172,7 @@ dependencies {
     implementation 'androidx.documentfile:documentfile:1.1.0'
     implementation 'com.github.bumptech.glide:glide:5.0.5'
     implementation 'com.google.code.gson:gson:2.13.2'
+    implementation 'commons-codec:commons-codec:1.23.0'
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     implementation files('../app/aar/sender-sdk-minimal-0.4.1.aar')
     implementation 'net.java.dev.jna:jna:5.18.1@aar'

@@ -151,6 +151,7 @@ data class PlaylistUiModel(
     val sourceId: String = "",
     val thumbnailUrl: String = "",
     val videoCount: Int = videoIds.size,
+    val isPlaybackQueue: Boolean = false,
 )
 
 data class SourceUiModel(

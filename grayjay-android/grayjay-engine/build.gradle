@@ -32,6 +32,8 @@ android {
         main {
             java.srcDirs = ['src/main/java', layout.buildDirectory.dir('generated/legacyBackend')]
             assets.srcDirs = ['../app/src/main/assets']
+            // The JS HTTP bridge includes Libcurl; ship its native runtime for every ABI too.
+            jniLibs.srcDirs = ['../app/src/main/jniLibs']
         }
     }
 }

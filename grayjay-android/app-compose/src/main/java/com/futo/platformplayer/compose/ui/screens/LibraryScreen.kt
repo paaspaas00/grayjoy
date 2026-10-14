@@ -204,10 +204,6 @@ internal fun LibraryScreen(
     var playlistQuery by rememberSaveable { mutableStateOf("") }
     var historyQuery by rememberSaveable { mutableStateOf("") }
     var historyMusicFilter by rememberSaveable { mutableStateOf(HistoryMusicFilter.All) }
-    val currentMusicClassificationRequest by rememberUpdatedState(onRequestHistoryMusicClassification)
-    DisposableEffect(Unit) {
-        onDispose { currentMusicClassificationRequest(emptyList()) }
-    }
     var focusedSearchFilter by remember { mutableStateOf<LibraryFilter?>(null) }
     val selectedVideoIds = remember { mutableStateListOf<String>() }
     val selectedPlaylistIds = remember { mutableStateListOf<String>() }
@@ -281,7 +277,6 @@ internal fun LibraryScreen(
             }
     }
     LaunchedEffect(selectedFilter) {
-        if (selectedFilter != LibraryFilter.History) currentMusicClassificationRequest(emptyList())
         val page = filters.indexOf(selectedFilter)
         if (selectedFilter !in setOf(LibraryFilter.History, LibraryFilter.Playlists)) {
             keyboardController?.hide()
@@ -398,7 +393,7 @@ internal fun LibraryScreen(
                 LaunchedEffect(focusedSearchFilter, pageFilter) {
                     if (focusedSearchFilter == pageFilter) {
                         delay(120L)
-                        listState.animateScrollToItem(LIBRARY_SEARCH_FOCUSED_SCROLL_INDEX)
+                        listState.animateScrollToItem(if (pageFilter == LibraryFilter.History) 1 else LIBRARY_SEARCH_FOCUSED_SCROLL_INDEX)
                     }
                 }
                 LaunchedEffect(
@@ -494,7 +489,7 @@ internal fun LibraryScreen(
             }
             }
         }
-        item {
+        if (pageFilter != LibraryFilter.History) item {
             if (compactLayout) {
                 val count = if (pageFilter == LibraryFilter.Playlists) playlists.size else musicFilteredPageVideos.size
                 Text(pluralStringResource(if (pageFilter == LibraryFilter.Playlists) R.plurals.playlist_count else R.plurals.video_count, count, count),
@@ -513,7 +508,6 @@ internal fun LibraryScreen(
                     onQueryChange = { value ->
                         if (pageFilter == LibraryFilter.History) {
                             historyQuery = value
-                            currentMusicClassificationRequest(emptyList())
                         }
                         else playlistQuery = value
                     },
@@ -547,9 +541,6 @@ internal fun LibraryScreen(
                                 onClick = {
                                     historyMusicFilter = musicFilter
                                     leaveSelectionMode()
-                                    currentMusicClassificationRequest(
-                                        if (musicFilter == HistoryMusicFilter.All) emptyList() else unknownHistoryIds,
-                                    )
                                 },
                                 label = { Text(stringResource(musicFilter.labelRes)) },
                                 modifier = Modifier.testTag("history-music-${musicFilter.name.lowercase()}"),
@@ -557,28 +548,6 @@ internal fun LibraryScreen(
                         }
                     }
                 }
-                }
-            }
-        }
-        if (pageFilter == LibraryFilter.History && historyMusicFilter != HistoryMusicFilter.All &&
-            (unknownHistoryIds.isNotEmpty() || historyMusicScan.isRunning)) {
-            item(key = "history-music-identification") {
-                Column {
-                    Text(stringResource(R.string.history_music_unknown_hint),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (historyMusicScan.isRunning) {
-                        TextButton(onClick = { currentMusicClassificationRequest(emptyList()) },
-                            modifier = Modifier.testTag("history-music-cancel")) {
-                            Text(stringResource(R.string.history_music_identifying,
-                                historyMusicScan.completed, historyMusicScan.total))
-                            Text(" · " + stringResource(R.string.cancel))
-                        }
-                    } else if (unknownHistoryIds.any { it !in historyMusicScan.attemptedVideoIds }) {
-                        TextButton(onClick = { currentMusicClassificationRequest(unknownHistoryIds) },
-                            modifier = Modifier.testTag("history-music-identify")) {
-                            Text(stringResource(R.string.history_music_identify_more))
-                        }
-                    }
                 }
             }
         }

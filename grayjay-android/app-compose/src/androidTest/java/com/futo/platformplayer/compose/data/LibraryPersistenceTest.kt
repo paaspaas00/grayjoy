@@ -87,6 +87,21 @@ class LibraryPersistenceTest {
     }
 
     @Test
+    fun autoQueuePlaylistKeepsItsIdentityAndLastAdditionAcrossReloads() {
+        fun video(id: String) = VideoUiModel(id, id, "Creator", "", "1:00")
+        val first = SharedPreferencesLibraryRepository(context, profileId)
+        val playlist = first.createPlaylist("Played fixture", listOf(video("one")), isPlaybackQueue = true)!!
+        first.addVideosToPlaylist(playlist.id, listOf(video("two")))
+        val reopened = SharedPreferencesLibraryRepository(context, profileId)
+        assertTrue(reopened.loadPlaylists().single().isPlaybackQueue)
+        val updated = reopened.addVideosToPlaylist(playlist.id, listOf(video("three"), video("three")))!!
+        assertEquals(listOf("one", "two", "three"), updated.videoIds)
+        assertEquals(3, updated.videoCount)
+        assertEquals(updated.videoIds, first.loadPlaylists().single().videoIds)
+        assertEquals(listOf("Played fixture"), first.loadSavedVideos().first { it.id == "three" }.playlistNames)
+    }
+
+    @Test
     fun musicClassificationPersistsAndSparseRefreshCannotEraseIt() {
         val repository = SharedPreferencesLibraryRepository(context, profileId)
         fun video(id: String, isMusic: Boolean?) = VideoUiModel(id, id, "Creator", "", "1:00", isMusic = isMusic)
@@ -99,5 +114,20 @@ class LibraryPersistenceTest {
         assertNull(saved.getValue("unknown").isMusic)
         repository.saveVideo(video("music", false))
         assertEquals(false, repository.loadSavedVideos().first { it.id == "music" }.isMusic)
+    }
+
+    @Test fun truncatedJsonCannotBeOverwrittenByAnOrdinarySave() {
+        val store = context.getSharedPreferences("grayjay_compose_library_v2_$profileId", 0)
+        for (key in listOf("saved_videos", "playlists")) {
+            store.edit().clear().putString(key, "[{\"id\":\"unfinished").commit()
+            val repository = SharedPreferencesLibraryRepository(context, profileId)
+            repository.loadSavedVideos()
+            repository.loadPlaylists()
+            try {
+                repository.saveVideo(VideoUiModel("new", "New", "Creator", "", "1:00"))
+                org.junit.Assert.fail("Unreadable data must not be silently replaced")
+            } catch (_: LibraryDataUnavailableException) { }
+            assertEquals("[{\"id\":\"unfinished", store.getString(key, null))
+        }
     }
 }

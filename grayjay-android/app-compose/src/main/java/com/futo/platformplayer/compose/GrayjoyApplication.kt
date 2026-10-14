@@ -6,6 +6,8 @@ import com.futo.platformplayer.compose.diagnostics.CrashLogStore
 import com.futo.platformplayer.compose.downloads.GrayjoyDownloadStore
 
 class GrayjoyApplication : Application() {
+    // Playback and authenticated companion commands share one owner, even without an Activity.
+    val playbackViewModel: GrayjayViewModel by lazy { GrayjayViewModel(this) }
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(AppLanguageManager.localizedContext(base))
     }

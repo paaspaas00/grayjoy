@@ -94,6 +94,7 @@ class GrayjayAppActions {
     var onChannelSearchQueryChange: (String) -> Unit = {}
     var onLoadMoreChannelSearch: () -> Unit = {}
     var onLoadFollowingComplete: () -> Unit = {}
+    var onRefreshFollowing: () -> Unit = {}
     var onLoadRemotePlaylist: (PlaylistUiModel) -> Unit = {}
     var onLoadMoreRemotePlaylist: () -> Unit = {}
     var onPlayRemotePlaylist: () -> Unit = {}

@@ -896,6 +896,26 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         return video.withOfflinePlayback(parts)
     }
 
+    /** Resolve a voice/library batch against one catalogue snapshot, not one disk reconciliation per row. */
+    @Synchronized
+    fun playbackDescriptorsFor(profileId: String, videos: List<VideoUiModel>): List<VideoUiModel> {
+        reconcileCompletedCatalog()
+        val requestVideos = completedRecords.values.asSequence().filter { it.key.profileId == profileId }
+            .flatMap { record -> record.requestIds.asSequence().map { it to record.key.videoId } }
+            .groupBy({ it.first }, { it.second })
+        val parts = downloadsById.values.mapNotNull { download ->
+            if (download.request.id !in requestVideos) return@mapNotNull null
+            val metadata = metadataFor(download.request)?.takeIf { it.profileId == profileId } ?: return@mapNotNull null
+            if (metadata.videoId !in requestVideos.getValue(download.request.id)) return@mapNotNull null
+            metadata.videoId to OfflinePlaybackPart(
+                mediaType = metadata.mediaType, name = metadata.part, expectedPartCount = metadata.partCount,
+                uri = download.request.uri.toString(), mimeType = download.request.mimeType.orEmpty(),
+                headers = metadata.headers, rawManifest = metadata.rawManifest, cacheNamespace = download.request.id,
+                streamKeys = download.request.streamKeys, completed = download.state == Download.STATE_COMPLETED)
+        }.groupBy({ it.first }, { it.second })
+        return videos.mapNotNull { video -> parts[video.id]?.let { video.withOfflinePlayback(it) } }
+    }
+
     @Synchronized
     fun hasDownloadRecord(
         profileId: String,

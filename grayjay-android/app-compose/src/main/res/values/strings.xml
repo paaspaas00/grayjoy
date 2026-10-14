@@ -1,4 +1,5 @@
 <resources>
+    <string name="playback_notification_unavailable">Android could not show playback controls. Open Grayjoy and tap Play to resume.</string>
     <string name="app_name">Grayjoy</string>
     <string name="lower_volume_for_other_audio">Lower volume for other audio</string>
     <string name="lower_volume_for_other_audio_description">Smoothly lower Grayjoy while another app plays audio</string>
@@ -475,6 +476,8 @@
 
     <!-- User-facing operation and error messages -->
     <string name="home_feed_refresh_failed">The home feed could not be refreshed.</string>
+    <string name="refresh_following_videos">Refresh videos</string>
+    <string name="library_unreadable_write_blocked">The saved library is unreadable. Changes are blocked to protect your data. Keep a copy of the app data before restoring a backup.</string>
     <string name="signed_in_to_source">Signed in to %1$s.</string>
     <string name="signed_out">Signed out.</string>
     <string name="video_details_load_failed">Video details could not be loaded.</string>
@@ -798,4 +801,10 @@
     <string name="history_music_unknown_hint">Videos without a known YouTube category remain in All.</string>
     <string name="history_music_identify_more">Identify more videos</string>
     <string name="history_music_identifying">Identifying %1$d / %2$d</string>
+    <string name="history_music_background_job">Classifying watch history</string>
+    <string name="voice_control">Voice control</string>
+    <string name="voice_control_description">Offline companion for playback commands</string>
+    <string name="voice_companion_missing">Install Grayjoy Voice to enable this feature.</string>
+    <string name="voice_control_enable">Allow voice commands</string>
+    <string name="voice_control_open">Open Grayjoy Voice</string>
 </resources>

@@ -11,7 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -126,7 +125,6 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
@@ -276,7 +274,7 @@ fun VideoDetailScreen(
         availableWidthDp = LocalConfiguration.current.screenWidthDp.toFloat(),
     )
     val detailListState = rememberLazyListState()
-    LaunchedEffect(video.id, video.title, allowSideBySideLayout) {
+    LaunchedEffect(video.id) {
         detailListState.scrollToItem(0)
     }
     RequestNextPageEffect(
@@ -410,7 +408,6 @@ fun VideoDetailScreen(
                     state = detailListState,
                     modifier = Modifier
                         .weight(0.85f)
-                        .forwardUnconsumedVerticalDrag(detailListState)
                         .testTag("video-detail-list"),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp),
@@ -464,7 +461,6 @@ fun VideoDetailScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .forwardUnconsumedVerticalDrag(detailListState)
                     .testTag("video-detail-list"),
                 contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -1256,32 +1252,6 @@ internal fun PlayerSurface(
                 showSettings = false
             },
         )
-    }
-}
-
-/**
- * Horizontal chips and nested clickable surfaces occasionally win pointer arbitration before the
- * LazyColumn sees a mostly-vertical drag. Forward only movement left unconsumed at the final pass;
- * ordinary list scrolling is already consumed and therefore cannot be applied twice.
- */
-private fun Modifier.forwardUnconsumedVerticalDrag(
-    listState: androidx.compose.foundation.lazy.LazyListState,
-): Modifier = pointerInput(listState) {
-    awaitEachGesture {
-        val first = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull()
-            ?: return@awaitEachGesture
-        val pointerId = first.id
-        while (true) {
-            val change = awaitPointerEvent(PointerEventPass.Final).changes
-                .firstOrNull { it.id == pointerId }
-                ?: break
-            if (!change.pressed) break
-            val delta = change.positionChange()
-            if (!change.isConsumed && abs(delta.y) > abs(delta.x) && delta.y != 0f) {
-                listState.dispatchRawDelta(-delta.y)
-                change.consume()
-            }
-        }
     }
 }
 
@@ -2334,7 +2304,7 @@ private fun LazyListScope.videoDetails(
     onShowFullQueueChange: (Boolean) -> Unit,
 ) {
     if (includePrimaryInfo) {
-        item {
+        item(key = "detail-primary") {
             VideoPrimaryInfo(
                 video = video,
                 modifier = Modifier.padding(horizontal = horizontalPadding),
@@ -2342,7 +2312,7 @@ private fun LazyListScope.videoDetails(
         }
     }
     if (includeActions) {
-        item {
+        item(key = "detail-actions") {
             VideoActions(
                 video = video,
                 download = download,
@@ -2360,7 +2330,7 @@ private fun LazyListScope.videoDetails(
         }
     }
     if (includeCreatorInfo) {
-        item {
+        item(key = "detail-creator") {
             CreatorCard(
                 video = video,
                 isFollowing = nowPlaying.isFollowing,
@@ -2371,14 +2341,14 @@ private fun LazyListScope.videoDetails(
         }
     }
     if (video.description.isNotBlank()) {
-        item {
+        item(key = "detail-description") {
             VideoDescriptionCard(
                 description = video.description,
                 modifier = Modifier.padding(horizontal = horizontalPadding),
             )
         }
     }
-    item {
+    item(key = "detail-sections") {
         Row(
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())
@@ -2518,7 +2488,7 @@ private fun LazyListScope.videoDetails(
             } else if (nowPlaying.comments.isNotEmpty()) {
                 nowPlaying.comments.forEachIndexed { index, comment ->
                     item(
-                        key = "comment-$index-${comment.author}",
+                        key = "comment-$index-${comment.id.ifBlank { comment.author }}",
                         contentType = "comment",
                     ) {
                         CommentCard(

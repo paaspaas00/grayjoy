@@ -35,6 +35,7 @@ class PlaybackNotificationService : Service() {
     private lateinit var playerNotificationManager: PlayerNotificationManager
     private lateinit var descriptionAdapter: DescriptionAdapter
     private var closingFromNotification = false
+    private var foregroundReady = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private val restoreNotification = Runnable {
         val playback = attachment
@@ -51,6 +52,7 @@ class PlaybackNotificationService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        liveService = this
         createNotificationChannel()
         descriptionAdapter = DescriptionAdapter(this)
         val notificationListener = object : PlayerNotificationManager.NotificationListener {
@@ -63,7 +65,10 @@ class PlaybackNotificationService : Service() {
                         // foreground service here lets Android kill it after the screen locks,
                         // which also loses the player and queue. Keep the service foreground
                         // until the user explicitly dismisses/closes playback.
-                        startForegroundCompat(notificationId, notification)
+                        if (!startForegroundCompat(notificationId, notification)) {
+                            failAttachment()
+                            stopSelf()
+                        }
                     }
 
             override fun onNotificationCancelled(
@@ -114,6 +119,7 @@ class PlaybackNotificationService : Service() {
         // bootstrap first makes that race legal on Android 12+; we can remove it immediately when
         // there is no longer an attachment.
         if (!startForegroundCompat(NOTIFICATION_ID, bootstrapNotification())) {
+            failAttachment()
             foregroundStartPending = false
             stopSelf(startId)
             return START_NOT_STICKY
@@ -135,9 +141,12 @@ class PlaybackNotificationService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        if (!closingFromNotification) attachment?.player?.pause()
         // Detaching Media3 can synchronously report cancellation. Do not enqueue a
         // notification restore against this service after its destruction has begun.
         closingFromNotification = true
+        foregroundReady = false
+        if (liveService === this) liveService = null
         mainHandler.removeCallbacks(restoreNotification)
         descriptionAdapter.release()
         playerNotificationManager.setPlayer(null)
@@ -146,9 +155,17 @@ class PlaybackNotificationService : Service() {
     }
 
     private fun attachAndInvalidate(playback: Attachment) {
+        if (attachment !== playback) return
         playerNotificationManager.setMediaSessionToken(playback.mediaSession.platformToken)
         playerNotificationManager.setPlayer(playback.player)
         playerNotificationManager.invalidate()
+        if (foregroundReady && attachment === playback) {
+            val ready = playback.onReady
+            if (ready != null) {
+                attachment = playback.copy(onReady = null, onUnavailable = null)
+                ready()
+            }
+        }
     }
 
     private fun closeFromNotification() {
@@ -199,8 +216,9 @@ class PlaybackNotificationService : Service() {
             } else {
                 startForeground(notificationId, notification)
             }
+            foregroundReady = true
             true
-        } catch (error: IllegalStateException) {
+        } catch (error: RuntimeException) {
             // Android can restart a sticky service before the app has returned to the foreground.
             // It is illegal to promote that restart, but it must not crash the whole process.
             Log.w(TAG, "Playback notification restart was not allowed; waiting for foreground playback.", error)
@@ -338,6 +356,8 @@ class PlaybackNotificationService : Service() {
         val mediaSession: MediaSession,
         val closePlayback: () -> Unit,
         val artworkHeaders: (String) -> Map<String, String>,
+        val onReady: (() -> Unit)? = null,
+        val onUnavailable: (() -> Unit)? = null,
     )
 
     companion object {
@@ -349,6 +369,17 @@ class PlaybackNotificationService : Service() {
 
         @Volatile
         private var attachment: Attachment? = null
+        private var liveService: PlaybackNotificationService? = null
+
+        internal fun hosts(player: Player): Boolean = liveService?.foregroundReady == true && attachment?.player === player
+
+        private fun failAttachment() {
+            attachment?.let { current ->
+                current.player.pause()
+                current.onUnavailable?.invoke()
+                if (attachment === current) attachment = current.copy(onReady = null, onUnavailable = null)
+            }
+        }
 
         fun show(
             context: Context,
@@ -356,8 +387,10 @@ class PlaybackNotificationService : Service() {
             mediaSession: MediaSession,
             closePlayback: () -> Unit,
             artworkHeaders: (String) -> Map<String, String> = { emptyMap() },
+            onReady: (() -> Unit)? = null,
+            onUnavailable: (() -> Unit)? = null,
         ) {
-            attachment = Attachment(player, mediaSession, closePlayback, artworkHeaders)
+            attachment = Attachment(player, mediaSession, closePlayback, artworkHeaders, onReady, onUnavailable)
             startIfAllowed(context)
         }
 
@@ -383,6 +416,10 @@ class PlaybackNotificationService : Service() {
         }
 
         private fun startIfAllowed(context: Context) {
+            liveService?.takeIf { it.foregroundReady && !it.closingFromNotification }?.let { service ->
+                attachment?.let(service::attachAndInvalidate)
+                return
+            }
             val alreadyPending = foregroundStartPending
             foregroundStartPending = true
             try {
@@ -392,6 +429,7 @@ class PlaybackNotificationService : Service() {
             } catch (error: RuntimeException) {
                 foregroundStartPending = alreadyPending
                 Log.w(TAG, "Could not start playback notification; retaining player attachment", error)
+                failAttachment()
             }
         }
 

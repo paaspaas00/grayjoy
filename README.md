@@ -22,6 +22,13 @@ The unpacked Chromium extension for local YouTube handoff is in
 [`browser-extension/`](browser-extension/); see its
 [`README.md`](browser-extension/README.md) for installation and pairing.
 
+The optional offline voice companion is in
+[`grayjay-android/voice-companion/`](grayjay-android/voice-companion/).
+Install the separate **Grayjoy Voice** APK from the same GitHub release, then enable
+voice access in Grayjoy and download the selected speech models in the companion.
+Voice control is off by default; the companion supports Android 9 or later on
+ARM64 and x86-64 devices. See its [setup guide](grayjay-android/voice-companion/README.md).
+
 ## Build
 
 Requirements:
@@ -45,6 +52,7 @@ it can be installed alongside the official Grayjay application.
 ## Project layout
 
 - `grayjay-android/app-compose/` — Compose/Material 3 application and UI.
+- `grayjay-android/voice-companion/` — optional offline voice assistant and local MCP client.
 - `grayjay-android/grayjay-engine/` — compatibility layer around the legacy
   Grayjay plugin and playback backend.
 - `grayjay-android/app/` — upstream backend sources reused by the engine build.

@@ -65,7 +65,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 
 class MainActivity : FragmentActivity() {
-    private val grayjayViewModel by viewModels<GrayjayViewModel>()
+    private val grayjayViewModel by lazy { (application as GrayjoyApplication).playbackViewModel }
     private var pendingSourceUrl by mutableStateOf<String?>(null)
     private var pendingDatabaseImportUri by mutableStateOf<Uri?>(null)
     private var pendingExternalContentUrl by mutableStateOf<String?>(null)
@@ -412,7 +412,8 @@ class MainActivity : FragmentActivity() {
                     onLoadMoreChannel = viewModel::loadMoreChannel
                     onChannelSearchQueryChange = viewModel::setChannelSearchQuery
                     onLoadMoreChannelSearch = viewModel::loadMoreChannelSearch
-                    onLoadFollowingComplete = viewModel::loadFollowingComplete
+                    onLoadFollowingComplete = { viewModel.loadFollowingComplete() }
+                    onRefreshFollowing = { viewModel.loadFollowingComplete(forceRefresh = true) }
                     onLoadMoreRecommendations = viewModel::loadMoreRecommendations
                     onLoadMoreComments = viewModel::loadMoreComments
                     onOpenCommentReplies = viewModel::openCommentReplies

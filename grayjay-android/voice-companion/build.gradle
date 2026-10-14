@@ -1,0 +1,100 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+def suffix = providers.gradleProperty('GRAYJOY_DEBUG_APPLICATION_ID_SUFFIX').getOrNull() ?: ''
+def sherpaAar = layout.buildDirectory.file('dependencies/sherpa-onnx-1.13.8.aar')
+def downloadSherpa = tasks.register('downloadSherpa') {
+    outputs.file(sherpaAar)
+    doLast {
+        def target = sherpaAar.get().asFile
+        target.parentFile.mkdirs()
+        def expected = '633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96'
+        def hash = { file ->
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            file.withInputStream { input ->
+                byte[] bytes = new byte[65536]
+                int size
+                while ((size = input.read(bytes)) > 0) digest.update(bytes, 0, size)
+            }
+            digest.digest().encodeHex().toString()
+        }
+        if (target.isFile() && hash(target) == expected) return
+        def partial = new File(target.path + '.part')
+        new URI('https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar')
+            .toURL().withInputStream { input -> partial.withOutputStream { it << input } }
+        if (hash(partial) != expected) { partial.delete(); throw new GradleException('Speech runtime checksum mismatch') }
+        java.nio.file.Files.move(partial.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    }
+}
+
+android {
+    namespace 'com.futo.platformplayer.voice'
+    compileSdk 36
+    ndkVersion '28.1.13356709'
+    defaultConfig {
+        applicationId 'com.futo.platformplayer.voice'
+        minSdk 28
+        targetSdk 36
+        versionCode 3000
+        versionName '3.0.0'
+        manifestPlaceholders = [grayjoyPackage: 'com.futo.platformplayer.compose', voiceLabel: 'Grayjoy Voice']
+        buildConfigField 'String', 'GRAYJOY_PACKAGE', '"com.futo.platformplayer.compose"'
+        ndk { abiFilters 'arm64-v8a', 'x86_64' }
+        externalNativeBuild { cmake { cppFlags '-std=c++17 -O3'; arguments '-DCMAKE_BUILD_TYPE=Release', '-DANDROID_STL=c++_shared' } }
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    buildTypes {
+        debug {
+            if (suffix) {
+                applicationIdSuffix suffix
+                manifestPlaceholders.grayjoyPackage = 'com.futo.platformplayer.compose' + suffix
+                manifestPlaceholders.voiceLabel = 'grayTEST Voice'
+                buildConfigField 'String', 'GRAYJOY_PACKAGE', '"com.futo.platformplayer.compose' + suffix + '"'
+            }
+        }
+        release { minifyEnabled false }
+    }
+    externalNativeBuild { cmake {
+        path file('src/main/cpp/CMakeLists.txt'); version '3.22.1'
+        // Keep Ninja object paths below Windows' practical path limits.
+        buildStagingDirectory new File(System.getProperty('java.io.tmpdir'), 'gj-voice-' + Integer.toHexString(rootProject.projectDir.absolutePath.hashCode()))
+    } }
+    buildFeatures { compose true; buildConfig true }
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+    packaging { resources { excludes += '/META-INF/{AL2.0,LGPL2.1}' } }
+}
+
+afterEvaluate {
+    // A companion can authenticate only when signed by the same identity as Grayjoy.
+    def host = project(':app-compose').android
+    android.buildTypes.debug.signingConfig = host.buildTypes.debug.signingConfig
+    android.buildTypes.release.signingConfig = host.buildTypes.release.signingConfig
+}
+
+dependencies {
+    implementation files(sherpaAar).builtBy(downloadSherpa)
+    implementation 'com.alphacephei:vosk-android:0.3.75@aar'
+    implementation 'net.java.dev.jna:jna:5.18.1@aar'
+    implementation 'org.apache.commons:commons-compress:1.28.0'
+    implementation 'com.squareup.okhttp3:okhttp:5.3.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
+    implementation platform('androidx.compose:compose-bom:2026.05.00')
+    implementation 'androidx.activity:activity-compose:1.12.4'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-extended'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.10.0'
+    implementation 'androidx.work:work-runtime-ktx:2.11.2'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20250517'
+    androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+    androidTestImplementation 'androidx.test:runner:1.7.0'
+}

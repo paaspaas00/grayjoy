@@ -530,6 +530,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     // is waiting for the first frame; the Library state is filled from IO immediately afterwards.
     private var allVideos = emptyList<VideoUiModel>()
     private var savedVideosById = emptyMap<String, VideoUiModel>()
+    private val librarySnapshots = com.futo.platformplayer.compose.data.SnapshotSequenceGate()
     private val remoteVideos = linkedMapOf<String, VideoUiModel>()
     private val remoteChannels = linkedMapOf<String, ChannelUiModel>()
     private var enabledSourceIds: Set<String> = sourceRepository.loadEnabledSourceIds(engineSources)
@@ -575,6 +576,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var channelSearchJob: Job? = null
     private var homeJob: Job? = null
     private var followingFeedJob: Job? = null
+    private val followingRequests = RequestEpoch()
     private var searchPagingJob: Job? = null
     private var homePagingJob: Job? = null
     private var homeCacheWriteJob: Job? = null
@@ -591,12 +593,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val extrasPagingJobs = mutableMapOf<Boolean, Job>()
     private val databaseImportJobs = mutableMapOf<String, Job>()
     private var commentRepliesJob: Job? = null
+    private val commentReplyRequests = RequestEpoch()
     private var resumePromptJob: Job? = null
     private var downloadQueueRestoreJob: Job? = null
     private var offlinePlaylistSyncJob: Job? = null
     private val queuePreparation = QueuePreparationGate(viewModelScope)
     private var queuePreparationBlockedUntilMs = 0L
-    private var queueMutationJob: Job? = null
+    private val queueMutations = SerialMutationQueue(viewModelScope)
     private var watchProgressWriteJob: Job? = null
     private var externalUrlJob: Job? = null
     private var releaseCheckJob: Job? = null
@@ -604,9 +607,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val mediaExportJobs = mutableMapOf<String, Job>()
     private var youtubeImportJob: Job? = null
     private var historyMusicScanJob: Job? = null
-    private var historyMusicScanGeneration = 0L
-    private val historyMusicAttempts = linkedMapOf<String, Long>()
-    private val musicMetadataResolver by lazy { com.futo.platformplayer.backend.YouTubeMusicMetadataResolver() }
+    private val scheduledHistoryMusicIds = hashSetOf<String>()
     private var youtubeImportWorkObservationJob: Job? = null
     private var backgroundYoutubeImportWasRunning = false
     private var pcHandoffJob: Job? = null
@@ -624,6 +625,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var youtubeImportGeneration = 0L
     private var playbackQueueSession: PlaybackQueueSession? = null
     private var pendingPlaybackVideoId: String? = null
+    private var pendingVoicePlayback: Pair<String, Boolean>? = null
+    private var voiceArtistSession: com.futo.platformplayer.compose.voice.VoiceArtistSession? = null
     private var pendingPcHandoffSeek: Pair<String, Long>? = null
     private var activePlaylistId: String? = null
         set(value) {
@@ -732,8 +735,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val initialLibraryRepository = libraryRepository
         val initialProfileId = activeProfileId
         libraryLoadJob = viewModelScope.launch(Dispatchers.IO) {
-            val savedVideos = initialLibraryRepository.loadSavedVideos()
-            val playlists = initialLibraryRepository.loadPlaylists()
+            val snapshot = initialLibraryRepository.snapshot()
             val savedArtwork = channelArtworkStore.load()
             withContext(Dispatchers.Main.immediate) {
                 if (
@@ -744,8 +746,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         registerRemoteChannel(channel)
                         channelArtworkChecks["${channel.sourceId}|${channel.id}"] = time
                     }
-                    savedVideos.forEach(::registerRemoteChannel)
-                    applyLibrarySnapshot(savedVideos, playlists)
+                    snapshot.videos.forEach(::registerRemoteChannel)
+                    applyLibrarySnapshot(snapshot)
                     _uiState.update { it.copy(channels = visibleKnownChannels()) }
                 }
             }
@@ -768,6 +770,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(channels = visibleKnownChannels()) }
         viewModelScope.launch {
             engine.playback.collect { playback ->
+                com.futo.platformplayer.compose.background.HistoryMusicClassifier.deferForPlaybackBuffering = playback.isBuffering
+                pendingVoicePlayback?.takeIf { it.first == playback.currentVideoId }?.let { request ->
+                    pendingVoicePlayback = null
+                    if (request.second) engine.resumePlayback() else engine.pausePlayback()
+                }
                 val cast = chromecastManager.state.value
                 _uiState.update {
                     it.copy(
@@ -790,7 +797,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     currentId != null &&
                     _uiState.value.nowPlaying.video?.id != currentId
                 ) {
-                    findVideo(currentId)?.let { currentVideo ->
+                    (findVideo(currentId) ?: engine.currentPlaybackVideo())?.let { currentVideo ->
                         recordHistory(currentVideo)
                         detailsJob?.cancel()
                         _uiState.update { state ->
@@ -831,7 +838,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     ?.let { (_, positionMs) ->
                         pendingPcHandoffSeek = null
                         engine.player.seekTo(positionMs.coerceAtLeast(0L))
-                        engine.player.play()
+                        engine.resumePlayback()
                     }
             }
         }
@@ -933,6 +940,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setPrivateSessionEnabled(enabled: Boolean) {
+        if (enabled) com.futo.platformplayer.compose.voice.VoiceAccess.stopListening(getApplication())
         preferences.privateSessionEnabled = enabled
         _uiState.update { it.copy(privateSessionEnabled = enabled) }
     }
@@ -1413,7 +1421,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             val snapshot = withContext(homeCacheDispatcher) { repository.load() }
             if (profile != activeProfileId || generation != homeLoadGeneration) return@launch
             if (snapshot == null || !restoreHomeFromSession(snapshot)) {
-                loadHome(HomeFeedType.Subscriptions, forceRefresh = false)
+                loadHome(_uiState.value.home.selectedFeed, forceRefresh = false)
             }
         }
     }
@@ -1465,7 +1473,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 ),
             )
         }
-        return true
+        return page.videos.isNotEmpty()
     }
 
     private fun saveHomeToSession(selectedFeed: HomeFeedType = _uiState.value.home.selectedFeed) {
@@ -1499,9 +1507,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun selectHomeFeed(feed: HomeFeedType) {
         homeRestoreJob?.cancel()
-        if (_uiState.value.home.selectedFeed == feed && !_uiState.value.home.isLoading) return
+        if (_uiState.value.home.selectedFeed == feed && _uiState.value.home.browseSourceId == null &&
+            !_uiState.value.home.isLoading && _uiState.value.home.videos.isNotEmpty()) return
+        homeJob?.cancel()
+        homePagingJob?.cancel()
+        ++homeLoadGeneration
         val cached = homeFeedCache[feed]
-        if (cached != null) {
+        if (!cached.isNullOrEmpty()) {
             val presentedCache = cached.withKnownChannelPresentation()
             homeFeedCache[feed] = presentedCache
             val cachedSubscriptionCount = if (feed == HomeFeedType.Subscriptions) {
@@ -1545,13 +1557,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun loadFollowingComplete() {
+    fun loadFollowingComplete(forceRefresh: Boolean = false) {
         val state = _uiState.value
-        if (state.followingFeedLoaded || state.followingFeedLoading) return
+        if (state.followingFeedLoading || (state.followingFeedLoaded && !forceRefresh)) return
+        val profile = activeProfileId
+        val sources = enabledSourceIds.toSet()
         val followedChannels = visibleKnownChannels().filter { channel ->
             channel.id in followedCreatorIds && channel.sourceId in enabledSourceIds
         }
         followingFeedJob?.cancel()
+        val request = followingRequests.next()
         _uiState.update {
             it.copy(
                 followingFeedLoading = true,
@@ -1564,7 +1579,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val page = engine.loadHome(
                     feed = HomeFeedType.Subscriptions,
-                    enabledSourceIds = enabledSourceIds,
+                    enabledSourceIds = sources,
                     followedChannels = followedChannels,
                     onSubscriptionProgress = { completed, total ->
                         _uiState.update { current ->
@@ -1572,7 +1587,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                             // meaningful updates keep feedback useful without making low-end
                             // devices recompose dozens of times while JS parsers are also busy.
                             val step = (total / 8).coerceAtLeast(1)
-                            if (!current.followingFeedLoading ||
+                            if (!followingRequests.isCurrent(request) || !current.followingFeedLoading ||
                                 (completed < total && completed - current.followingFeedCompleted < step)
                             ) current else current.copy(
                                 followingFeedCompleted = completed,
@@ -1582,6 +1597,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     },
                     forceCompleteSubscriptions = true,
                 )
+                currentCoroutineContext().ensureActive()
+                if (!followingRequests.isCurrent(request) || activeProfileId != profile || enabledSourceIds != sources) return@launch
                 val videos = page.videos
                     .map { it.withPersistedLibraryState() }
                     .withKnownChannelPresentation(followedChannels)
@@ -1602,6 +1619,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                currentCoroutineContext().ensureActive()
+                if (!followingRequests.isCurrent(request) || activeProfileId != profile) return@launch
                 _uiState.update {
                     it.copy(
                         followingFeedLoading = false,
@@ -1614,6 +1633,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun invalidateFollowingFeed() {
+        followingRequests.next()
         followingFeedJob?.cancel()
         _uiState.update {
             it.copy(
@@ -1634,8 +1654,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val group = source.filterGroups.firstOrNull {
             it.id == groupId && "home" in it.scopes
         } ?: return
+        homeRestoreJob?.cancel()
         homeJob?.cancel()
         homePagingJob?.cancel()
+        ++homeLoadGeneration
         _uiState.update { state ->
             state.copy(
                 home = HomeUiState(
@@ -1694,6 +1716,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         mapValues { (_, values) -> values.toMap() }
 
     private fun loadHome(feed: HomeFeedType, forceRefresh: Boolean, preserveCachedItems: Boolean = false) {
+        homeRestoreJob?.cancel()
         if (forceRefresh) {
             HomeSessionCache.removeFeed(activeProfileId, feed)
             removeHomeDiskCache(setOf(feed))
@@ -1717,7 +1740,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     selectedFeed = feed,
                     videos = cached,
                     isLoading = cached.isEmpty(),
-                    isRefreshing = forceRefresh && cached.isNotEmpty(),
+                    isRefreshing = forceRefresh,
                     isLoadingMore = preserveCachedItems && cached.isNotEmpty(),
                     subscriptionsLoaded = 0,
                     subscriptionsTotal = subscriptionTotal,
@@ -1727,6 +1750,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val publishedSubscriptionProgress = AtomicInteger(0)
         homeJob = viewModelScope.launch {
             try {
+                libraryLoadJob?.join()
                 val followedChannels = visibleKnownChannels().filter { channel ->
                     channel.id in followedCreatorIds &&
                         (feed != HomeFeedType.Shorts || channel.sourceId.equals("youtube", true))
@@ -1779,6 +1803,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     },
                     sourceFilters = selectedSourceFilters("home", enabledSourceIds),
                 )
+                currentCoroutineContext().ensureActive()
+                if (homeLoadGeneration != loadGeneration) return@launch
                 val previousById = cachedFeed.associateBy(VideoUiModel::id)
                 val freshFeedVideos = page.videos.map { fresh ->
                     fresh.withPresentationFallback(previousById[fresh.id])
@@ -1850,6 +1876,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             it.id == groupId && "home" in it.scopes
         } ?: return
         val option = group.options.firstOrNull { it.value == optionValue } ?: return
+        homeRestoreJob?.cancel()
         homeJob?.cancel()
         homePagingJob?.cancel()
         val loadGeneration = ++homeLoadGeneration
@@ -1869,7 +1896,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     browseOptionLabel = optionLabelOverride ?: option.label,
                     videos = retainedVideos,
                     isLoading = retainedVideos.isEmpty(),
-                    isRefreshing = forceRefresh && retainedVideos.isNotEmpty(),
+                    isRefreshing = forceRefresh,
                 ),
             )
         }
@@ -1883,6 +1910,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         sourceId to mapOf(groupId to listOf(optionValue)),
                     ),
                 )
+                currentCoroutineContext().ensureActive()
+                if (homeLoadGeneration != loadGeneration) return@launch
                 val videos = page.videos
                     .map { it.withPersistedLibraryState() }
                     .withKnownChannelPresentation()
@@ -2019,9 +2048,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private suspend fun switchProfileInternal(profileId: String) {
         if (profileId == activeProfileId) return
+        com.futo.platformplayer.compose.voice.VoiceAccess.stopListening(getApplication())
         resetMetadataHydration()
+        scheduledHistoryMusicIds.clear()
         requestHistoryMusicClassification(emptyList())
-        historyMusicAttempts.clear()
         clearNavigationContentCaches()
         libraryExportJob?.cancel()
         mediaExportJobs.cancelAndClearJobs()
@@ -2037,7 +2067,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         // intentionally off the main thread, but a profile switch is also a durability boundary.
         watchProgressWriteJob?.join()
         invalidatePlaybackQueue()
-        queueMutationJob?.cancel()
+        queueMutations.cancel()
         detailsJob?.cancel()
         storyboardJob?.cancel()
         sponsorBlockJob?.cancel()
@@ -2059,6 +2089,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         homeJob?.cancel()
         homePagingJob?.cancel()
         followingFeedJob?.cancel()
+        followingRequests.next()
         searchJob?.cancel()
         searchPagingJob?.cancel()
         suggestionJob?.cancel()
@@ -2123,10 +2154,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             content.channels.map(ChannelUiModel::id).toSet(),
         )
         val loadedLibrary = withContext(Dispatchers.IO) {
-            libraryRepository.loadSavedVideos() to libraryRepository.loadPlaylists()
+            libraryRepository.snapshot()
         }
         val loadedArtwork = withContext(Dispatchers.IO) { channelArtworkStore.load() }
-        allVideos = loadedLibrary.first
+        librarySnapshots.accept(loadedLibrary.sequence)
+        allVideos = loadedLibrary.videos
         savedVideosById = allVideos.associateBy(VideoUiModel::id)
         remoteVideos.clear()
         remoteChannels.clear()
@@ -2144,7 +2176,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             videos = visible.videos,
             libraryVideos = allVideos,
             channels = visibleKnownChannels(),
-            playlists = loadedLibrary.second,
+            playlists = loadedLibrary.playlists,
             sources = engineSources.map {
                 it.copy(
                     isEnabled = it.id in enabledSourceIds,
@@ -2714,7 +2746,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     repairSyntheticHistoryDates = selection.history,
                 )
                 val importedSnapshot = withContext(Dispatchers.IO) {
-                    libraryAtStart.loadSavedVideos() to libraryAtStart.loadPlaylists()
+                    libraryAtStart.snapshot()
                 }
                 if (!isActive || importGeneration != youtubeImportGeneration) {
                     throw CancellationException()
@@ -2725,10 +2757,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     registerRemoteChannel(video)
                 }
                 followedCreatorIds = preferencesAtStart.followedCreatorIds()
-                applyLibrarySnapshot(
-                    savedVideos = importedSnapshot.first,
-                    playlists = importedSnapshot.second,
-                )
+                applyLibrarySnapshot(importedSnapshot)
                 invalidateSubscriptionFeedCaches()
                 _uiState.update { state ->
                     state.copy(
@@ -2817,7 +2846,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             var completed = false
             try {
                 val snapshot = withContext(Dispatchers.IO) {
-                    repositoryAtStart.loadSavedVideos() to repositoryAtStart.loadPlaylists()
+                    repositoryAtStart.snapshot()
                 }
                 if (profileAtStart != activeProfileId) throw CancellationException()
                 val channels = visibleKnownChannels().filter { it.id in followedCreatorIds }
@@ -2827,8 +2856,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         ?.use { output ->
                             libraryBackupExporter.export(
                                 format = format,
-                                videos = snapshot.first,
-                                playlists = snapshot.second,
+                                videos = snapshot.videos,
+                                playlists = snapshot.playlists,
                                 channels = channels,
                                 output = output,
                                 checkActive = { exportContext.ensureActive() },
@@ -2883,6 +2912,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun observeScheduledYoutubeImports() {
+        observeHistoryClassification()
         youtubeImportWorkObservationJob?.cancel()
         val profileId = activeProfileId
         backgroundYoutubeImportWasRunning = false
@@ -2940,15 +2970,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
                 if (hadRunningImport && running == null) {
+                    val repository = libraryRepository
+                    val importPreferences = preferences
                     val snapshot = withContext(Dispatchers.IO) {
-                        libraryRepository.loadSavedVideos() to
-                            libraryRepository.loadPlaylists()
+                        repository.snapshot()
                     }
-                    followedCreatorIds = preferences.followedCreatorIds()
-                    preferences.loadImportedChannels().forEach {
+                    if (profileId != activeProfileId || repository !== libraryRepository) return@launch
+                    followedCreatorIds = importPreferences.followedCreatorIds()
+                    importPreferences.loadImportedChannels().forEach {
                         remoteChannels[it.id] = it
                     }
-                    applyLibrarySnapshot(snapshot.first, snapshot.second)
+                    applyLibrarySnapshot(snapshot)
                     invalidateSubscriptionFeedCaches()
                     _uiState.update {
                         it.copy(
@@ -3267,8 +3299,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun enqueueVideos(videoIds: List<String>) {
         val requested = videoIds.distinct().mapNotNull(::findVideo)
         if (requested.isEmpty()) return
-        queueMutationJob?.cancel()
-        queueMutationJob = viewModelScope.launch {
+        val requestedProfile = activeProfileId
+        val requestedRepository = libraryRepository
+        queueMutations.launch {
+            if (activeProfileId != requestedProfile || libraryRepository !== requestedRepository) return@launch
             tryLibraryMutation { enqueueVideosWithoutBlockingUi(requested) }
         }
     }
@@ -3312,19 +3346,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 val created = repositoryAtStart.createPlaylist(
                     playedOnPlaylistTitle(repositoryAtStart),
                     requested,
+                    isPlaybackQueue = true,
                 ) ?: return@withContext null
-                Triple(
-                    created,
-                    repositoryAtStart.loadSavedVideos(),
-                    repositoryAtStart.loadPlaylists(),
-                )
+                created to repositoryAtStart.snapshot()
             } ?: return
             if (
                 profileAtStart != activeProfileId ||
                 repositoryAtStart !== libraryRepository ||
                 generationAtStart != playbackGeneration
             ) return
-            applyLibrarySnapshot(createdSnapshot.second, createdSnapshot.third)
+            applyLibrarySnapshot(createdSnapshot.second)
             activePlaylistId = createdSnapshot.first.id
             startQueue(createdSnapshot.first.videoIds)
             return
@@ -3342,19 +3373,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 val created = repositoryAtStart.createPlaylist(
                     playedOnPlaylistTitle(repositoryAtStart),
                     snapshotVideos,
+                    isPlaybackQueue = true,
                 ) ?: return@withContext null
-                Triple(
-                    created,
-                    repositoryAtStart.loadSavedVideos(),
-                    repositoryAtStart.loadPlaylists(),
-                )
+                created to repositoryAtStart.snapshot()
             } ?: return
             if (
                 profileAtStart != activeProfileId ||
                 repositoryAtStart !== libraryRepository ||
                 generationAtStart != playbackGeneration
             ) return
-            applyLibrarySnapshot(createdSnapshot.second, createdSnapshot.third)
+            applyLibrarySnapshot(createdSnapshot.second)
             activePlaylistId = createdSnapshot.first.id
             queueSession = if (currentSession == null) {
                 PlaybackQueueSession(
@@ -3363,7 +3391,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     playlistId = createdSnapshot.first.id,
                     pendingVideos = mutableListOf(),
                     knownVideoIds = currentPlayback.queueVideoIds.toMutableSet(),
-                    orderedVideoIds = snapshotIds.toMutableList(),
+                    orderedVideoIds = currentPlayback.queueVideoIds.toMutableList(),
                 )
             } else {
                 currentSession.copy(playlistId = createdSnapshot.first.id)
@@ -3381,6 +3409,18 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             playbackQueueSession = queueSession
         }
 
+        // Only auto-created queue playlists grow with enqueue. A user's ordinary playlist is
+        // not edited implicitly. Persist before publishing so returning to it sees the same tail.
+        val queuePlaylist = _uiState.value.playlists.firstOrNull { it.id == activePlaylistId }
+        if (queuePlaylist?.isPlaybackQueue == true) {
+            val snapshot = withContext(Dispatchers.IO) {
+                repositoryAtStart.addVideosToPlaylist(queuePlaylist.id, additions)
+                repositoryAtStart.snapshot()
+            }
+            if (profileAtStart != activeProfileId || repositoryAtStart !== libraryRepository ||
+                generationAtStart != playbackGeneration) return
+            applyLibrarySnapshot(snapshot)
+        }
         additions.forEach { video ->
             if (queueSession.knownVideoIds.add(video.id)) {
                 queueSession.pendingVideos += video
@@ -3595,6 +3635,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun invalidatePlaybackQueue(): Long {
+        pendingVoicePlayback = null
         playbackRetryJob?.cancel()
         playbackGeneration += 1
         queuePreparationBlockedUntilMs = 0L
@@ -3604,9 +3645,274 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun togglePlayback() {
+        pendingVoicePlayback = null
         if (chromecastManager.state.value.isConnected) chromecastManager.togglePlayback()
         else engine.togglePlayback()
     }
+
+    /** Authenticated MCP entry point; never accepts arbitrary intents, URLs, or profile changes. */
+    internal fun releaseVoiceVolume(owner: String) = engine.setVoiceListeningVolume(owner, null)
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    internal suspend fun executeVoiceTool(name: String, arguments: org.json.JSONObject): org.json.JSONObject =
+        withContext(Dispatchers.Main.immediate) {
+            val voiceProfile = activeProfileId
+            val voiceRevision = com.futo.platformplayer.compose.voice.VoiceAccess.sessionRevision(getApplication())
+            fun verifyVoiceSession() {
+                check(voiceProfile == activeProfileId && profileSwitchJob?.isActive != true && !_uiState.value.privateSessionEnabled &&
+                    voiceRevision == com.futo.platformplayer.compose.voice.VoiceAccess.sessionRevision(getApplication()) &&
+                    com.futo.platformplayer.compose.voice.VoiceAccess.enabled(getApplication()) &&
+                    profileRepository.profiles().firstOrNull { it.id == activeProfileId }?.protection ==
+                        com.futo.platformplayer.compose.ui.ProfileProtection.None) { "Voice session changed" }
+            }
+            check(profileSwitchJob?.isActive != true) { "Profile is changing" }
+            check(com.futo.platformplayer.compose.voice.VoiceAccess.enabled(getApplication())) { "Voice control disabled" }
+            check(!_uiState.value.privateSessionEnabled && profileRepository.profiles()
+                .firstOrNull { it.id == activeProfileId }?.protection == com.futo.platformplayer.compose.ui.ProfileProtection.None) {
+                "Voice control is unavailable in private or protected profiles"
+            }
+            if (name in setOf("list_playlists", "play_playlist", "play_named", "search_play", "play_local", "play_random_music", "download_audio", "play_artist", "play_same_artist")) libraryLoadJob?.join()
+            verifyVoiceSession()
+            val result = org.json.JSONObject()
+            fun online() = com.futo.platformplayer.compose.voice.voiceInternetAvailable(getApplication())
+            fun offline() = result.put("ok", false).put("networkUnavailable", true)
+            suspend fun playableDownloads(): List<VideoUiModel> = withContext(Dispatchers.IO) {
+                downloadStore.awaitInitialized()
+                downloadStore.playbackDescriptorsFor(voiceProfile, _uiState.value.libraryVideos)
+            }
+            fun openVoiceVideo(video: VideoUiModel) {
+                verifyVoiceSession()
+                remoteVideos[video.id] = video
+                registerRemoteChannel(video)
+                openVideoInternal(video.id, publishNavigationWhenResolved = false, publishNavigationWhenStarted = true)
+            }
+            when (name) {
+                "play_artist", "play_same_artist" -> {
+                    val currentId = pendingPlaybackVideoId ?: engine.player.currentMediaItem?.mediaId
+                    val previous = voiceArtistSession?.takeIf { it.applies(voiceProfile, currentId, pendingPlaybackVideoId) }
+                    val requested = if (name == "play_artist") arguments.optString("query").trim().take(120)
+                        else previous?.artist ?: com.futo.platformplayer.compose.voice.inferVoiceArtist(_uiState.value.nowPlaying.video)
+                    val artist = requested?.let { com.futo.platformplayer.compose.voice.cleanVoiceArtist(it) }
+                    if (artist.isNullOrBlank()) return@withContext result.put("ok", false).put("needsArtist", true)
+                    val session = previous?.takeIf { com.futo.platformplayer.compose.voice.VoiceNameMatcher.normalized(it.artist) ==
+                        com.futo.platformplayer.compose.voice.VoiceNameMatcher.normalized(artist) }
+                    val seen = session?.playedIds.orEmpty()
+                    val seenTracks = session?.playedTracks.orEmpty()
+                    val currentTrack = currentId?.let(::findVideo)?.takeIf {
+                        com.futo.platformplayer.compose.voice.artistVideos(artist, listOf(it)).isNotEmpty()
+                    }?.let { com.futo.platformplayer.compose.voice.artistTrackKey(it, artist) }
+                    val local = playableDownloads()
+                    verifyVoiceSession()
+                    var candidates = session?.freshCandidates(System.currentTimeMillis()).orEmpty()
+                    val localMatches = withContext(Dispatchers.Default) { com.futo.platformplayer.compose.voice.artistVideos(artist, local) }
+                    fun choose(videos: List<VideoUiModel>, repeat: Boolean) = com.futo.platformplayer.compose.voice.chooseArtistVideo(
+                        videos, seen, currentId, repeat, artist, seenTracks, currentTrack)
+                    var selected = choose(localMatches, false)
+                    if (selected == null && online() && !arguments.optBoolean("localOnly")) {
+                        selected = choose(candidates, false)
+                        if (selected == null) {
+                            val results = try { engine.search("$artist official audio", setOf("youtube"), SearchCorpus(emptyList(), emptyList(), emptyList())).videos }
+                            catch (cancelled: CancellationException) { throw cancelled }
+                            catch (error: Exception) {
+                                if (!online()) return@withContext offline()
+                                throw error
+                            }
+                            verifyVoiceSession()
+                            candidates = withContext(Dispatchers.Default) { com.futo.platformplayer.compose.voice.artistVideos(artist, results.take(60)) }
+                            selected = choose(candidates, true)
+                        }
+                    }
+                    if (selected == null) selected = choose(localMatches, true)
+                    if (selected == null) return@withContext if (!online() && localMatches.isEmpty() && !arguments.optBoolean("localOnly")) offline()
+                        else result.put("ok", false).put("noOtherArtistTrack", true)
+                    verifyVoiceSession()
+                    val chosen = selected
+                    voiceArtistSession = com.futo.platformplayer.compose.voice.VoiceArtistSession(
+                        voiceProfile, artist, chosen.id, (seen + chosen.id).toList().takeLast(100).toSet(),
+                        candidates, if (candidates === session?.candidates) session?.cachedAtMs ?: 0L else System.currentTimeMillis(),
+                        (seenTracks + com.futo.platformplayer.compose.voice.artistTrackKey(chosen, artist)).toList().takeLast(100).toSet())
+                    openVoiceVideo(chosen)
+                    if (!chosen.playbackFromDownload && online()) downloadAudio(chosen.id, null)
+                    result.put("ok", true).put("artist", artist).put("title", chosen.title).put("videoId", chosen.id)
+                }
+                "network_status" -> result.put("available", online())
+                "download_audio" -> {
+                    val video = findVideo(arguments.getString("videoId"))
+                        ?.takeIf { it.sourceId == "youtube" && it.supportsOfflineDownload() }
+                        ?: error("Unknown or unsupported video")
+                    if (!online()) offline() else {
+                        downloadAudio(video.id, null)
+                        result.put("ok", true).put("videoId", video.id).put("queued", true)
+                    }
+                }
+                "play_local", "play_random_music" -> {
+                    val local = playableDownloads()
+                    verifyVoiceSession()
+                    val video = if (name == "play_random_music") {
+                        com.futo.platformplayer.compose.voice.recentVoiceMusic(_uiState.value.libraryVideos, local,
+                            !online() || arguments.optBoolean("localOnly"), engine.player.currentMediaItem?.mediaId).randomOrNull()
+                    } else {
+                        val query = arguments.getString("query").trim().take(200)
+                        require(query.isNotBlank())
+                        val playlists = _uiState.value.playlists
+                        val ranked = com.futo.platformplayer.compose.voice.VoiceNameMatcher.rank(query, playlists.map {
+                            com.futo.platformplayer.compose.voice.VoiceNameCandidate(it.id, it.title)
+                        })
+                        val playlist = com.futo.platformplayer.compose.voice.VoiceNameMatcher.automatic(ranked)
+                            ?.let { match -> playlists.firstOrNull { it.id == match.id } }
+                        val byId = local.associateBy { it.id }
+                        val queue = playlist?.videoIds?.mapNotNull { byId[it] }.orEmpty()
+                        if (playlist != null && queue.isEmpty()) return@withContext result.put("ok", false).put("noLocalContent", true)
+                        if (queue.isNotEmpty()) {
+                            queue.forEach { remoteVideos[it.id] = it }
+                            playQueue(queue.map { it.id })
+                            publishExternalNavigation(ExternalNavigationKind.Video, queue.first().id)
+                            return@withContext result.put("ok", true).put("title", playlist?.title).put("local", true)
+                        }
+                        com.futo.platformplayer.compose.voice.rankedVoiceVideos(query, local, VideoUiModel::id,
+                            { "${it.creator} ${it.title}" }, VideoUiModel::viewCount, .80).firstOrNull()
+                    }
+                    if (video == null) result.put("ok", false).put(
+                        if (name == "play_random_music" && online() && !arguments.optBoolean("localOnly")) "noRecentMusic" else "noLocalContent", true)
+                    else {
+                        openVoiceVideo(video)
+                        if (online() && video.sourceId == "youtube" && !video.playbackFromDownload) downloadAudio(video.id, null)
+                        result.put("ok", true).put("title", video.title)
+                    }
+                }
+                "status" -> result.put("playing", _uiState.value.playback.isPlaying)
+                    .put("playWhenReady", engine.player.playWhenReady)
+                    .put("playerVolume", engine.player.volume)
+                    .put("currentVideoId", engine.player.currentMediaItem?.mediaId.orEmpty())
+                    .put("nowPlayingId", _uiState.value.nowPlaying.video?.id.orEmpty())
+                    .put("mediaTitle", engine.player.mediaMetadata.title?.toString().orEmpty())
+                    .put("notificationActive", com.futo.platformplayer.compose.playback.PlaybackNotificationService.hosts(engine.player))
+                    .put("title", _uiState.value.nowPlaying.video?.title.orEmpty())
+                "voice_volume" -> {
+                    val percent = arguments.getInt("percent")
+                    require(percent in -1..100)
+                    val owner = arguments.getString("_voiceSession")
+                    engine.setVoiceListeningVolume(owner, percent.takeIf { it >= 0 })
+                    result.put("ok", true)
+                }
+                "list_playlists" -> {
+                    val all = _uiState.value.playlists
+                    val offset = arguments.optInt("offset", 0).coerceIn(0, all.size)
+                    result.put("playlists", org.json.JSONArray(all.drop(offset).take(20).map {
+                        org.json.JSONObject().put("id", it.id.take(128)).put("title", it.title.take(120))
+                    })).put("total", all.size).put("nextOffset", (offset + 20).takeIf { it < all.size } ?: -1)
+                }
+                "play", "pause" -> {
+                    val requested = name == "play"
+                    val cast = chromecastManager.state.value
+                    if (cast.isConnected) {
+                        if (cast.isPlaying != requested) chromecastManager.togglePlayback()
+                        result.put("ok", true)
+                    } else if (requested && engine.player.mediaItemCount == 0 && pendingPlaybackVideoId == null) {
+                        result.put("needsClarification", true).put("kind", "content")
+                    } else {
+                        pendingVoicePlayback = pendingPlaybackVideoId?.let { it to requested }
+                        if (requested && pendingPlaybackVideoId == null) {
+                            if (engine.player.playbackState == androidx.media3.common.Player.STATE_ENDED)
+                                engine.player.seekToDefaultPosition()
+                            engine.resumePlayback()
+                        } else if (!requested) engine.pausePlayback()
+                        result.put("ok", true)
+                    }
+                }
+                "next" -> { skipToNext(); result.put("ok", true) }
+                "previous" -> { skipToPrevious(); result.put("ok", true) }
+                "seek" -> {
+                    val seconds = arguments.optInt("seconds", 0)
+                    require(seconds in -600..600)
+                    seekPlaybackBy(seconds * 1000L); result.put("ok", true)
+                }
+                "volume" -> {
+                    val steps = arguments.optInt("steps", 0)
+                    require(steps in -5..5)
+                    val audio = getApplication<Application>().getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                    val stream = android.media.AudioManager.STREAM_MUSIC
+                    val maximum = audio.getStreamMaxVolume(stream)
+                    val target = (audio.getStreamVolume(stream) + steps).coerceIn(0, maximum)
+                    audio.setStreamVolume(stream, target, 0)
+                    result.put("ok", true).put("level", target).put("maximum", maximum)
+                }
+                "play_playlist" -> {
+                    val query = arguments.optString("query").trim().take(200)
+                    require(query.isNotBlank())
+                    val playlists = _uiState.value.playlists
+                    val byId = playlists.firstOrNull { it.id == query }
+                    val ranked = if (byId != null) emptyList() else withContext(Dispatchers.Default) {
+                        com.futo.platformplayer.compose.voice.VoiceNameMatcher.rank(query, playlists.map {
+                            com.futo.platformplayer.compose.voice.VoiceNameCandidate(it.id, it.title)
+                        })
+                    }
+                    verifyVoiceSession()
+                    val match = byId ?: com.futo.platformplayer.compose.voice.VoiceNameMatcher.automatic(ranked)
+                        ?.let { selected -> playlists.firstOrNull { it.id == selected.id } }
+                    if (match != null) {
+                        if (match.videoIds.isNotEmpty()) {
+                            if (!online()) return@withContext executeVoiceTool("play_local", org.json.JSONObject().put("query", match.title))
+                            playPlaylist(match.id)
+                            publishExternalNavigation(ExternalNavigationKind.Video, match.videoIds.first())
+                            result.put("ok", true).put("title", match.title)
+                        } else result.put("needsClarification", true).put("kind", "empty")
+                    } else {
+                        val best = ranked.firstOrNull()?.score ?: 0.0
+                        val nearby = ranked.filter { it.score >= maxOf(.55, best - .12) }.take(3)
+                        result.put("needsClarification", true).put("kind", when (nearby.size) {
+                            0 -> "missing"; 1 -> "confirm"; else -> "ambiguous"
+                        }).put("choices", org.json.JSONArray(nearby.map { it.candidate.title.take(120) }))
+                            .put("choiceIds", org.json.JSONArray(nearby.map { it.candidate.id }))
+                    }
+                }
+                "search_play", "play_named" -> {
+                    val query = arguments.optString("query").trim().take(200)
+                    require(query.isNotBlank())
+                    if (name == "play_named") {
+                        val playlists = _uiState.value.playlists
+                        val rankedPlaylists = withContext(Dispatchers.Default) {
+                            com.futo.platformplayer.compose.voice.VoiceNameMatcher.rank(query, playlists.map {
+                                com.futo.platformplayer.compose.voice.VoiceNameCandidate(it.id, it.title)
+                            })
+                        }
+                        verifyVoiceSession()
+                        if (com.futo.platformplayer.compose.voice.VoiceNameMatcher.automatic(rankedPlaylists) != null ||
+                            (rankedPlaylists.firstOrNull()?.score ?: 0.0) >= .92) {
+                            // Preserve empty/ambiguous playlist handling instead of silently searching online.
+                            return@withContext executeVoiceTool("play_playlist", org.json.JSONObject().put("query", query))
+                        }
+                    }
+                    val library = _uiState.value.libraryVideos
+                    val video = try { com.futo.platformplayer.compose.voice.resolveVoiceYoutubeSearch(query,
+                        search = { term ->
+                            if (!online()) throw com.futo.platformplayer.compose.voice.VoiceOfflineException()
+                            engine.search(term, setOf("youtube"), SearchCorpus(emptyList(), emptyList(), emptyList())).videos
+                        },
+                        suggestions = { term -> if (online()) engine.suggestions(term, setOf("youtube")) else emptyList() },
+                        id = VideoUiModel::id, title = { "${it.creator} ${it.title}" }, views = VideoUiModel::viewCount,
+                        downloaded = { withContext(Dispatchers.IO) {
+                            downloadStore.awaitInitialized()
+                            val complete = downloadStore.snapshotsFor(voiceProfile).filterValues { it.status == DownloadStatus.Completed }.keys
+                            library.filter { it.sourceId == "youtube" && (it.id in complete || it.isDownloaded) }
+                                .mapNotNull { downloadStore.playbackDescriptorFor(voiceProfile, it) }
+                        } }) } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (error: Exception) {
+                            if (!online() || error is com.futo.platformplayer.compose.voice.VoiceOfflineException) return@withContext offline()
+                            throw error
+                        }
+                    if (video == null) return@withContext result.put("ok", false).put("noResults", true)
+                    verifyVoiceSession()
+                    remoteVideos[video.id] = video
+                    registerRemoteChannel(video)
+                    openVideoInternal(video.id, publishNavigationWhenResolved = false, publishNavigationWhenStarted = true)
+                    if (!video.playbackFromDownload) downloadAudio(video.id, null)
+                    result.put("ok", true).put("title", video.title).put("videoId", video.id)
+                }
+                else -> error("Unknown voice tool")
+            }
+            result
+        }
 
     fun skipToNext() {
         if (!chromecastManager.state.value.isConnected) {
@@ -3675,7 +3981,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             if (!cast.isPlaying) chromecastManager.togglePlayback()
         } else {
             engine.setPlaybackSpeed(2f)
-            if (!engine.player.isPlaying) engine.player.play()
+            if (!engine.player.isPlaying) engine.resumePlayback()
         }
     }
 
@@ -3688,7 +3994,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             if (!snapshot.wasPlaying && cast.isPlaying) chromecastManager.togglePlayback()
         } else {
             engine.setPlaybackSpeed(snapshot.speed)
-            if (snapshot.wasPlaying) engine.player.play() else engine.pausePlayback()
+            if (snapshot.wasPlaying) engine.resumePlayback() else engine.pausePlayback()
         }
     }
 
@@ -3760,14 +4066,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         playWhenReady: Boolean,
         castPositionMs: Long = 0L,
     ) {
+        val voiceRequest = pendingVoicePlayback?.takeIf { it.first == video.id }
+        if (voiceRequest != null) pendingVoicePlayback = null
+        val requestedPlayback = voiceRequest?.second ?: playWhenReady
         val casting = chromecastManager.state.value.isConnected
-        engine.open(listOf(video), video.id, playWhenReady = playWhenReady && !casting)
+        engine.open(listOf(video), video.id, playWhenReady = requestedPlayback && !casting)
         if (casting) {
             chromecastManager.cast(
                 video,
                 _uiState.value.playback.copy(
                     currentVideoId = video.id,
-                    isPlaying = playWhenReady,
+                    isPlaying = requestedPlayback,
                     positionMs = castPositionMs,
                     errorMessage = null,
                 ),
@@ -5639,9 +5948,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     try {
                         downloadPreparationSemaphore.withPermit {
                             if (replaceExisting) {
-                                downloadStore.remove(profileAtStart, videoId, mediaType)
-                                while (downloadStore.hasDownloadRecord(profileAtStart, videoId, mediaType)) {
-                                    delay(100L)
+                                withTimeout(DOWNLOAD_ENQUEUE_TIMEOUT_MS) {
+                                    downloadStore.remove(profileAtStart, videoId, mediaType)
+                                    while (downloadStore.hasDownloadRecord(profileAtStart, videoId, mediaType)) {
+                                        delay(100L)
+                                    }
                                 }
                             }
                             // A process restart leaves the same deterministic Media3 request in
@@ -5730,6 +6041,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         }
                         break
                     } catch (timeout: TimeoutCancellationException) {
+                        currentCoroutineContext().ensureActive()
                         preparationTimeoutRetry += 1
                         if (preparationTimeoutRetry >= DOWNLOAD_PREPARATION_MAX_ATTEMPTS) {
                             throw IllegalStateException(
@@ -5762,6 +6074,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Throwable) {
+                        currentCoroutineContext().ensureActive()
                         if (networkMonitor.isAvailable() && !error.isRecoverableConnectivityFailure()) {
                             throw error
                         }
@@ -5777,6 +6090,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                currentCoroutineContext().ensureActive()
                 if (profileAtStart != activeProfileId) return@download
                 Log.e(
                     "GrayjayViewModel",
@@ -5849,13 +6163,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val snapshot = tryLibraryMutation { withContext(Dispatchers.IO) {
                 repositoryAtStart.createPlaylist(title, videos) ?: return@withContext null
-                repositoryAtStart.loadSavedVideos() to repositoryAtStart.loadPlaylists()
+                repositoryAtStart.snapshot()
             } } ?: return@launch
             if (
                 profileAtStart == activeProfileId &&
                 repositoryAtStart === libraryRepository
             ) {
-                applyLibrarySnapshot(snapshot.first, snapshot.second)
+                applyLibrarySnapshot(snapshot)
             }
         }
     }
@@ -5905,17 +6219,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 val addedVideos = videos.filterNot { it.id in existingIds }
                 repositoryAtStart.addVideosToPlaylist(playlistId, videos)
                     ?: return@withContext null
-                Triple(
-                    addedVideos,
-                    repositoryAtStart.loadSavedVideos(),
-                    repositoryAtStart.loadPlaylists(),
-                )
+                addedVideos to repositoryAtStart.snapshot()
             } } ?: return@launch
             if (
                 profileAtStart != activeProfileId ||
                 repositoryAtStart !== libraryRepository
             ) return@launch
-            applyLibrarySnapshot(result.second, result.third)
+            applyLibrarySnapshot(result.second)
             scheduleOfflinePlaylistSync()
             val session = playbackQueueSession
             if (
@@ -5949,86 +6259,35 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun requestHistoryMusicClassification(videoIds: List<String>) {
-        if (videoIds.isEmpty()) {
-            historyMusicScanGeneration += 1L
-            historyMusicScanJob?.cancel()
-            historyMusicScanJob = null
-            _uiState.update { it.copy(historyMusicScan = it.historyMusicScan.copy(isRunning = false)) }
-            return
-        }
-        if (historyMusicScanJob?.isActive == true) return
-        val now = android.os.SystemClock.elapsedRealtime()
-        historyMusicAttempts.entries.removeAll { now - it.value !in 0L until 10L * 60L * 1000L }
-        val candidates = videoIds.asSequence().distinct()
-            .filterNot(historyMusicAttempts::containsKey)
-            .mapNotNull(savedVideosById::get)
-            .filter { (it.lastWatchedAt > 0L || it.watchProgress > 0f) &&
-                it.sourceId.equals("youtube", true) && it.isMusic == null }
-            .take(24).toList()
-        if (candidates.isEmpty()) return
+        if (videoIds.isNotEmpty()) com.futo.platformplayer.compose.background.HistoryMusicClassifier
+            .schedule(getApplication(), activeProfileId)
+    }
+
+    private fun observeHistoryClassification() {
+        historyMusicScanJob?.cancel()
         val profile = activeProfileId
         val repository = libraryRepository
-        val generation = ++historyMusicScanGeneration
-        _uiState.update { it.copy(historyMusicScan = com.futo.platformplayer.compose.ui.HistoryMusicScanUiState(
-            total = candidates.size, isRunning = true, attemptedVideoIds = historyMusicAttempts.keys.toSet(),
-        )) }
+        val classifier = com.futo.platformplayer.compose.background.HistoryMusicClassifier
+        classifier.schedule(getApplication(), profile)
         historyMusicScanJob = viewModelScope.launch {
-            val classifications = linkedMapOf<String, Boolean>()
-            try {
-                for ((index, video) in candidates.withIndex()) {
-                    ensureActive()
-                    while (engine.playback.value.isBuffering) delay(300L)
-                    val classification = musicMetadataResolver.classify(video.contentUrl.ifBlank { video.id })
-                    ensureActive()
-                    if (profile != activeProfileId || generation != historyMusicScanGeneration) return@launch
-                    classification?.let { classifications[video.id] = it }
-                    historyMusicAttempts[video.id] = android.os.SystemClock.elapsedRealtime()
-                    while (historyMusicAttempts.size > 2048) historyMusicAttempts.remove(historyMusicAttempts.keys.first())
-                    _uiState.update { state -> state.copy(historyMusicScan = state.historyMusicScan.copy(
-                        completed = index + 1, attemptedVideoIds = historyMusicAttempts.keys.toSet(),
+            WorkManager.getInstance(getApplication<Application>()).getWorkInfosForUniqueWorkFlow(classifier.tag(profile))
+                .collect { infos ->
+                    if (profile != activeProfileId || repository !== libraryRepository) return@collect
+                    val work = infos.firstOrNull { it.state == WorkInfo.State.RUNNING }
+                        ?: infos.lastOrNull { !it.state.isFinished } ?: infos.lastOrNull()
+                    val progress = work?.progress ?: androidx.work.Data.EMPTY
+                    _uiState.update { it.copy(historyMusicScan = com.futo.platformplayer.compose.ui.HistoryMusicScanUiState(
+                        isRunning = work?.state == WorkInfo.State.RUNNING,
+                        completed = progress.getInt(classifier.COMPLETED, 0),
+                        total = progress.getInt(classifier.TOTAL, 0),
                     )) }
-                    delay(75L)
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w("GrayjayViewModel", "Could not identify history metadata", error)
-            } finally {
-                withContext(kotlinx.coroutines.NonCancellable) {
-                // Retain completed metadata on cancellation, touching only this field on the
-                // latest saved records. Concurrent deletion and known classifications win.
-                if (classifications.isNotEmpty()) {
-                    val persistedMusic = try {
-                        withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
-                            tryLibraryMutation {
-                                synchronized(repository.transactionLock) {
-                                    val current = repository.loadSavedVideos().filter { it.id in classifications }
-                                    val patches = current.mapNotNull { stored ->
-                                        classifications[stored.id]?.takeIf { stored.isMusic == null }
-                                            ?.let { stored.copy(isMusic = it) }
-                                    }
-                                    if (patches.isNotEmpty()) repository.saveVideos(patches)
-                                    current.associate { it.id to (it.isMusic ?: classifications.getValue(it.id)) }
-                                }
-                            }
-                        }.orEmpty()
-                    } catch (error: Exception) {
-                        Log.w("GrayjayViewModel", "Could not save history music metadata", error)
-                        emptyMap()
+                    val snapshot = withContext(Dispatchers.IO) {
+                        repository.snapshot()
                     }
                     if (profile == activeProfileId && repository === libraryRepository) {
-                        fun patch(video: VideoUiModel): VideoUiModel = persistedMusic[video.id]
-                            ?.takeIf { video.isMusic == null }?.let { video.copy(isMusic = it) } ?: video
-                        allVideos = allVideos.mapIfChanged(::patch)
-                        savedVideosById = allVideos.associateBy(VideoUiModel::id)
-                        _uiState.update { state -> state.copy(libraryVideos = state.libraryVideos.mapIfChanged(::patch)) }
+                        applyLibrarySnapshot(snapshot)
                     }
                 }
-                if (generation == historyMusicScanGeneration && profile == activeProfileId) {
-                    _uiState.update { it.copy(historyMusicScan = it.historyMusicScan.copy(isRunning = false)) }
-                }
-                }
-            }
         }
     }
 
@@ -6534,11 +6793,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 val snapshot = withContext(Dispatchers.IO) {
                     repository.mergeImportedData(remappedVideos, importedPlaylists)
                     importPreferences.mergeImportedSubscriptions(importedChannels)
-                    repository.loadSavedVideos() to repository.loadPlaylists()
+                    repository.snapshot()
                 }
                 importedChannels.forEach { remoteChannels[it.id] = it }
                 followedCreatorIds = preferences.followedCreatorIds()
-                applyLibrarySnapshot(snapshot.first, snapshot.second)
+                applyLibrarySnapshot(snapshot)
                 allVideos.forEach(::registerRemoteChannel)
                 _uiState.update { state ->
                     state.copy(
@@ -6624,11 +6883,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 val snapshot = withContext(Dispatchers.IO) {
                     repository.mergeImportedData(remappedVideos, importedPlaylists)
                     importPreferences.mergeImportedSubscriptions(importedChannels)
-                    repository.loadSavedVideos() to repository.loadPlaylists()
+                    repository.snapshot()
                 }
                 importedChannels.forEach { remoteChannels[it.id] = it }
                 followedCreatorIds = preferences.followedCreatorIds()
-                applyLibrarySnapshot(snapshot.first, snapshot.second)
+                applyLibrarySnapshot(snapshot)
                 allVideos.forEach(::registerRemoteChannel)
                 _uiState.update { state ->
                     state.copy(
@@ -6683,7 +6942,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         suggestionJob?.cancel()
         detailsJob?.cancel()
         queuePreparation.cancel()
-        queueMutationJob?.cancel()
+        queueMutations.cancel()
         extrasPagingJobs.cancelAndClearJobs()
         channelJob?.cancel()
         channelPagingJob?.cancel()
@@ -6980,6 +7239,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             ?: return
         if (parent.id.isBlank() || (parent.replyCount ?: 0) <= 0) return
         commentRepliesJob?.cancel()
+        val request = commentReplyRequests.next()
+        val playbackAtStart = playbackGeneration
         _uiState.update { state ->
             state.copy(
                 nowPlaying = state.nowPlaying.copy(
@@ -6994,6 +7255,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         commentRepliesJob = viewModelScope.launch {
             try {
                 val page = engine.loadCommentReplies(commentId)
+                currentCoroutineContext().ensureActive()
+                if (!commentReplyRequests.isCurrent(request) || playbackAtStart != playbackGeneration) return@launch
                 _uiState.update { state ->
                     val replies = state.nowPlaying.commentReplies
                     if (!replies.isVisible || replies.parent?.id != commentId) state else state.copy(
@@ -7011,6 +7274,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                currentCoroutineContext().ensureActive()
+                if (!commentReplyRequests.isCurrent(request) || playbackAtStart != playbackGeneration) return@launch
                 _uiState.update { state ->
                     val replies = state.nowPlaying.commentReplies
                     if (!replies.isVisible || replies.parent?.id != commentId) state else state.copy(
@@ -7028,6 +7293,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun dismissCommentReplies() {
+        commentReplyRequests.next()
         commentRepliesJob?.cancel()
         _uiState.update { state ->
             state.copy(
@@ -7046,6 +7312,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         commentRepliesJob?.cancel()
+        val request = commentReplyRequests.next()
+        val playbackAtStart = playbackGeneration
         _uiState.update { state ->
             state.copy(
                 nowPlaying = state.nowPlaying.copy(
@@ -7056,6 +7324,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         commentRepliesJob = viewModelScope.launch {
             try {
                 val page = engine.loadMoreComments(continuationId)
+                currentCoroutineContext().ensureActive()
+                if (!commentReplyRequests.isCurrent(request) || playbackAtStart != playbackGeneration) return@launch
                 _uiState.update { state ->
                     val replies = state.nowPlaying.commentReplies
                     if (!replies.isVisible || replies.parent?.id != parentId) state else state.copy(
@@ -7077,6 +7347,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                currentCoroutineContext().ensureActive()
+                if (!commentReplyRequests.isCurrent(request) || playbackAtStart != playbackGeneration) return@launch
                 _uiState.update { state ->
                     val replies = state.nowPlaying.commentReplies
                     if (!replies.isVisible || replies.parent?.id != parentId) state else state.copy(
@@ -7473,11 +7745,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 delay(150)
                 val snapshot = withContext(Dispatchers.IO) {
                     repository.reconcileDownloads(completedIds)
-                    repository.loadSavedVideos() to repository.loadPlaylists()
+                    repository.snapshot()
                 }
                 if (activeProfileId == profile && libraryRepository === repository &&
                     appliedDownloadIndexSignature == signature) {
-                    applyLibrarySnapshot(snapshot.first, snapshot.second)
+                    applyLibrarySnapshot(snapshot)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -7520,30 +7792,42 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         historyWriteJobs.remove(video.id)?.cancel()
         historyWriteJobs[video.id] = viewModelScope.launch(Dispatchers.IO) {
             tryLibraryMutation { repositoryAtScheduleTime.recordHistory(video) } ?: return@launch
-            val savedVideos = repositoryAtScheduleTime.loadSavedVideos()
-            val playlists = repositoryAtScheduleTime.loadPlaylists()
+            if (com.futo.platformplayer.compose.background.needsMusicClassification(video)) {
+                com.futo.platformplayer.compose.background.HistoryMusicClassifier
+                    .schedule(getApplication(), profileAtScheduleTime)
+            }
+            val snapshot = repositoryAtScheduleTime.snapshot()
             withContext(Dispatchers.Main) {
                 if (
                     profileAtScheduleTime == activeProfileId &&
                     repositoryAtScheduleTime === libraryRepository
                 ) {
-                    applyLibrarySnapshot(savedVideos, playlists)
+                    applyLibrarySnapshot(snapshot)
                 }
             }
         }
     }
 
     private fun reloadLibrary() {
-        applyLibrarySnapshot(
-            savedVideos = libraryRepository.loadSavedVideos(),
-            playlists = libraryRepository.loadPlaylists(),
-        )
+        applyLibrarySnapshot(libraryRepository.snapshot())
     }
 
     private fun applyLibrarySnapshot(
-        savedVideos: List<VideoUiModel>,
-        playlists: List<PlaylistUiModel>,
+        snapshot: com.futo.platformplayer.compose.data.LibrarySnapshot,
     ) {
+        if (!librarySnapshots.accept(snapshot.sequence)) return
+        val savedVideos = snapshot.videos
+        val playlists = snapshot.playlists
+        if (savedVideos === allVideos && playlists === _uiState.value.playlists) return
+        val missingMusic = savedVideos.asSequence().filter { com.futo.platformplayer.compose.background.needsMusicClassification(it) }
+            .map(VideoUiModel::id).filter { it !in scheduledHistoryMusicIds }.toList()
+        if (missingMusic.isNotEmpty()) {
+            scheduledHistoryMusicIds.addAll(missingMusic)
+            val profile = activeProfileId
+            viewModelScope.launch(Dispatchers.IO) {
+                com.futo.platformplayer.compose.background.HistoryMusicClassifier.schedule(getApplication(), profile)
+            }
+        }
         allVideos = savedVideos
         val saved = allVideos.associateBy(VideoUiModel::id)
         savedVideosById = saved
@@ -7576,6 +7860,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 home = state.home.copy(videos = state.home.videos.mapIfChanged(::merge)),
                 libraryVideos = allVideos,
                 playlists = playlists,
+                playbackPlaylist = activePlaylistId?.let { id -> playlists.firstOrNull { it.id == id } }
+                    ?: state.playbackPlaylist?.takeIf { activePlaylistId == null },
                 search = state.search.copy(videos = state.search.videos.mapIfChanged(::merge)),
                 channelDetail = state.channelDetail.copy(
                     videos = state.channelDetail.videos.mapIfChanged(::merge),
@@ -7735,6 +8021,16 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private inline fun <T> tryLibraryMutation(action: () -> T): T? = try {
         action()
+    } catch (error: com.futo.platformplayer.compose.data.LibraryDataUnavailableException) {
+        Log.e("GrayjayViewModel", "Library write blocked to preserve unreadable data", error)
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastLibraryRecoveryNoticeAt >= 30_000L) {
+            lastLibraryRecoveryNoticeAt = now
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                Toast.makeText(getApplication(), R.string.library_unreadable_write_blocked, Toast.LENGTH_LONG).show()
+            }
+        }
+        null
     } catch (error: com.futo.platformplayer.compose.data.AccountImportRecoveryBlockedException) {
         Log.e("GrayjayViewModel", "Library changes are blocked to preserve import recovery data", error)
         val now = android.os.SystemClock.elapsedRealtime()

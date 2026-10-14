@@ -6,6 +6,14 @@ import org.junit.Test
 import org.junit.Assert.assertEquals
 
 class GitHubReleaseCheckerTest {
+    @Test fun companionApksCannotReplaceTheMainAppDuringUpdate() {
+        val assets = listOf(
+            GitHubReleaseAsset("GrayjoyVoice-v2.8.0-universal-release.apk", "https://example/voice"),
+            GitHubReleaseAsset("Grayjoy-Voice-v2.8.0-arm64-v8a-release.apk", "https://example/other-voice"),
+            GitHubReleaseAsset("Grayjoy-v2.8.0-universal-release.apk", "https://example/main"),
+        )
+        assertEquals("https://example/main", selectReleaseApkUrl(assets, listOf("arm64-v8a")))
+    }
     @Test fun choosesHighestStableVersionEvenIfAnOldReleaseWasRepublished() {
         val releases = org.json.JSONArray("""[
             {"tag_name":"v1.0.0"},

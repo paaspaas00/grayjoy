@@ -1,4 +1,5 @@
 <resources>
+    <string name="playback_notification_unavailable">Android non ha potuto mostrare i controlli di riproduzione. Apri Grayjoy e premi Play per riprendere.</string>
     <string name="app_name">Grayjoy</string>
     <string name="lower_volume_for_other_audio">Abbassa il volume per gli altri audio</string>
     <string name="lower_volume_for_other_audio_description">Riduci gradualmente il volume di Grayjoy mentre un’altra app riproduce audio</string>
@@ -556,6 +557,8 @@
     <string name="version_information">Versione %1$s • build %2$d</string>
     <string name="enqueue">Accoda</string>
     <string name="played_on_date">Riprodotti il %1$s</string>
+    <string name="refresh_following_videos">Aggiorna i video</string>
+    <string name="library_unreadable_write_blocked">La libreria salvata non è leggibile. Le modifiche sono bloccate per proteggere i dati. Conserva una copia dei dati dell’app prima di ripristinare un backup.</string>
     <string name="per_channel_playback_speed">Velocità per canale</string>
     <string name="per_channel_playback_speed_description">Ricorda una velocità preferita per ogni canale. La velocità scelta per un singolo video ha la precedenza.</string>
     <string name="channel_playback_speed">Velocità del canale</string>
@@ -798,4 +801,10 @@
     <string name="history_music_unknown_hint">I video senza una categoria YouTube riconosciuta restano in Tutti.</string>
     <string name="history_music_identify_more">Identifica altri video</string>
     <string name="history_music_identifying">Identificazione %1$d / %2$d</string>
+    <string name="history_music_background_job">Classificazione della cronologia</string>
+    <string name="voice_control">Controllo vocale</string>
+    <string name="voice_control_description">Companion offline per i comandi di riproduzione</string>
+    <string name="voice_companion_missing">Installa Grayjoy Voice per abilitare questa funzionalità.</string>
+    <string name="voice_control_enable">Consenti i comandi vocali</string>
+    <string name="voice_control_open">Apri Grayjoy Voice</string>
 </resources>

@@ -17,22 +17,31 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
 /** Optional bounded history enrichment; never resolves streams or starts a plugin runtime. */
-class YouTubeMusicMetadataResolver {
-    private data class Entry(val value: Boolean?, val expiresAt: Long)
+data class MusicMetadataResult(val isMusic: Boolean?, val retryable: Boolean = false)
+
+class YouTubeMusicMetadataResolver : AutoCloseable {
+    private data class Entry(val result: MusicMetadataResult, val expiresAt: Long)
     private val cache = linkedMapOf<String, Entry>()
     private val locks = Array(16) { Mutex() }
     private val slots = Semaphore(2)
-    private val client = OkHttpClient.Builder().connectTimeout(4, TimeUnit.SECONDS)
+    private val executor = java.util.concurrent.ThreadPoolExecutor(0, 2, 60L, TimeUnit.SECONDS,
+        java.util.concurrent.LinkedBlockingQueue<Runnable>(4)) { runnable ->
+        Thread({ android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); runnable.run() },
+            "history-metadata").apply { isDaemon = true }
+    }
+    private val client = OkHttpClient.Builder().dispatcher(okhttp3.Dispatcher(executor)).connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS).callTimeout(8, TimeUnit.SECONDS).build()
 
-    suspend fun classify(contentUrl: String): Boolean? {
-        val id = youtubeMusicVideoId(contentUrl) ?: return null
+    suspend fun classify(contentUrl: String): Boolean? = classifyWithStatus(contentUrl).isMusic
+
+    suspend fun classifyWithStatus(contentUrl: String): MusicMetadataResult {
+        val id = youtubeMusicVideoId(contentUrl) ?: return MusicMetadataResult(null)
         return locks[(id.hashCode() and Int.MAX_VALUE) % locks.size].withLock {
             synchronized(cache) { cache[id] }?.takeIf { it.expiresAt > System.currentTimeMillis() }
-                ?.let { return@withLock it.value }
+                ?.let { return@withLock it.result }
             val value = slots.withPermit { fetch(id) }
             synchronized(cache) {
-                val ttl = if (value == null) TimeUnit.MINUTES.toMillis(10) else TimeUnit.HOURS.toMillis(24)
+                val ttl = if (value.retryable) TimeUnit.MINUTES.toMillis(10) else TimeUnit.HOURS.toMillis(24)
                 cache[id] = Entry(value, System.currentTimeMillis() + ttl)
                 while (cache.size > 256) cache.remove(cache.keys.first())
             }
@@ -40,7 +49,7 @@ class YouTubeMusicMetadataResolver {
         }
     }
 
-    private suspend fun fetch(id: String): Boolean? = suspendCancellableCoroutine { continuation ->
+    private suspend fun fetch(id: String): MusicMetadataResult = suspendCancellableCoroutine { continuation ->
         val request = Request.Builder().url("https://www.youtube.com/watch?v=$id&hl=en")
             .header("User-Agent", NEWPIPE_USER_AGENT)
             .header("Accept-Language", "en-US,en;q=0.9")
@@ -49,13 +58,14 @@ class YouTubeMusicMetadataResolver {
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                if (continuation.isActive) continuation.resume(null)
+                if (continuation.isActive) continuation.resume(MusicMetadataResult(null, retryable = true))
             }
             override fun onResponse(call: Call, response: Response) {
                 val result = try {
                     response.use {
-                        if (!response.isSuccessful) return@use null
-                        response.body.charStream().use readerBlock@ { reader ->
+                        if (!response.isSuccessful) return@use MusicMetadataResult(null,
+                            retryable = response.code != 404 && response.code != 410)
+                        val value = response.body.charStream().use readerBlock@ { reader ->
                             val html = StringBuilder()
                             val buffer = CharArray(8192)
                             var headChecked = false
@@ -70,14 +80,16 @@ class YouTubeMusicMetadataResolver {
                             }
                             if (continuation.isActive) youtubeMusicClassificationFromWatchPage(html.toString()) else null
                         }
+                        MusicMetadataResult(value)
                     }
                 } catch (_: Exception) {
-                    null
+                    MusicMetadataResult(null, retryable = true)
                 }
                 if (continuation.isActive) continuation.resume(result)
             }
         })
     }
+    override fun close() { client.dispatcher.cancelAll(); executor.shutdown(); client.connectionPool.evictAll() }
 }
 
 internal fun youtubeMusicVideoId(value: String): String? = runCatching {

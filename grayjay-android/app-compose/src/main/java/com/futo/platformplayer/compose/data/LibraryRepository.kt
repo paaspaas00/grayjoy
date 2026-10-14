@@ -9,6 +9,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
+
+private val snapshotSequence = AtomicLong()
+
+data class LibrarySnapshot(
+    val videos: List<VideoUiModel>,
+    val playlists: List<PlaylistUiModel>,
+    val sequence: Long,
+)
 
 data class LibraryVideoState(
     val isWatchLater: Boolean,
@@ -82,6 +91,9 @@ interface LibraryRepository {
     fun load(videos: List<VideoUiModel>): Map<String, LibraryVideoState>
     fun loadSavedVideos(): List<VideoUiModel>
     fun loadPlaylists(): List<PlaylistUiModel>
+    fun snapshot(): LibrarySnapshot = synchronized(transactionLock) {
+        LibrarySnapshot(loadSavedVideos(), loadPlaylists(), snapshotSequence.incrementAndGet())
+    }
     fun saveVideo(video: VideoUiModel)
     fun saveVideos(videos: Collection<VideoUiModel>)
     fun saveDownloadDescriptor(video: VideoUiModel)
@@ -106,7 +118,7 @@ interface LibraryRepository {
     fun setScheduledStart(videoId: String, scheduledStartAtMs: Long)
     fun setWatchProgress(videoId: String, progress: Float)
     fun removeFromHistory(videoIds: Collection<String>)
-    fun createPlaylist(title: String, videos: List<VideoUiModel>): PlaylistUiModel?
+    fun createPlaylist(title: String, videos: List<VideoUiModel>, isPlaybackQueue: Boolean = false): PlaylistUiModel?
     fun renamePlaylist(playlistId: String, title: String): PlaylistUiModel?
     fun removePlaylists(playlistIds: Collection<String>): Int
     fun addVideosToPlaylist(playlistId: String, videos: List<VideoUiModel>): PlaylistUiModel?
@@ -148,6 +160,36 @@ internal class SharedPreferencesLibraryRepository(
     private var cachedProgressRevision = Long.MIN_VALUE
     internal val importJournal = AccountImportJournal(context, profileId)
     private var importRecoveryChecked = false
+    private val validatedJson = mutableMapOf<String, String?>()
+
+    private fun ensureLibraryWritable() {
+        recoverInterruptedImport()
+        importJournal.ensureWritable()
+        for (key in listOf(KEY_VIDEOS, KEY_PLAYLISTS)) {
+            try {
+                val raw = preferences.getString(key, null)
+                if (!validatedJson.containsKey(key) || validatedJson[key] !== raw) {
+                    if (raw != null) JSONArray(raw)
+                    validatedJson[key] = raw
+                }
+            } catch (error: Exception) {
+                throw LibraryDataUnavailableException(error)
+            }
+        }
+    }
+    private val legacyQueueTemplates by lazy {
+        com.futo.platformplayer.compose.AppLanguageManager.supportedLanguages.map { language ->
+            val configuration = android.content.res.Configuration(appContext.resources.configuration)
+                .apply { setLocale(Locale.forLanguageTag(language.tag)) }
+            appContext.createConfigurationContext(configuration).getString(R.string.played_on_date)
+        }.distinct()
+    }
+    private val legacyQueueLocales by lazy {
+        (listOf(Locale.getDefault(), Locale.US, Locale.UK) +
+            com.futo.platformplayer.compose.AppLanguageManager.supportedLanguages.map {
+                Locale.forLanguageTag(it.tag)
+            }).distinct()
+    }
 
     private fun recoverInterruptedImport() {
         if (importRecoveryChecked) return
@@ -187,7 +229,7 @@ internal class SharedPreferencesLibraryRepository(
     override fun loadPlaylists(): List<PlaylistUiModel> = synchronized(transactionLock) { readPlaylists() }
 
     override fun createImportSnapshot(): LibraryImportSnapshot = synchronized(transactionLock) {
-        importJournal.ensureWritable()
+        ensureLibraryWritable()
         LibraryImportSnapshot(loadSavedVideos(), loadPlaylists())
     }
 
@@ -342,7 +384,7 @@ internal class SharedPreferencesLibraryRepository(
         }
     }
 
-    override fun createPlaylist(title: String, videos: List<VideoUiModel>): PlaylistUiModel? {
+    override fun createPlaylist(title: String, videos: List<VideoUiModel>, isPlaybackQueue: Boolean): PlaylistUiModel? {
         return synchronized(transactionLock) {
             importJournal.ensureWritable()
             val normalizedTitle = title.trim().ifBlank { appContext.getString(R.string.new_playlist) }
@@ -354,6 +396,7 @@ internal class SharedPreferencesLibraryRepository(
                 title = normalizedTitle,
                 description = appContext.getString(R.string.local_playlist_description),
                 videoIds = videos.map(VideoUiModel::id).distinct(),
+                isPlaybackQueue = isPlaybackQueue,
             )
             persistPlaylistMutation(playlists + playlist, videos)
             return playlist
@@ -403,6 +446,7 @@ internal class SharedPreferencesLibraryRepository(
             val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
             val updated = existing.copy(
                 videoIds = (existing.videoIds + videos.map(VideoUiModel::id)).distinct(),
+                videoCount = (existing.videoIds + videos.map(VideoUiModel::id)).distinct().size,
             )
             persistPlaylistMutation(
                 playlists = playlists.map { if (it.id == playlistId) updated else it },
@@ -421,7 +465,8 @@ internal class SharedPreferencesLibraryRepository(
             val playlists = readPlaylists()
             val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
             val removedIds = videoIds.toSet()
-            val updated = existing.copy(videoIds = existing.videoIds.filterNot(removedIds::contains))
+            val remaining = existing.videoIds.filterNot(removedIds::contains)
+            val updated = existing.copy(videoIds = remaining, videoCount = remaining.size)
             persistPlaylistMutation(playlists.map { if (it.id == playlistId) updated else it })
             return updated
         }
@@ -436,7 +481,7 @@ internal class SharedPreferencesLibraryRepository(
             val playlists = readPlaylists()
             val existing = playlists.firstOrNull { it.id == playlistId } ?: return null
             val normalizedOrder = normalizePlaylistOrder(existing.videoIds, orderedVideoIds)
-            val updated = existing.copy(videoIds = normalizedOrder)
+            val updated = existing.copy(videoIds = normalizedOrder, videoCount = normalizedOrder.size)
             persistPlaylistMutation(playlists.map { if (it.id == playlistId) updated else it })
             return updated
         }
@@ -538,7 +583,6 @@ internal class SharedPreferencesLibraryRepository(
         playlists: List<PlaylistUiModel>,
         incomingVideos: Collection<VideoUiModel> = emptyList(),
     ) {
-        writePlaylists(playlists)
         val playlistNamesByVideoId = buildMap<String, MutableList<String>> {
             playlists.forEach { playlist ->
                 playlist.videoIds.distinct().forEach { videoId ->
@@ -553,7 +597,19 @@ internal class SharedPreferencesLibraryRepository(
                 playlistNames = playlistNamesByVideoId[video.id].orEmpty(),
             )
         }
-        writeVideos(videos)
+        // Persist both halves in one editor: process death must not leave a playlist pointing
+        // at videos that were never saved, or keep stale playlist badges after removal.
+        ensureLibraryWritable()
+        val normalizedPlaylists = playlists.map { it.copy(videoCount = it.videoIds.size) }
+        val videosJson = JSONArray().apply { videos.forEach { put(it.toJson()) } }.toString()
+        val playlistsJson = JSONArray().apply { normalizedPlaylists.forEach { put(it.toJson()) } }.toString()
+        preferences.edit().putString(KEY_VIDEOS, videosJson).putString(KEY_PLAYLISTS, playlistsJson).apply()
+        cachedVideos = videos
+        cachedVideosJson = videosJson
+        cachedPlaylists = normalizedPlaylists
+        cachedPlaylistsJson = playlistsJson
+        validatedJson[KEY_VIDEOS] = videosJson
+        validatedJson[KEY_PLAYLISTS] = playlistsJson
     }
 
     private fun mergeSavedVideos(
@@ -601,11 +657,12 @@ internal class SharedPreferencesLibraryRepository(
     }
 
     private fun writeVideos(videos: List<VideoUiModel>) {
-        importJournal.ensureWritable()
+        ensureLibraryWritable()
         cachedVideos = videos
         val json = JSONArray().apply { videos.forEach { put(it.toJson()) } }
         cachedVideosJson = json.toString()
         preferences.edit().putString(KEY_VIDEOS, cachedVideosJson).apply()
+        validatedJson[KEY_VIDEOS] = cachedVideosJson
     }
 
     private fun readPlaylists(): List<PlaylistUiModel> {
@@ -615,7 +672,9 @@ internal class SharedPreferencesLibraryRepository(
         return runCatching {
             storedJson
                 ?.let(::JSONArray)
-                ?.toPlaylistList(appContext.getString(R.string.local_playlist_description))
+                ?.toPlaylistList(appContext.getString(R.string.local_playlist_description)) { title ->
+                    isLegacyPlaybackQueueTitle(title, legacyQueueTemplates, legacyQueueLocales)
+                }
                 .orEmpty()
         }.getOrDefault(emptyList()).also {
             cachedPlaylists = it
@@ -624,11 +683,12 @@ internal class SharedPreferencesLibraryRepository(
     }
 
     private fun writePlaylists(playlists: List<PlaylistUiModel>) {
-        importJournal.ensureWritable()
+        ensureLibraryWritable()
         cachedPlaylists = playlists
         val json = JSONArray().apply { playlists.forEach { put(it.toJson()) } }
         cachedPlaylistsJson = json.toString()
         preferences.edit().putString(KEY_PLAYLISTS, cachedPlaylistsJson).apply()
+        validatedJson[KEY_PLAYLISTS] = cachedPlaylistsJson
     }
 
     private fun nextProgressRevision(): Long =
@@ -896,9 +956,13 @@ private fun PlaylistUiModel.toJson() = JSONObject().apply {
     put("title", title)
     put("description", description)
     put("videoIds", JSONArray(videoIds))
+    put("isPlaybackQueue", isPlaybackQueue)
 }
 
-private fun JSONArray.toPlaylistList(defaultDescription: String): List<PlaylistUiModel> = buildList {
+private fun JSONArray.toPlaylistList(
+    defaultDescription: String,
+    isLegacyQueue: (String) -> Boolean,
+): List<PlaylistUiModel> = buildList {
     val seenIds = hashSetOf<String>()
     for (index in 0 until length()) {
         val json = optJSONObject(index) ?: continue
@@ -913,6 +977,8 @@ private fun JSONArray.toPlaylistList(defaultDescription: String): List<PlaylistU
                     defaultDescription,
                 ),
                 videoIds = json.optJSONArray("videoIds").toStringList(),
+                isPlaybackQueue = if (json.has("isPlaybackQueue")) json.optBoolean("isPlaybackQueue", false)
+                    else isLegacyQueue(json.optString("title")),
             ),
         )
     }

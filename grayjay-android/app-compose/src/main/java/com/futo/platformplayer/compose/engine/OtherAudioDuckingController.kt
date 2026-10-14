@@ -36,11 +36,12 @@ internal class OtherAudioDuckingController(
     private var rampRunnable: Runnable? = null
     private var rampGeneration = 0
     private var released = false
+    private val voiceVolumes = VoiceVolumeLeases()
 
     private val playbackCallback = object : AudioManager.AudioPlaybackCallback() {
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>) {
             updateOtherAudioState(
-                shouldDuckForActivePlaybackCount(configs.size),
+                shouldDuckForPlaybackUsages(configs.map { it.audioAttributes.usage }),
             )
         }
     }
@@ -61,9 +62,21 @@ internal class OtherAudioDuckingController(
             this.enabled = enabled
             duckVolume = clampDuckVolumePercent(duckVolumePercent) / 100f
             updateRegistration()
-            if (duckingApplied) {
+            if (duckingApplied && voiceVolumes.volume == null) {
                 animateVolumeTo(duckVolume, ATTACK_RAMP_MS)
             }
+        }
+    }
+
+    fun setVoiceVolume(owner: String, percent: Int?) {
+        runOnMainThread {
+            if (released) return@runOnMainThread
+            if (!voiceVolumes.set(owner, percent)) return@runOnMainThread
+            cancelTransition()
+            otherAudioActive = enabled && player.isPlaying && readOtherAudioActive()
+            duckingApplied = voiceVolumes.volume == null && otherAudioActive
+            animateVolumeTo(effectivePlaybackVolume(voiceVolumes.volume, otherAudioActive, duckVolume), 90L)
+            updateRegistration()
         }
     }
 
@@ -75,6 +88,7 @@ internal class OtherAudioDuckingController(
             unregisterPlaybackCallback()
             cancelTransition()
             cancelRamp()
+            voiceVolumes.clear()
             player.volume = NORMAL_VOLUME
         }
     }
@@ -87,9 +101,7 @@ internal class OtherAudioDuckingController(
                 audioManager.registerAudioPlaybackCallback(playbackCallback, handler)
                 callbackRegistered = true
                 updateOtherAudioState(
-                    shouldDuckForActivePlaybackCount(
-                        audioManager.activePlaybackConfigurations.size,
-                    ),
+                    readOtherAudioActive(),
                 )
             } catch (error: RuntimeException) {
                 Log.w(TAG, "Unable to observe other audio playback.", error)
@@ -115,11 +127,13 @@ internal class OtherAudioDuckingController(
         if (otherAudioActive == active) return
         otherAudioActive = active
         cancelTransition()
+        // Track real competing media during a voice command, but give its explicit gain priority.
+        if (voiceVolumes.volume != null) return
 
         val delayMs = if (active) ATTACK_DEBOUNCE_MS else RELEASE_DEBOUNCE_MS
         val transition = Runnable {
             transitionRunnable = null
-            if (!enabled || !player.isPlaying || otherAudioActive != active || released) {
+            if (!enabled || !player.isPlaying || otherAudioActive != active || released || voiceVolumes.volume != null) {
                 return@Runnable
             }
             duckingApplied = active
@@ -132,12 +146,16 @@ internal class OtherAudioDuckingController(
         handler.postDelayed(transition, delayMs)
     }
 
+    private fun readOtherAudioActive(): Boolean = runCatching {
+        shouldDuckForPlaybackUsages(audioManager.activePlaybackConfigurations.map { it.audioAttributes.usage })
+    }.getOrDefault(otherAudioActive)
+
     private fun resetImmediately() {
         otherAudioActive = false
         duckingApplied = false
         cancelTransition()
         cancelRamp()
-        if (!released) player.volume = NORMAL_VOLUME
+        if (!released) player.volume = voiceVolumes.volume ?: NORMAL_VOLUME
     }
 
     private fun animateVolumeTo(target: Float, durationMs: Long) {
@@ -201,3 +219,11 @@ internal fun shouldDuckForActivePlaybackCount(activePlaybackCount: Int): Boolean
     activePlaybackCount > 1
 
 internal fun clampDuckVolumePercent(percent: Int): Int = percent.coerceIn(10, 80)
+
+// Assistant prompts use explicit session gain/audio focus. Bluetooth may report their output
+// after the prompt finishes; rediscovering it as competing media would apply a second reduction.
+internal fun shouldDuckForPlaybackUsages(usages: List<Int>): Boolean =
+    shouldDuckForActivePlaybackCount(usages.count { it != android.media.AudioAttributes.USAGE_ASSISTANT })
+
+internal fun effectivePlaybackVolume(voice: Float?, otherAudio: Boolean, duckVolume: Float): Float =
+    voice ?: if (otherAudio) duckVolume else 1f

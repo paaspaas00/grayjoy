@@ -89,4 +89,38 @@ class LibraryConcurrencyTest {
     }
 
     private fun video(id: String) = VideoUiModel(id, id, "Creator", "", "1:00")
+
+    @Test fun snapshotNeverMixesPlaylistAndVideoRevisions() = withProfile { profile ->
+        val writer = SharedPreferencesLibraryRepository(context, profile)
+        val reader = SharedPreferencesLibraryRepository(context, profile)
+        val playlist = writer.createPlaylist("Atomic fixture", emptyList())!!
+        val workers = Executors.newFixedThreadPool(2)
+        val start = CountDownLatch(1)
+        try {
+            val writes = workers.submit {
+                start.await()
+                repeat(80) { writer.addVideosToPlaylist(playlist.id, listOf(video("item-$it"))) }
+            }
+            val reads = workers.submit {
+                start.await()
+                var previous = Long.MIN_VALUE
+                repeat(160) {
+                    val snapshot = reader.snapshot()
+                    assertTrue(snapshot.sequence > previous)
+                    previous = snapshot.sequence
+                    val saved = snapshot.videos.associateBy { it.id }
+                    snapshot.playlists.single().videoIds.forEach { id ->
+                        assertNotNull(saved[id])
+                        assertTrue("Missing playlist badge in a coherent snapshot", "Atomic fixture" in saved.getValue(id).playlistNames)
+                    }
+                }
+            }
+            start.countDown()
+            writes.get(30, TimeUnit.SECONDS)
+            reads.get(30, TimeUnit.SECONDS)
+            assertEquals(80, reader.snapshot().playlists.single().videoCount)
+            val updated = writer.removeVideosFromPlaylist(playlist.id, listOf("item-79"))!!
+            assertEquals(79, updated.videoCount)
+        } finally { workers.shutdownNow() }
+    }
 }

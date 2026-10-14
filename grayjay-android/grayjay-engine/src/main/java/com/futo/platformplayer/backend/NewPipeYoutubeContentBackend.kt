@@ -129,26 +129,23 @@ class NewPipeYoutubeContentBackend(
         onProgress(0, requests.size)
         val completed = java.util.concurrent.atomic.AtomicInteger(0)
         val slots = Semaphore(if (mode == YoutubeSubscriptionFetchMode.Fast) 6 else 3)
-        val pages = coroutineScope {
+        val outcomes = coroutineScope {
             requests.map { request ->
                 async {
                     val videos = slots.withPermit {
                         runCatching {
-                            when (mode) {
-                                YoutubeSubscriptionFetchMode.Fast ->
-                                    loadAtomFeed(request)
-                                        .let { videos ->
-                                            if (shortsOnly) videos.filter(GrayjaySearchItem::isShort)
-                                            else videos
-                                        }
-                                        .take(perChannelLimit)
-                                YoutubeSubscriptionFetchMode.Complete ->
-                                    loadCompleteChannelFeed(
-                                        request,
-                                        if (shortsOnly) ChannelTabs.SHORTS else ChannelTabs.VIDEOS,
-                                    ).take(perChannelLimit)
-                            }
-                        }.getOrDefault(emptyList())
+                            recoverSubscriptionFeed(
+                                fast = if (mode == YoutubeSubscriptionFetchMode.Fast) ({
+                                    loadAtomFeed(request).let { videos ->
+                                        if (shortsOnly) videos.filter(GrayjaySearchItem::isShort) else videos
+                                    }
+                                }) else null,
+                                complete = {
+                                    loadCompleteChannelFeed(request,
+                                        if (shortsOnly) ChannelTabs.SHORTS else ChannelTabs.VIDEOS)
+                                },
+                            ).take(perChannelLimit)
+                        }.also { currentCoroutineContext().ensureActive() }
                     }
                     onProgress(completed.incrementAndGet(), requests.size)
                     videos
@@ -156,7 +153,7 @@ class NewPipeYoutubeContentBackend(
             }.awaitAll()
         }
         GrayjayVideoPage(
-            videos = pages.flatten()
+            videos = successfulSubscriptionFeeds(outcomes)
                 .distinctBy(GrayjaySearchItem::url)
                 .sortedByDescending(GrayjaySearchItem::datetime)
                 .take(resultLimit),

@@ -31,9 +31,11 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.FilterAlt
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SortByAlpha
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -136,6 +138,7 @@ fun SubscriptionsScreen(
     completeFeedTotal: Int = 0,
     completeFeedError: String? = null,
     onRequestCompleteFeed: () -> Unit = {},
+    onRefresh: () -> Unit = onRequestCompleteFeed,
 ) {
     val performance = rememberDevicePerformanceProfile()
     val focusManager = LocalFocusManager.current
@@ -303,6 +306,8 @@ fun SubscriptionsScreen(
                         },
                         onOpenFilter = { showUploadChannelFilter = true },
                         onCancelSelection = ::leaveVideoSelectionMode,
+                        refreshing = completeFeedLoading,
+                        onRefresh = onRefresh,
                     )
                 }
                 if (completeFeedLoading) {
@@ -334,7 +339,7 @@ fun SubscriptionsScreen(
                                 color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodySmall,
                             )
-                            TextButton(onClick = onRequestCompleteFeed) {
+                            TextButton(onClick = onRefresh) {
                                 Text(stringResource(R.string.retry))
                             }
                         }
@@ -481,6 +486,8 @@ private fun UploadsHeading(
     selectedChannel: ChannelUiModel?,
     onOpenFilter: () -> Unit,
     onCancelSelection: () -> Unit,
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -499,6 +506,14 @@ private fun UploadsHeading(
         if (selectionMode) {
             TextButton(onClick = onCancelSelection) { Text(stringResource(R.string.cancel)) }
         } else {
+            IconButton(
+                onClick = onRefresh,
+                enabled = !refreshing,
+                modifier = Modifier.testTag("subscriptions-refresh"),
+            ) {
+                if (refreshing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                else Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.refresh_following_videos))
+            }
             FilterChip(
                 selected = selectedChannel != null,
                 onClick = onOpenFilter,

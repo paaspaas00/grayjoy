@@ -319,6 +319,7 @@ private data class PlaybackPresentation(
     val onChannelSearchQueryChange: (String) -> Unit,
     val onLoadMoreChannelSearch: () -> Unit,
     val onLoadFollowingComplete: () -> Unit,
+    val onRefreshFollowing: () -> Unit,
     val onLoadRemotePlaylist: (PlaylistUiModel) -> Unit,
     val onLoadMoreRemotePlaylist: () -> Unit,
     val onPlayRemotePlaylist: () -> Unit,
@@ -1033,17 +1034,21 @@ fun GrayjayApp(
             }
             val destinationJob = if (jobId.startsWith("media-export:")) "downloads" else jobId
             val targetDestination = when (destinationJob) {
-                "downloads" -> GrayjayDestination.Library.name
+                "downloads", "history-music" -> GrayjayDestination.Library.name
                 "youtube-import", "youtube-import-background", "source-operation" ->
                     GrayjayDestination.Sources.name
                 else -> GrayjayDestination.Settings.name
             }
-            val targetFilter = if (destinationJob == "downloads") LibraryFilter.Downloads.name else libraryFilterName
+            val targetFilter = when (destinationJob) {
+                "downloads" -> LibraryFilter.Downloads.name
+                "history-music" -> LibraryFilter.History.name
+                else -> libraryFilterName
+            }
             browseHistory = browseHistoryForShortcut(browseHistory, currentBrowseRoute(),
                 BrowseRoute(targetDestination, libraryFilter = targetFilter))
             destinationName = targetDestination
             searchAutoFocusRequested = false
-            if (destinationJob == "downloads") libraryFilterName = LibraryFilter.Downloads.name
+            if (destinationJob == "downloads" || destinationJob == "history-music") libraryFilterName = targetFilter
             nestedBackDestinationName = null
             selectedChannelId = null
             selectedPlaylistId = null
@@ -1112,6 +1117,7 @@ fun GrayjayApp(
         onChannelSearchQueryChange = actions.onChannelSearchQueryChange,
         onLoadMoreChannelSearch = actions.onLoadMoreChannelSearch,
         onLoadFollowingComplete = actions.onLoadFollowingComplete,
+        onRefreshFollowing = actions.onRefreshFollowing,
         onLoadRemotePlaylist = actions.onLoadRemotePlaylist,
         onLoadMoreRemotePlaylist = actions.onLoadMoreRemotePlaylist,
         onPlayRemotePlaylist = {
@@ -2119,6 +2125,7 @@ private fun GrayjayScaffold(
         updateDownload = playback.updateDownload,
         libraryTransfer = playback.libraryTransfer,
         mediaExports = playback.mediaExports,
+        historyMusic = playback.historyMusicScan,
         downloadStorage = playback.downloadStorage,
     )
 
@@ -2502,6 +2509,7 @@ private fun GrayjayScaffold(
                         completeFeedTotal = playback.followingFeedTotal,
                         completeFeedError = playback.followingFeedError,
                         onRequestCompleteFeed = playback.onLoadFollowingComplete,
+                        onRefresh = playback.onRefreshFollowing,
                         followedCreatorIds = playback.followedCreatorIds,
                         onFollowedChange = playback.onCreatorFollowedChange,
                         onVideoClick = onVideoClick,

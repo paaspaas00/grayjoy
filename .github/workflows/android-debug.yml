@@ -45,6 +45,9 @@ jobs:
         working-directory: grayjay-android
         run: chmod +x gradlew
 
+      - name: Install voice native build tools
+        run: sdkmanager "ndk;28.1.13356709" "cmake;3.22.1"
+
       - name: Prepare release signing
         id: signing
         env:
@@ -79,7 +82,7 @@ jobs:
           GRAYJOY_RELEASE_STORE_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_STORE_PASSWORD }}
           GRAYJOY_RELEASE_KEY_ALIAS: ${{ secrets.GRAYJOY_RELEASE_KEY_ALIAS }}
           GRAYJOY_RELEASE_KEY_PASSWORD: ${{ secrets.GRAYJOY_RELEASE_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon :app-compose:testDebugUnitTest :grayjay-engine:testDebugUnitTest :app-compose:assembleDebug :app-compose:assembleRelease
+        run: ./gradlew --no-daemon :app-compose:testDebugUnitTest :grayjay-engine:testDebugUnitTest :voice-companion:testDebugUnitTest :app-compose:assembleDebug :app-compose:assembleRelease :voice-companion:assembleDebug :voice-companion:assembleRelease
 
       - name: Verify APK signatures and signing identity
         shell: bash
@@ -103,8 +106,15 @@ jobs:
             exit 1
           fi
 
-          expected_digest=""
-          for apk in "${debug_apks[@]}" "${release_apks[@]}"; do
+          # Public certificate fingerprint from the compatible published Grayjoy APKs.
+          expected_digest="94750902f6664c15614910b0bb3c6ddb4bec351185b912d2810fd432a7d428d4"
+          voice_debug="grayjay-android/voice-companion/build/outputs/apk/debug/voice-companion-debug.apk"
+          voice_release="grayjay-android/voice-companion/build/outputs/apk/release/voice-companion-release.apk"
+          if [[ ! -f "${voice_debug}" || ! -f "${voice_release}" ]]; then
+            echo "Missing signed voice companion APKs." >&2
+            exit 1
+          fi
+          for apk in "${debug_apks[@]}" "${release_apks[@]}" "${voice_debug}" "${voice_release}"; do
             certificate_output="$("${apksigner}" verify --verbose --print-certs "${apk}" 2>&1)"
             digest="$(awk -F ': ' '/certificate SHA-256 digest:/ { print $NF; exit }' <<<"${certificate_output}" | tr -d '\r')"
             if [[ -z "${digest}" ]]; then
@@ -148,6 +158,9 @@ jobs:
             cp "${release_source}" "${release_target}"
           done
 
+          cp grayjay-android/voice-companion/build/outputs/apk/debug/voice-companion-debug.apk "release/GrayjoyVoice-${version}-universal-debug.apk"
+          cp grayjay-android/voice-companion/build/outputs/apk/release/voice-companion-release.apk "release/GrayjoyVoice-${version}-universal-release.apk"
+
           extension_target="release/Grayjoy-Link-${version}.zip"
           (
             cd browser-extension
@@ -169,7 +182,7 @@ jobs:
           checksum_path="release/Grayjoy-${version}-SHA256SUMS.txt"
           (
             cd release
-            sha256sum Grayjoy-*.apk Grayjoy-Link-*.zip > "$(basename "${checksum_path}")"
+            sha256sum Grayjoy-*.apk GrayjoyVoice-*.apk Grayjoy-Link-*.zip > "$(basename "${checksum_path}")"
           )
 
           echo "checksum_path=${checksum_path}" >> "${GITHUB_OUTPUT}"
@@ -202,12 +215,20 @@ jobs:
               assets+=("release/Grayjoy-${GITHUB_REF_NAME}-${variant}-release.apk#Grayjoy ${GITHUB_REF_NAME} ${variant} signed release APK")
             done
             assets+=("release/Grayjoy-Link-${GITHUB_REF_NAME}.zip#Grayjoy Link ${GITHUB_REF_NAME} Chromium extension")
+            assets+=("release/GrayjoyVoice-${GITHUB_REF_NAME}-universal-debug.apk#Grayjoy Voice ${GITHUB_REF_NAME} ARM64 and x86-64 debug APK")
+            assets+=("release/GrayjoyVoice-${GITHUB_REF_NAME}-universal-release.apk#Grayjoy Voice ${GITHUB_REF_NAME} ARM64 and x86-64 signed release APK")
             assets+=("${CHECKSUM_PATH}#SHA-256 checksums")
+
+            notes=".github/release-notes/${GITHUB_REF_NAME}.it.md"
+            if [[ ! -s "${notes}" ]]; then
+              echo "Missing Italian release notes: ${notes}" >&2
+              exit 1
+            fi
 
             gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
               --verify-tag \
-              --prerelease \
+              --draft \
               --title "Grayjoy ${GITHUB_REF_NAME}" \
-              --notes "Automated per-architecture and universal debug and signed release APKs built from the ${GITHUB_REF_NAME} tag." \
+              --notes-file "${notes}" \
               --repo "${GITHUB_REPOSITORY}"
           fi

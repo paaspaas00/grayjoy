@@ -85,6 +85,7 @@ internal fun rememberActiveJobItems(
     libraryTransfer: LibraryTransferUiState,
     downloadStorage: DownloadStorageUiState = DownloadStorageUiState(),
     mediaExports: List<com.futo.platformplayer.compose.ui.MediaExportUiState> = emptyList(),
+    historyMusic: com.futo.platformplayer.compose.ui.HistoryMusicScanUiState = com.futo.platformplayer.compose.ui.HistoryMusicScanUiState(),
 ): List<ActiveJobItem> {
     val activeDownloads = remember(downloads) { downloads.values.filter(DownloadUiModel::isActive) }
     val activeDownloadProgress = activeDownloads
@@ -106,6 +107,13 @@ internal fun rememberActiveJobItems(
         )
     }
     return buildList {
+        if (historyMusic.isRunning) add(ActiveJobItem(
+            id = "history-music",
+            title = stringResource(R.string.history_music_background_job),
+            detail = "${historyMusic.completed}/${historyMusic.total}",
+            progress = historyMusic.total.takeIf { it > 0 }?.let { historyMusic.completed.toFloat() / it },
+            icon = Icons.Outlined.Sync,
+        ))
         mediaExports.forEach { export ->
             val stage = stringResource(when (export.stage) {
                 com.futo.platformplayer.compose.downloads.MediaExportStage.Preparing -> R.string.export_preparing

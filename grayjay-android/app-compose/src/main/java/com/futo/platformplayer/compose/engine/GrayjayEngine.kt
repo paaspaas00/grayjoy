@@ -444,6 +444,8 @@ interface GrayjayEngine {
     fun appendToQueue(videos: List<VideoUiModel>, orderedVideoIds: List<String> = emptyList())
     fun moveQueueItemNext(videoId: String)
     fun togglePlayback()
+    fun resumePlayback()
+    fun currentPlaybackVideo(): VideoUiModel?
     fun pausePlayback()
     fun skipToNext()
     fun skipToPrevious()
@@ -451,6 +453,7 @@ interface GrayjayEngine {
     fun seekToFraction(fraction: Float)
     fun setPlaybackSpeed(speed: Float)
     fun setOtherAudioDucking(enabled: Boolean, volumePercent: Int)
+    fun setVoiceListeningVolume(owner: String, percent: Int?)
     fun setVideoQuality(height: Int?)
     fun setAudioLanguage(language: String?)
     fun setCaptionsEnabled(enabled: Boolean)
@@ -514,7 +517,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         // session selected, leaving the car without metadata or transport controls. Grayjay's
         // legacy playback service explicitly requested AUDIOFOCUS_GAIN; let ExoPlayer provide
         // the equivalent lifecycle-safe behavior for this shared player.
-        .setAudioAttributes(AudioAttributes.DEFAULT, true)
+        .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
         .setHandleAudioBecomingNoisy(true)
         // Match legacy Grayjay's player and keep plugin streams inside the player bounds.
         .setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
@@ -545,7 +548,16 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private val mediaArtworkLoader = com.futo.platformplayer.compose.images.MediaArtworkLoader(appContext) { uri ->
         openedVideos.firstOrNull { it.thumbnailUrl == uri }?.thumbnailRequestHeaders.orEmpty()
     }
-    private val mediaSession = MediaSession.Builder(appContext, exoPlayer)
+    private var activeMediaSession: MediaSession? = null
+    private var playStartGeneration = 0L
+    private val sessionPlayer = object : androidx.media3.common.ForwardingPlayer(exoPlayer) {
+        override fun play() = resumePlayback()
+        override fun setPlayWhenReady(playWhenReady: Boolean) {
+            if (playWhenReady) resumePlayback() else pausePlayback()
+        }
+    }
+    // Import/resolution-only engines must never publish an empty session to car/headset controls.
+    private fun playbackMediaSession(): MediaSession = activeMediaSession ?: MediaSession.Builder(appContext, sessionPlayer)
         .setBitmapLoader(androidx.media3.session.CacheBitmapLoader(mediaArtworkLoader))
         // Activity recreation can briefly overlap the previous ViewModel/session teardown. Media3
         // rejects two sessions with its default empty ID in the same process, crashing before the
@@ -600,7 +612,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         .setSessionActivity(sessionActivity)
         .setCustomLayout(listOf(closeNotificationButton))
         .setMediaButtonPreferences(mediaButtonPreferences)
-        .build()
+        .build().also { activeMediaSession = it }
     private val sourceCatalog = GrayjaySourceCatalog(appContext)
     private var pluginProfileId = "main"
     private var pluginVideoTitleLanguageTag = "en-US"
@@ -682,8 +694,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     syncPlayback()
                 }
 
-                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) =
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    if (!playWhenReady && reason != Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+                        playStartGeneration++
                     syncPlayback()
+                }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     if (youtubeFallbackVideoId != null && mediaItem?.mediaId != youtubeFallbackVideoId) {
@@ -2058,16 +2073,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         }
         exoPlayer.trackSelectionParameters = trackParameters.build()
         exoPlayer.shuffleModeEnabled = false
+        exoPlayer.playWhenReady = false
         exoPlayer.setMediaSources(mediaSources, currentIndex, 0L)
         exoPlayer.prepare()
-        exoPlayer.playWhenReady = playWhenReady
-        PlaybackNotificationService.show(
-            context = appContext,
-            player = exoPlayer,
-            mediaSession = mediaSession,
-            closePlayback = ::closePlayback,
-            artworkHeaders = { uri -> openedVideos.firstOrNull { it.thumbnailUrl == uri }?.thumbnailRequestHeaders.orEmpty() },
-        )
+        requestHostedPlayback(playWhenReady)
         syncPlayback(currentVideoId)
     }
 
@@ -2215,7 +2224,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             )
             .setArtist(creatorMetadata)
             .setAlbumArtist(video.creator)
-            .setAlbumTitle(video.sourceName.ifBlank { video.sourceId })
+            .setAlbumTitle(video.playlistNames.firstOrNull() ?: video.sourceName.ifBlank { video.sourceId })
             .setStation(video.title.takeIf { video.isLive })
             .setGenre(appContext.getString(R.string.live_radio).takeIf { video.isLive })
             .setIsBrowsable(false)
@@ -2223,7 +2232,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             .setMediaType(
                 when {
                     video.isLive && video.playbackAudioOnly -> MediaMetadata.MEDIA_TYPE_RADIO_STATION
-                    video.playbackAudioOnly -> MediaMetadata.MEDIA_TYPE_MUSIC
+                    video.playbackAudioOnly || video.isMusic == true -> MediaMetadata.MEDIA_TYPE_MUSIC
                     else -> MediaMetadata.MEDIA_TYPE_VIDEO
                 },
             )
@@ -2390,13 +2399,42 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override fun togglePlayback() {
         if (exoPlayer.mediaItemCount == 0) return
         if (exoPlayer.playbackState == Player.STATE_ENDED) exoPlayer.seekToDefaultPosition()
-        if (exoPlayer.playWhenReady) exoPlayer.pause() else exoPlayer.play()
+        if (exoPlayer.playWhenReady) pausePlayback() else resumePlayback()
         syncPlayback()
     }
 
     override fun pausePlayback() {
+        playStartGeneration++
         exoPlayer.pause()
         syncPlayback()
+    }
+
+    override fun resumePlayback() {
+        if (exoPlayer.mediaItemCount == 0) return
+        if (exoPlayer.playbackState == Player.STATE_ENDED) exoPlayer.seekToDefaultPosition()
+        requestHostedPlayback(true)
+    }
+
+    override fun currentPlaybackVideo(): VideoUiModel? =
+        openedVideos.firstOrNull { it.id == exoPlayer.currentMediaItem?.mediaId }
+
+    private fun requestHostedPlayback(playWhenReady: Boolean) {
+        val generation = ++playStartGeneration
+        PlaybackNotificationService.show(appContext, exoPlayer, playbackMediaSession(), ::closePlayback,
+            artworkHeaders = { uri -> openedVideos.firstOrNull { it.thumbnailUrl == uri }?.thumbnailRequestHeaders.orEmpty() },
+            onReady = {
+                if (generation == playStartGeneration && exoPlayer.mediaItemCount > 0) {
+                    if (playWhenReady) exoPlayer.play()
+                    syncPlayback()
+                }
+            },
+            onUnavailable = {
+                if (generation == playStartGeneration) {
+                    exoPlayer.pause()
+                    lastError = appContext.getString(R.string.playback_notification_unavailable)
+                    syncPlayback()
+                }
+            })
     }
 
     private companion object {
@@ -2449,6 +2487,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun setOtherAudioDucking(enabled: Boolean, volumePercent: Int) {
         otherAudioDuckingController.configure(enabled, volumePercent)
+    }
+
+    override fun setVoiceListeningVolume(owner: String, percent: Int?) {
+        otherAudioDuckingController.setVoiceVolume(owner, percent)
     }
 
     override fun setVideoQuality(height: Int?) {
@@ -2624,6 +2666,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun closePlayback() {
+        playStartGeneration++
         youtubeFallbackGeneration++
         youtubeFallbackVideoId = null
         resetConnectivityRecovery()
@@ -2638,6 +2681,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         audioSpectrumAnalyzer.setEnabled(false)
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
+        activeMediaSession?.release(); activeMediaSession = null
         (activePluginDataSources + prefetchedPluginDataSources).forEach(JSHttpDataSource.Factory::closeExecutors)
         prefetchedPluginDataSources = emptySet()
         activePluginDataSources = emptySet()
@@ -2659,6 +2703,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override fun refreshProgress() = syncPlayback()
 
     override fun release() {
+        playStartGeneration++
         youtubeFallbackGeneration++
         youtubeFallbackVideoId = null
         PlaybackNotificationService.dismiss(appContext, exoPlayer)
@@ -2676,7 +2721,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         (activePluginDataSources + prefetchedPluginDataSources).forEach(JSHttpDataSource.Factory::closeExecutors)
         prefetchedPluginDataSources = emptySet()
         activePluginDataSources = emptySet()
-        mediaSession.release()
+        activeMediaSession?.release(); activeMediaSession = null
         mediaArtworkLoader.close()
         exoPlayer.release()
         // JSClient.disable() waits for the V8 busy lock. A plugin callback or manifest generator

@@ -39,3 +39,4 @@ rootProject.name = "FutoVideo"
 include ':app'
 include ':app-compose'
 include ':grayjay-engine'
+include ':voice-companion'
