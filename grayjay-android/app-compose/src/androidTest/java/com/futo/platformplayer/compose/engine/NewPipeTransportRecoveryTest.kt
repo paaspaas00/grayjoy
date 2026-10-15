@@ -13,6 +13,35 @@ import java.io.IOException
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class NewPipeTransportRecoveryTest {
+    @Test fun declaredYoutubeContentLengthPreventsPrematureEndOfVideo() {
+        withResponses(listOf(
+            "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nabcde",
+            "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nfghij",
+        )) { port, requests ->
+            val source = NewPipeYoutubeHttpDataSource.Factory(true, true).createDataSource()
+            try {
+                assertEquals(10L, source.open(DataSpec.Builder().setUri("http://127.0.0.1:$port/videoplayback?clen=10").build()))
+                assertEquals("abcdefghij", source.readFully())
+                assertTrue(requests.get(10, TimeUnit.SECONDS)[1].first().contains("range=5-9"))
+            } finally { source.close() }
+        }
+    }
+
+    @Test fun usefulProgressResetsReconnectBudgetForLongVideos() {
+        val piece = "a".repeat(70_000)
+        val responses = (0..3).map { index ->
+            "HTTP/1.1 200 OK\r\nContent-Length: ${(4-index)*piece.length}\r\nConnection: close\r\n\r\n$piece"
+        }
+        withResponses(responses) { port, requests ->
+            val source = NewPipeYoutubeHttpDataSource.Factory(true, true).createDataSource()
+            try {
+                source.open(DataSpec.Builder().setUri("http://127.0.0.1:$port/videoplayback").setLength(280_000).build())
+                assertEquals(280_000, source.readFully().length)
+                assertEquals(4, requests.get(10, TimeUnit.SECONDS).size)
+            } finally { source.close() }
+        }
+    }
+
     @Test fun rangeExactlyAtEndReturnsCleanEof() {
         withResponses(listOf("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */10\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")) { port, _ ->
             val source = NewPipeYoutubeHttpDataSource.Factory(false, false).createDataSource()

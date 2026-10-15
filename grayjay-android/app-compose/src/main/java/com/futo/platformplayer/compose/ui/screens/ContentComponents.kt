@@ -207,7 +207,7 @@ internal fun CompactVideoCard(
     val displayMetadata = if (dense && (currentMetadata.contains("·") || currentMetadata.contains("•"))) currentMetadata.substringAfterLast('·').substringAfterLast('•').trim() else currentMetadata
     val channelArtwork = LocalChannelArtworkIndex.current.find(video) ?: video.authorThumbnailUrl
     val requestChannelArtwork = LocalChannelArtworkRequest.current
-    LaunchedEffect(video.id, video.authorUrl, video.channelId) {
+    LaunchedEffect(video.id, video.authorUrl, video.channelId, channelArtwork) {
         delay(700L)
         requestChannelArtwork(video.id)
     }

@@ -665,6 +665,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private var youtubeRuntimeFallbackJob: Job? = null
     private var youtubeFallbackGeneration = 0L
     private var youtubeFallbackVideoId: String? = null
+    private var playbackStallJob: Job? = null
     private val networkMonitor = NetworkMonitor(appContext)
     private val connectivityRecoveryScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var connectivityRecoveryJob: Job? = null
@@ -691,6 +692,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_READY) resetConnectivityRecovery()
+                    watchPlaybackStall(playbackState)
                     syncPlayback()
                 }
 
@@ -747,9 +749,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                         } == true
                     // Re-preparing a persistently truncated URL forever starves the dual-engine
                     // fallback. Escalate repeated failures without losing the playback position.
-                    if (repeatedOnlineFailure && onlineYoutube) {
+                    if (onlineYoutube) {
                         resetConnectivityRecovery()
                         if (startYoutubeRuntimeFallback(error)) return
+                        if (!repeatedOnlineFailure && scheduleConnectivityRecovery(error)) return
                     } else if (scheduleConnectivityRecovery(error)) return
                     resetConnectivityRecovery()
                     if (startYoutubeRuntimeFallback(error)) return
@@ -766,6 +769,36 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 }
             },
         )
+    }
+
+    private fun watchPlaybackStall(state: Int) {
+        playbackStallJob?.cancel()
+        playbackStallJob = null
+        if (state != Player.STATE_BUFFERING) return
+        playbackStallJob = youtubeFallbackScope.launch {
+            var guard = PlaybackStallGuard()
+            while (exoPlayer.playbackState == Player.STATE_BUFFERING) {
+                kotlinx.coroutines.delay(500L)
+                val id = exoPlayer.currentMediaItem?.mediaId ?: return@launch
+                if (!exoPlayer.playWhenReady || !networkMonitor.isAvailable() || exoPlayer.currentPosition <= 0L) {
+                    guard = PlaybackStallGuard()
+                    continue
+                }
+                if (openedVideos.none { it.id == id && it.isYoutubeVideo() && !it.playbackFromDownload }) return@launch
+                if (youtubeRuntimeFallbackJob?.isActive == true) continue
+                if (guard.stalled(id, exoPlayer.currentPosition, exoPlayer.bufferedPosition, android.os.SystemClock.elapsedRealtime())) {
+                    val failure = PlaybackException("YouTube stream stopped making progress",
+                        java.net.SocketTimeoutException("No playback or buffer progress for 12 seconds"),
+                        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT)
+                    if (startYoutubeRuntimeFallback(failure)) return@launch
+                    // Both sources have had a chance. Keep retry available instead of an endless spinner.
+                    lastError = appContext.getString(R.string.source_could_not_play)
+                    exoPlayer.stop()
+                    syncPlayback()
+                    return@launch
+                }
+            }
+        }
     }
 
     private fun scheduleConnectivityRecovery(error: Throwable): Boolean {
@@ -847,6 +880,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val currentResolver = youtubeResolverByVideoId[videoId] ?: return false
         val request = youtubeResolveRequestByVideoId[videoId] ?: return false
         if (!youtubeRuntimeFallbackAttempted.add(videoId)) return false
+        if (currentResolver == YoutubePlaybackResolver.NewPipe) {
+            // A failed signed URL must not be reused when the user retries this video later.
+            newPipeYoutubeBackend.invalidatePlayback(request.video.contentUrl.ifBlank { request.video.id })
+        }
 
         val fallbackResolver = YoutubePlaybackResolver.entries.first { it != currentResolver }
         val fallbackGeneration = ++youtubeFallbackGeneration
@@ -908,6 +945,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 if (fallbackGeneration == youtubeFallbackGeneration) {
                     youtubeFallbackVideoId = null
                     syncPlayback()
+                    watchPlaybackStall(exoPlayer.playbackState)
                 }
             }
         }
@@ -2274,8 +2312,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 ByteArrayInputStream(video.playbackManifest.toByteArray()),
             )
             video.dashMediaSourceFactory().createMediaSource(manifest, mediaItem)
-        } else if (video.playbackDataSourceFactory?.withoutShortsPrefixCache() is NewPipeYoutubeHttpDataSource.Factory) {
+        } else if (video.playbackDataSourceFactory?.withoutShortsPrefixCache() is NewPipeYoutubeHttpDataSource.Factory &&
+            androidx.media3.common.util.Util.inferContentTypeForUriAndMimeType(Uri.parse(video.playbackUrl),
+                video.playbackMimeType.takeIf(String::isNotBlank)) == C.CONTENT_TYPE_OTHER) {
             ProgressiveMediaSource.Factory(video.dataSourceFactory())
+                .setLoadErrorHandlingPolicy(YoutubePlaybackLoadErrorPolicy())
                 // NewPipe uses 64 KiB instead of Media3's much larger default so LoadControl is
                 // consulted frequently and a progressive YouTube connection cannot consume the
                 // short initial buffer and then sit idle before requesting more data.
@@ -2347,6 +2388,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     private fun VideoUiModel.mediaSourceFactory(): DefaultMediaSourceFactory {
         return DefaultMediaSourceFactory(dataSourceFactory()).also { factory ->
+            if (isYoutubeVideo() && !playbackFromDownload) factory.setLoadErrorHandlingPolicy(YoutubePlaybackLoadErrorPolicy())
             if (drmLicenseUri.isNotBlank()) {
                 factory.setDrmSessionManagerProvider { createDrmSessionManager() }
             }
@@ -2355,6 +2397,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     private fun VideoUiModel.dashMediaSourceFactory(): DashMediaSource.Factory {
         return DashMediaSource.Factory(dataSourceFactory()).also { factory ->
+            if (isYoutubeVideo() && !playbackFromDownload) factory.setLoadErrorHandlingPolicy(YoutubePlaybackLoadErrorPolicy())
             if (drmLicenseUri.isNotBlank()) {
                 factory.setDrmSessionManagerProvider { createDrmSessionManager() }
             }

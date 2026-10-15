@@ -337,12 +337,17 @@ class NewPipeYoutubePlaybackBackend(
         )
     }
 
+    fun invalidatePlayback(contentUrl: String) {
+        val normalized = contentUrl.toYoutubeWatchUrl()
+        resolveCache.keys.filter { it.contentUrl == normalized }.forEach(resolveCache::remove)
+    }
+
     suspend fun loadStoryboard(contentUrl: String, forceRefresh: Boolean = false): GrayjayStoryboard? =
         withContext(Dispatchers.IO) {
             ensureInitialized()
             val normalized = contentUrl.toYoutubeWatchUrl()
             if (forceRefresh) {
-                resolveCache.keys.filter { it.contentUrl == normalized }.forEach(resolveCache::remove)
+                invalidatePlayback(normalized)
             }
             synchronized(NEWPIPE_INITIALIZATION_LOCK) { NewPipe.setupLocalization(localization) }
             StreamInfo.getInfo(ServiceList.YouTube, normalized).previewFrames.toGrayjayStoryboard()
@@ -503,7 +508,7 @@ class NewPipeYoutubePlaybackBackend(
         private val NEWPIPE_INITIALIZATION_LOCK = Any()
         private val NEWPIPE_PLAYBACK_HEADERS = mapOf("User-Agent" to NEWPIPE_USER_AGENT)
         private const val RESOLVE_CACHE_TTL_MS = 10 * 60 * 1_000L
-        private const val MAX_RESOLVE_CACHE_ENTRIES = 24
+        private const val MAX_RESOLVE_CACHE_ENTRIES = 8
     }
 }
 

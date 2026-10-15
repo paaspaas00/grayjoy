@@ -15,6 +15,10 @@ class GrayjoyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashLogStore.install(this)
+        val (images, pool) = com.futo.platformplayer.compose.images.artworkMemoryBudget(Runtime.getRuntime().maxMemory())
+        com.bumptech.glide.Glide.init(this, com.bumptech.glide.GlideBuilder()
+            .setMemoryCache(com.bumptech.glide.load.engine.cache.LruResourceCache(images))
+            .setBitmapPool(com.bumptech.glide.load.engine.bitmap_recycle.LruBitmapPool(pool)))
         // A process can disappear without any lifecycle callback (force-stop, native crash, or
         // process kill). Hold persisted Media3 transfers before any service can recreate the
         // download manager. The ViewModel releases this hold only after it has restored the

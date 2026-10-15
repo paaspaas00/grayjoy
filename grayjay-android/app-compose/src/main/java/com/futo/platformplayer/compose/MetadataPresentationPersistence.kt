@@ -43,7 +43,7 @@ internal class MetadataPersistenceBuffer(
 
 internal fun VideoUiModel.withMetadataPresentation(patch: MetadataPresentationPatch): VideoUiModel = copy(
     duration = patch.duration ?: duration,
-    authorThumbnailUrl = patch.authorThumbnailUrl ?: authorThumbnailUrl,
+    authorThumbnailUrl = authorThumbnailUrl.ifBlank { patch.authorThumbnailUrl.orEmpty() },
     isMusic = patch.isMusic ?: isMusic,
 )
 

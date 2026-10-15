@@ -531,7 +531,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var allVideos = emptyList<VideoUiModel>()
     private var savedVideosById = emptyMap<String, VideoUiModel>()
     private val librarySnapshots = com.futo.platformplayer.compose.data.SnapshotSequenceGate()
-    private val remoteVideos = linkedMapOf<String, VideoUiModel>()
+    private val remoteVideos = RemoteVideoCache()
     private val remoteChannels = linkedMapOf<String, ChannelUiModel>()
     private var enabledSourceIds: Set<String> = sourceRepository.loadEnabledSourceIds(engineSources)
         .filterTo(mutableSetOf()) { sourceId ->
@@ -6510,6 +6510,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val key = "${channel.sourceId}|${channel.id}"
         val now = System.currentTimeMillis()
         val last = channelArtworkChecks[key] ?: 0L
+        if (last == 0L && (channel.thumbnailUrl.isNotBlank() || video.authorThumbnailUrl.isNotBlank())) {
+            cacheChannelArtwork(channel.copy(thumbnailUrl = channel.thumbnailUrl.ifBlank { video.authorThumbnailUrl }))
+            return
+        }
         if (now - last in 0 until java.util.concurrent.TimeUnit.DAYS.toMillis(7) || channelArtworkJobs[key]?.isActive == true) return
         val profile = activeProfileId
         channelArtworkChecks[key] = now - java.util.concurrent.TimeUnit.DAYS.toMillis(7) + java.util.concurrent.TimeUnit.MINUTES.toMillis(15)
@@ -7583,7 +7587,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 audioQualityVariants = emptyList(),
             )
         } else {
-            video
+            video.onlinePlaybackInput()
         }
         val resolved = resolveWithAudioPreferences(resolveInput).withPersistedLibraryState()
         val playable = downloadStore.playbackDescriptorFor(profileId, resolved) ?: resolved

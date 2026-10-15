@@ -51,6 +51,7 @@ class NewPipeYoutubeHttpDataSource private constructor(
     private var bytesRemaining = C.LENGTH_UNSET.toLong()
     private var deliveredBytes = 0L
     private var reconnectAttempts = 0
+    private var reconnectProgress = 0L
     @Volatile private var closed = true
 
     override fun open(dataSpec: DataSpec): Long {
@@ -58,6 +59,7 @@ class NewPipeYoutubeHttpDataSource private constructor(
         openedDataSpec = dataSpec
         deliveredBytes = 0L
         reconnectAttempts = 0
+        reconnectProgress = 0L
         transferInitializing(dataSpec)
         return openResponse(dataSpec, startingTransfer = true)
     }
@@ -133,6 +135,9 @@ class NewPipeYoutubeHttpDataSource private constructor(
             val bytesToSkip = if (!queryRange && nextResponse.code == 200) dataSpec.position else 0L
             skipResponsePrefix(bytesToSkip)
             bytesRemaining = dataSpec.length.takeIf { it != C.LENGTH_UNSET.toLong() }
+                ?: dataSpec.uri.getQueryParameter("clen")?.toLongOrNull()
+                    ?.takeIf { it >= dataSpec.position && dataSpec.uri.path.orEmpty().startsWith("/videoplayback") }
+                    ?.minus(dataSpec.position)
                 ?: body.contentLength().takeIf { it >= 0L }?.let { (it - bytesToSkip).coerceAtLeast(0L) }
                 ?: C.LENGTH_UNSET.toLong()
             if (startingTransfer) {
@@ -141,6 +146,7 @@ class NewPipeYoutubeHttpDataSource private constructor(
             }
             return bytesRemaining
         } catch (error: HttpDataSourceException) {
+            closeResponse()
             throw error
         } catch (error: IOException) {
             closeResponse()
@@ -172,6 +178,10 @@ class NewPipeYoutubeHttpDataSource private constructor(
                 }
                 if (bytesRemaining != C.LENGTH_UNSET.toLong()) bytesRemaining -= read
                 deliveredBytes += read
+                if (deliveredBytes - reconnectProgress >= 64L * 1024) {
+                    reconnectAttempts = 0
+                    reconnectProgress = deliveredBytes
+                }
                 bytesTransferred(read)
                 return read
             } catch (error: IOException) {
@@ -182,6 +192,7 @@ class NewPipeYoutubeHttpDataSource private constructor(
                     )
                 }
                 val remaining = bytesRemaining
+                reconnectProgress = deliveredBytes
                 closeResponse()
                 // Continue at the first undelivered byte. Do not restart the extractor or feed it
                 // the already-consumed prefix when a CDN closes a response halfway through.
@@ -347,7 +358,7 @@ class NewPipeYoutubeHttpDataSource private constructor(
         private val REQUEST_NUMBER = AtomicLong(0L)
         private const val YOUTUBE_BASE_URL = "https://www.youtube.com"
         private const val CONNECT_TIMEOUT_SECONDS = 10L
-        private const val READ_TIMEOUT_SECONDS = 10L
+        private const val READ_TIMEOUT_SECONDS = 6L
         private const val MAX_READ_RECONNECTS = 2
     }
 }

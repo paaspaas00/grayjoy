@@ -21,8 +21,49 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.MediaType.Companion.toMediaType
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
+import java.net.ServerSocket
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class ArtworkCacheTest {
+    @Test fun invalidationInterruptsAStalledResponseBodyWithoutLeavingPartialFiles() = runBlocking {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(app.cacheDir, "cache-test-${UUID.randomUUID()}").apply { mkdirs() }
+        val context = object : ContextWrapper(app) {
+            override fun getApplicationContext(): Context = this
+            override fun getCacheDir(): File = root
+        }
+        val server = ServerSocket(0).apply { soTimeout = 5000 }
+        val release = CountDownLatch(1)
+        val executor = Executors.newSingleThreadExecutor()
+        val cache = ArtworkCache(context, networkEvents = false)
+        executor.submit {
+            server.accept().use { socket ->
+                val reader = socket.getInputStream().bufferedReader()
+                while (!reader.readLine().isNullOrEmpty()) { }
+                socket.getOutputStream().apply {
+                    write("HTTP/1.1 200 OK\r\nContent-Length: 1000000\r\nContent-Type: image/png\r\n\r\nx".toByteArray())
+                    flush()
+                }
+                release.await(10, TimeUnit.SECONDS)
+            }
+        }
+        try {
+            cache.observe("http://127.0.0.1:${server.localPort}/stalled.png")
+            withTimeout(5000) {
+                while (File(root, "artwork-v1").listFiles().orEmpty().none { it.extension == "part" }) delay(10)
+            }
+            val started = android.os.SystemClock.elapsedRealtime()
+            withTimeout(2000) { cache.invalidate() }
+            assertTrue("Invalidation waited for the network read timeout", android.os.SystemClock.elapsedRealtime() - started < 2000)
+            assertTrue(File(root, "artwork-v1").listFiles().orEmpty().isEmpty())
+        } finally {
+            release.countDown(); server.close(); executor.shutdownNow(); cache.close()
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun freshCacheRevalidationBackoffAndSafeInvalidation() = runBlocking {
         val app = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(app.cacheDir, "cache-test-${UUID.randomUUID()}").apply { mkdirs() }
@@ -65,28 +106,33 @@ class ArtworkCacheTest {
             await { JSONObject(metadata.readText()).optLong("validatedAt") == clock.get() }
             assertTrue(headers.any { it.equals("If-None-Match: sample", true) })
             assertEquals(image.revision, cache.observe(url).value?.revision)
-            delay(100); expire(); status.set(503)
+            delay(100); expire(); status.set(200)
             cache.observe(url)
             await { requests.get() == 3 }
+            await { JSONObject(metadata.readText()).optLong("validatedAt") == clock.get() }
+            assertEquals("Identical image bytes must not trigger another decoded-image load", image.revision, cache.observe(url).value?.revision)
+            delay(100); expire(); status.set(503)
+            cache.observe(url)
+            await { requests.get() == 4 }
             await { JSONObject(metadata.readText()).optLong("retryAt") > System.currentTimeMillis() }
             assertTrue(cache.observe(url).value?.file?.exists() == true)
             delay(100)
-            assertEquals(3, requests.get())
+            assertEquals(4, requests.get())
             val unrelated = File(root, "protected-library-fixture").apply { writeText("keep") }
             cache.invalidate()
             assertEquals("keep", unrelated.readText())
             status.set(200)
             withTimeout(5000) { cache.observe(url).filterNotNull().first() }
-            assertEquals(4, requests.get())
+            assertEquals(5, requests.get())
             val shared = "$url/shared"
             withTimeout(5000) { cache.observe(shared, kind = ArtworkKind.Avatar).filterNotNull().first() }
-            assertEquals(5, requests.get())
+            assertEquals(6, requests.get())
             clock.addAndGet(ArtworkKind.Thumbnail.maxAgeMs * 2)
             status.set(304)
             withTimeout(5000) {
-                while (requests.get() < 6) { cache.observe(shared, kind = ArtworkKind.Thumbnail); delay(20) }
+                while (requests.get() < 7) { cache.observe(shared, kind = ArtworkKind.Thumbnail); delay(20) }
             }
-            assertEquals(6, requests.get())
+            assertEquals(7, requests.get())
         } finally { cache.close(); root.deleteRecursively() }
     }
 }

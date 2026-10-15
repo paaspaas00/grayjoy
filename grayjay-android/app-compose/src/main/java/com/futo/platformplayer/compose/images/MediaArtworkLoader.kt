@@ -31,10 +31,12 @@ internal class MediaArtworkLoader(
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> {
         val headers = headersFor(uri.toString())
         return submit {
-            val bytes = if (uri.scheme == "http" || uri.scheme == "https") {
+            if (uri.scheme == "http" || uri.scheme == "https") {
                 val artwork = withTimeout(25_000) { ArtworkCache.get(app).observe(uri.toString(), headers).filterNotNull().first() }
-                (artwork.file ?: throw IOException("Cover artwork unavailable")).inputStream().use(::readArtwork)
-            } else if (uri.toString().startsWith("file:///android_asset/")) {
+                val file = artwork.file ?: throw IOException("Cover artwork unavailable")
+                return@submit decode { options -> BitmapFactory.decodeFile(file.absolutePath, options) }
+            }
+            val bytes = if (uri.toString().startsWith("file:///android_asset/")) {
                 app.assets.open(uri.toString().removePrefix("file:///android_asset/")).use(::readArtwork)
             } else app.contentResolver.openInputStream(uri)?.use(::readArtwork) ?: throw IOException("Cover artwork unavailable")
             decode(bytes)
@@ -63,14 +65,16 @@ internal class MediaArtworkLoader(
         }
         return output.toByteArray()
     }
-    private fun decode(bytes: ByteArray): Bitmap {
+    private fun decode(bytes: ByteArray): Bitmap = decode { options -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) }
+
+    private fun decode(read: (BitmapFactory.Options) -> Bitmap?): Bitmap {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        read(options)
         require(options.outWidth > 0 && options.outHeight > 0)
         options.inJustDecodeBounds = false
         options.inSampleSize = 1
         while (maxOf(options.outWidth, options.outHeight) / options.inSampleSize > 512) options.inSampleSize *= 2
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: throw IOException("Cannot decode cover artwork")
+        val bitmap = read(options) ?: throw IOException("Cannot decode cover artwork")
         val ratio = (256f / maxOf(bitmap.width, bitmap.height)).coerceAtMost(1f)
         return if (ratio == 1f) bitmap else Bitmap.createScaledBitmap(bitmap,
             (bitmap.width * ratio).toInt().coerceAtLeast(1), (bitmap.height * ratio).toInt().coerceAtLeast(1), true).also { bitmap.recycle() }

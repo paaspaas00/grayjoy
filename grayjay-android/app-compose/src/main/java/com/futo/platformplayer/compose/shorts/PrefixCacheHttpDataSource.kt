@@ -117,6 +117,7 @@ internal class PrefixCacheHttpDataSource private constructor(
     }
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun HttpDataSource.Factory.withoutShortsPrefixCache(): HttpDataSource.Factory =
     (this as? PrefixCacheHttpDataSource.Factory)?.originalFactory ?: this
 
@@ -125,6 +126,7 @@ private fun mediaLengthFromUrl(url: String): Long? = runCatching {
 }.getOrNull()
 
 /** Cancellation closes the blocking transport on IO, never on the UI/gesture thread. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private suspend fun readBoundedPrefix(
     factory: HttpDataSource.Factory,
     request: DataSpec,

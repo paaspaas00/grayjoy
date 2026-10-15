@@ -3129,10 +3129,11 @@ private fun CreatorInfoSheet(
 @Composable
 private fun VideoDescriptionCard(description: String, modifier: Modifier) {
     var expanded by rememberSaveable(description) { mutableStateOf(false) }
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    Box(
+        modifier = modifier.fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .testTag("video-description-card"),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
