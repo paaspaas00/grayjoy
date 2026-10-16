@@ -85,6 +85,7 @@ fun SearchScreen(
     val suggestions = remember(search.suggestions) { uniqueSearchSuggestions(search.suggestions) }
     var typeName by rememberSaveable { mutableStateOf(SearchContentType.Videos.name) }
     var selectedSourceIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var previousActiveSourceIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var sourcesInitialized by rememberSaveable { mutableStateOf(false) }
     var showSourcePicker by rememberSaveable { mutableStateOf(false) }
     var showFilterPicker by rememberSaveable { mutableStateOf(false) }
@@ -177,12 +178,14 @@ fun SearchScreen(
 
     LaunchedEffect(activeSources.map(SourceUiModel::id)) {
         val activeIds = activeSources.map(SourceUiModel::id)
-        selectedSourceIds = if (!sourcesInitialized) {
-            sourcesInitialized = true
-            activeIds
-        } else {
-            selectedSourceIds.filter { it in activeIds }
-        }
+        selectedSourceIds = reconcileSearchSourceSelection(
+            selectedIds = selectedSourceIds,
+            previousActiveIds = previousActiveSourceIds,
+            activeIds = activeIds,
+            initialized = sourcesInitialized,
+        )
+        previousActiveSourceIds = activeIds
+        sourcesInitialized = true
     }
 
     LazyColumn(
@@ -523,6 +526,18 @@ fun SearchScreen(
             },
         )
     }
+}
+
+internal fun reconcileSearchSourceSelection(
+    selectedIds: List<String>,
+    previousActiveIds: List<String>,
+    activeIds: List<String>,
+    initialized: Boolean,
+): List<String> {
+    if (!initialized) return activeIds.distinct()
+    val active = activeIds.toSet()
+    val newlyActive = active - previousActiveIds.toSet()
+    return (selectedIds.filter(active::contains) + activeIds.filter(newlyActive::contains)).distinct()
 }
 
 internal fun uniqueSearchSuggestions(values: List<String>): List<String> =

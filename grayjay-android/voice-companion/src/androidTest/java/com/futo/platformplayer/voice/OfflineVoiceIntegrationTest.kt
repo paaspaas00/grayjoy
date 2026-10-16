@@ -183,6 +183,30 @@ class OfflineVoiceIntegrationTest {
             assertEquals(listOf("pause"), calls)
         } finally { runtime.releaseHeavyModels(); scope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
     }
+    @Test fun italianPlayMisrecognitionUsesTheImmediateTransportPath() = runBlocking {
+        val calls = mutableListOf<String>()
+        val sink = object : VoiceCommandClient {
+            override suspend fun call(name: String, arguments: org.json.JSONObject): org.json.JSONObject {
+                calls += name
+                return org.json.JSONObject().put("ok", true)
+            }
+        }
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        val runtime = OfflineVoiceRuntime(context, scope, "")
+        var transcript = ""
+        try {
+            val started = android.os.SystemClock.elapsedRealtime()
+            runtime.handle(FloatArray(0), sink, "", {}, "lei", started) { transcript = it }
+            assertEquals(listOf("play"), calls)
+            assertEquals("play", transcript)
+            // handle() also waits for the confirmation earcon to finish. The action itself must
+            // still be dispatched within one second and is recorded immediately before that wait.
+            assertTrue(context.getSharedPreferences("voice", 0).getLong("last_action_ms", Long.MAX_VALUE) < 1000)
+        } finally {
+            runtime.releaseHeavyModels()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
     @Test fun grayjoyActivationIsRecognizedByTheLightweightListener() {
         val dir = VoiceModels.directory(context, "tts-en")
         val voice = OfflineTts(config = OfflineTtsConfig(model = OfflineTtsModelConfig(vits = OfflineTtsVitsModelConfig(

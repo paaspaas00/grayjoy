@@ -38,6 +38,28 @@ class AppNavigationRegressionTest {
         rule.onNodeWithTag("search-field").assertIsNotFocused()
     }
 
+    @Test fun searchSelectsASourceEnabledAfterTheScreenWasAlreadyOpened() {
+        val state = mutableStateOf(GrayjayUiState())
+        launch(state)
+        rule.onNodeWithTag("nav-search").performClick()
+        rule.onNodeWithTag("search-source-picker").assertTextContains("0", substring = true)
+        rule.runOnUiThread {
+            state.value = state.value.copy(
+                sources = listOf(SourceUiModel(
+                    id = "spotify",
+                    engineId = "spotify-plugin",
+                    name = "Spotify",
+                    description = "",
+                    accentColor = 0xFF1DB954,
+                    isEnabled = true,
+                )),
+            )
+        }
+        rule.waitForIdle()
+        rule.onNodeWithTag("search-source-picker").assertTextContains("1", substring = true).performClick()
+        rule.onNode(hasText("Spotify") and hasClickAction()).assertIsSelected()
+    }
+
     @Test fun miniplayerCloseDoesNotJumpAwayFromPreferencesToItsPlaylist() {
         val playlist = PlaylistUiModel("fixture-playlist", "Fixture playlist", "", listOf(video.id))
         val state = mutableStateOf(GrayjayUiState(

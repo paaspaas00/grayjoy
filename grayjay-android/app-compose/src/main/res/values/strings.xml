@@ -429,6 +429,7 @@
     <string name="source_description_redbull_tv">Sports, music, and live events</string>
     <string name="source_description_fosdem">Free and open-source software conference media</string>
     <string name="source_description_nasa_plus">NASA documentaries, missions, and live coverage</string>
+    <string name="source_description_spotify">Public music catalogue played through YouTube</string>
     <string name="live_radio">Live radio</string>
     <string name="signature_mismatch">Signature does not match</string>
     <string name="signature_mismatch_description">The signature for %1$s does not match the downloaded JavaScript. The source may have been modified or compromised.</string>

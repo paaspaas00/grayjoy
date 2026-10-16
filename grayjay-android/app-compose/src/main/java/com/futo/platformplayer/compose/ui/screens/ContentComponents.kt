@@ -706,20 +706,13 @@ internal fun PlaylistRow(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(playlist.title, style = MaterialTheme.typography.titleMedium)
-                val displayedVideoCount = if (playlist.sourceId.isBlank()) {
-                    playlist.videoIds.size
-                } else {
-                    playlist.videoCount
+                playlistDisplayVideoCount(playlist)?.let { count ->
+                    Text(
+                        pluralStringResource(R.plurals.video_count, count, count),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
-                Text(
-                    pluralStringResource(
-                        R.plurals.video_count,
-                        displayedVideoCount,
-                        displayedVideoCount,
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
             }
             if (playlist.sourceId.isBlank() && onRename != null) {
                 IconButton(
@@ -734,6 +727,12 @@ internal fun PlaylistRow(
             }
         }
     }
+}
+
+internal fun playlistDisplayVideoCount(playlist: PlaylistUiModel): Int? = when {
+    playlist.sourceId.isBlank() -> playlist.videoIds.size
+    playlist.videoCount >= 0 -> playlist.videoCount
+    else -> null
 }
 
 @Composable

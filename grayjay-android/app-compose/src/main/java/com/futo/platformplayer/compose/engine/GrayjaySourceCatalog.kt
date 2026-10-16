@@ -79,7 +79,7 @@ internal class GrayjaySourceCatalog(private val context: Context) {
             "soundcloud", "nebula", "patreon", "dailymotion", "bitchute",
             "bilibili", "apple-podcasts", "tedtalks", "curiositystream",
             "crunchyroll", "mixcloud", "radiobrowser", "redbull-tv", "fosdem",
-            "nasa-plus",
+            "nasa-plus", "spotify",
         )
 
         private val sourceNames = mapOf(
@@ -104,6 +104,7 @@ internal class GrayjaySourceCatalog(private val context: Context) {
             "redbull-tv" to "Red Bull TV",
             "fosdem" to "FOSDEM",
             "nasa-plus" to "NASA+",
+            "spotify" to "Spotify",
         )
 
         private val sourceDescriptionResources: Map<String, Int> = mapOf(
@@ -128,6 +129,7 @@ internal class GrayjaySourceCatalog(private val context: Context) {
             "redbull-tv" to R.string.source_description_redbull_tv,
             "fosdem" to R.string.source_description_fosdem,
             "nasa-plus" to R.string.source_description_nasa_plus,
+            "spotify" to R.string.source_description_spotify,
         )
 
         private val sourceColors = mapOf(
@@ -152,6 +154,7 @@ internal class GrayjaySourceCatalog(private val context: Context) {
             "redbull-tv" to 0xFFDB0A40,
             "fosdem" to 0xFF5B87A5,
             "nasa-plus" to 0xFF0B3D91,
+            "spotify" to 0xFF1DB954,
         )
     }
 }

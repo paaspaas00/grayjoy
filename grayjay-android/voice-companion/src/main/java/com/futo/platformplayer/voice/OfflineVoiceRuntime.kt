@@ -159,7 +159,7 @@ internal class OfflineVoiceRuntime(private val context: Context, private val sco
                 val streamed = cleanVoiceText(streamingTranscript)
                 if (samples.isEmpty() && streamed.isBlank()) { clearFollowup(); return@withLock }
                 val canUseStream = streamed.isNotBlank()
-                val heard = if (canUseStream) streamed else {
+                val rawHeard = if (canUseStream) streamed else {
                     status(if (italian) "Trascrizione offline…" else "Transcribing offline…")
                     prepareAdvanced()
                     val recognizer = asrJob!!.await()
@@ -169,6 +169,7 @@ internal class OfflineVoiceRuntime(private val context: Context, private val sco
                         cleanVoiceText(recognizer.getResult(stream).text)
                     } finally { stream.release() }
                 }
+                val heard = normalizeVoiceCommandTranscript(rawHeard, italian, needsFollowup)
                 if (ignorableVoiceTranscript(heard) && !dialogue.acceptsBareTarget && !assistant.needsFollowup) { clearFollowup(); return@withLock }
                 if (heard.isBlank()) { clearFollowup(); return@withLock }
                 if (expectsConfirmation && isVoicePromptEcho(heard, lastQuestion)) return@withLock

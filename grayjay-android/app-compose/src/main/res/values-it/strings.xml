@@ -429,6 +429,7 @@
     <string name="source_description_redbull_tv">Sport, musica ed eventi in diretta</string>
     <string name="source_description_fosdem">Contenuti della conferenza sul software libero e open source</string>
     <string name="source_description_nasa_plus">Documentari, missioni e dirette NASA</string>
+    <string name="source_description_spotify">Catalogo musicale pubblico riprodotto tramite YouTube</string>
     <string name="live_radio">Radio in diretta</string>
     <string name="signature_mismatch">La firma non corrisponde</string>
     <string name="signature_mismatch_description">La firma di %1$s non corrisponde al JavaScript scaricato. La sorgente potrebbe essere stata modificata o compromessa.</string>

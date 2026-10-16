@@ -6,6 +6,13 @@ import kotlin.random.Random
 
 class VoiceInterpreterTest {
     @Test fun directCommandsAreFastAndBilingual() {
+        for (misheard in listOf("lei", "plei", "plèi", "pley", "plai")) {
+            assertEquals(misheard, "play", normalizeVoiceCommandTranscript(misheard, italian = true, followup = false))
+            assertEquals(misheard, "play", fastVoiceCommand(misheard)?.tool)
+        }
+        assertEquals("lei", normalizeVoiceCommandTranscript("lei", italian = true, followup = true))
+        assertEquals("parla con lei", normalizeVoiceCommandTranscript("parla con lei", italian = true, followup = false))
+        assertNull(fastVoiceCommand("parla con lei"))
         assertEquals("pause", fastVoiceCommand("Metti in pausa!")?.tool)
         assertEquals("pause", fastVoiceCommand("pause playback")?.tool)
         assertEquals("next", fastVoiceCommand("Next song")?.tool)

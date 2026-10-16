@@ -58,7 +58,7 @@ internal data class VoiceDecision(val tool: String, val argument: String = "", v
 }
 
 internal fun fastVoiceCommand(text: String): VoiceDecision? {
-    val cleaned = cleanVoiceText(text)
+    val cleaned = normalizeVoiceCommandTranscript(text, italian = true, followup = false)
     val normalized = cleaned.lowercase(Locale.ROOT)
     voiceArtistRequest(cleaned)?.let { return it }
     assistantShortcut(cleaned)?.let { return it }
@@ -116,6 +116,18 @@ internal fun fastVoiceCommand(text: String): VoiceDecision? {
         "abbassa il volume", "volume giù", "volume down", "turn it down" -> VoiceDecision("volume", number = -1)
         else -> null
     }
+}
+
+/** Italian acoustic models often render the English transport word "play" as the phonetically
+ * close pronoun "lei". Correct only a complete, one-word command after activation; never rewrite
+ * the same word inside a sentence or while the assistant is waiting for a follow-up answer. */
+internal fun normalizeVoiceCommandTranscript(text: String, italian: Boolean, followup: Boolean): String {
+    val cleaned = cleanVoiceText(text)
+    if (!italian || followup) return cleaned
+    val phonetic = java.text.Normalizer.normalize(cleaned.lowercase(Locale.ROOT), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .replace(Regex("[^a-z]+"), "")
+    return if (phonetic in setOf("lei", "plei", "pley", "plai", "play")) "play" else cleaned
 }
 
 internal fun canUseStreamingCommand(text: String, confidence: Double, followup: Boolean): Boolean {

@@ -745,7 +745,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                         )
                     val onlineYoutube = networkMonitor.isAvailable() &&
                         openedVideos.firstOrNull { it.id == videoId }?.let {
-                            it.isYoutubeVideo() && !it.playbackFromDownload
+                            it.isYoutubeBackedPlayback() && !it.playbackFromDownload
                         } == true
                     // Re-preparing a persistently truncated URL forever starves the dual-engine
                     // fallback. Escalate repeated failures without losing the playback position.
@@ -784,7 +784,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     guard = PlaybackStallGuard()
                     continue
                 }
-                if (openedVideos.none { it.id == id && it.isYoutubeVideo() && !it.playbackFromDownload }) return@launch
+                if (openedVideos.none { it.id == id && it.isYoutubeBackedPlayback() && !it.playbackFromDownload }) return@launch
                 if (youtubeRuntimeFallbackJob?.isActive == true) continue
                 if (guard.stalled(id, exoPlayer.currentPosition, exoPlayer.bufferedPosition, android.os.SystemClock.elapsedRealtime())) {
                     val failure = PlaybackException("YouTube stream stopped making progress",
@@ -876,9 +876,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private fun startYoutubeRuntimeFallback(error: PlaybackException): Boolean {
         val videoId = exoPlayer.currentMediaItem?.mediaId ?: return false
         val currentVideo = openedVideos.firstOrNull { it.id == videoId } ?: return false
-        if (!currentVideo.isYoutubeVideo() || currentVideo.playbackFromDownload) return false
         val currentResolver = youtubeResolverByVideoId[videoId] ?: return false
         val request = youtubeResolveRequestByVideoId[videoId] ?: return false
+        if (currentVideo.playbackFromDownload) return false
         if (!youtubeRuntimeFallbackAttempted.add(videoId)) return false
         if (currentResolver == YoutubePlaybackResolver.NewPipe) {
             // A failed signed URL must not be reused when the user retries this video later.
@@ -913,7 +913,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 if (fallbackGeneration != youtubeFallbackGeneration ||
                     exoPlayer.currentMediaItem?.mediaId != videoId) return@launch
                 replaceCurrent(
-                    video = request.video.withPlaybackSource(source),
+                    video = request.catalogVideo?.withCatalogPlaybackSource(source)
+                        ?: request.video.withPlaybackSource(source),
                     positionMs = exoPlayer.currentPosition.coerceAtLeast(0L),
                     playWhenReady = exoPlayer.playWhenReady,
                 )
@@ -1673,6 +1674,14 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             )
         }
         if (routedVideo.playbackUrl.isNotBlank()) return routedVideo
+        if (isSpotifyYoutubeBridgeTrack(routedVideo)) {
+            return resolveSpotifyYoutubePlayback(
+                video = routedVideo,
+                preferredAudioLanguage = preferredAudioLanguage,
+                preferOriginalAudio = preferOriginalAudio,
+                priority = priority,
+            )
+        }
         val dualEnginePlayback = routedVideo.isYoutubeVideo() &&
             (priority.tracksPlaybackRecovery || useNewPipeYoutubeBackend)
         val source = if (dualEnginePlayback) {
@@ -1688,6 +1697,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 youtubeResolverByVideoId[routedVideo.id] = resolved.resolver
                 youtubeResolveRequestByVideoId[routedVideo.id] = YoutubeResolveRequest(
                     video = routedVideo,
+                    catalogVideo = null,
                     preferredAudioLanguage = preferredAudioLanguage,
                     preferOriginalAudio = preferOriginalAudio,
                 )
@@ -1706,6 +1716,61 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             )
         }
         return routedVideo.withPlaybackSource(source)
+    }
+
+    private suspend fun resolveSpotifyYoutubePlayback(
+        video: VideoUiModel,
+        preferredAudioLanguage: String?,
+        preferOriginalAudio: Boolean,
+        priority: EngineResolvePriority,
+    ): VideoUiModel {
+        val catalogVideo = if (video.title.isBlank() || video.creator.equals("spotify", ignoreCase = true)) {
+            video.withCatalogMetadata(resolveWithGrayjayPlugin(
+                video = video,
+                preferredAudioLanguage = preferredAudioLanguage,
+                preferOriginalAudio = preferOriginalAudio,
+                backgroundMetadata = true,
+            ))
+        } else video
+        val query = spotifyYoutubeSearchQuery(catalogVideo)
+        val youtubeEndpoint = pluginEndpoints["youtube"]
+        val search = if (useNewPipeYoutubeBackend) {
+            withYoutubeBackendFallback(
+                operation = "Spotify playback lookup",
+                newPipe = { newPipeYoutubeContentBackend.search(query, GrayjaySearchType.Videos) },
+                grayjay = {
+                    youtubeEndpoint?.let { endpoint ->
+                        pluginBackend.search(query, mapOf("youtube" to endpoint), GrayjaySearchType.Videos)
+                    } ?: GrayjayPluginSearchResult()
+                },
+            )
+        } else {
+            val endpoint = requireNotNull(youtubeEndpoint) { "The YouTube source is unavailable." }
+            pluginBackend.search(query, mapOf("youtube" to endpoint), GrayjaySearchType.Videos)
+        }
+        val candidates = search.videos.take(20).map { item ->
+            item.toVideoUiModel(youtubeEndpoint, appContext)
+        }
+        val selected = requireNotNull(selectSpotifyYoutubeCandidate(catalogVideo, candidates)) {
+            "No matching YouTube audio was found for ${catalogVideo.creator} — ${catalogVideo.title}."
+        }
+        val resolved = resolveYoutubeWithFallback(
+            video = selected,
+            preferredAudioLanguage = preferredAudioLanguage,
+            preferOriginalAudio = preferOriginalAudio,
+            backgroundMetadata = priority == EngineResolvePriority.Prefetch,
+        )
+        if (priority.tracksPlaybackRecovery) {
+            youtubeResolverByVideoId[catalogVideo.id] = resolved.resolver
+            youtubeResolveRequestByVideoId[catalogVideo.id] = YoutubeResolveRequest(
+                video = selected,
+                catalogVideo = catalogVideo,
+                preferredAudioLanguage = preferredAudioLanguage,
+                preferOriginalAudio = preferOriginalAudio,
+            )
+            youtubeRuntimeFallbackAttempted.remove(catalogVideo.id)
+        }
+        return catalogVideo.withCatalogPlaybackSource(resolved.source)
     }
 
     private suspend fun resolveYoutubeWithFallback(
@@ -1901,6 +1966,38 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             storyboard = source.storyboard?.toUiModel(),
         )
 
+    private fun VideoUiModel.withCatalogPlaybackSource(source: GrayjayPlaybackSource): VideoUiModel {
+        val catalog = this
+        return withPlaybackSource(source).copy(
+            title = catalog.title,
+            creator = catalog.creator,
+            metadata = catalog.metadata,
+            duration = catalog.duration.ifBlank { formatDuration(source.durationSeconds) },
+            viewCount = catalog.viewCount,
+            publishedAtMs = catalog.publishedAtMs,
+            sourceId = catalog.sourceId,
+            contentUrl = catalog.contentUrl,
+            shareUrl = catalog.shareUrl.ifBlank { catalog.contentUrl },
+            authorUrl = catalog.authorUrl,
+            authorThumbnailUrl = catalog.authorThumbnailUrl,
+            thumbnailUrl = catalog.thumbnailUrl.ifBlank { source.thumbnailUrl.orEmpty() },
+            description = catalog.description,
+            isMusic = true,
+        )
+    }
+
+    private fun VideoUiModel.withCatalogMetadata(source: GrayjayPlaybackSource): VideoUiModel = copy(
+        title = source.title.ifBlank { title },
+        creator = source.author.ifBlank { creator },
+        duration = formatDuration(source.durationSeconds).ifBlank { duration },
+        thumbnailUrl = source.thumbnailUrl.orEmpty().ifBlank { thumbnailUrl },
+        description = source.description.ifBlank { description },
+        authorUrl = source.authorUrl.ifBlank { authorUrl },
+        authorThumbnailUrl = source.authorThumbnailUrl.orEmpty().ifBlank { authorThumbnailUrl },
+        authorSubscriberCount = source.authorSubscribers ?: authorSubscriberCount,
+        isMusic = true,
+    )
+
     private data class ResolvedYoutubePlayback(
         val source: GrayjayPlaybackSource,
         val resolver: YoutubePlaybackResolver,
@@ -1908,6 +2005,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     private data class YoutubeResolveRequest(
         val video: VideoUiModel,
+        val catalogVideo: VideoUiModel?,
         val preferredAudioLanguage: String?,
         val preferOriginalAudio: Boolean,
     )
@@ -1915,6 +2013,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private fun VideoUiModel.isYoutubeVideo(): Boolean =
         sourceId.equals("youtube", ignoreCase = true) &&
             isYoutubeContentReference(contentUrl.ifBlank { id })
+
+    private fun VideoUiModel.isYoutubeBackedPlayback(): Boolean =
+        isYoutubeVideo() || youtubeResolverByVideoId.containsKey(id)
 
     override fun configureVideoTitleLanguage(preferOriginal: Boolean, languageTag: String) {
         preferOriginalVideoTitles = preferOriginal
@@ -2388,7 +2489,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     private fun VideoUiModel.mediaSourceFactory(): DefaultMediaSourceFactory {
         return DefaultMediaSourceFactory(dataSourceFactory()).also { factory ->
-            if (isYoutubeVideo() && !playbackFromDownload) factory.setLoadErrorHandlingPolicy(YoutubePlaybackLoadErrorPolicy())
+            if (isYoutubeBackedPlayback() && !playbackFromDownload) factory.setLoadErrorHandlingPolicy(YoutubePlaybackLoadErrorPolicy())
             if (drmLicenseUri.isNotBlank()) {
                 factory.setDrmSessionManagerProvider { createDrmSessionManager() }
             }
@@ -2397,7 +2498,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     private fun VideoUiModel.dashMediaSourceFactory(): DashMediaSource.Factory {
         return DashMediaSource.Factory(dataSourceFactory()).also { factory ->
-            if (isYoutubeVideo() && !playbackFromDownload) factory.setLoadErrorHandlingPolicy(YoutubePlaybackLoadErrorPolicy())
+            if (isYoutubeBackedPlayback() && !playbackFromDownload) factory.setLoadErrorHandlingPolicy(YoutubePlaybackLoadErrorPolicy())
             if (drmLicenseUri.isNotBlank()) {
                 factory.setDrmSessionManagerProvider { createDrmSessionManager() }
             }
@@ -3062,7 +3163,8 @@ private fun GrayjaySearchPlaylist.toPlaylistUiModel(context: Context) = Playlist
     videoIds = emptyList(),
     sourceId = sourceId,
     thumbnailUrl = thumbnailUrl.orEmpty(),
-    videoCount = videoCount.coerceAtLeast(0),
+    // A negative count means that the source exposes it only when the playlist is opened.
+    videoCount = videoCount,
 )
 
 private fun GrayjayUserImportProgress.toEngineProgress() = EngineUserImportProgress(
@@ -3148,6 +3250,7 @@ private val officialPluginIconUrls = mapOf(
     "redbull-tv" to "https://plugins.grayjay.app/RedbullTv/RedBullTvIcon.png",
     "fosdem" to "https://plugins.grayjay.app/FOSDEM/FOSDEMIcon.png",
     "nasa-plus" to "https://plugins.grayjay.app/NASA-Plus/NASA-PlusIcon.png",
+    "spotify" to "https://open.spotifycdn.com/cdn/images/favicon32.b64ecc03.png",
 )
 
 internal val officialPluginEndpoints = mapOf(
@@ -3172,6 +3275,10 @@ internal val officialPluginEndpoints = mapOf(
     "redbull-tv" to PluginEndpoint("5f6658bb-96cc-4965-ba04-c81f8686ab67", "https://plugins.grayjay.app/RedbullTv/RedBullTvConfig.json"),
     "fosdem" to PluginEndpoint("d890ff43-7d9f-4f0e-a52d-239014fd512d", "https://plugins.grayjay.app/FOSDEM/FOSDEMConfig.json"),
     "nasa-plus" to PluginEndpoint("a1b2c3d4-5e6f-7890-abcd-ef1234567890", "https://plugins.grayjay.app/NASA-Plus/NASA-PlusConfig.json"),
+    "spotify" to PluginEndpoint(
+        "d88280f3-9457-4f1e-b65c-85e4ec07d3ca",
+        "https://raw.githubusercontent.com/paaspaas00/spoti-grayjoy/main/SpotifyConfig.json",
+    ),
 ).mapValues { (sourceId, endpoint) ->
     endpoint.copy(iconUrl = officialPluginIconUrls[sourceId].orEmpty())
 }

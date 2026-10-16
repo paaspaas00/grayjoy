@@ -1,0 +1,40 @@
+{
+  "name": "Spotify",
+  "platformUrl": "https://open.spotify.com/",
+  "description": "Browse the public Spotify catalogue and play matching audio through YouTube.",
+  "author": "Grayjoy",
+  "authorUrl": "https://github.com/paaspaas00/spoti-grayjoy",
+  "repositoryUrl": "https://github.com/paaspaas00/spoti-grayjoy",
+  "sourceUrl": "https://raw.githubusercontent.com/paaspaas00/spoti-grayjoy/main/SpotifyConfig.json",
+  "scriptUrl": "./SpotifyScript.js",
+  "version": 3,
+  "iconUrl": "https://open.spotifycdn.com/cdn/images/favicon32.b64ecc03.png",
+  "id": "d88280f3-9457-4f1e-b65c-85e4ec07d3ca",
+  "packages": ["Http"],
+  "allowEval": false,
+  "allowUrls": [
+    "open.spotify.com",
+    "api-partner.spotify.com",
+    "open.spotifycdn.com",
+    "image-cdn-ak.spotifycdn.com",
+    "image-cdn-fa.spotifycdn.com",
+    "i.scdn.co",
+    "p.scdn.co"
+  ],
+  "changelog": {
+    "3": [
+      "Moved updates and source code to the dedicated spoti-grayjoy repository;",
+      "Improved Grayjoy integration and YouTube-backed playback recovery."
+    ],
+    "2": [
+      "Paginated public playlists;",
+      "Open shared Spotify track links directly;",
+      "Improved artist metadata parsing."
+    ],
+    "1": [
+      "Initial public catalogue search;",
+      "Artist, album and playlist browsing;",
+      "YouTube-backed playback in Grayjoy."
+    ]
+  }
+}

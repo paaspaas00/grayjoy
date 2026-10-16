@@ -58,6 +58,9 @@ jobs:
         working-directory: browser-extension
         run: npm test
 
+      - name: Test Spotify source
+        run: node --test grayjay-android/app/src/stable/assets/sources/spotify/SpotifyScript.test.mjs
+
       - name: Make the Gradle wrapper executable
         working-directory: grayjay-android
         run: chmod +x gradlew
