@@ -50,12 +50,15 @@ private val DarkColors = darkColorScheme(
 fun GrayjayTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
+    musicProfile: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
-    val colors = remember(context, configuration, dynamicColor, darkTheme) {
+    val colors = remember(context, configuration, dynamicColor, darkTheme, musicProfile) {
         when {
+            musicProfile && darkTheme -> DarkMusicColors
+            musicProfile -> LightMusicColors
             dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && darkTheme ->
                 dynamicDarkColorScheme(context)
             dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
@@ -75,3 +78,25 @@ fun GrayjayTheme(
         )
     }
 }
+
+private val LightMusicColors = lightColorScheme(
+    primary = Color(0xFF146C36), onPrimary = Color.White,
+    primaryContainer = Color(0xFFA2F5B4), onPrimaryContainer = Color(0xFF00210A),
+    secondary = Color(0xFF506352), onSecondary = Color.White,
+    secondaryContainer = Color(0xFFD3E8D2), onSecondaryContainer = Color(0xFF0E1F12),
+    tertiary = Color(0xFF3A656C), tertiaryContainer = Color(0xFFBEEAF1),
+    background = Color(0xFFF5FBF2), surface = Color(0xFFF5FBF2),
+    surfaceContainerLow = Color(0xFFEFF5EC), surfaceContainer = Color(0xFFE9EFE6),
+    surfaceContainerHigh = Color(0xFFE3E9E0), surfaceContainerHighest = Color(0xFFDDE4DA),
+)
+
+private val DarkMusicColors = darkColorScheme(
+    primary = Color(0xFF86D99A), onPrimary = Color(0xFF003915),
+    primaryContainer = Color(0xFF005323), onPrimaryContainer = Color(0xFFA2F5B4),
+    secondary = Color(0xFFB7CCB7), onSecondary = Color(0xFF233426),
+    secondaryContainer = Color(0xFF394B3B), onSecondaryContainer = Color(0xFFD3E8D2),
+    tertiary = Color(0xFFA2CED5), tertiaryContainer = Color(0xFF204D54),
+    background = Color(0xFF0E1510), surface = Color(0xFF0E1510),
+    surfaceContainerLow = Color(0xFF171D18), surfaceContainer = Color(0xFF1B211C),
+    surfaceContainerHigh = Color(0xFF252B26), surfaceContainerHighest = Color(0xFF303631),
+)

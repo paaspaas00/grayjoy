@@ -6,4 +6,8 @@ HPLcom/futo/platformplayer/compose/ui/screens/HomeScreenKt;->**(**)**
 HPLcom/futo/platformplayer/compose/ui/screens/SearchScreenKt;->**(**)**
 HPLcom/futo/platformplayer/compose/ui/screens/ContentComponentsKt;->**(**)**
 HPLcom/futo/platformplayer/compose/ui/screens/SettingsScreenKt;->**(**)**
+HPLcom/futo/platformplayer/compose/ui/screens/VideoDetailScreenKt;->**(**)**
+HPLcom/futo/platformplayer/compose/ui/screens/VideoDetailScreenKt$*;->**(**)**
+HPLcom/futo/platformplayer/compose/ui/screens/PlayerViewTargets;->**(**)**
+HPLcom/futo/platformplayer/compose/engine/AndroidGrayjayEngine;->**(**)**
 HPLcom/futo/platformplayer/backend/NewPipeYoutubeContentBackend;->**(**)**

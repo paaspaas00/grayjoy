@@ -1,4 +1,8 @@
 <resources>
+    <string name="shuffle_playlist">Shuffle playback</string>
+    <string name="recent_playlists">Recently played playlists</string>
+    <string name="recent_tab">Recent</string>
+    <string name="no_recent_playlists">Play an album or playlist to find it here.</string>
     <string name="playback_notification_unavailable">Android could not show playback controls. Open Grayjoy and tap Play to resume.</string>
     <string name="app_name">Grayjoy</string>
     <string name="lower_volume_for_other_audio">Lower volume for other audio</string>

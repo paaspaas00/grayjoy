@@ -239,8 +239,10 @@ class VoiceListeningService : Service() {
             microphone.close(); recorder = null
             commandRecognizer?.close()
             confirmationRecognizer?.close()
-            if (currentCoroutineContext().isActive) releaseDucking()
-            nextClient.close()
+            withContext(NonCancellable) {
+                try { withTimeout(2_000L) { releaseDucking() } }
+                finally { nextClient.close() }
+            }
         }
         }
         }

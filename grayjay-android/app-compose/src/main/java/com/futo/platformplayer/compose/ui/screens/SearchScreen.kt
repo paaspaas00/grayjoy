@@ -75,6 +75,8 @@ fun SearchScreen(
     onVideoLongClick: (VideoUiModel) -> Unit,
     onChannelClick: (ChannelUiModel) -> Unit,
     onPlaylistClick: (PlaylistUiModel) -> Unit,
+    shuffledPlaylistIds: Set<String> = emptySet(),
+    onPlaylistShuffleChange: (String, Boolean) -> Unit = { _, _ -> },
     autoFocus: Boolean = false,
     onAutoFocusConsumed: () -> Unit = {},
     showNavigationMenuButton: Boolean = false,
@@ -423,6 +425,8 @@ fun SearchScreen(
                     ) { playlist ->
                         PlaylistRow(
                             playlist = playlist,
+                            shuffled = playlist.id in shuffledPlaylistIds,
+                            onShuffleChange = { onPlaylistShuffleChange(playlist.id, it) },
                             onClick = {
                                 leaveSearch()
                                 onPlaylistClick(playlist)

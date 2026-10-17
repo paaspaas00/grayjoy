@@ -37,6 +37,16 @@ internal class OtherAudioDuckingController(
     private var rampGeneration = 0
     private var released = false
     private val voiceVolumes = VoiceVolumeLeases()
+    private val expireVoiceVolumes = object : Runnable {
+        override fun run() {
+            if (released) return
+            if (voiceVolumes.expire()) {
+                otherAudioActive = enabled && player.isPlaying && readOtherAudioActive()
+                animateVolumeTo(effectivePlaybackVolume(voiceVolumes.volume, otherAudioActive, duckVolume), RELEASE_RAMP_MS)
+            }
+            if (voiceVolumes.volume != null) handler.postDelayed(this, 5_000L)
+        }
+    }
 
     private val playbackCallback = object : AudioManager.AudioPlaybackCallback() {
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>) {
@@ -71,7 +81,10 @@ internal class OtherAudioDuckingController(
     fun setVoiceVolume(owner: String, percent: Int?) {
         runOnMainThread {
             if (released) return@runOnMainThread
-            if (!voiceVolumes.set(owner, percent)) return@runOnMainThread
+            val changed = voiceVolumes.set(owner, percent)
+            handler.removeCallbacks(expireVoiceVolumes)
+            if (voiceVolumes.volume != null) handler.postDelayed(expireVoiceVolumes, 5_000L)
+            if (!changed) return@runOnMainThread
             cancelTransition()
             otherAudioActive = enabled && player.isPlaying && readOtherAudioActive()
             duckingApplied = voiceVolumes.volume == null && otherAudioActive
@@ -89,6 +102,7 @@ internal class OtherAudioDuckingController(
             cancelTransition()
             cancelRamp()
             voiceVolumes.clear()
+            handler.removeCallbacks(expireVoiceVolumes)
             player.volume = NORMAL_VOLUME
         }
     }

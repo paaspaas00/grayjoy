@@ -98,6 +98,8 @@ fun PlaylistDetailScreen(
     onReorder: (List<String>) -> Unit = {},
     currentVideoId: String? = null,
     isPlaying: Boolean = false,
+    shuffled: Boolean = false,
+    onShuffleChange: (Boolean) -> Unit = {},
 ) {
     val compactLayout = compactUi()
     var showRenameDialog by rememberSaveable(playlist.id) { mutableStateOf(false) }
@@ -153,6 +155,7 @@ fun PlaylistDetailScreen(
         ) {
             item {
                 if (compactLayout) CompactPlaylistHeader(
+                    shuffleId = playlist.id, shuffled = shuffled, onShuffleChange = onShuffleChange,
                     title = playlist.title,
                     description = playlist.description,
                     playEnabled = playlistVideos.isNotEmpty(),
@@ -200,6 +203,7 @@ fun PlaylistDetailScreen(
                                 modifier = Modifier.weight(1f),
                                 style = if (compactLayout) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium,
                             )
+                            PlaylistShuffleButton(playlist.id, shuffled, onShuffleChange)
                             IconButton(
                                 onClick = { showAutomaticDownloads = true },
                                 modifier = Modifier.testTag("playlist-automatic-downloads"),

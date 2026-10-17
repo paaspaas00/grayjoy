@@ -50,6 +50,8 @@ import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.rememberDevicePerformanceProfile
 import com.futo.platformplayer.compose.ui.HomeFeedType
 import com.futo.platformplayer.compose.ui.HomeUiState
+import com.futo.platformplayer.compose.ui.PlaylistUiModel
+import com.futo.platformplayer.compose.ui.isSpotifyOnly
 import com.futo.platformplayer.compose.ui.PcPlaybackUiModel
 import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
 import com.futo.platformplayer.compose.ui.SourceAvailability
@@ -75,6 +77,10 @@ private data class HomeBrowseTab(
 fun HomeScreen(
     home: HomeUiState,
     sources: List<SourceUiModel> = emptyList(),
+    recentPlaylists: List<PlaylistUiModel> = emptyList(),
+    shuffledPlaylistIds: Set<String> = emptySet(),
+    onPlaylistShuffleChange: (String, Boolean) -> Unit = { _, _ -> },
+    onPlaylistClick: (PlaylistUiModel) -> Unit = {},
     onFeedSelected: (HomeFeedType) -> Unit,
     onBrowseTabSelected: (String, String) -> Unit = { _, _ -> },
     onBrowseOptionSelected: (String, String, String) -> Unit = { _, _, _ -> },
@@ -96,6 +102,7 @@ fun HomeScreen(
 ) {
     val performance = rememberDevicePerformanceProfile()
     val compact = compactUi()
+    val musicProfile = sources.isSpotifyOnly()
     var updateDetailsVisible by rememberSaveable { mutableStateOf(false) }
     val youtubeEnabled = sources.any { source ->
         source.id.equals("youtube", ignoreCase = true) && source.isEnabled &&
@@ -257,7 +264,7 @@ fun HomeScreen(
                         }
                         coroutineScope.launch { pagerState.animateScrollToPage(page) }
                     },
-                    label = { Text(stringResource(feed.labelRes)) },
+                    label = { Text(stringResource(if (musicProfile && feed == HomeFeedType.Subscriptions) R.string.recent_tab else feed.labelRes)) },
                     modifier = Modifier
                         .bringIntoViewRequester(bringIntoViewRequester)
                         .testTag("home-feed-${feed.name.lowercase()}"),
@@ -349,6 +356,25 @@ fun HomeScreen(
                 return@HorizontalPager
             }
             val feed = browseTab?.let { HomeFeedType.ForYou } ?: feeds[page]
+            if (musicProfile && browseTab == null && feed == HomeFeedType.Subscriptions) {
+                LazyColumn(
+                    state = rememberContentListState(),
+                    modifier = Modifier.fillMaxSize().testTag("home-recent-playlists"),
+                    contentPadding = PaddingValues(if (compact) 12.dp else 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    item { Text(stringResource(R.string.recent_playlists), style = MaterialTheme.typography.titleLarge) }
+                    if (recentPlaylists.isEmpty()) item {
+                        Text(stringResource(R.string.no_recent_playlists), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    itemsIndexed(recentPlaylists.take(5), key = { _, playlist -> playlist.id }) { _, playlist ->
+                        PlaylistRow(playlist = playlist, onClick = { onPlaylistClick(playlist) },
+                            shuffled = playlist.id in shuffledPlaylistIds,
+                            onShuffleChange = { onPlaylistShuffleChange(playlist.id, it) })
+                    }
+                }
+                return@HorizontalPager
+            }
             val isSelectedPage = if (browseTab != null) {
                 home.browseSourceId == browseTab.sourceId &&
                     home.browseGroupId == browseTab.groupId &&

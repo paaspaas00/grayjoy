@@ -88,6 +88,15 @@ class VoiceBridgeService : Service() {
                                         arguments)
                                 }
                             }
+                            // Starting playback ends the listening phase. Do not leave the new
+                            // track attenuated while the companion prepares spoken feedback.
+                            if (output.optBoolean("ok") && !output.optBoolean("needsClarification") &&
+                                name in setOf("play", "next", "previous", "play_playlist", "play_named", "search_play",
+                                    "play_local", "play_random_music", "play_artist", "play_same_artist")) {
+                                withContext(Dispatchers.Main.immediate) {
+                                    (application as GrayjoyApplication).playbackViewModel.releaseVoiceVolume(owner)
+                                }
+                            }
                             JSONObject().put("content", JSONArray().put(JSONObject().put("type", "text").put("text", output.toString())))
                         }
                         else -> error("Unsupported MCP method")

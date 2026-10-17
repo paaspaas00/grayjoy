@@ -19,6 +19,53 @@ import java.util.concurrent.Executors
 class ReportedYoutubePlaybackTest {
     @get:Rule val activity = ActivityScenarioRule(ComponentActivity::class.java)
 
+    @Test fun rejectedSegmentStartsRecoveryBeforeTwentySecondsOfBufferedAudioRunsOut(): Unit = runBlocking {
+        lateinit var engine: AndroidGrayjayEngine
+        activity.scenario.onActivity { context -> engine = AndroidGrayjayEngine(context); engine.player.volume = 0f }
+        val server = ServerSocket(0).apply { soTimeout = 20_000 }
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val source = withTimeout(75_000) { engine.resolve(video("u8oTH71vBeA"), "it", true) }
+            withContext(Dispatchers.Main) { engine.open(listOf(source), source.id, true) }
+            ready(engine)
+            executor.submit {
+                val fullLength = 60 * 8_000 * 2
+                val header = java.nio.ByteBuffer.allocate(44).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                    .put("RIFF".toByteArray()).putInt(fullLength + 36).put("WAVEfmt ".toByteArray())
+                    .putInt(16).putShort(1).putShort(1).putInt(8_000).putInt(16_000).putShort(2).putShort(16)
+                    .put("data".toByteArray()).putInt(fullLength).array()
+                repeat(2) { attempt -> server.accept().use { socket ->
+                    val reader = socket.getInputStream().bufferedReader()
+                    while (!reader.readLine().isNullOrEmpty()) { }
+                    val output = socket.getOutputStream()
+                    if (attempt == 0) {
+                        output.write("HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\nContent-Length: ${fullLength + 44}\r\nConnection: close\r\n\r\n".toByteArray())
+                        output.write(header)
+                        output.write(ByteArray(20 * 8_000 * 2))
+                    } else output.write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                    output.flush()
+                } }
+            }
+            val fallback = async(start = CoroutineStart.UNDISPATCHED) { engine.backendNotices.first { it.operation == "playback" } }
+            val started = android.os.SystemClock.elapsedRealtime()
+            withContext(Dispatchers.Main) {
+                engine.replaceCurrent(source.copy(playbackUrl = "http://127.0.0.1:${server.localPort}/audio.wav",
+                    playbackMimeType = MimeTypes.AUDIO_WAV, playbackManifest = "", audioUrl = "",
+                    playbackAudioOnly = true,
+                    playbackDataSourceFactory = com.futo.platformplayer.backend.NewPipeYoutubeHttpDataSource.Factory(false, false),
+                    qualityVariants = emptyList(), audioQualityVariants = emptyList(), subtitleTracks = emptyList()), 0L, true)
+            }
+            withTimeout(5_000) { fallback.await() }
+            val elapsed = android.os.SystemClock.elapsedRealtime() - started
+            assertTrue("Should recover while twenty seconds of audio are still buffered: $elapsed ms", elapsed < 5_000)
+            android.util.Log.i("ReportedPlaybackTest", "rejected-segment-fallback=$elapsed ms before-buffer-exhausted=true")
+            ready(engine)
+        } finally {
+            server.close(); executor.shutdownNow()
+            withContext(Dispatchers.Main) { engine.release() }
+        }
+    }
+
     @Test fun reportedVideosPlayAndSeekWithBothBackends(): Unit = runBlocking {
         for (newPipe in listOf(true, false)) for (id in listOf("1BZB4c792-0", "u8oTH71vBeA")) {
             lateinit var engine: AndroidGrayjayEngine

@@ -4,6 +4,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VoiceVolumeLeasesTest {
+    @Test fun abandonedAttenuationExpiresAndRefreshKeepsOnlyItsOwnSessionAlive() {
+        var now = 0L
+        val volumes = VoiceVolumeLeases { now }
+        volumes.set("old", 50)
+        now = 30_000
+        volumes.set("new", 70)
+        now = 60_001
+        assertTrue(volumes.expire())
+        assertEquals(.7f, volumes.volume!!, .0001f)
+        now = 80_000
+        volumes.set("new", 70)
+        now = 100_000
+        assertFalse(volumes.expire())
+        now = 140_001
+        assertTrue(volumes.expire())
+        assertNull(volumes.volume)
+    }
     @Test fun fiftyPercentIsExactAndDisconnectRestores() {
         val volumes = VoiceVolumeLeases()
         assertNull(volumes.volume)

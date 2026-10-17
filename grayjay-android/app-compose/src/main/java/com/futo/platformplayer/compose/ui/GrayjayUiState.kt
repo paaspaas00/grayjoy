@@ -13,6 +13,8 @@ data class GrayjayUiState(
     val channels: List<ChannelUiModel> = emptyList(),
     val playlists: List<PlaylistUiModel> = emptyList(),
     val playbackPlaylist: PlaylistUiModel? = null,
+    val shuffledPlaylistIds: Set<String> = emptySet(),
+    val recentPlaylists: List<PlaylistUiModel> = emptyList(),
     val sources: List<SourceUiModel> = emptyList(),
     val sourceFilterSelections: Map<String, Map<String, String>> = emptyMap(),
     val dynamicColorsEnabled: Boolean = true,
@@ -268,6 +270,9 @@ enum class HomeFeedType(@param:StringRes val labelRes: Int) {
     Trending(R.string.feed_trending),
     Live(R.string.feed_live),
 }
+
+internal fun List<SourceUiModel>.isSpotifyOnly(): Boolean =
+    filter { it.isEnabled }.map { it.id.lowercase(java.util.Locale.ROOT) }.toSet() == setOf("spotify")
 
 data class HomeUiState(
     val selectedFeed: HomeFeedType = HomeFeedType.Subscriptions,

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.DownloadDone
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -660,6 +661,8 @@ internal fun PlaylistRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onRename: (() -> Unit)? = null,
+    shuffled: Boolean = false,
+    onShuffleChange: ((Boolean) -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier
@@ -714,6 +717,7 @@ internal fun PlaylistRow(
                     )
                 }
             }
+            onShuffleChange?.let { PlaylistShuffleButton(playlist.id, shuffled, it) }
             if (playlist.sourceId.isBlank() && onRename != null) {
                 IconButton(
                     onClick = onRename,
@@ -733,6 +737,15 @@ internal fun playlistDisplayVideoCount(playlist: PlaylistUiModel): Int? = when {
     playlist.sourceId.isBlank() -> playlist.videoIds.size
     playlist.videoCount >= 0 -> playlist.videoCount
     else -> null
+}
+
+@Composable
+internal fun PlaylistShuffleButton(id: String, shuffled: Boolean, onChange: (Boolean) -> Unit) {
+    androidx.compose.material3.IconToggleButton(checked = shuffled, onCheckedChange = onChange,
+        modifier = Modifier.testTag("shuffle-playlist-$id")) {
+        Icon(Icons.Outlined.Shuffle, contentDescription = stringResource(R.string.shuffle_playlist),
+            tint = if (shuffled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @Composable

@@ -202,6 +202,17 @@ internal fun playlistQueueFrom(videoIds: List<String>, selectedVideoId: String):
     return if (selectedIndex >= 0) videoIds.drop(selectedIndex) else emptyList()
 }
 
+internal fun playlistPlaybackOrder(
+    videoIds: List<String>, selectedVideoId: String? = null, shuffle: Boolean,
+    random: kotlin.random.Random = kotlin.random.Random.Default,
+): List<String> {
+    val ids = videoIds.distinct()
+    if (selectedVideoId != null && selectedVideoId !in ids) return emptyList()
+    if (!shuffle) return if (selectedVideoId == null) ids else playlistQueueFrom(ids, selectedVideoId)
+    return if (selectedVideoId == null) ids.shuffled(random)
+        else listOf(selectedVideoId) + ids.filterNot { it == selectedVideoId }.shuffled(random)
+}
+
 internal fun activePlaylistDownloadBatches(
     descriptors: List<OfflinePlaylistDownload>,
     downloads: Map<String, DownloadUiModel>,
@@ -463,6 +474,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val profileRepository = ProfileRepository(application)
     private var activeProfileId = profileRepository.activeProfileId()
     private var preferences = GrayjayPreferences(application, activeProfileId)
+    private var playlistPlaybackPreferences = com.futo.platformplayer.compose.data.PlaylistPlaybackPreferences(application, activeProfileId)
     private var libraryRepository: LibraryRepository =
         SharedPreferencesLibraryRepository(application, activeProfileId)
     private var homeCacheRepository = HomeCacheRepository(application, activeProfileId)
@@ -675,6 +687,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             libraryVideos = allVideos,
             channels = initialContent.channels,
             playlists = emptyList(),
+            shuffledPlaylistIds = playlistPlaybackPreferences.shuffledIds(),
+            recentPlaylists = playlistPlaybackPreferences.recent(),
             sources = engineSources.map {
                 it.copy(
                     isEnabled = it.id in enabledSourceIds,
@@ -2124,6 +2138,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         profileRepository.setActiveProfile(profileId)
         val application = getApplication<Application>()
         preferences = GrayjayPreferences(application, activeProfileId)
+        playlistPlaybackPreferences = com.futo.platformplayer.compose.data.PlaylistPlaybackPreferences(application, activeProfileId)
         configureVideoTitleLanguage()
         configureYoutubeBackend()
         libraryRepository = SharedPreferencesLibraryRepository(application, activeProfileId)
@@ -2184,6 +2199,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 )
             },
             sourceFilterSelections = sourceFilterSelections.snapshot(),
+            shuffledPlaylistIds = playlistPlaybackPreferences.shuffledIds(),
+            recentPlaylists = playlistPlaybackPreferences.recent(),
             dynamicColorsEnabled = preferences.dynamicColorsEnabled,
             themeMode = preferences.themeMode,
             privateSessionEnabled = preferences.privateSessionEnabled,
@@ -3434,15 +3451,28 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun playPlaylist(playlistId: String) {
         val playlist = libraryRepository.loadPlaylists().firstOrNull { it.id == playlistId } ?: return
         activePlaylistId = playlistId
-        startQueue(playlist.videoIds)
+        startQueue(playlistPlaybackOrder(playlist.videoIds, shuffle = playlistId in _uiState.value.shuffledPlaylistIds))
+        rememberPlayedPlaylist(playlist)
     }
 
     fun playPlaylistFrom(playlistId: String, videoId: String) {
         val playlist = libraryRepository.loadPlaylists().firstOrNull { it.id == playlistId } ?: return
-        val queueIds = playlistQueueFrom(playlist.videoIds, videoId)
+        val queueIds = playlistPlaybackOrder(playlist.videoIds, videoId, playlistId in _uiState.value.shuffledPlaylistIds)
         if (queueIds.isEmpty()) return
         activePlaylistId = playlistId
         startQueue(queueIds)
+        rememberPlayedPlaylist(playlist)
+    }
+
+    fun setPlaylistShuffled(playlistId: String, shuffled: Boolean) {
+        playlistPlaybackPreferences.setShuffled(playlistId, shuffled)
+        _uiState.update { it.copy(shuffledPlaylistIds = playlistPlaybackPreferences.shuffledIds()) }
+    }
+
+    private fun rememberPlayedPlaylist(playlist: PlaylistUiModel) {
+        if (preferences.privateSessionEnabled) return
+        playlistPlaybackPreferences.record(playlist)
+        _uiState.update { it.copy(recentPlaylists = playlistPlaybackPreferences.recent()) }
     }
 
     private fun startQueue(videoIds: List<String>) {
@@ -3765,8 +3795,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         if (playlist != null && queue.isEmpty()) return@withContext result.put("ok", false).put("noLocalContent", true)
                         if (queue.isNotEmpty()) {
                             queue.forEach { remoteVideos[it.id] = it }
-                            playQueue(queue.map { it.id })
-                            publishExternalNavigation(ExternalNavigationKind.Video, queue.first().id)
+                            val ids = playlistPlaybackOrder(queue.map { it.id }, shuffle = playlist?.id in _uiState.value.shuffledPlaylistIds)
+                            activePlaylistId = playlist?.id
+                            startQueue(ids)
+                            playlist?.let(::rememberPlayedPlaylist)
+                            publishExternalNavigation(ExternalNavigationKind.Video, ids.first())
                             return@withContext result.put("ok", true).put("title", playlist?.title).put("local", true)
                         }
                         com.futo.platformplayer.compose.voice.rankedVoiceVideos(query, local, VideoUiModel::id,
@@ -3854,7 +3887,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         if (match.videoIds.isNotEmpty()) {
                             if (!online()) return@withContext executeVoiceTool("play_local", org.json.JSONObject().put("query", match.title))
                             playPlaylist(match.id)
-                            publishExternalNavigation(ExternalNavigationKind.Video, match.videoIds.first())
+                            publishExternalNavigation(ExternalNavigationKind.Video, pendingPlaybackVideoId ?: match.videoIds.first())
                             result.put("ok", true).put("title", match.title)
                         } else result.put("needsClarification", true).put("kind", "empty")
                     } else {
@@ -4940,18 +4973,21 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun playRemotePlaylist() = launchRemotePlaylistFullLoad { playlist, videos ->
         if (videos.isNotEmpty()) {
+            val ids = playlistPlaybackOrder(videos.map(VideoUiModel::id), shuffle = playlist.id in _uiState.value.shuffledPlaylistIds)
             activePlaylistId = null
-            startQueue(videos.map(VideoUiModel::id))
+            startQueue(ids)
+            rememberPlayedPlaylist(playlist)
             _uiState.update { it.copy(playbackPlaylist = playlist) }
-            publishExternalNavigation(ExternalNavigationKind.Video, videos.first().id)
+            publishExternalNavigation(ExternalNavigationKind.Video, ids.first())
         }
     }
 
     fun playRemotePlaylistFrom(videoId: String) = launchRemotePlaylistFullLoad { playlist, videos ->
         if (videos.any { it.id == videoId }) {
-            val queueIds = playlistQueueFrom(videos.map(VideoUiModel::id), videoId)
+            val queueIds = playlistPlaybackOrder(videos.map(VideoUiModel::id), videoId, playlist.id in _uiState.value.shuffledPlaylistIds)
             activePlaylistId = null
             startQueue(queueIds)
+            rememberPlayedPlaylist(playlist)
             _uiState.update { it.copy(playbackPlaylist = playlist) }
             publishExternalNavigation(ExternalNavigationKind.Video, queueIds.first())
         }

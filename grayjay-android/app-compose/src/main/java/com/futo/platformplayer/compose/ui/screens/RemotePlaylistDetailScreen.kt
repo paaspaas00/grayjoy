@@ -86,6 +86,8 @@ fun RemotePlaylistDetailScreen(
     onLoadMore: () -> Unit,
     currentVideoId: String? = null,
     isPlaying: Boolean = false,
+    shuffled: Boolean = false,
+    onShuffleChange: (Boolean) -> Unit = {},
 ) {
     val compactLayout = compactUi()
     val playlist = detail.playlist ?: return
@@ -135,6 +137,7 @@ fun RemotePlaylistDetailScreen(
     ) {
         item {
             if (compactLayout) CompactPlaylistHeader(
+                shuffleId = playlist.id, shuffled = shuffled, onShuffleChange = onShuffleChange,
                 title = playlist.title, description = playlist.description,
                 playEnabled = detail.videos.isNotEmpty() && !detail.isLoadingAll,
                 playTag = "remote-playlist-play-all", onPlayAll = onPlayAll,
@@ -165,7 +168,11 @@ fun RemotePlaylistDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text(stringResource(R.string.source_playlist), style = MaterialTheme.typography.labelLarge)
-                Text(playlist.title, style = if (compactLayout) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(playlist.title, modifier = Modifier.weight(1f),
+                            style = if (compactLayout) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium)
+                        PlaylistShuffleButton(playlist.id, shuffled, onShuffleChange)
+                    }
                     if (playlist.description.isNotBlank()) {
                         Text(playlist.description, style = MaterialTheme.typography.bodyLarge)
                     }

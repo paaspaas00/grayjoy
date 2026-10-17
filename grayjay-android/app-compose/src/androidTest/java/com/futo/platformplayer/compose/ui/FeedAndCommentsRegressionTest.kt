@@ -24,6 +24,21 @@ class FeedAndCommentsRegressionTest {
 
     @After fun release() { if (::player.isInitialized) rule.runOnUiThread { player.release() } }
 
+    @Test fun spotifyOnlyHomeShowsRecentPlaylistsAndACheckableShuffleButton() {
+        val shuffled = mutableStateOf(emptySet<String>())
+        val playlists = (1..5).map { PlaylistUiModel("recent-$it", "Playlist $it", "", emptyList(), sourceId = "spotify", videoCount = -1) }
+        rule.setContent { GrayjayTheme(dynamicColor = false, musicProfile = true) {
+            HomeScreen(home = HomeUiState(), sources = listOf(SourceUiModel("spotify", "Spotify", "", 0L, true)),
+                recentPlaylists = playlists, shuffledPlaylistIds = shuffled.value,
+                onPlaylistShuffleChange = { id, checked -> shuffled.value = if (checked) shuffled.value + id else shuffled.value - id },
+                onFeedSelected = {}, onRefresh = {}, onLoadMore = {}, onVideoClick = {}, onVideoLongClick = {})
+        } }
+        rule.onNodeWithTag("home-recent-playlists").assertIsDisplayed()
+        rule.onNodeWithText(rule.activity.getString(com.futo.platformplayer.compose.R.string.latest_from_subscriptions)).assertDoesNotExist()
+        rule.onNodeWithTag("shuffle-playlist-recent-1").assertIsOff().performClick().assertIsOn()
+        rule.onNodeWithTag("shuffle-playlist-recent-1").performClick().assertIsOff()
+    }
+
     @Test fun followedVideosCanRefreshAfterFirstLoadAndCannotDoubleSubmit() {
         val loading = mutableStateOf(false)
         var requests = 0

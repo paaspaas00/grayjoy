@@ -356,6 +356,8 @@ private data class PlaybackPresentation(
     val onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit,
     val onExportLibrary: (LibraryExportFormat, Uri) -> Unit,
     val onRenamePlaylist: (String, String) -> Unit,
+    val shuffledPlaylistIds: Set<String>,
+    val onPlaylistShuffleChange: (String, Boolean) -> Unit,
     val libraryFilter: LibraryFilter,
     val onLibraryFilterChange: (LibraryFilter) -> Unit,
     val libraryPlaylistListState: LazyListState,
@@ -460,6 +462,7 @@ private data class SourcePresentation(
     val filterSelections: Map<String, Map<String, String>>,
     val onFilterSelectionChange: (String, String, String) -> Unit,
     val home: HomeUiState,
+    val recentPlaylists: List<PlaylistUiModel>,
     val onHomeFeedSelected: (HomeFeedType) -> Unit,
     val onHomeBrowseTabSelected: (String, String) -> Unit,
     val onHomeBrowseOptionSelected: (String, String, String) -> Unit,
@@ -754,6 +757,10 @@ fun GrayjayApp(
             .mapNotNull(availableVideosById::get)
     }
     val onSelect: (GrayjayDestination) -> Unit = {
+        if (it == GrayjayDestination.Home && selected == GrayjayDestination.Home &&
+            selectedVideoId == null && selectedChannelId == null && selectedPlaylistId == null) {
+            actions.onHomeFeedSelected(HomeFeedType.Subscriptions)
+        }
         shortsModeActive = false
         // Clear focus before switching pages so disposal cannot steal the incoming field's focus.
         focusManager.clearFocus(force = true)
@@ -863,8 +870,9 @@ fun GrayjayApp(
         }
     }
     val onPlaylistClick: (PlaylistUiModel) -> Unit = {
+        val openedFromHome = selected == GrayjayDestination.Home && selectedPlaylistId == null
         visitedPlaylists[it.id] = it
-        if (it.sourceId.isNotBlank() && selectedPlaylistId != it.id) rememberBrowseOrigin()
+        if ((it.sourceId.isNotBlank() || openedFromHome) && selectedPlaylistId != it.id) rememberBrowseOrigin()
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         searchAutoFocusRequested = false
@@ -873,7 +881,7 @@ fun GrayjayApp(
             destinationName = GrayjayDestination.Library.name
             libraryFilterName = LibraryFilter.Playlists.name
             nestedBackDestinationName = null
-            browseHistory = emptyList()
+            if (!openedFromHome) browseHistory = emptyList()
         }
         selectedPlaylistId = it.id
         selectedChannelId = null
@@ -963,6 +971,9 @@ fun GrayjayApp(
                 libraryFilterName = LibraryFilter.Playlists.name
                 nestedBackDestinationName = null
             }
+        } else if (selected == GrayjayDestination.Home &&
+            (uiState.home.selectedFeed != HomeFeedType.Subscriptions || uiState.home.browseSourceId != null)) {
+            actions.onHomeFeedSelected(HomeFeedType.Subscriptions)
         } else {
             val nestedDestination = nestedBackDestinationName
             if (nestedDestination != null) {
@@ -1156,8 +1167,9 @@ fun GrayjayApp(
         onPlayPlaylist = { playlistId ->
             val playlist = uiState.playlists.firstOrNull { it.id == playlistId }
             if (playlist != null && playlist.videoIds.isNotEmpty()) {
-                actions.onPlayPlaylist(playlistId)
-                settlePlayer(0f, playlist.videoIds.first())
+                val first = if (playlistId in uiState.shuffledPlaylistIds) playlist.videoIds.random() else playlist.videoIds.first()
+                actions.onPlayPlaylistFrom(playlistId, first)
+                settlePlayer(0f, first)
             }
         },
         onPlayPlaylistFrom = { playlistId, videoId ->
@@ -1189,6 +1201,8 @@ fun GrayjayApp(
         onExportDownloads = actions.onExportDownloads,
         onExportLibrary = actions.onExportLibrary,
         onRenamePlaylist = actions.onRenamePlaylist,
+        shuffledPlaylistIds = uiState.shuffledPlaylistIds,
+        onPlaylistShuffleChange = actions.onPlaylistShuffleChange,
         libraryFilter = LibraryFilter.valueOf(libraryFilterName),
         onLibraryFilterChange = {
             focusManager.clearFocus(force = true)
@@ -1329,6 +1343,16 @@ fun GrayjayApp(
         filterSelections = uiState.sourceFilterSelections,
         onFilterSelectionChange = actions.onSourceFilterSelectionChange,
         home = uiState.home,
+        recentPlaylists = remember(uiState.sources, uiState.recentPlaylists, uiState.playlists, uiState.libraryVideos) {
+            if (!uiState.sources.isSpotifyOnly()) return@remember emptyList()
+            val locals = uiState.playlists.associateBy(PlaylistUiModel::id)
+            val watchedAt = uiState.libraryVideos.associate { it.id to it.lastWatchedAt }
+            val historical = uiState.playlists.map { playlist ->
+                playlist to (playlist.videoIds.maxOfOrNull { watchedAt[it] ?: 0L } ?: 0L)
+            }.filter { it.second > 0L }.sortedByDescending { it.second }.map { it.first }
+            (uiState.recentPlaylists.mapNotNull { entry -> locals[entry.id] ?: entry.takeIf { it.sourceId.isNotBlank() } } + historical)
+                .distinctBy(PlaylistUiModel::id).take(5)
+        },
         onHomeFeedSelected = actions.onHomeFeedSelected,
         onHomeBrowseTabSelected = actions.onHomeBrowseTabSelected,
         onHomeBrowseOptionSelected = actions.onHomeBrowseOptionSelected,
@@ -1411,7 +1435,8 @@ fun GrayjayApp(
             selectedVideo != null ||
                 selectedChannel != null ||
                 selectedPlaylist != null || nestedBackDestinationName != null || browseHistory.isNotEmpty()
-                    || topLevelBackDestination(selected) != null
+                    || topLevelBackDestination(selected) != null || (selected == GrayjayDestination.Home &&
+                    (uiState.home.selectedFeed != HomeFeedType.Subscriptions || uiState.home.browseSourceId != null))
             ),
     ) { backEvents ->
         val minimizesPlayer = !isFullscreen &&
@@ -2367,6 +2392,8 @@ private fun GrayjayScaffold(
                     ?: selected
                 if (animatedChannel != null) {
                 ChannelDetailScreen(
+                    shuffledPlaylistIds = playback.shuffledPlaylistIds,
+                    onPlaylistShuffleChange = playback.onPlaylistShuffleChange,
                     channel = animatedChannel,
                     detail = playback.channelDetail,
                     onLoadMore = playback.onLoadMoreChannel,
@@ -2397,6 +2424,8 @@ private fun GrayjayScaffold(
                 )
                 } else if (animatedPlaylist != null) {
                 if (animatedPlaylist.sourceId.isBlank()) PlaylistDetailScreen(
+                    shuffled = animatedPlaylist.id in playback.shuffledPlaylistIds,
+                    onShuffleChange = { playback.onPlaylistShuffleChange(animatedPlaylist.id, it) },
                     playlist = animatedPlaylist,
                     currentVideoId = playback.state.currentVideoId,
                     isPlaying = playback.isPlaying,
@@ -2454,6 +2483,8 @@ private fun GrayjayScaffold(
                     },
                 )
                 else RemotePlaylistDetailScreen(
+                    shuffled = animatedPlaylist.id in playback.shuffledPlaylistIds,
+                    onShuffleChange = { playback.onPlaylistShuffleChange(animatedPlaylist.id, it) },
                     detail = playback.remotePlaylistDetail,
                     currentVideoId = playback.state.currentVideoId,
                     isPlaying = playback.isPlaying,
@@ -2472,6 +2503,10 @@ private fun GrayjayScaffold(
                     when (animatedDestination) {
                     GrayjayDestination.Home -> HomeScreen(
                         home = sourcePresentation.home,
+                        recentPlaylists = sourcePresentation.recentPlaylists,
+                        shuffledPlaylistIds = playback.shuffledPlaylistIds,
+                        onPlaylistShuffleChange = playback.onPlaylistShuffleChange,
+                        onPlaylistClick = onPlaylistClick,
                         sources = sourcePresentation.sources,
                         availableUpdate = playback.availableUpdate.takeIf {
                             RELEASE_UPDATE_CHECK_ENABLED
@@ -2518,6 +2553,8 @@ private fun GrayjayScaffold(
                         onChannelClick = onChannelClick,
                     )
                     GrayjayDestination.Search -> SearchScreen(
+                        shuffledPlaylistIds = playback.shuffledPlaylistIds,
+                        onPlaylistShuffleChange = playback.onPlaylistShuffleChange,
                         search = sourcePresentation.search,
                         sources = sourcePresentation.sources,
                         filterSelections = sourcePresentation.filterSelections,
@@ -2554,6 +2591,8 @@ private fun GrayjayScaffold(
                         onRemovePlaylists = playback.onRemovePlaylists,
                         onExportDownloads = playback.onExportDownloads,
                         onRenamePlaylist = playback.onRenamePlaylist,
+                        shuffledPlaylistIds = playback.shuffledPlaylistIds,
+                        onPlaylistShuffleChange = playback.onPlaylistShuffleChange,
                         selectedFilter = playback.libraryFilter,
                         onSelectedFilterChange = playback.onLibraryFilterChange,
                         playlistListState = playback.libraryPlaylistListState,

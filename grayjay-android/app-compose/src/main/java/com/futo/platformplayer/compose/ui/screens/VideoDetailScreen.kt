@@ -169,6 +169,7 @@ private enum class DetailSection { UpNext, Comments }
 private enum class PlayerSettingsPage { Main, Quality, Speed, ChannelSpeed, SponsorBlock, AudioLanguage, Subtitles }
 
 @Composable
+@androidx.compose.runtime.NonRestartableComposable
 fun VideoDetailScreen(
     video: VideoUiModel,
     download: DownloadUiModel? = null,
@@ -229,6 +230,133 @@ fun VideoDetailScreen(
     allowSideBySideLayout: Boolean = false,
     onPlayerBoundsChanged: (Rect) -> Unit = {},
 ) {
+    VideoDetailContent(VideoDetailParameters(
+        video = video,
+        download = download,
+        player = player,
+        playback = playback,
+        nowPlaying = nowPlaying,
+        queueVideos = queueVideos,
+        onTogglePlayback = onTogglePlayback,
+        onSkipPrevious = onSkipPrevious,
+        onSkipNext = onSkipNext,
+        onSeekBy = onSeekBy,
+        onToggleWatchLater = onToggleWatchLater,
+        onToggleDownload = onToggleDownload,
+        onDownloadVideo = onDownloadVideo,
+        onToggleAudioDownload = onToggleAudioDownload,
+        onDownloadAudio = onDownloadAudio,
+        onAddToPlaylist = onAddToPlaylist,
+        preferredVideoQuality = preferredVideoQuality,
+        preferredAudioBitrate = preferredAudioBitrate,
+        onToggleFollowing = onToggleFollowing,
+        onSeek = onSeek,
+        onSpeedChange = onSpeedChange,
+        holdToSpeedEnabled = holdToSpeedEnabled,
+        onSpeedHoldStart = onSpeedHoldStart,
+        onSpeedHoldEnd = onSpeedHoldEnd,
+        perChannelPlaybackSpeedEnabled = perChannelPlaybackSpeedEnabled,
+        videoPlaybackSpeedOverride = videoPlaybackSpeedOverride,
+        channelPlaybackSpeed = channelPlaybackSpeed,
+        defaultPlaybackSpeed = defaultPlaybackSpeed,
+        preferredAudioLanguage = preferredAudioLanguage,
+        preferOriginalAudio = preferOriginalAudio,
+        onUseChannelSpeed = onUseChannelSpeed,
+        onChannelSpeedChange = onChannelSpeedChange,
+        sponsorBlockInheritedRule = sponsorBlockInheritedRule,
+        sponsorBlockVideoOverride = sponsorBlockVideoOverride,
+        onSponsorBlockVideoOverrideChange = onSponsorBlockVideoOverrideChange,
+        onQualityChange = onQualityChange,
+        onAudioLanguageChange = onAudioLanguageChange,
+        onCaptionsEnabledChange = onCaptionsEnabledChange,
+        onSubtitleLanguageChange = onSubtitleLanguageChange,
+        onRetryPlayback = onRetryPlayback,
+        onStoryboardLoadFailure = onStoryboardLoadFailure,
+        onVideoClick = onVideoClick,
+        onVideoLongClick = onVideoLongClick,
+        onQueueVideoLongClick = onQueueVideoLongClick,
+        creatorChannel = creatorChannel,
+        onCreatorPreview = onCreatorPreview,
+        onCreatorClick = onCreatorClick,
+        onFullscreen = onFullscreen,
+        onLoadMoreRecommendations = onLoadMoreRecommendations,
+        onLoadMoreComments = onLoadMoreComments,
+        onOpenCommentReplies = onOpenCommentReplies,
+        onDismissCommentReplies = onDismissCommentReplies,
+        onLoadMoreCommentReplies = onLoadMoreCommentReplies,
+        onResumeFromHistory = onResumeFromHistory,
+        renderPlayer = renderPlayer,
+        isActive = isActive,
+        allowSideBySideLayout = allowSideBySideLayout,
+        onPlayerBoundsChanged = onPlayerBoundsChanged,
+    ))
+}
+
+// Keep the public callback adapter small. Passing dozens of individual values into a
+// restartable composable made ART compile a multi-megabyte method during video playback.
+private data class VideoDetailParameters(
+    val video: VideoUiModel,
+    val download: DownloadUiModel?,
+    val player: Player,
+    val playback: PlaybackUiState,
+    val nowPlaying: NowPlayingUiState,
+    val queueVideos: List<VideoUiModel>,
+    val onTogglePlayback: () -> Unit,
+    val onSkipPrevious: () -> Unit,
+    val onSkipNext: () -> Unit,
+    val onSeekBy: (Long) -> Unit,
+    val onToggleWatchLater: () -> Unit,
+    val onToggleDownload: () -> Unit,
+    val onDownloadVideo: (Int?) -> Unit,
+    val onToggleAudioDownload: () -> Unit,
+    val onDownloadAudio: (Int?) -> Unit,
+    val onAddToPlaylist: () -> Unit,
+    val preferredVideoQuality: Int,
+    val preferredAudioBitrate: Int,
+    val onToggleFollowing: () -> Unit,
+    val onSeek: (Float) -> Unit,
+    val onSpeedChange: (Float) -> Unit,
+    val holdToSpeedEnabled: Boolean,
+    val onSpeedHoldStart: () -> Unit,
+    val onSpeedHoldEnd: () -> Unit,
+    val perChannelPlaybackSpeedEnabled: Boolean,
+    val videoPlaybackSpeedOverride: Float?,
+    val channelPlaybackSpeed: Float?,
+    val defaultPlaybackSpeed: Float,
+    val preferredAudioLanguage: String,
+    val preferOriginalAudio: Boolean,
+    val onUseChannelSpeed: () -> Unit,
+    val onChannelSpeedChange: (Float?) -> Unit,
+    val sponsorBlockInheritedRule: SponsorBlockRule,
+    val sponsorBlockVideoOverride: SponsorBlockRule?,
+    val onSponsorBlockVideoOverrideChange: (SponsorBlockRule?) -> Unit,
+    val onQualityChange: (Int?) -> Unit,
+    val onAudioLanguageChange: (String?) -> Unit,
+    val onCaptionsEnabledChange: (Boolean) -> Unit,
+    val onSubtitleLanguageChange: (String?) -> Unit,
+    val onRetryPlayback: () -> Unit,
+    val onStoryboardLoadFailure: () -> Unit,
+    val onVideoClick: (VideoUiModel) -> Unit,
+    val onVideoLongClick: (VideoUiModel) -> Unit,
+    val onQueueVideoLongClick: (VideoUiModel) -> Unit,
+    val creatorChannel: ChannelUiModel?,
+    val onCreatorPreview: (ChannelUiModel) -> Unit,
+    val onCreatorClick: (ChannelUiModel) -> Unit,
+    val onFullscreen: () -> Unit,
+    val onLoadMoreRecommendations: () -> Unit,
+    val onLoadMoreComments: () -> Unit,
+    val onOpenCommentReplies: (String) -> Unit,
+    val onDismissCommentReplies: () -> Unit,
+    val onLoadMoreCommentReplies: () -> Unit,
+    val onResumeFromHistory: () -> Unit,
+    val renderPlayer: Boolean,
+    val isActive: Boolean,
+    val allowSideBySideLayout: Boolean,
+    val onPlayerBoundsChanged: (Rect) -> Unit,
+)
+
+@Composable
+private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(parameters) {
     var selectedSectionName by rememberSaveable(video.id) {
         mutableStateOf(DetailSection.UpNext.name)
     }
@@ -1320,7 +1448,7 @@ private fun PlayerTopActionButtons(
  * control object, producing a large GC about every ten seconds while video was playing.
  */
 @Composable
-private fun PlayerTimelineRow(
+internal fun PlayerTimelineRow(
     video: VideoUiModel,
     player: Player,
     remotePositionMs: Long?,
@@ -1337,6 +1465,9 @@ private fun PlayerTimelineRow(
     var playerPositionMs by remember(video.id) {
         mutableLongStateOf(player.currentPosition.coerceAtLeast(0L))
     }
+    var playerBufferedPositionMs by remember(player, video.id) {
+        mutableLongStateOf(player.bufferedPosition.coerceAtLeast(0L))
+    }
     var seekProgress by rememberSaveable(video.id) { mutableFloatStateOf(0f) }
     var isSeeking by remember(video.id) { mutableStateOf(false) }
     var pendingSeekPositionMs by remember(video.id) { mutableStateOf<Long?>(null) }
@@ -1349,7 +1480,8 @@ private fun PlayerTimelineRow(
             while (isActive) {
                 val currentPosition = player.currentPosition.coerceAtLeast(0L)
                 if (playerPositionMs != currentPosition) playerPositionMs = currentPosition
-                delay(500)
+                playerBufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L)
+                delay(250)
             }
         }
     }
@@ -1385,7 +1517,9 @@ private fun PlayerTimelineRow(
         targetValue = if (video.isLive || durationMs <= 0L) {
             0f
         } else {
-            (bufferedPercentage.coerceIn(0, 100) / 100f).coerceAtLeast(positionProgress)
+            val buffered = if (remotePositionMs == null) playerBufferedPositionMs.toFloat() / durationMs
+                else bufferedPercentage.coerceIn(0, 100) / 100f
+            buffered.coerceIn(0f, 1f).coerceAtLeast(positionProgress)
         },
         animationSpec = tween(durationMillis = 220),
         label = "player-buffered-progress",
@@ -3218,12 +3352,16 @@ private fun CommentCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CommentRepliesSheet(
+internal fun CommentRepliesSheet(
     state: CommentRepliesUiState,
     onDismiss: () -> Unit,
     onLoadMore: () -> Unit,
 ) {
     val listState = rememberLazyListState()
+    // The sheet consumes more top insets as it moves. A fractional fillMaxHeight measured
+    // against those changing constraints feeds its size back into its own expanded anchor.
+    val contentHeight = (LocalConfiguration.current.screenHeightDp * 0.85f).dp
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
     RequestNextPageEffect(
         listState = listState,
         canLoadMore = state.hasMore && !state.isLoading && !state.isLoadingMore,
@@ -3231,13 +3369,15 @@ private fun CommentRepliesSheet(
     )
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentWindowInsets = { grayjoySheetInsets() },
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.88f),
+                .height(contentHeight)
+                .testTag("comment-replies-sheet"),
         ) {
             Text(
                 stringResource(R.string.comment_replies),

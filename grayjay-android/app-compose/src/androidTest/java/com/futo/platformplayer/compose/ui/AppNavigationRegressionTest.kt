@@ -28,6 +28,22 @@ class AppNavigationRegressionTest {
         rule.setContent { GrayjayTheme(dynamicColor = false) { GrayjayApp(state.value, player, actions) } }
     }
 
+    @Test fun homeReselectionAndBackFromAHomeTabReturnToSubscriptions() {
+        val state = mutableStateOf(GrayjayUiState(home = HomeUiState(selectedFeed = HomeFeedType.ForYou)))
+        val actions = GrayjayAppActions().apply {
+            onHomeFeedSelected = { state.value = state.value.copy(home = state.value.home.copy(selectedFeed = it)) }
+        }
+        launch(state, actions)
+        rule.onNodeWithTag("nav-home").performClick()
+        rule.waitForIdle()
+        rule.runOnIdle { assertEquals(HomeFeedType.Subscriptions, state.value.home.selectedFeed) }
+        rule.onNodeWithTag("home-feed-trending").performClick()
+        rule.waitForIdle()
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.waitForIdle()
+        rule.runOnIdle { assertEquals(HomeFeedType.Subscriptions, state.value.home.selectedFeed) }
+    }
+
     @Test fun enteringAndReturningToSearchNeverRequestsTextFocus() {
         val state = mutableStateOf(GrayjayUiState())
         launch(state)

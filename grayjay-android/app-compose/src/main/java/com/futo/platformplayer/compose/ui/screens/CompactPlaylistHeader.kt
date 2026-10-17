@@ -35,6 +35,9 @@ internal fun CompactPlaylistHeader(
     playTag: String,
     onPlayAll: () -> Unit,
     actions: List<PlaylistMenuAction>,
+    shuffleId: String = "",
+    shuffled: Boolean = false,
+    onShuffleChange: ((Boolean) -> Unit)? = null,
 ) {
     var expanded by rememberSaveable(title) { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -42,6 +45,7 @@ internal fun CompactPlaylistHeader(
             Icon(Icons.Filled.PlayArrow, contentDescription = null)
             Text(stringResource(R.string.play_all), modifier = Modifier.padding(start = 6.dp), maxLines = 1)
         }
+        onShuffleChange?.let { PlaylistShuffleButton(shuffleId, shuffled, it) }
         FilledTonalIconButton(onClick = { expanded = true }, modifier = Modifier.size(48.dp).testTag("playlist-more-actions")) {
             Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.details))
         }

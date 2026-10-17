@@ -1,4 +1,8 @@
 <resources>
+    <string name="shuffle_playlist">Riproduzione casuale</string>
+    <string name="recent_playlists">Playlist ascoltate di recente</string>
+    <string name="recent_tab">Recenti</string>
+    <string name="no_recent_playlists">Riproduci un album o una playlist per ritrovarlo qui.</string>
     <string name="playback_notification_unavailable">Android non ha potuto mostrare i controlli di riproduzione. Apri Grayjoy e premi Play per riprendere.</string>
     <string name="app_name">Grayjoy</string>
     <string name="lower_volume_for_other_audio">Abbassa il volume per gli altri audio</string>

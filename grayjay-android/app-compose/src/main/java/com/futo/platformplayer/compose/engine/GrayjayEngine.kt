@@ -688,6 +688,27 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override val backendNotices: SharedFlow<EngineBackendNotice> = _backendNotices.asSharedFlow()
 
     init {
+        exoPlayer.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onLoadError(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                loadEventInfo: androidx.media3.exoplayer.source.LoadEventInfo,
+                mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData,
+                error: java.io.IOException,
+                wasCanceled: Boolean,
+            ) {
+                if (mediaLoadData.dataType != C.DATA_TYPE_MEDIA ||
+                    mediaLoadData.trackType == C.TRACK_TYPE_TEXT ||
+                    !hasRejectedPlaybackUrl(error)) return
+                val index = eventTime.windowIndex
+                if (index !in 0 until eventTime.timeline.windowCount) return
+                val failedId = eventTime.timeline.getWindow(index, androidx.media3.common.Timeline.Window()).mediaItem.mediaId
+                if (failedId != exoPlayer.currentMediaItem?.mediaId || youtubeRuntimeFallbackJob?.isActive == true) return
+                // DASH may defer a fatal segment error until the existing buffer runs out.
+                // Resolve the alternate URL while that buffer can still keep playing.
+                startYoutubeRuntimeFallback(PlaybackException("Media URL rejected by the server", error,
+                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS))
+            }
+        })
         exoPlayer.addListener(
             object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -739,6 +760,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
                 override fun onPlayerError(error: PlaybackException) {
                     val videoId = exoPlayer.currentMediaItem?.mediaId
+                    if (videoId == youtubeFallbackVideoId && youtubeRuntimeFallbackJob?.isActive == true) {
+                        syncPlayback()
+                        return
+                    }
                     val repeatedOnlineFailure = videoId != null &&
                         playbackRecoveryGuard.recordFailure(
                             videoId, exoPlayer.currentPosition.coerceAtLeast(0L), networkMonitor.isAvailable(),
@@ -2990,7 +3015,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             queueVideoIds = queueIds,
             isPlaying = exoPlayer.playWhenReady && exoPlayer.playbackState != Player.STATE_ENDED,
             isBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING ||
-                connectivityRecoveryPending || (currentVideoId != null && currentVideoId == youtubeFallbackVideoId),
+                connectivityRecoveryPending || (currentVideoId != null && currentVideoId == youtubeFallbackVideoId && !exoPlayer.isPlaying),
             positionMs = exoPlayer.currentPosition.coerceAtLeast(0L),
             durationMs = duration,
             bufferedPercentage = exoPlayer.bufferedPercentage.coerceIn(0, 100),

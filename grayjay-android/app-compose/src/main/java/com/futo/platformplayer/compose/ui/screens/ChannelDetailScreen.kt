@@ -84,6 +84,8 @@ fun ChannelDetailScreen(
     onFollowingChange: (Boolean) -> Unit,
     onTabSelected: (ChannelContentTab) -> Unit,
     onPlaylistClick: (PlaylistUiModel) -> Unit,
+    shuffledPlaylistIds: Set<String> = emptySet(),
+    onPlaylistShuffleChange: (String, Boolean) -> Unit = { _, _ -> },
     onLoadMore: () -> Unit,
     onSearchQueryChange: (String) -> Unit = {},
     onLoadMoreSearch: () -> Unit = {},
@@ -522,7 +524,9 @@ fun ChannelDetailScreen(
                 key = PlaylistUiModel::id,
                 contentType = { "playlist" },
             ) { playlist ->
-                PlaylistRow(playlist = playlist, onClick = { onPlaylistClick(playlist) })
+                PlaylistRow(playlist = playlist, onClick = { onPlaylistClick(playlist) },
+                    shuffled = playlist.id in shuffledPlaylistIds,
+                    onShuffleChange = { onPlaylistShuffleChange(playlist.id, it) })
             }
         } else {
             itemsIndexed(

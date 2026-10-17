@@ -47,6 +47,7 @@ import com.futo.platformplayer.compose.ui.ReleaseUpdateUiModel
 import com.futo.platformplayer.compose.ui.UpdateDownloadUiModel
 import com.futo.platformplayer.compose.update.GrayjoyUpdateInstaller
 import com.futo.platformplayer.compose.ui.theme.GrayjayTheme
+import com.futo.platformplayer.compose.ui.isSpotifyOnly
 import com.futo.platformplayer.compose.playback.PictureInPictureActionReceiver
 import com.futo.platformplayer.compose.jobs.GrayjoyActiveJobsService
 import com.futo.platformplayer.compose.jobs.activeJobsSnapshot
@@ -362,6 +363,7 @@ class MainActivity : FragmentActivity() {
                     onCreateLocalPlaylistFromRemote = viewModel::createLocalPlaylistFromRemote
                     onCreatePlaylist = viewModel::createPlaylist
                     onRenamePlaylist = viewModel::renamePlaylist
+                    onPlaylistShuffleChange = viewModel::setPlaylistShuffled
                     onAddVideosToPlaylist = viewModel::addVideosToPlaylist
                     onRemoveVideosFromPlaylist = viewModel::removeVideosFromPlaylist
                     onReorderPlaylist = viewModel::reorderPlaylist
@@ -511,6 +513,7 @@ class MainActivity : FragmentActivity() {
             GrayjayTheme(
                 darkTheme = darkTheme,
                 dynamicColor = uiState.dynamicColorsEnabled,
+                musicProfile = uiState.sources.isSpotifyOnly(),
             ) {
                 GrayjayApp(
                     uiState = uiState,

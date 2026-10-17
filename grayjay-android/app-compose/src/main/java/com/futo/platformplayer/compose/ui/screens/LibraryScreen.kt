@@ -187,6 +187,8 @@ internal fun LibraryScreen(
     onRemovePlaylists: (List<String>) -> Unit = {},
     onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit = { _, _, _ -> },
     onRenamePlaylist: (String, String) -> Unit = { _, _ -> },
+    shuffledPlaylistIds: Set<String> = emptySet(),
+    onPlaylistShuffleChange: (String, Boolean) -> Unit = { _, _ -> },
     selectedFilter: LibraryFilter = LibraryFilter.History,
     onSelectedFilterChange: (LibraryFilter) -> Unit = {},
     playlistListState: LazyListState = rememberLazyListState(),
@@ -559,6 +561,8 @@ internal fun LibraryScreen(
             ) { playlist ->
                 PlaylistRow(
                     playlist = playlist,
+                    shuffled = playlist.id in shuffledPlaylistIds,
+                    onShuffleChange = if (selectionMode) null else { enabled -> onPlaylistShuffleChange(playlist.id, enabled) },
                     selected = playlist.id in selectedPlaylistIds,
                     onClick = {
                         if (selectionMode) {

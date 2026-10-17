@@ -63,6 +63,7 @@ class GrayjayAppActions {
         (String, DownloadMediaType, Boolean) -> Unit = { _, _, _ -> }
     var onCreatePlaylist: (String, List<String>) -> Unit = { _, _ -> }
     var onRenamePlaylist: (String, String) -> Unit = { _, _ -> }
+    var onPlaylistShuffleChange: (String, Boolean) -> Unit = { _, _ -> }
     var onAddVideosToPlaylist: (String, List<String>) -> Unit = { _, _ -> }
     var onRemoveVideosFromPlaylist: (String, List<String>) -> Unit = { _, _ -> }
     var onReorderPlaylist: (String, List<String>) -> Unit = { _, _ -> }
