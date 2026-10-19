@@ -75,6 +75,7 @@ class MainActivity : FragmentActivity() {
     private var pictureInPictureEntryPending = false
     private var pictureInPictureSourceRect: Rect? = null
     private var playerFullscreen = false
+    private var playerExpanded by mutableStateOf(false)
     private var playerLandscapeFullscreen = false
     private val updateInstaller by lazy { GrayjoyUpdateInstaller(this) }
     private var pendingUpdateApk: File? = null
@@ -314,6 +315,8 @@ class MainActivity : FragmentActivity() {
                     onDynamicColorsChange = viewModel::setDynamicColorsEnabled
                     onPrivateSessionChange = viewModel::setPrivateSessionEnabled
                     onOpenVideo = viewModel::openVideo
+                    onPlaySearchResults = viewModel::playSearchResults
+                    onPlayerExpandedChange = { playerExpanded = it }
                     onDismissVideoOpenDialog = viewModel::dismissVideoOpenDialog
                     onLoadChannel = viewModel::loadChannel
                     onChannelTabSelected = viewModel::selectChannelTab
@@ -510,6 +513,7 @@ class MainActivity : FragmentActivity() {
                     onRebuildContentCaches = viewModel::rebuildContentCaches
                 }
             }
+            val deviceRotation = rememberPlayerDeviceRotation(playerExpanded && !pictureInPictureMode)
             GrayjayTheme(
                 darkTheme = darkTheme,
                 dynamicColor = uiState.dynamicColorsEnabled,
@@ -524,7 +528,8 @@ class MainActivity : FragmentActivity() {
                     },
                     isDarkTheme = darkTheme,
                     updateDownload = updateDownloadState,
-                    deviceIsLandscape = false,
+                    deviceIsLandscape = deviceRotation.landscape,
+                    automaticPlayerRotationEnabled = deviceRotation.enabled,
                     pictureInPictureMode = pictureInPictureMode,
                 )
                 if (showJobNotificationSettings) {
@@ -742,8 +747,7 @@ class MainActivity : FragmentActivity() {
             supportsResponsiveLayout = resources.configuration.smallestScreenWidthDp >= 600,
         )
         if (requestedOrientation != playerOrientation) {
-            // This is scoped to Grayjoy's Activity. SENSOR_LANDSCAPE deliberately bypasses the
-            // user's global rotation lock without reading or changing that Android setting.
+            // USER_LANDSCAPE honors Android's rotation lock within the fullscreen player.
             requestedOrientation = playerOrientation
         }
         applyPlayerStatusBarVisibility()
@@ -885,7 +889,7 @@ internal fun fullscreenPlayerOrientation(
     portraitVideo: Boolean,
     supportsResponsiveLayout: Boolean = false,
 ): Int = when {
-    fullscreen && !portraitVideo -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    fullscreen && !portraitVideo -> ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
     fullscreen -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     supportsResponsiveLayout -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT

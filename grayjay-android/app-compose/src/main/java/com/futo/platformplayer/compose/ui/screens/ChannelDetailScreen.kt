@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.outlined.Sort
+import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
@@ -41,6 +43,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -91,6 +94,7 @@ fun ChannelDetailScreen(
     onLoadMoreSearch: () -> Unit = {},
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
+    onAddSelectionToPlaylist: (List<String>) -> Unit = {},
     perChannelPlaybackSpeedEnabled: Boolean = true,
     channelPlaybackSpeed: Float? = null,
     defaultPlaybackSpeed: Float = 1f,
@@ -102,6 +106,9 @@ fun ChannelDetailScreen(
     val performance = rememberDevicePerformanceProfile()
     val compactLayout = compactUi()
     val query = detail.searchQuery
+    var selectedVideoIds by rememberSaveable(channel.id, detail.selectedTab, query) { mutableStateOf(emptyList<String>()) }
+    val selectionMode = selectedVideoIds.isNotEmpty()
+    PageBackHandler(enabled = selectionMode) { selectedVideoIds = emptyList() }
     var showSettingsSheet by rememberSaveable(channel.id) { mutableStateOf(false) }
     var showSortSheet by rememberSaveable(channel.id, detail.selectedTab) { mutableStateOf(false) }
     var descriptionExpanded by rememberSaveable(channel.id) { mutableStateOf(false) }
@@ -252,9 +259,23 @@ fun ChannelDetailScreen(
         )
     }
 
+    Column(Modifier.fillMaxSize()) {
+    if (selectionMode) Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+            .testTag("channel-selection-bar"), verticalAlignment = Alignment.CenterVertically) {
+            Text(selectedVideoIds.size.toString(), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = { selectedVideoIds = emptyList() }, modifier = Modifier.testTag("channel-selection-cancel")) {
+                Text(stringResource(R.string.cancel))
+            }
+            IconButton(onClick = { onAddSelectionToPlaylist(selectedVideoIds) }, modifier = Modifier.testTag("channel-selection-add")) {
+                Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, contentDescription = stringResource(R.string.add_to_playlist))
+            }
+        }
+    }
     LazyColumn(
         state = listState,
         modifier = Modifier
+            .weight(1f)
             .nestedScroll(searchHeaderScrollConnection)
             .testTag("channel-detail-${channel.id}"),
         contentPadding = if (compactLayout) androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)
@@ -537,8 +558,15 @@ fun ChannelDetailScreen(
                 CompactVideoCard(
                     video = video,
                     index = index,
-                    onClick = { onVideoClick(video) },
-                    onLongClick = { onVideoLongClick(video) },
+                    selected = video.id in selectedVideoIds,
+                    selectionMode = selectionMode,
+                    onClick = {
+                        if (selectionMode) selectedVideoIds = if (video.id in selectedVideoIds) selectedVideoIds - video.id else selectedVideoIds + video.id
+                        else onVideoClick(video)
+                    },
+                    onLongClick = {
+                        if (video.id !in selectedVideoIds) selectedVideoIds = selectedVideoIds + video.id
+                    },
                 )
             }
         }
@@ -569,6 +597,7 @@ fun ChannelDetailScreen(
         }
     }
 
+    }
     if (showSettingsSheet) {
         ModalBottomSheet(
             onDismissRequest = { showSettingsSheet = false },

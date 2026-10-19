@@ -1,4 +1,5 @@
 <resources>
+    <string name="search_results_playlist_title">Ricerca: %1$s</string>
     <string name="shuffle_playlist">Riproduzione casuale</string>
     <string name="recent_playlists">Playlist ascoltate di recente</string>
     <string name="recent_tab">Recenti</string>

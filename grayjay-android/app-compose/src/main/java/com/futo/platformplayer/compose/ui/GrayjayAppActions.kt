@@ -20,6 +20,8 @@ class GrayjayAppActions {
     var onDynamicColorsChange: (Boolean) -> Unit = { _ -> }
     var onPrivateSessionChange: (Boolean) -> Unit = { _ -> }
     var onOpenVideo: (String) -> Unit = { _ -> }
+    var onPlayerExpandedChange: (Boolean) -> Unit = {}
+    var onPlaySearchResults: (List<String>) -> Unit = {}
     var onDismissVideoOpenDialog: () -> Unit = {}
     var onLoadChannel: (ChannelUiModel) -> Unit = { _ -> }
     var onChannelTabSelected: (ChannelContentTab) -> Unit = {}

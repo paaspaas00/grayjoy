@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.NorthWest
@@ -75,6 +76,7 @@ fun SearchScreen(
     onVideoLongClick: (VideoUiModel) -> Unit,
     onChannelClick: (ChannelUiModel) -> Unit,
     onPlaylistClick: (PlaylistUiModel) -> Unit,
+    onPlayAll: (List<String>) -> Unit = {},
     shuffledPlaylistIds: Set<String> = emptySet(),
     onPlaylistShuffleChange: (String, Boolean) -> Unit = { _, _ -> },
     autoFocus: Boolean = false,
@@ -132,6 +134,10 @@ fun SearchScreen(
         SearchContentType.Videos -> search.videos.size
     }
     val showingResults = search.isLoading || search.hasSearched || search.errorMessage != null
+    val playableResultIds = remember(search.videos) {
+        val now = System.currentTimeMillis()
+        search.videos.filter { it.isAvailable && it.scheduledStartAtMs <= now }.map(VideoUiModel::id).distinct()
+    }
     RequestNextPageEffect(
         listState = listState,
         canLoadMore = showingResults && search.hasMore && !search.isLoading && !search.isLoadingMore,
@@ -434,6 +440,15 @@ fun SearchScreen(
                         )
                     }
                     SearchContentType.Videos -> {
+                        if (!search.isLoading && playableResultIds.isNotEmpty()) item {
+                            androidx.compose.material3.FilledTonalButton(
+                                onClick = { leaveSearch(); onPlayAll(playableResultIds) },
+                                modifier = Modifier.testTag("search-play-all"),
+                            ) {
+                                Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                                Text(stringResource(R.string.play_all), Modifier.padding(start = 6.dp))
+                            }
+                        }
                         if (search.videos.isNotEmpty() && !compactLayout) {
                             item { SectionHeading(stringResource(R.string.videos)) }
                         }

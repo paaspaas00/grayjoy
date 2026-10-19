@@ -334,6 +334,7 @@ private data class PlaybackPresentation(
     val onLoadMoreCommentReplies: () -> Unit,
     val onClose: () -> Unit,
     val onPlayQueue: (List<String>) -> Unit,
+    val onPlaySearchResults: (List<String>) -> Unit,
     val onQueueVideos: (List<String>) -> Unit,
     val onPlayNext: (String) -> Unit,
     val onPlayPlaylist: (String) -> Unit,
@@ -561,6 +562,7 @@ fun GrayjayApp(
     isDarkTheme: Boolean = false,
     updateDownload: UpdateDownloadUiModel? = null,
     deviceIsLandscape: Boolean = false,
+    automaticPlayerRotationEnabled: Boolean = true,
     pictureInPictureMode: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -651,6 +653,9 @@ fun GrayjayApp(
     }
     val selectedVideo = uiState.nowPlaying.video?.takeIf { it.id == selectedVideoId }
         ?: selectedVideoId?.let(availableVideosById::get)
+    LaunchedEffect(selectedVideo != null, pictureInPictureMode) {
+        actions.onPlayerExpandedChange(selectedVideo != null && !pictureInPictureMode)
+    }
     val selectedChannel = uiState.channels.firstOrNull { it.id == selectedChannelId }
         ?: uiState.channelDetail.channel?.takeIf { it.id == selectedChannelId }
         ?: visitedChannels[selectedChannelId]
@@ -1163,6 +1168,7 @@ fun GrayjayApp(
             }
         },
         onQueueVideos = actions.onQueueVideos,
+        onPlaySearchResults = actions.onPlaySearchResults,
         onPlayNext = actions.onPlayNext,
         onPlayPlaylist = { playlistId ->
             val playlist = uiState.playlists.firstOrNull { it.id == playlistId }
@@ -1409,6 +1415,7 @@ fun GrayjayApp(
     }
     LaunchedEffect(
         deviceIsLandscape,
+        automaticPlayerRotationEnabled,
         automaticFullscreenAllowed,
         selectedVideo?.id,
         playerTransition.isSettling,
@@ -1417,12 +1424,12 @@ fun GrayjayApp(
         val expandedNowPlaying = selectedVideo != null &&
             !playerTransition.isSettling && playerTransition.target < 0.01f
         when {
-            automaticFullscreenAllowed && deviceIsLandscape && expandedNowPlaying &&
+            automaticPlayerRotationEnabled && automaticFullscreenAllowed && deviceIsLandscape && expandedNowPlaying &&
                 !isFullscreen && !portraitFullscreen -> {
                 fullscreenEnteredByRotation = true
                 isFullscreen = true
             }
-            (!deviceIsLandscape || !automaticFullscreenAllowed) &&
+            automaticPlayerRotationEnabled && (!deviceIsLandscape || !automaticFullscreenAllowed) &&
                 isFullscreen && fullscreenEnteredByRotation -> {
                 fullscreenEnteredByRotation = false
                 isFullscreen = false
@@ -2392,6 +2399,7 @@ private fun GrayjayScaffold(
                     ?: selected
                 if (animatedChannel != null) {
                 ChannelDetailScreen(
+                    onAddSelectionToPlaylist = playback.onAddSelectionToPlaylist,
                     shuffledPlaylistIds = playback.shuffledPlaylistIds,
                     onPlaylistShuffleChange = playback.onPlaylistShuffleChange,
                     channel = animatedChannel,
@@ -2553,6 +2561,7 @@ private fun GrayjayScaffold(
                         onChannelClick = onChannelClick,
                     )
                     GrayjayDestination.Search -> SearchScreen(
+                        onPlayAll = playback.onPlaySearchResults,
                         shuffledPlaylistIds = playback.shuffledPlaylistIds,
                         onPlaylistShuffleChange = playback.onPlaylistShuffleChange,
                         search = sourcePresentation.search,

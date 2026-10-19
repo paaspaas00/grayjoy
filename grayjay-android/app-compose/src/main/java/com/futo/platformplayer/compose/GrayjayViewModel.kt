@@ -612,6 +612,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val queuePreparation = QueuePreparationGate(viewModelScope)
     private var queuePreparationBlockedUntilMs = 0L
     private val queueMutations = SerialMutationQueue(viewModelScope)
+    private var searchPlaylistJob: Job? = null
     private var watchProgressWriteJob: Job? = null
     private var externalUrlJob: Job? = null
     private var releaseCheckJob: Job? = null
@@ -3311,6 +3312,40 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun playQueue(videoIds: List<String>) {
         activePlaylistId = null
         startQueue(videoIds)
+    }
+
+    fun playSearchResults(videoIds: List<String>) {
+        if (searchPlaylistJob?.isActive == true) return
+        val now = System.currentTimeMillis()
+        val videos = videoIds.distinct().mapNotNull(::findVideo)
+            .filter { it.isAvailable && it.scheduledStartAtMs <= now }
+        if (videos.isEmpty()) return
+        val profile = activeProfileId
+        val repository = libraryRepository
+        val generation = playbackGeneration
+        val base = text(R.string.search_results_playlist_title, _uiState.value.search.query.trim()).take(80)
+        searchPlaylistJob = viewModelScope.launch {
+            val (playlist, snapshot) = tryLibraryMutation { withContext(Dispatchers.IO) {
+                synchronized(repository.transactionLock) {
+                    val existing = repository.loadPlaylists().map(PlaylistUiModel::title)
+                    var title = base
+                    var suffix = 2
+                    while (playlistTitleExists(title, existing)) {
+                        val tail = " (${suffix++})"
+                        title = base.take(80 - tail.length) + tail
+                    }
+                    val created = repository.createPlaylist(title, videos) ?: return@withContext null
+                    created to repository.snapshot()
+                }
+            } } ?: return@launch
+            if (profile != activeProfileId || repository !== libraryRepository) return@launch
+            applyLibrarySnapshot(snapshot)
+            if (generation != playbackGeneration) return@launch
+            activePlaylistId = playlist.id
+            startQueue(playlist.videoIds)
+            rememberPlayedPlaylist(playlist)
+            publishExternalNavigation(ExternalNavigationKind.Video, playlist.videoIds.first())
+        }
     }
 
     fun enqueueVideos(videoIds: List<String>) {

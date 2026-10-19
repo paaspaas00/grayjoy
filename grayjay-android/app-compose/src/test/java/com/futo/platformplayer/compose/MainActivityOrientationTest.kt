@@ -76,9 +76,9 @@ class MainActivityOrientationTest {
     }
 
     @Test
-    fun `fullscreen orientation is app controlled regardless of Android rotation lock`() {
+    fun `fullscreen orientation respects Android rotation lock without rotating app pages`() {
         assertEquals(
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
+            ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE,
             fullscreenPlayerOrientation(fullscreen = true, portraitVideo = false),
         )
         assertEquals(
@@ -101,6 +101,16 @@ class MainActivityOrientationTest {
             ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,
             appOrientationForWindow(supportsResponsiveLayout = true),
         )
+    }
+
+    @Test fun `sensor orientation has a stable boundary around portrait and landscape`() {
+        assertTrue(playerLandscapeForSensorAngle(90, false))
+        assertTrue(playerLandscapeForSensorAngle(270, false))
+        assertFalse(playerLandscapeForSensorAngle(0, true))
+        assertFalse(playerLandscapeForSensorAngle(180, true))
+        assertTrue(playerLandscapeForSensorAngle(45, true))
+        assertFalse(playerLandscapeForSensorAngle(45, false))
+        assertTrue(playerLandscapeForSensorAngle(-1, true))
     }
 
     @Test
