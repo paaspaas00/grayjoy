@@ -188,6 +188,7 @@ class NewPipeYoutubeContentBackend(
             hasMore = firstPage?.hasMore == true,
             supportsShorts = info.tabs.any { it.contentFilter() == ChannelTabs.SHORTS },
             supportsPlaylists = info.tabs.any { it.contentFilter() == ChannelTabs.PLAYLISTS },
+            supportsReleases = info.tabs.any { it.contentFilter() == ChannelTabs.ALBUMS },
             liveContentType = ChannelTabs.LIVESTREAMS.takeIf {
                 info.tabs.any { handler -> handler.contentFilter() == ChannelTabs.LIVESTREAMS }
             },
@@ -479,6 +480,7 @@ class NewPipeYoutubeContentBackend(
         "shorts" -> ChannelTabs.SHORTS
         "live", "streams", "livestreams" -> ChannelTabs.LIVESTREAMS
         "playlists", "__grayjoy_playlists__" -> ChannelTabs.PLAYLISTS
+        "releases", "albums" -> ChannelTabs.ALBUMS
         else -> ChannelTabs.VIDEOS
     }
 

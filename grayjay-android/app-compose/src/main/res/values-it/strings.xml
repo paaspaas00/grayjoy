@@ -179,6 +179,11 @@
     </plurals>
     <string name="local_playlist">PLAYLIST LOCALE</string>
     <string name="play_all">Riproduci tutto</string>
+    <string name="play_selected">Riproduci i video selezionati</string>
+    <string name="channel_releases">Uscite</string>
+    <string name="youtube_autoplay">Riproduzione automatica YouTube</string>
+    <string name="youtube_autoplay_description">Alla fine del video riproduce il successivo consigliato da YouTube dopo un conto alla rovescia annullabile di 10 secondi. Usa una coda temporanea non salvata; non estende le tue playlist.</string>
+    <string name="youtube_autoplay_countdown">Prossimo video tra %1$d secondi</string>
     <string name="play_from_here">Da qui</string>
     <string name="play_from_here_description">Avvia la playlist dal video selezionato</string>
     <string name="export">Esporta</string>

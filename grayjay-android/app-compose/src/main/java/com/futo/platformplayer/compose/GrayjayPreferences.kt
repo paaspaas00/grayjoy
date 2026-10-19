@@ -78,6 +78,10 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         get() = preferences.getBoolean("brainrot_shorts_enabled", false)
         set(value) { preferences.edit().putBoolean("brainrot_shorts_enabled", value).apply() }
 
+    var youtubeAutoplayEnabled: Boolean
+        get() = preferences.getBoolean("youtube_autoplay_enabled", false)
+        set(value) { preferences.edit().putBoolean("youtube_autoplay_enabled", value).apply() }
+
     fun channelPlaybackSpeeds(): Map<String, Float> =
         playbackSpeedMap(KEY_CHANNEL_PLAYBACK_SPEEDS)
 

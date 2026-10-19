@@ -121,6 +121,7 @@ data class GrayjayChannelDetails(
     val hasMore: Boolean = false,
     val supportsShorts: Boolean = false,
     val supportsPlaylists: Boolean = false,
+    val supportsReleases: Boolean = false,
     val liveContentType: String? = null,
     val supportsPopularSort: Boolean = false,
 )
@@ -642,6 +643,7 @@ class GrayjayPluginBackend(
 ) {
     private val appContext = context.applicationContext
     private val client = OkHttpClient.Builder().build()
+    private val youtubeReleases by lazy { YoutubeChannelReleasesBackend(client) }
     private val clients = ConcurrentHashMap<String, JSClient>()
     private val sourceAliases = ConcurrentHashMap<String, String>()
     private val pendingUntrustedPlugins = ConcurrentHashMap<String, PendingUntrustedPlugin>()
@@ -1325,6 +1327,7 @@ class GrayjayPluginBackend(
         continuationId: String,
         pageSize: Int = 30,
     ): GrayjayChannelPage = withContext(Dispatchers.IO) {
+        if (continuationId.startsWith("yr:")) return@withContext youtubeReleases.loadMore(continuationId)
         readExistingSession(continuationId, pageSize).toChannelPage()
     }
 
@@ -1335,6 +1338,9 @@ class GrayjayPluginBackend(
         videoLimit: Int = 30,
     ): GrayjayChannelDetails = withContext(Dispatchers.IO) {
         require(channelUrl.isNotBlank()) { "This video did not provide a creator URL." }
+        val releases = if (sourceId.equals("youtube", true)) async {
+            runCatching { youtubeReleases.firstPage(channelUrl).available }.getOrDefault(false)
+        } else null
         val plugin = getOrLoad(sourceId, endpoint)
         val channel = plugin.getChannel(channelUrl)
         val capabilities = plugin.getChannelCapabilities()
@@ -1365,6 +1371,7 @@ class GrayjayPluginBackend(
             hasMore = page.hasMore,
             supportsShorts = capabilities.hasType(ResultCapabilities.TYPE_SHORTS),
             supportsPlaylists = plugin.capabilities.hasGetChannelPlaylists,
+            supportsReleases = releases?.await() == true,
             liveContentType = when {
                 capabilities.hasType(ResultCapabilities.TYPE_STREAMS) ->
                     ResultCapabilities.TYPE_STREAMS
@@ -1386,6 +1393,7 @@ class GrayjayPluginBackend(
         type: String,
         pageSize: Int = 30,
     ): GrayjayChannelPage = withContext(Dispatchers.IO) {
+        if (sourceId.equals("youtube", true) && type == "RELEASES") return@withContext youtubeReleases.firstPage(channelUrl).page
         val plugin = getOrLoad(sourceId, endpoint)
         val isPlaylists = type == CHANNEL_PLAYLISTS_TYPE
         val pager = if (isPlaylists) {
@@ -2502,6 +2510,7 @@ class GrayjayPluginBackend(
     fun resetTransientSessions() {
         pagerSessions.clear()
         commentHandles.clear()
+        youtubeReleases.clear()
     }
 
     fun clearPlugin(alias: String, pluginId: String) {

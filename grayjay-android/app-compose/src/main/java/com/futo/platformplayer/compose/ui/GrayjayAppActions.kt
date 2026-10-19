@@ -168,6 +168,7 @@ class GrayjayAppActions {
     var onHydrateVideoMetadata: (String) -> Unit = {}
     var onHydrateChannelArtwork: (String) -> Unit = {}
     var onBrainrotShortsChange: (Boolean) -> Unit = {}
+    var onYoutubeAutoplayChange: (Boolean) -> Unit = {}
     var onRebuildContentCaches: () -> Unit = {}
     var onFullscreenPresentationChanged: (Boolean, Boolean) -> Unit = { _, _ -> }
 }

@@ -1568,6 +1568,7 @@ fun GrayjayApp(
         LocalDisplayClock provides displayClock,
         com.futo.platformplayer.compose.ui.screens.LocalExtraPreferences provides com.futo.platformplayer.compose.ui.screens.ExtraPreferences(
             uiState.brainrotShortsEnabled, actions.onBrainrotShortsChange, uiState.rebuildingCaches, actions.onRebuildContentCaches,
+            uiState.youtubeAutoplayEnabled, actions.onYoutubeAutoplayChange,
         ),
     ) {
         val navigationVideos = remember(uiState.videos, uiState.subscriptionVideos) {
@@ -2400,6 +2401,7 @@ private fun GrayjayScaffold(
                 if (animatedChannel != null) {
                 ChannelDetailScreen(
                     onAddSelectionToPlaylist = playback.onAddSelectionToPlaylist,
+                    onPlaySelection = playback.onPlayQueue,
                     shuffledPlaylistIds = playback.shuffledPlaylistIds,
                     onPlaylistShuffleChange = playback.onPlaylistShuffleChange,
                     channel = animatedChannel,

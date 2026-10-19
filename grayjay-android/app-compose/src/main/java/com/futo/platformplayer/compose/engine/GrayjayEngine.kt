@@ -196,6 +196,7 @@ data class EngineChannelDetails(
     val hasMore: Boolean = false,
     val supportsShorts: Boolean = false,
     val supportsPlaylists: Boolean = false,
+    val supportsReleases: Boolean = false,
     val liveContentType: String? = null,
     val supportsPopularSort: Boolean = false,
 )
@@ -1546,6 +1547,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             ChannelContentTab.Live -> contentType
                 ?: com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_STREAMS
             ChannelContentTab.Playlists -> GrayjayPluginBackend.CHANNEL_PLAYLISTS_TYPE
+            ChannelContentTab.Releases -> "RELEASES"
         }
         val page = if (channel.sourceId.equals("youtube", true) && useNewPipeYoutubeBackend) {
             withYoutubeBackendFallback(
@@ -1580,7 +1582,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         query: String,
         contentType: String?,
     ): EngineChannelPage? {
-        if (query.isBlank() || tab == ChannelContentTab.Playlists) return null
+        if (query.isBlank() || tab.isPlaylistTab) return null
         val endpoint = pluginEndpoints[channel.sourceId]
             ?: error(appContext.getString(R.string.source_plugin_unavailable, channel.source))
         if (
@@ -1601,7 +1603,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_SHORTS
             ChannelContentTab.Live -> contentType
                 ?: com.futo.platformplayer.api.media.models.ResultCapabilities.TYPE_STREAMS
-            ChannelContentTab.Playlists -> return null
+            ChannelContentTab.Playlists, ChannelContentTab.Releases -> return null
         }
         return pluginBackend.searchChannelPage(
             sourceId = channel.sourceId,
@@ -3136,6 +3138,7 @@ private fun GrayjayChannelDetails.toEngineChannelDetails(
     hasMore = hasMore,
     supportsShorts = supportsShorts,
     supportsPlaylists = supportsPlaylists,
+    supportsReleases = supportsReleases,
     liveContentType = liveContentType,
     supportsPopularSort = supportsPopularSort,
 )

@@ -510,6 +510,7 @@ class MainActivity : FragmentActivity() {
                     onHydrateVideoMetadata = viewModel::hydrateVideoMetadata
                     onHydrateChannelArtwork = viewModel::hydrateChannelArtwork
                     onBrainrotShortsChange = viewModel::setBrainrotShortsEnabled
+                    onYoutubeAutoplayChange = viewModel::setYoutubeAutoplayEnabled
                     onRebuildContentCaches = viewModel::rebuildContentCaches
                 }
             }
@@ -519,6 +520,10 @@ class MainActivity : FragmentActivity() {
                 dynamicColor = uiState.dynamicColorsEnabled,
                 musicProfile = uiState.sources.isSpotifyOnly(),
             ) {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.futo.platformplayer.compose.ui.LocalYoutubeAutoplay provides
+                        com.futo.platformplayer.compose.ui.YoutubeAutoplayControls(uiState.youtubeAutoplay, viewModel::cancelYoutubeAutoplay),
+                ) {
                 GrayjayApp(
                     uiState = uiState,
                     player = viewModel.player,
@@ -532,6 +537,7 @@ class MainActivity : FragmentActivity() {
                     automaticPlayerRotationEnabled = deviceRotation.enabled,
                     pictureInPictureMode = pictureInPictureMode,
                 )
+                }
                 if (showJobNotificationSettings) {
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { showJobNotificationSettings = false },

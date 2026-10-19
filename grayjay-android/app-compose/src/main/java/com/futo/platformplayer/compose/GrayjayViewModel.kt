@@ -71,6 +71,9 @@ import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.ExternalNavigationKind
 import com.futo.platformplayer.compose.ui.ExternalNavigationUiModel
 import com.futo.platformplayer.compose.ui.GrayjayUiState
+import com.futo.platformplayer.compose.ui.YoutubeAutoplayUiState
+import com.futo.platformplayer.compose.ui.youtubeAutoplayCandidates
+import com.futo.platformplayer.compose.ui.youtubeAutoplayCountdown
 import com.futo.platformplayer.compose.ui.DatabaseImportPreviewUiModel
 import com.futo.platformplayer.compose.ui.DatabaseImportSelection
 import com.futo.platformplayer.compose.ui.DatabaseImportUiState
@@ -306,6 +309,7 @@ private data class PlaybackQueueSession(
     val pendingVideos: MutableList<VideoUiModel>,
     val knownVideoIds: MutableSet<String>,
     val orderedVideoIds: MutableList<String>,
+    val automatic: Boolean = false,
 )
 
 private data class SpeedHoldSnapshot(
@@ -704,6 +708,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
             holdToSpeedEnabled = preferences.holdToSpeedEnabled,
             brainrotShortsEnabled = preferences.brainrotShortsEnabled,
+            youtubeAutoplayEnabled = preferences.youtubeAutoplayEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             sponsorBlockEnabled = preferences.sponsorBlockEnabled,
@@ -844,6 +849,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update { it.copy(nowPlaying = NowPlayingUiState()) }
                 }
                 if (!awaitingPendingSelection) prepareQueueLookAhead(playback)
+                if (!awaitingPendingSelection) updateYoutubeAutoplayCountdown()
                 if (!awaitingPendingSelection && !cast.isConnected) maybeSkipSponsorSegment(
                     positionMs = playback.positionMs,
                     durationMs = playback.durationMs,
@@ -2209,6 +2215,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
             holdToSpeedEnabled = preferences.holdToSpeedEnabled,
             brainrotShortsEnabled = preferences.brainrotShortsEnabled,
+            youtubeAutoplayEnabled = preferences.youtubeAutoplayEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             sponsorBlockEnabled = preferences.sponsorBlockEnabled,
@@ -3314,6 +3321,109 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         startQueue(videoIds)
     }
 
+    fun setYoutubeAutoplayEnabled(enabled: Boolean) {
+        preferences.youtubeAutoplayEnabled = enabled
+        _uiState.update { it.copy(youtubeAutoplayEnabled = enabled) }
+        if (enabled) _uiState.value.nowPlaying.video?.let { prepareYoutubeAutoplay(it, _uiState.value.nowPlaying.recommendations) }
+        if (!enabled) {
+            cancelYoutubeAutoplay()
+            if (playbackQueueSession?.automatic == true) playbackQueueSession = null
+        }
+    }
+
+    private var autoplayJob: Job? = null
+    private var autoplayCountdownJob: Job? = null
+    private var autoplayPrepared: Pair<String, VideoUiModel>? = null
+    private var autoplayCancelledFor: String? = null
+
+    fun cancelYoutubeAutoplay() {
+        autoplayCancelledFor = engine.playback.value.currentVideoId
+        autoplayJob?.cancel()
+        autoplayCountdownJob?.cancel()
+        autoplayPrepared = null
+        _uiState.update { it.copy(youtubeAutoplay = null) }
+    }
+
+    private fun updateYoutubeAutoplayCountdown() {
+        val prepared = autoplayPrepared ?: return
+        val current = engine.playback.value.currentVideoId
+        if (current != prepared.first || engine.player.playbackState != androidx.media3.common.Player.STATE_ENDED) {
+            autoplayCountdownJob?.cancel()
+            _uiState.update { if (it.youtubeAutoplay == null) it else it.copy(youtubeAutoplay = null) }
+            return
+        }
+        if (!preferences.youtubeAutoplayEnabled || pendingPlaybackVideoId != null || activePlaylistId != null ||
+            playbackQueueSession?.automatic != true || !engine.player.playWhenReady ||
+            autoplayCancelledFor == current || autoplayCountdownJob?.isActive == true) return
+        val generation = playbackGeneration
+        val profile = activeProfileId
+        autoplayCountdownJob = viewModelScope.launch {
+            val completed = youtubeAutoplayCountdown(valid = {
+                generation == playbackGeneration && profile == activeProfileId &&
+                    preferences.youtubeAutoplayEnabled && engine.playback.value.currentVideoId == current &&
+                    engine.player.playbackState == androidx.media3.common.Player.STATE_ENDED &&
+                    engine.player.playWhenReady && autoplayCancelledFor != current &&
+                    activePlaylistId == null && pendingPlaybackVideoId == null &&
+                    playbackQueueSession?.automatic == true && !engine.player.hasNextMediaItem()
+            }, tick = { seconds ->
+                _uiState.update { it.copy(youtubeAutoplay = YoutubeAutoplayUiState(prepared.second.title, seconds)) }
+            })
+            if (!completed) {
+                _uiState.update { it.copy(youtubeAutoplay = null) }
+                return@launch
+            }
+            val session = playbackQueueSession?.takeIf { it.automatic } ?: return@launch
+            if (engine.player.hasNextMediaItem()) return@launch
+            val next = prepared.second
+            autoplayPrepared = null
+            remoteVideos[next.id] = next
+            session.knownVideoIds.add(next.id)
+            session.orderedVideoIds.add(next.id)
+            _uiState.update { it.copy(youtubeAutoplay = null) }
+            try {
+                engine.appendToQueue(listOf(next), session.orderedVideoIds.toList())
+                publishLogicalQueue()
+                engine.player.seekToNextMediaItem()
+                engine.player.prepare()
+                engine.resumePlayback()
+            } catch (error: Exception) {
+                session.knownVideoIds.remove(next.id)
+                session.orderedVideoIds.remove(next.id)
+                autoplayCancelledFor = current
+                publishLogicalQueue()
+                Log.w("GrayjayViewModel", "Could not start automatic next video.", error)
+            }
+        }
+    }
+
+    private fun prepareYoutubeAutoplay(video: VideoUiModel, recommendations: List<VideoUiModel>) {
+        if (!preferences.youtubeAutoplayEnabled || pendingPlaybackVideoId != null ||
+            activePlaylistId != null || video.sourceId != "youtube" || video.isShort || video.isLive ||
+            autoplayCancelledFor == video.id || engine.playback.value.currentVideoId != video.id ||
+            (playbackQueueSession?.automatic == false) ||
+            engine.player.hasNextMediaItem() || autoplayJob?.isActive == true) return
+        val generation = playbackGeneration
+        val profile = activeProfileId
+        val session = playbackQueueSession ?: PlaybackQueueSession(generation, profile, null,
+            mutableListOf(), linkedSetOf(video.id), mutableListOf(video.id), automatic = true)
+            .also { playbackQueueSession = it }
+        val candidates = youtubeAutoplayCandidates(recommendations, session.knownVideoIds)
+        autoplayJob = viewModelScope.launch {
+            for (candidate in candidates.take(5)) {
+                val resolved = try { withTimeout(20_000L) { resolveForPlayback(candidate, profile, EngineResolvePriority.Prefetch) } }
+                catch (error: kotlinx.coroutines.TimeoutCancellationException) { continue }
+                catch (error: CancellationException) { throw error }
+                catch (error: Exception) { continue }
+                if (!preferences.youtubeAutoplayEnabled || generation != playbackGeneration || profile != activeProfileId ||
+                    playbackQueueSession !== session || engine.playback.value.currentVideoId != video.id ||
+                    pendingPlaybackVideoId != null || engine.player.hasNextMediaItem()) return@launch
+                autoplayPrepared = video.id to resolved
+                updateYoutubeAutoplayCountdown()
+                return@launch
+            }
+        }
+    }
+
     fun playSearchResults(videoIds: List<String>) {
         if (searchPlaylistJob?.isActive == true) return
         val now = System.currentTimeMillis()
@@ -3349,6 +3459,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun enqueueVideos(videoIds: List<String>) {
+        cancelYoutubeAutoplay()
         val requested = videoIds.distinct().mapNotNull(::findVideo)
         if (requested.isEmpty()) return
         val requestedProfile = activeProfileId
@@ -3700,6 +3811,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun invalidatePlaybackQueue(): Long {
+        autoplayJob?.cancel()
+        autoplayCountdownJob?.cancel()
+        autoplayPrepared = null
+        autoplayCancelledFor = null
+        _uiState.update { it.copy(youtubeAutoplay = null) }
         pendingVoicePlayback = null
         playbackRetryJob?.cancel()
         playbackGeneration += 1
@@ -4417,6 +4533,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                             hasMore = details.hasMore,
                             supportsShorts = details.supportsShorts,
                             supportsPlaylists = details.supportsPlaylists,
+                            supportsReleases = details.supportsReleases,
                             liveContentType = details.liveContentType,
                             supportsPopularSort = details.supportsPopularSort,
                         ),
@@ -4444,6 +4561,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (tab == current.selectedTab && (current.isLoading || tab in current.loadedTabs)) return
         if (tab == ChannelContentTab.Shorts && !current.supportsShorts) return
         if (tab == ChannelContentTab.Playlists && !current.supportsPlaylists) return
+        if (tab == ChannelContentTab.Releases && !current.supportsReleases) return
         if (tab == ChannelContentTab.Live && current.liveContentType == null) return
         channelJob?.cancel()
         channelPagingJob?.cancel()
@@ -4501,6 +4619,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                                 state.channelDetail.liveStreams
                             },
                             playlists = if (tab == ChannelContentTab.Playlists) page.playlists else state.channelDetail.playlists,
+                            releases = if (tab == ChannelContentTab.Releases) page.playlists else state.channelDetail.releases,
                             loadedTabs = state.channelDetail.loadedTabs + tab,
                             continuationIds = state.channelDetail.continuationIds
                                 .toMutableMap()
@@ -4555,7 +4674,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 ),
             )
         }
-        if (query.isBlank() || tab == ChannelContentTab.Playlists) return
+        if (query.isBlank() || tab.isPlaylistTab) return
         channelSearchJob = viewModelScope.launch {
             delay(250L)
             try {
@@ -4695,6 +4814,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                             playlists = if (tab == ChannelContentTab.Playlists) {
                                 (state.channelDetail.playlists + page.playlists).distinctBy(PlaylistUiModel::id)
                             } else state.channelDetail.playlists,
+                            releases = if (tab == ChannelContentTab.Releases) {
+                                (state.channelDetail.releases + page.playlists).distinctBy(PlaylistUiModel::id)
+                            } else state.channelDetail.releases,
                             isLoadingMore = false,
                             continuationIds = state.channelDetail.continuationIds
                                 .toMutableMap()
@@ -7259,8 +7381,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         )
 
     private suspend fun loadExtras(video: VideoUiModel) {
+        val generation = playbackGeneration
+        val profile = activeProfileId
         try {
             val extras = engine.loadExtras(video)
+            currentCoroutineContext().ensureActive()
+            if (generation != playbackGeneration || profile != activeProfileId || _uiState.value.nowPlaying.video?.id != video.id) return
+            prepareYoutubeAutoplay(video, extras.recommendations)
             val recommendations = if (!preferences.showRecommendations) {
                 emptyList()
             } else {
@@ -7620,6 +7747,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private suspend fun resolveForPlayback(
         video: VideoUiModel,
         profileId: String,
+        priority: EngineResolvePriority = EngineResolvePriority.UserPlayback,
     ): VideoUiModel {
         val persisted = video.withPersistedLibraryState()
         if (persisted.isDownloaded && !downloadStore.isInitialized()) {
@@ -7660,7 +7788,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         } else {
             video.onlinePlaybackInput()
         }
-        val resolved = resolveWithAudioPreferences(resolveInput).withPersistedLibraryState()
+        val resolved = resolveWithAudioPreferences(resolveInput, priority = priority).withPersistedLibraryState()
         val playable = downloadStore.playbackDescriptorFor(profileId, resolved) ?: resolved
         return if (shortsPrefetchDelegate.isInitialized() && profileId == activeProfileId) {
             shortsPrefetch.rememberPlayed(shortsPrefetchContext(), playable)

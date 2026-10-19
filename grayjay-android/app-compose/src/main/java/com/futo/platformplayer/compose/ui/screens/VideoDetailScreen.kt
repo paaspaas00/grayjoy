@@ -1326,6 +1326,7 @@ internal fun PlayerSurface(
             }
         }
         }
+        if (controlsAlpha > 0.5f) com.futo.platformplayer.compose.ui.YoutubeAutoplayPrompt(Modifier.align(Alignment.Center))
     }
 
     if (showSettings) {

@@ -24,6 +24,8 @@ data class GrayjayUiState(
     val perChannelPlaybackSpeedEnabled: Boolean = true,
     val holdToSpeedEnabled: Boolean = false,
     val brainrotShortsEnabled: Boolean = false,
+    val youtubeAutoplayEnabled: Boolean = false,
+    val youtubeAutoplay: YoutubeAutoplayUiState? = null,
     val rebuildingCaches: Boolean = false,
     val channelPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val videoPlaybackSpeeds: Map<String, Float> = emptyMap(),
@@ -296,6 +298,9 @@ enum class ChannelContentTab(@param:StringRes val labelRes: Int) {
     Shorts(R.string.shorts),
     Live(R.string.channel_live),
     Playlists(R.string.playlists),
+    Releases(R.string.channel_releases),
+    ;
+    val isPlaylistTab: Boolean get() = this == Playlists || this == Releases
 }
 
 data class ChannelDetailUiState(
@@ -311,6 +316,8 @@ data class ChannelDetailUiState(
     val tabsWithMore: Set<ChannelContentTab> = emptySet(),
     val supportsShorts: Boolean = false,
     val supportsPlaylists: Boolean = false,
+    val supportsReleases: Boolean = false,
+    val releases: List<PlaylistUiModel> = emptyList(),
     val liveContentType: String? = null,
     val supportsPopularSort: Boolean = false,
     val isLoading: Boolean = false,

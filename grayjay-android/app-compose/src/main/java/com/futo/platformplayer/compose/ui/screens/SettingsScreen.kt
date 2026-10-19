@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.automirrored.outlined.VolumeDown
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CloudOff
@@ -234,6 +235,10 @@ fun SettingsScreen(
                     onClick = { showSpeedDialog = true },
                     testTag = "default-playback-speed",
                 )
+            }
+            setting("youtube-autoplay", "toggle") {
+                ToggleSetting(stringResource(R.string.youtube_autoplay), stringResource(R.string.youtube_autoplay_description),
+                    Icons.Outlined.PlayArrow, extras.youtubeAutoplayEnabled, extras.onYoutubeAutoplayChange, "youtube-autoplay")
             }
             setting("per-channel-playback-speed", "toggle") {
                 ToggleSetting(

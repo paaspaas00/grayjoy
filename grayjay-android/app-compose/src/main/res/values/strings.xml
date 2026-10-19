@@ -179,6 +179,11 @@
     </plurals>
     <string name="local_playlist">LOCAL PLAYLIST</string>
     <string name="play_all">Play all</string>
+    <string name="play_selected">Play selected videos</string>
+    <string name="channel_releases">Releases</string>
+    <string name="youtube_autoplay">YouTube autoplay</string>
+    <string name="youtube_autoplay_description">After a video ends, play the next YouTube recommendation after a cancellable 10-second countdown. Uses an unsaved temporary queue; does not extend your playlists.</string>
+    <string name="youtube_autoplay_countdown">Up next in %1$d seconds</string>
     <string name="play_from_here">From here</string>
     <string name="play_from_here_description">Start this playlist at the selected video</string>
     <string name="export">Export</string>

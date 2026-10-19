@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Link
@@ -95,6 +96,7 @@ fun ChannelDetailScreen(
     onVideoClick: (VideoUiModel) -> Unit,
     onVideoLongClick: (VideoUiModel) -> Unit,
     onAddSelectionToPlaylist: (List<String>) -> Unit = {},
+    onPlaySelection: (List<String>) -> Unit = {},
     perChannelPlaybackSpeedEnabled: Boolean = true,
     channelPlaybackSpeed: Float? = null,
     defaultPlaybackSpeed: Float = 1f,
@@ -116,7 +118,7 @@ fun ChannelDetailScreen(
     var searchFocused by remember(channel.id, detail.selectedTab) { mutableStateOf(false) }
     var sortModeName by rememberSaveable(channel.id, detail.selectedTab) {
         mutableStateOf(
-            if (detail.selectedTab == ChannelContentTab.Playlists) {
+            if (detail.selectedTab.isPlaylistTab) {
                 ChannelSortMode.Name.name
             } else {
                 ChannelSortMode.UploadDate.name
@@ -124,13 +126,13 @@ fun ChannelDetailScreen(
         )
     }
     var sortAscending by rememberSaveable(channel.id, detail.selectedTab) {
-        mutableStateOf(detail.selectedTab == ChannelContentTab.Playlists)
+        mutableStateOf(detail.selectedTab.isPlaylistTab)
     }
     val sortMode = runCatching { ChannelSortMode.valueOf(sortModeName) }
         .getOrDefault(ChannelSortMode.UploadDate)
     val listState = rememberContentListState()
     LaunchedEffect(searchFocused, channel.id, detail.selectedTab) {
-        if (searchFocused && detail.selectedTab != ChannelContentTab.Playlists) {
+        if (searchFocused && !detail.selectedTab.isPlaylistTab) {
             // Let the IME begin its inset animation, then keep the tabs and search controls at
             // the top while the large channel summary scrolls out of the available viewport.
             delay(120L)
@@ -176,7 +178,7 @@ fun ChannelDetailScreen(
         ChannelContentTab.Videos -> detail.videos
         ChannelContentTab.Shorts -> detail.shorts
         ChannelContentTab.Live -> detail.liveStreams
-        ChannelContentTab.Playlists -> emptyList()
+        ChannelContentTab.Playlists, ChannelContentTab.Releases -> emptyList()
     }
     val filteredVideos = remember(currentVideos, query) {
         val normalizedQuery = query.trim()
@@ -195,8 +197,8 @@ fun ChannelDetailScreen(
     val visibleVideos = remember(searchBaseVideos, sortMode, sortAscending) {
         sortChannelVideos(searchBaseVideos, sortMode, sortAscending)
     }
-    val visiblePlaylists = remember(detail.playlists, sortAscending) {
-        sortChannelPlaylists(detail.playlists, sortAscending)
+    val visiblePlaylists = remember(detail.playlists, detail.releases, detail.selectedTab, sortAscending) {
+        sortChannelPlaylists(if (detail.selectedTab == ChannelContentTab.Releases) detail.releases else detail.playlists, sortAscending)
     }
     val tabs = channelTabsFor(detail)
     val searchField: @Composable (Modifier) -> Unit = { modifier ->
@@ -269,6 +271,12 @@ fun ChannelDetailScreen(
             }
             IconButton(onClick = { onAddSelectionToPlaylist(selectedVideoIds) }, modifier = Modifier.testTag("channel-selection-add")) {
                 Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, contentDescription = stringResource(R.string.add_to_playlist))
+            }
+            IconButton(onClick = {
+                val ids = visibleVideos.filter { it.id in selectedVideoIds && it.isAvailable && it.scheduledStartAtMs <= System.currentTimeMillis() }.map { it.id }
+                if (ids.isNotEmpty()) { onPlaySelection(ids); selectedVideoIds = emptyList() }
+            }, modifier = Modifier.testTag("channel-selection-play")) {
+                Icon(Icons.Outlined.PlayArrow, contentDescription = stringResource(R.string.play_selected))
             }
         }
     }
@@ -458,7 +466,7 @@ fun ChannelDetailScreen(
                             Icon(Icons.AutoMirrored.Outlined.Sort, contentDescription = stringResource(R.string.sort))
                         }
                     }
-                    if (detail.selectedTab != ChannelContentTab.Playlists) searchField(Modifier.fillMaxWidth())
+                    if (!detail.selectedTab.isPlaylistTab) searchField(Modifier.fillMaxWidth())
                 } else {
                 Row(
                     modifier = Modifier
@@ -478,7 +486,7 @@ fun ChannelDetailScreen(
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     if (channelSearchUsesStackedLayout(maxWidth.value)) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (detail.selectedTab != ChannelContentTab.Playlists) {
+                            if (!detail.selectedTab.isPlaylistTab) {
                                 searchField(Modifier.fillMaxWidth())
                             }
                             Row(
@@ -494,7 +502,7 @@ fun ChannelDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            if (detail.selectedTab != ChannelContentTab.Playlists) {
+                            if (!detail.selectedTab.isPlaylistTab) {
                                 searchField(Modifier.weight(1f))
                             }
                             sortChip()
@@ -515,8 +523,8 @@ fun ChannelDetailScreen(
             }
         }
 
-        if (!compactLayout || detail.selectedTab == ChannelContentTab.Playlists) item {
-            val count = if (detail.selectedTab == ChannelContentTab.Playlists) {
+        if (!compactLayout || detail.selectedTab.isPlaylistTab) item {
+            val count = if (detail.selectedTab.isPlaylistTab) {
                 visiblePlaylists.size
             } else if (query.isBlank()) {
                 currentVideos.size
@@ -532,14 +540,14 @@ fun ChannelDetailScreen(
         if (detail.isLoading || (detail.isSearching && visibleVideos.isEmpty())) {
             item {
                 Box(Modifier.testTag("channel-loading")) {
-                    if (detail.selectedTab == ChannelContentTab.Playlists) {
+                    if (detail.selectedTab.isPlaylistTab) {
                         SuggestionListSkeleton(count = 4)
                     } else {
                         VideoListSkeleton(count = 4, modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
-        } else if (detail.selectedTab == ChannelContentTab.Playlists) {
+        } else if (detail.selectedTab.isPlaylistTab) {
             items(
                 items = visiblePlaylists,
                 key = PlaylistUiModel::id,
@@ -573,7 +581,7 @@ fun ChannelDetailScreen(
 
         if (detail.isLoadingMore || detail.isSearchLoadingMore) {
             item {
-                if (detail.selectedTab == ChannelContentTab.Playlists) {
+                if (detail.selectedTab.isPlaylistTab) {
                     SuggestionListSkeleton(count = 2)
                 } else {
                     VideoListSkeleton(count = 2, modifier = Modifier.fillMaxWidth())
@@ -581,8 +589,8 @@ fun ChannelDetailScreen(
             }
         }
         if (!detail.isLoading && !detail.isSearching &&
-            (if (detail.selectedTab == ChannelContentTab.Playlists) {
-                detail.playlists.isEmpty()
+            (if (detail.selectedTab.isPlaylistTab) {
+                visiblePlaylists.isEmpty()
             } else {
                 visibleVideos.isEmpty()
             })
@@ -666,7 +674,7 @@ fun ChannelDetailScreen(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (detail.selectedTab == ChannelContentTab.Playlists) {
+                    if (detail.selectedTab.isPlaylistTab) {
                         FilterChip(
                             selected = sortMode == ChannelSortMode.Name,
                             onClick = { sortModeName = ChannelSortMode.Name.name },
@@ -732,6 +740,7 @@ internal fun channelTabsFor(detail: ChannelDetailUiState): List<ChannelContentTa
     if (detail.supportsShorts) add(ChannelContentTab.Shorts)
     if (detail.liveContentType != null) add(ChannelContentTab.Live)
     if (detail.supportsPlaylists) add(ChannelContentTab.Playlists)
+    if (detail.supportsReleases) add(ChannelContentTab.Releases)
 }
 
 internal enum class ChannelSortMode { UploadDate, Popularity, Name }

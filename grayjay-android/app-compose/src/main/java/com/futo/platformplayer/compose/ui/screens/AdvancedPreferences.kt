@@ -25,6 +25,8 @@ internal data class ExtraPreferences(
     val onBrainrotChange: (Boolean) -> Unit = {},
     val rebuildingCaches: Boolean = false,
     val onRebuildCaches: () -> Unit = {},
+    val youtubeAutoplayEnabled: Boolean = false,
+    val onYoutubeAutoplayChange: (Boolean) -> Unit = {},
 )
 internal val LocalExtraPreferences = compositionLocalOf { ExtraPreferences() }
 
