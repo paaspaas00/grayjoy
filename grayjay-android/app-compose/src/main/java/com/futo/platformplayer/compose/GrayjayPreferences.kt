@@ -28,10 +28,12 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
     } else {
         ThemeMode.System
     }
-    private val preferences = context.getSharedPreferences(
+    private val storedPreferences = context.getSharedPreferences(
         if (profileId == "main") FILE_NAME else "${FILE_NAME}_$profileId",
         Context.MODE_PRIVATE,
     )
+    private val preferences: android.content.SharedPreferences =
+        ResilientPreferences(storedPreferences, setOf(KEY_PRIVATE_SESSION))
 
     var dynamicColorsEnabled: Boolean
         get() = preferences.getBoolean(KEY_DYNAMIC_COLORS, true)
@@ -315,6 +317,16 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
 
     fun initializeFollowedCreators(defaultCreatorIds: Set<String>): Set<String> {
         return synchronized(accountImportLock) {
+            if (com.futo.platformplayer.compose.data.wasProfileDeleted(appContext, storageProfileId)) {
+                throw com.futo.platformplayer.compose.data.DeletedProfileException()
+            }
+            // Initialization must not turn a fallback read into replacement of restored data.
+            val readable = try {
+                storedPreferences.getBoolean(KEY_FOLLOWING_INITIALIZED, false)
+                storedPreferences.getStringSet(KEY_FOLLOWED_CREATORS, emptySet())
+                true
+            } catch (_: ClassCastException) { false }
+            if (!readable) return followedCreatorIds()
             if (preferences.getBoolean(KEY_FOLLOWING_INITIALIZED, false)) return followedCreatorIds()
             try {
                 com.futo.platformplayer.compose.data.ensureAccountImportWritesAllowed(appContext, storageProfileId)

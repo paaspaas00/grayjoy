@@ -731,7 +731,7 @@ private fun YoutubeImportSheet(
                 OutlinedButton(
                     onClick = {
                         onScheduleChange(
-                            YoutubeImportInterval.valueOf(intervalName),
+                            com.futo.platformplayer.compose.ui.restoredEnumValue(intervalName, YoutubeImportInterval.Off),
                             YoutubeImportSelection(
                                 subscriptions = subscriptions,
                                 history = history,
@@ -741,7 +741,7 @@ private fun YoutubeImportSheet(
                         )
                     },
                     enabled = !state.isRunning && (
-                        YoutubeImportInterval.valueOf(intervalName) == YoutubeImportInterval.Off ||
+                        com.futo.platformplayer.compose.ui.restoredEnumValue(intervalName, YoutubeImportInterval.Off) == YoutubeImportInterval.Off ||
                             hasSelection
                         ),
                     modifier = Modifier.fillMaxWidth(),

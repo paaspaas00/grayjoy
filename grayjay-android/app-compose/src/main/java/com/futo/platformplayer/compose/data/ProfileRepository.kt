@@ -13,9 +13,11 @@ import java.util.UUID
 internal class ProfileRepository(context: Context) {
     private val appContext = context.applicationContext
     private val preferences = context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
+    private val catalogLock = profileDataLock(context, "__profile_catalog")
 
     init {
-        if (!preferences.contains(KEY_PROFILES)) {
+        synchronized(catalogLock) {
+        if (!preferences.contains(KEY_PROFILES) && runCatching { readDeletedProfileIds(appContext) }.isSuccess) {
             writeProfiles(
                 listOf(
                     StoredProfile(MAIN_ID, "Main", ProfileProtection.None, builtIn = true),
@@ -24,24 +26,33 @@ internal class ProfileRepository(context: Context) {
             )
             preferences.edit().putString(KEY_ACTIVE_PROFILE, MAIN_ID).apply()
         }
+        }
     }
 
     fun profiles(): List<ProfileUiModel> = readProfiles().map(::toUiModel)
 
     fun activeProfileId(): String {
         val profiles = readProfiles()
-        val requested = preferences.getString(KEY_ACTIVE_PROFILE, MAIN_ID)
+        val requested = runCatching { preferences.getString(KEY_ACTIVE_PROFILE, MAIN_ID) }.getOrDefault(MAIN_ID)
         return requested?.takeIf { id -> profiles.any { it.id == id } } ?: MAIN_ID
     }
 
-    fun setActiveProfile(profileId: String) {
-        require(readProfiles().any { it.id == profileId }) {
-            appContext.getString(R.string.unknown_profile)
+    fun requireAvailableProfile(profileId: String) = synchronized(catalogLock) {
+        if (wasProfileDeleted(appContext, profileId)) throw DeletedProfileException()
+        val catalog = readCatalog()
+        if (catalog.profiles.none { it.id == profileId }) {
+            catalog.error?.let { throw ProfileDataUnavailableException(it) }
+            throw IllegalArgumentException(appContext.getString(R.string.unknown_profile))
         }
+    }
+
+    fun setActiveProfile(profileId: String): Unit = synchronized(catalogLock) {
+        requireAvailableProfile(profileId)
         preferences.edit().putString(KEY_ACTIVE_PROFILE, profileId).apply()
     }
 
-    fun createProfile(name: String, pin: String? = null): ProfileUiModel {
+    fun createProfile(name: String, pin: String? = null): ProfileUiModel = synchronized(catalogLock) {
+        ensureCatalogReadable()
         val normalizedName = name.trim().take(40)
         require(normalizedName.isNotBlank()) { appContext.getString(R.string.enter_profile_name) }
         val normalizedPin = pin.orEmpty()
@@ -63,7 +74,7 @@ internal class ProfileRepository(context: Context) {
             pinHash = if (normalizedPin.isEmpty()) "" else hashPin(normalizedPin, salt),
         )
         writeProfiles(readProfiles() + profile)
-        return toUiModel(profile)
+        toUiModel(profile)
     }
 
     fun verifyPin(profileId: String, pin: String): Boolean {
@@ -75,7 +86,8 @@ internal class ProfileRepository(context: Context) {
         )
     }
 
-    fun renameProfile(profileId: String, name: String): ProfileUiModel {
+    fun renameProfile(profileId: String, name: String): ProfileUiModel = synchronized(catalogLock) {
+        requireAvailableProfile(profileId)
         val normalizedName = name.trim().take(40)
         require(normalizedName.isNotBlank()) { appContext.getString(R.string.enter_profile_name) }
         val profiles = readProfiles()
@@ -83,13 +95,14 @@ internal class ProfileRepository(context: Context) {
         require(index >= 0) { appContext.getString(R.string.unknown_profile) }
         val updated = profiles[index].copy(name = normalizedName, customName = true)
         writeProfiles(profiles.toMutableList().apply { this[index] = updated })
-        return toUiModel(updated)
+        toUiModel(updated)
     }
 
     fun setDeviceCredentialProtection(
         profileId: String,
         enabled: Boolean,
-    ): ProfileUiModel {
+    ): ProfileUiModel = synchronized(catalogLock) {
+        requireAvailableProfile(profileId)
         val profiles = readProfiles()
         val index = profiles.indexOfFirst { it.id == profileId }
         require(index >= 0) { appContext.getString(R.string.unknown_profile) }
@@ -103,53 +116,92 @@ internal class ProfileRepository(context: Context) {
             pinHash = "",
         )
         writeProfiles(profiles.toMutableList().apply { this[index] = updated })
-        return toUiModel(updated)
+        toUiModel(updated)
     }
 
     fun deleteProfile(profileId: String): Boolean {
         val profiles = readProfiles()
         val profile = profiles.firstOrNull { it.id == profileId } ?: return false
-        if (profile.builtIn || profileId == activeProfileId()) return false
-        writeProfiles(profiles.filterNot { it.id == profileId })
+        if (profile.builtIn || profileId in setOf(MAIN_ID, PRIVATE_ID) || profileId == activeProfileId()) return false
+        synchronized(profileDataLock(appContext, profileId)) {
+        synchronized(catalogLock) {
+        ensureCatalogReadable()
+        // Recheck under the shared locks: a worker commit and a profile switch may have raced
+        // with the confirmation dialog. The tombstone and catalog removal are one durable edit.
+        if (profileId == activeProfileId()) return false
+        val remaining = readProfiles().filterNot { it.id == profileId }
+        check(preferences.edit()
+            .putString(KEY_PROFILES, encodeProfiles(remaining))
+            .putStringSet(KEY_DELETED_PROFILES, deletedProfileIds() + profileId)
+            .commit()) { "Could not persist profile deletion" }
         listOf(
             "grayjay_compose_preferences_$profileId",
             "grayjay_compose_library_v2_$profileId",
             "grayjay_compose_watch_progress_v1_$profileId",
             "grayjay_compose_sources_$profileId",
             "grayjoy_home_cache_v1_$profileId",
+            "grayjoy_channel_artwork_v1_$profileId",
+            "music_classification_$profileId",
         ).forEach { name ->
             appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().apply()
+        }
+        AccountImportJournal(appContext, profileId).discardDeletedProfileJournal()
+        }
         }
         return true
     }
 
-    private fun readProfiles(): List<StoredProfile> = runCatching {
+    private data class ProfileCatalog(val profiles: List<StoredProfile>, val error: Exception? = null)
+
+    private fun readCatalog(): ProfileCatalog = try {
         val array = JSONArray(preferences.getString(KEY_PROFILES, "[]"))
-        buildList {
+        var error: Exception? = null
+        val profiles = buildList {
+            val ids = mutableSetOf<String>()
             for (index in 0 until array.length()) {
-                val json = array.optJSONObject(index) ?: continue
-                val id = json.optString("id")
-                if (id.isBlank()) continue
+                try {
+                val json = array.getJSONObject(index)
+                val id = json.getString("id")
+                require(id.matches(Regex("[A-Za-z0-9_-]{1,128}")) && ids.add(id)) { "Invalid or duplicate profile identifier" }
                 add(
                     StoredProfile(
                         id = id,
                         name = json.optString("name", appContext.getString(R.string.profile_generic)),
-                        protection = runCatching {
-                            ProfileProtection.valueOf(json.optString("protection"))
-                        }.getOrDefault(ProfileProtection.Pin),
-                        builtIn = json.optBoolean("builtIn"),
+                        protection = ProfileProtection.valueOf(json.getString("protection")),
+                        builtIn = id == MAIN_ID || id == PRIVATE_ID,
                         customName = json.optBoolean("customName"),
                         salt = json.optString("salt"),
                         pinHash = json.optString("pinHash"),
                     ),
                 )
+                } catch (invalid: Exception) { error = invalid }
             }
         }
-    }.getOrDefault(emptyList()).ifEmpty {
-        listOf(StoredProfile(MAIN_ID, "Main", ProfileProtection.None, builtIn = true))
+        if (profiles.none { it.id == MAIN_ID }) error = error ?: IllegalStateException("Main profile is missing")
+        ProfileCatalog(profiles, error)
+    } catch (error: Exception) { ProfileCatalog(emptyList(), error) }
+
+    private fun readProfiles(): List<StoredProfile> {
+        val catalog = readCatalog()
+        if (catalog.profiles.any { it.id == MAIN_ID }) return catalog.profiles
+        // Keep startup and recovery possible, but never turn unreadable protection into None.
+        return catalog.profiles + StoredProfile(MAIN_ID, "Main", ProfileProtection.DeviceCredential, builtIn = true)
     }
 
-    private fun writeProfiles(profiles: List<StoredProfile>) {
+    private fun ensureCatalogReadable() {
+        readDeletedProfileIds(appContext)
+        if (!preferences.contains(KEY_PROFILES)) return
+        readCatalog().error?.let { throw ProfileDataUnavailableException(it) }
+    }
+
+    private fun deletedProfileIds(): Set<String> = readDeletedProfileIds(appContext)
+
+    private fun writeProfiles(profiles: List<StoredProfile>) = synchronized(catalogLock) {
+        ensureCatalogReadable()
+        preferences.edit().putString(KEY_PROFILES, encodeProfiles(profiles)).apply()
+    }
+
+    private fun encodeProfiles(profiles: List<StoredProfile>): String {
         val array = JSONArray().apply {
             profiles.forEach { profile ->
                 put(
@@ -165,7 +217,7 @@ internal class ProfileRepository(context: Context) {
                 )
             }
         }
-        preferences.edit().putString(KEY_PROFILES, array.toString()).apply()
+        return array.toString()
     }
 
     private fun toUiModel(profile: StoredProfile): ProfileUiModel = ProfileUiModel(
@@ -194,6 +246,7 @@ internal class ProfileRepository(context: Context) {
         const val FILE_NAME = "grayjay_compose_profiles"
         const val KEY_PROFILES = "profiles"
         const val KEY_ACTIVE_PROFILE = "active_profile"
+        const val KEY_DELETED_PROFILES = "deleted_profile_ids"
         const val MAIN_ID = "main"
         const val PRIVATE_ID = "private"
 
@@ -208,3 +261,24 @@ internal class ProfileRepository(context: Context) {
             .toByteArray()
     }
 }
+
+internal class ProfileDataUnavailableException(cause: Exception) :
+    IllegalStateException("Existing profile data cannot be read; refusing to overwrite it", cause)
+
+internal fun wasProfileDeleted(context: Context, profileId: String): Boolean =
+    readDeletedProfileIds(context).contains(profileId)
+
+/** Unknown deletion state cannot authorize writes or replay an old recovery journal. */
+private fun readDeletedProfileIds(context: Context): Set<String> = try {
+    val stored = context.applicationContext.getSharedPreferences("grayjay_compose_profiles", Context.MODE_PRIVATE)
+        .all
+    if (!stored.containsKey("deleted_profile_ids")) emptySet() else {
+        val value = stored["deleted_profile_ids"]
+        require(value is Set<*> && value.all { it is String }) { "Invalid profile deletion metadata" }
+        value.filterIsInstance<String>().toSet()
+    }
+} catch (error: Exception) {
+    throw ProfileDataUnavailableException(error)
+}
+
+internal class DeletedProfileException : IllegalStateException("This profile has been deleted")

@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap
 /** A write-ahead copy lets the next process roll back a kill between preference-file writes. */
 internal class AccountImportJournal(context: Context, profileId: String) {
     private val app = context.applicationContext
+    private val profileId = profileId
     private val profileLock = profileDataLock(context, profileId)
     private val suffix = if (profileId == "main") "" else "_$profileId"
     private val profileKey = MessageDigest.getInstance("SHA-256")
@@ -76,11 +77,16 @@ internal class AccountImportJournal(context: Context, profileId: String) {
 
     /** Reads may survive a recovery failure, but no caller may write over a pending rollback. */
     fun ensureWritable() = synchronized(profileLock) {
+        if (wasProfileDeleted(app, profileId)) throw DeletedProfileException()
         if (file.baseFile.absolutePath in active) return
         if (journalExists() || quarantinePending()) recoverIfNeeded()
     }
 
     fun recoverIfNeeded(): Boolean = synchronized(profileLock) {
+        if (wasProfileDeleted(app, profileId)) {
+            discardDeletedProfileJournal()
+            return false
+        }
         if (file.baseFile.absolutePath in active) return false
         if (quarantinePending()) {
             finishQuarantineOrBlock(null)
@@ -90,20 +96,27 @@ internal class AccountImportJournal(context: Context, profileId: String) {
         try {
             restoreJournal()
             true
-        } catch (error: Exception) {
+        } catch (error: MalformedAccountImportJournalException) {
             // Once normal edits resume, this snapshot must never be automatically replayed over
             // them. Preserve the bytes for recovery, but retire the automatic rollback durably.
             finishQuarantineOrBlock(error)
             android.util.Log.e("AccountImportJournal", "Import recovery snapshot quarantined", error)
             false
+        } catch (error: Exception) {
+            // A valid snapshot must remain retryable when storage is full/unavailable or an
+            // editor cannot commit. Retiring it here would make a partial rollback permanent.
+            throw AccountImportRecoveryBlockedException(error)
         }
     }
 
-    private fun restoreJournal() {
-        val stores = JSONArray(file.openRead().bufferedReader().use { it.readText() })
+    private fun decodeJournal(): List<Map<String, Any>> {
+        // Read errors are operational failures, not evidence that the snapshot is malformed.
+        val raw = file.openRead().bufferedReader().use { it.readText() }
+        return try {
+        val stores = JSONArray(raw)
         check(stores.length() == names.size) { "Invalid import recovery journal" }
         // Decode everything before touching a store.
-        val decoded = names.indices.map { index ->
+        names.indices.map { index ->
             val values = stores.getJSONObject(index)
             values.keys().asSequence().associateWith { key ->
                 val entry = values.getJSONObject(key)
@@ -120,10 +133,19 @@ internal class AccountImportJournal(context: Context, profileId: String) {
                 }
             }
         }
+        } catch (error: Exception) {
+            throw MalformedAccountImportJournalException(error)
+        }
+    }
+
+    private fun restoreJournal() {
+        val decoded = decodeJournal()
         names.forEachIndexed { index, name ->
             val preferences = app.getSharedPreferences(name, 0)
             val editor = preferences.edit()
-            val progressRevision = if (index == 1) preferences.getLong("__progress_revision", 0L) + 1L else 0L
+            val progressRevision = if (index == 1) {
+                runCatching { preferences.getLong("__progress_revision", 0L) }.getOrDefault(0L) + 1L
+            } else 0L
             if (index == 2) selectedKeys.forEach(editor::remove) else editor.clear()
             decoded[index].forEach { (key, value) ->
                 when (value) {
@@ -140,6 +162,13 @@ internal class AccountImportJournal(context: Context, profileId: String) {
         }
         file.delete()
         check(!journalExists()) { "Could not remove the recovered import journal" }
+    }
+
+    fun discardDeletedProfileJournal() = synchronized(profileLock) {
+        check(wasProfileDeleted(app, profileId)) { "Cannot discard recovery data for an existing profile" }
+        active -= file.baseFile.absolutePath
+        file.delete()
+        quarantineMarker.delete()
     }
 
     private fun journalExists(): Boolean =
@@ -210,6 +239,9 @@ internal class AccountImportJournal(context: Context, profileId: String) {
 
 internal class AccountImportRecoveryBlockedException(cause: Throwable) :
     IOException("Library edits are blocked until the interrupted import recovery can be preserved", cause)
+
+private class MalformedAccountImportJournalException(cause: Exception) :
+    IOException("The import recovery snapshot is malformed", cause)
 
 internal fun ensureAccountImportWritesAllowed(context: Context, profileId: String) =
     AccountImportJournal(context, profileId).ensureWritable()

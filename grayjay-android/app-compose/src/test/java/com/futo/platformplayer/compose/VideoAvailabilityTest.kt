@@ -5,6 +5,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VideoAvailabilityTest {
+    @Test fun cyclicErrorsDoNotHangAvailabilityClassification() {
+        val first = IllegalStateException("Network timeout")
+        val second = IllegalStateException("Wrapped error")
+        first.initCause(second); second.initCause(first)
+        assertFalse(isPermanentlyUnavailableVideo(first))
+    }
     @Test
     fun `removed and private video errors are permanent`() {
         assertTrue(isPermanentlyUnavailableVideo(IllegalStateException("Video unavailable")))

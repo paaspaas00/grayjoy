@@ -15,7 +15,7 @@ import java.net.Inet4Address
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
-class PcLinkManager private constructor(context: Context) {
+class PcLinkManager internal constructor(context: Context, observeNetwork: Boolean = true) {
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences(
         PREFERENCES_NAME,
@@ -47,7 +47,7 @@ class PcLinkManager private constructor(context: Context) {
     init {
         loadComputers().forEach { computers[it.id] = it }
         publish()
-        runCatching {
+        if (observeNetwork) runCatching {
             connectivityManager.registerNetworkCallback(
                 NetworkRequest.Builder()
                     // Track the physical Wi-Fi/Ethernet link even when a VPN is the default
@@ -64,6 +64,11 @@ class PcLinkManager private constructor(context: Context) {
     fun pair(rawPayload: String): Boolean {
         val payload = PcLinkProtocol.parsePairingPayload(rawPayload) ?: return false
         val existing = computers[payload.computerId]
+        if (existing != null && existing.secret != payload.secret) {
+            playbacks.remove(payload.computerId)
+            commands.remove(payload.computerId)
+            usedNonces.keys.removeAll { it.startsWith("${payload.computerId}:") }
+        }
         computers[payload.computerId] = PairedComputer(
             id = payload.computerId,
             name = payload.computerName,
@@ -156,6 +161,7 @@ class PcLinkManager private constructor(context: Context) {
         if (changed) publish()
     }
 
+    @Synchronized
     fun enqueueCommand(
         computerId: String,
         type: PcRemoteCommandType,
@@ -184,6 +190,7 @@ class PcLinkManager private constructor(context: Context) {
         return true
     }
 
+    @Synchronized
     fun commandsAfter(computerId: String, acknowledgedSequence: Long): List<PcRemoteCommand> {
         val queue = commands[computerId] ?: return emptyList()
         synchronized(queue) {

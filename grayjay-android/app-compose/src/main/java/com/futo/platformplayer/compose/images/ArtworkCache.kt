@@ -8,6 +8,7 @@ import android.util.AtomicFile
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.FlowCollector
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Call
@@ -40,6 +41,8 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val slots = Semaphore(2)
     private val epoch = AtomicLong(0)
+    private val accessSequence = AtomicLong(0)
+    private val keyLocks = Array(64) { Mutex() }
     private val lastTrimAt = AtomicLong(Long.MIN_VALUE)
     private val maintenanceLock = Any()
     private val startLock = Any()
@@ -59,10 +62,12 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
 
     private class Entry(val key: String, val url: String, val headers: Map<String, String>, val kind: ArtworkKind) {
         val state = MutableStateFlow<CachedArtwork?>(null)
-        var job: Job? = null
+        @Volatile var job: Job? = null
         @Volatile var call: Call? = null
-        var failed = false
-        var lastUsed = System.currentTimeMillis()
+        @Volatile var failed = false
+        var lastUsed = 0L
+        @Volatile var observers = 0
+        var observable: StateFlow<CachedArtwork?>? = null
         @Volatile var loaded = false
         @Volatile var validatedAt = 0L
         @Volatile var retryAt = 0L
@@ -81,19 +86,64 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
         val canonicalHeaders = headers.entries.sortedBy { it.key.lowercase(java.util.Locale.ROOT) }.joinToString("\n") { "${it.key.lowercase(java.util.Locale.ROOT)}:${it.value}" }
         val digest = MessageDigest.getInstance("SHA-256").digest((url + "\n" + canonicalHeaders).toByteArray())
         val key = buildString(64) { digest.forEach { byte -> val value = byte.toInt() and 255; append("0123456789abcdef"[value shr 4]); append("0123456789abcdef"[value and 15]) } }
-        val entry = entries.getOrPut(key) { Entry(key, url, headers.toMap(), kind) }
-        synchronized(entry) { entry.maxAgeMs = minOf(entry.maxAgeMs, kind.maxAgeMs) }
-        entry.lastUsed = clock()
-        start(entry)
-        return entry.state
+        return synchronized(startLock) {
+            val entry = entries.getOrPut(key) { Entry(key, url, headers.toMap(), kind) }
+            synchronized(entry) { entry.maxAgeMs = minOf(entry.maxAgeMs, kind.maxAgeMs) }
+            entry.lastUsed = accessSequence.incrementAndGet()
+            start(entry)
+            pruneMemory(entry)
+            entry.observable ?: ObservedArtwork(entry).also { entry.observable = it }
+        }
+    }
+
+    /** An off-screen flow may outlive its LRU entry. Reattach it when it becomes visible again. */
+    @OptIn(InternalCoroutinesApi::class)
+    private inner class ObservedArtwork(private val original: Entry) : StateFlow<CachedArtwork?> {
+        @Volatile private var latest = original
+        override val value: CachedArtwork? get() = latest.state.value
+        override val replayCache: List<CachedArtwork?> get() = listOf(value)
+        override suspend fun collect(collector: FlowCollector<CachedArtwork?>): Nothing {
+            val current = synchronized(startLock) {
+                entries.getOrPut(original.key) { original }.also {
+                    latest = it
+                    it.observers++
+                    it.lastUsed = accessSequence.incrementAndGet()
+                    start(it)
+                    pruneMemory(it)
+                }
+            }
+            try { current.state.collect(collector) }
+            finally { synchronized(startLock) { current.observers--; pruneMemory(null) } }
+        }
+    }
+
+    internal val retainedEntryCount: Int get() = entries.size
+    internal val retainedRequestCount: Int get() = entries.values.count { it.job?.isCompleted == false }
+
+    /** Bound pending work as well as completed entries; disk trimming alone cannot do that. */
+    private fun pruneMemory(protected: Entry?) {
+        val idle = entries.values.filter { it.observers == 0 }.sortedBy { it.lastUsed }
+        var idleRequests = idle.count { it.job?.isCompleted == false }
+        val requestLimit = if (entries.values.any { it.observers > 0 }) 0 else MAX_IDLE_REQUESTS
+        for (entry in idle) {
+            if (entry === protected) continue
+            val pending = entry.job?.isCompleted == false
+            if (entries.size > MAX_IDLE_ENTRIES || (pending && idleRequests > requestLimit)) {
+                if (entries.remove(entry.key, entry)) {
+                    entry.job?.cancel()
+                    entry.call?.cancel()
+                    if (pending) idleRequests--
+                }
+            }
+        }
     }
 
     fun retryFailed() {
-        entries.values.filter { it.failed && it.state.subscriptionCount.value > 0 }.forEach { start(it, force = true) }
+        entries.values.filter { it.failed && it.observers > 0 }.forEach { start(it, force = true) }
     }
 
     fun refreshActive() {
-        entries.values.filter { it.state.subscriptionCount.value > 0 }.forEach { start(it, verifyDisk = true) }
+        entries.values.filter { it.observers > 0 }.forEach { start(it, verifyDisk = true) }
     }
 
     private fun start(entry: Entry, force: Boolean = false, verifyDisk: Boolean = false) {
@@ -105,8 +155,14 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
                 if (!force && !verifyDisk && entry.loaded && (now < entry.retryAt ||
                         (entry.state.value?.file != null && now - entry.validatedAt in 0 until entry.maxAgeMs))) return
                 val requestEpoch = epoch.get()
+                val previous = entry.job
                 entry.job = scope.launch(start = CoroutineStart.LAZY) {
-                    try { slots.withPermit { refresh(entry, requestEpoch, force) } }
+                    try {
+                        previous?.join()
+                        keyLocks[(entry.key.hashCode() and Int.MAX_VALUE) % keyLocks.size].withLock {
+                            slots.withPermit { refresh(entry, requestEpoch, force) }
+                        }
+                    }
                     finally { synchronized(entry) { if (entry.job === coroutineContext[Job]) entry.job = null } }
                 }.also(Job::start)
             }
@@ -114,6 +170,7 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
     }
 
     private suspend fun refresh(entry: Entry, requestEpoch: Long, force: Boolean) {
+        currentCoroutineContext().ensureActive()
         var temporary: File? = null
         try {
             directory.mkdirs()
@@ -247,7 +304,7 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
         var count = images.size
         if (bytes > MAX_BYTES || count > 2048) images.sortedBy { File(directory, it.nameWithoutExtension + ".json").lastModified() }.forEach { file ->
             if (bytes <= MAX_BYTES && count <= 2048) return@forEach
-            if (entries[file.nameWithoutExtension]?.state?.subscriptionCount?.value?.let { it > 0 } == true) return@forEach
+            if (entries[file.nameWithoutExtension]?.observers?.let { it > 0 } == true) return@forEach
             val length = file.length()
             if (file.delete()) {
                 bytes -= length
@@ -255,9 +312,6 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
                 File(directory, file.nameWithoutExtension + ".json").delete()
                 entries[file.nameWithoutExtension]?.let { it.loaded = false; it.state.value = null }
             }
-        }
-        if (entries.size > 256) entries.values.sortedBy { it.lastUsed }.forEach { entry ->
-            if (entries.size > 256 && entry.state.subscriptionCount.value == 0 && entry.job?.isActive != true) entries.remove(entry.key, entry)
         }
     }
 
@@ -303,6 +357,8 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
 
     companion object {
         private const val MAX_BYTES = 128L * 1024 * 1024
+        private const val MAX_IDLE_ENTRIES = 256
+        private const val MAX_IDLE_REQUESTS = 8
         @Volatile private var instance: ArtworkCache? = null
         fun get(context: Context): ArtworkCache = instance ?: synchronized(this) {
             instance ?: ArtworkCache(context.applicationContext).also { instance = it }

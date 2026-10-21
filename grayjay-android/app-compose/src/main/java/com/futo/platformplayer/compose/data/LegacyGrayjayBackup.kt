@@ -79,12 +79,13 @@ internal object LegacyGrayjayBackupParser {
     private val autoMagic = byteArrayOf(0x11, 0x22, 0x33, 0x44)
     private val newAutoMarker = byteArrayOf('G'.code.toByte(), 'J'.code.toByte())
 
-    fun parse(data: ByteArray, password: String? = null): LegacyGrayjayBackup {
+    fun parse(data: ByteArray, password: String? = null, checkActive: () -> Unit = {}): LegacyGrayjayBackup {
+        checkActive()
         if (data.isEmpty()) throw LegacyBackupException("The selected backup is empty.")
         if (data.size > MAX_BACKUP_BYTES) {
             throw LegacyBackupException("The selected backup is larger than 128 MB.")
         }
-        return parseZip(normalizeToZip(data, password))
+        return parseZip(normalizeToZip(data, password), checkActive)
     }
 
     private fun normalizeToZip(data: ByteArray, password: String?): ByteArray = when {
@@ -117,32 +118,39 @@ internal object LegacyGrayjayBackupParser {
         }
     }
 
-    private fun parseZip(zipBytes: ByteArray): LegacyGrayjayBackup {
+    private fun parseZip(zipBytes: ByteArray, checkActive: () -> Unit): LegacyGrayjayBackup {
         val entries = linkedMapOf<String, String>()
         var totalUncompressed = 0L
         ZipInputStream(ByteArrayInputStream(zipBytes)).use { zip ->
             var entryCount = 0
             while (true) {
+                checkActive()
                 val entry = zip.nextEntry ?: break
-                if (entry.isDirectory) continue
                 entryCount += 1
                 if (entryCount > MAX_ENTRIES) {
                     throw LegacyBackupException("The backup contains too many files.")
                 }
-                val output = ByteArrayOutputStream()
+                // ZipInputStream.nextEntry silently drains unread bytes. Even a directory can
+                // carry a compressed payload, so every entry must pass the same byte budget.
+                // Unknown export files are drained without retaining a second expanded copy.
+                val retain = !entry.isDirectory && (entry.name in RETAINED_ENTRIES ||
+                    entry.name.startsWith("stores/"))
+                val output = if (retain) ByteArrayOutputStream() else null
                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                 var entryBytes = 0L
                 while (true) {
+                    checkActive()
                     val read = zip.read(buffer)
                     if (read < 0) break
+                    if (read == 0) throw LegacyBackupException("The archive stream made no progress.")
                     entryBytes += read
                     totalUncompressed += read
                     if (entryBytes > MAX_ENTRY_BYTES || totalUncompressed > MAX_TOTAL_UNCOMPRESSED_BYTES) {
                         throw LegacyBackupException("The backup expands beyond the safe import limit.")
                     }
-                    output.write(buffer, 0, read)
+                    output?.write(buffer, 0, read)
                 }
-                entries[entry.name] = output.toString(StandardCharsets.UTF_8.name())
+                if (output != null) entries[entry.name] = output.toString(StandardCharsets.UTF_8.name())
             }
         }
         if (entries.isEmpty() || entries.keys.none { it == "exportInfo" || it.startsWith("stores/") }) {
@@ -313,6 +321,7 @@ internal object LegacyGrayjayBackupParser {
     private const val MAX_ENTRY_BYTES = 32L * 1024 * 1024
     private const val MAX_TOTAL_UNCOMPRESSED_BYTES = 96L * 1024 * 1024
     private const val MAX_ENTRIES = 256
+    private val RETAINED_ENTRIES = setOf("exportInfo", "plugins", "plugin_settings", "cache_videos", "cache_channels", "settings")
 }
 
 internal fun LegacyGrayjayBackup.buildImportLibrary(

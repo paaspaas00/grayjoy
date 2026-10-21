@@ -65,9 +65,9 @@ internal object VoiceModels {
     )
     fun selectedLlm(prefs: android.content.SharedPreferences): String =
         prefs.getString("llm_model", "qwen").orEmpty().takeIf { it in setOf("qwen", "qwen-17", "qwen-3") } ?: "qwen"
-    fun directory(context: Context, id: String) = File(context.noBackupFilesDir, "models/$id")
+    fun directory(context: Context, id: String) = recoverVoiceModelDirectory(File(context.noBackupFilesDir, "models/$id"))
     fun installed(context: Context, id: String): Boolean {
-        val model = catalog.first { it.id == id }
+        val model = catalog.firstOrNull { it.id == id } ?: return false
         val root = directory(context, id)
         return runCatching { File(root, ".complete").readText().trim() == model.hash }.getOrDefault(false) &&
             model.required.all { File(root, it).exists() }
@@ -97,9 +97,7 @@ class VoiceModelWorker(context: Context, parameters: WorkerParameters) : Corouti
             val client = OkHttpClient.Builder().callTimeout(20, TimeUnit.MINUTES).build()
             call = client.newCall(Request.Builder().url(model.url).build())
             val activeCall = call
-            val cancelled = coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion { activeCall.cancel() }
-            try {
-                activeCall.execute().use { response ->
+            withCancellableVoiceDownload(activeCall) { response ->
                     check(response.isSuccessful) { "Download HTTP ${response.code}" }
                     val total = response.body.contentLength().takeIf { it > 0L } ?: model.bytes
                     response.body.byteStream().use { input -> archive.outputStream().use { output ->
@@ -121,8 +119,7 @@ class VoiceModelWorker(context: Context, parameters: WorkerParameters) : Corouti
                             }
                         }
                     } }
-                }
-            } finally { cancelled?.dispose() }
+            }
             val digest = MessageDigest.getInstance("SHA-256")
             setProgress(workDataOf("progress" to 0.8f, "stage" to "verify"))
             archive.inputStream().use { input ->
@@ -136,9 +133,9 @@ class VoiceModelWorker(context: Context, parameters: WorkerParameters) : Corouti
             else extract(model, archive, staging)
             check(model.required.all { File(staging, it).exists() }) { "Model files incomplete" }
             File(staging, ".complete").writeText(model.hash)
+            coroutineContext.ensureActive()
             val target = VoiceModels.directory(applicationContext, model.id)
-            check(!target.exists() || target.deleteRecursively())
-            check(staging.renameTo(target))
+            installVoiceModelDirectory(staging, target)
             Result.success()
         } catch (cancelled: kotlinx.coroutines.CancellationException) { call?.cancel(); throw cancelled }
         catch (error: Exception) {

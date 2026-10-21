@@ -168,7 +168,11 @@ internal fun inlineManifestRequestUri(sourceUri: String, requestId: String): Str
     "${sourceUri.substringBefore('#')}#$INLINE_MANIFEST_FRAGMENT_PREFIX$requestId"
 
 internal fun rawDashManifestContainsAudio(manifest: String): Boolean =
-    Regex("""mimeType\s*=\s*[\"']audio/""", RegexOption.IGNORE_CASE).containsMatchIn(manifest)
+    Regex("""\b(?:mimeType\s*=\s*[\"']audio/|contentType\s*=\s*[\"']audio[\"'])""",
+        RegexOption.IGNORE_CASE).containsMatchIn(manifest)
+
+internal fun downloadableSubtitleTracks(tracks: List<SubtitleUiModel>): List<IndexedValue<SubtitleUiModel>> =
+    tracks.withIndex().filter { it.value.uri.isNotBlank() }.distinctBy { it.value.uri }
 
 /**
  * Media3 deliberately returns no stream keys or mapped selections for a single-rendition HLS
@@ -293,7 +297,8 @@ internal fun VideoUiModel.withOfflinePlayback(
             .sortedBy { it.name.substringAfterLast('-').toIntOrNull() ?: Int.MAX_VALUE }
             .map { part ->
                 val index = part.name.substringAfterLast('-').toIntOrNull()
-                val original = index?.let(subtitleTracks::getOrNull)
+                val original = subtitleTracks.firstOrNull { it.uri == part.uri }
+                    ?: index?.let(subtitleTracks::getOrNull)
                 SubtitleUiModel(
                     name = original?.name ?: part.name,
                     language = original?.language,
@@ -514,10 +519,9 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         resumeIfAllowed()
     }
 
-    private fun isHeldUntilAppRestore(): Boolean = runtimePreferences.getBoolean(
-        KEY_HOLD_UNTIL_APP_RESTORE,
-        false,
-    )
+    private fun isHeldUntilAppRestore(): Boolean = runCatching {
+        runtimePreferences.getBoolean(KEY_HOLD_UNTIL_APP_RESTORE, false)
+    }.getOrDefault(true)
 
     private fun resumeIfAllowed() {
         if (canResumeManagedDownloads(isHeldUntilAppRestore(), storagePausedByGuard)) {
@@ -1097,7 +1101,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
     }
 
     private fun loadCompletedRecords(): MutableMap<DownloadGroupKey, CompletedDownloadRecord> {
-        val raw = completedCatalogPreferences.getString(COMPLETED_CATALOG_KEY, null)
+        val raw = runCatching { completedCatalogPreferences.getString(COMPLETED_CATALOG_KEY, null) }.getOrNull()
             ?: return linkedMapOf()
         return runCatching {
             val array = JSONArray(raw)
@@ -1366,16 +1370,14 @@ class GrayjoyDownloadStore private constructor(context: Context) {
                 ),
             )
         }
-        video.subtitleTracks
-            .filter { it.uri.isNotBlank() }
-            .distinctBy { it.uri }
-            .forEachIndexed { index, subtitle ->
+        downloadableSubtitleTracks(video.subtitleTracks)
+            .forEach { (index, subtitle) ->
                 add(
                     DownloadPart(
                         name = "subtitle-$index",
                         uri = subtitle.uri,
                         mimeType = subtitle.mimeType,
-                        headers = video.playbackRequestHeaders,
+                        headers = subtitle.requestHeaders,
                     ),
                 )
             }

@@ -152,7 +152,7 @@ internal object NewPipeBackupParser {
                 prefix.isZip() -> parseZipStream(source.inputStream(), cacheDirectory, checkActive)
                 source.length() <= 32L * 1024 * 1024 -> {
                     checkActive()
-                    parse(source.readBytes(), cacheDirectory)
+                    parse(source.readBytes(), cacheDirectory, checkActive)
                 }
                 else -> throw NewPipeBackupException("The subscriptions JSON exceeds the 32 MB import limit.")
             }
@@ -222,11 +222,12 @@ internal object NewPipeBackupParser {
             file.absolutePath, null, SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
         )
         return try {
-            parseDatabase(database).also { checkActive() }
+            parseDatabase(database, checkActive).also { checkActive() }
         } finally { database.close() }
     }
 
-    fun parse(data: ByteArray, cacheDirectory: File): NewPipeBackup {
+    fun parse(data: ByteArray, cacheDirectory: File, checkActive: () -> Unit = {}): NewPipeBackup {
+        checkActive()
         if (data.isEmpty()) throw NewPipeBackupException("The selected NewPipe export is empty.")
         if (data.size > MAX_INPUT_BYTES) {
             throw NewPipeBackupException("The selected NewPipe export is larger than 256 MB.")
@@ -234,6 +235,7 @@ internal object NewPipeBackupParser {
         val jsonOffset = if (data.hasPrefix(UTF8_BOM)) UTF8_BOM.size else 0
         var firstContentByte: Byte? = null
         for (index in jsonOffset until data.size) {
+            if (index % (64 * 1024) == 0) checkActive()
             val value = data[index]
             if (!value.toInt().toChar().isWhitespace()) {
                 firstContentByte = value
@@ -241,16 +243,17 @@ internal object NewPipeBackupParser {
             }
         }
         return when {
-            firstContentByte == '{'.code.toByte() -> parseSubscriptionJson(data)
-            data.hasPrefix(SQLITE_MAGIC) -> parseDatabaseFile(data, cacheDirectory)
-            data.isZip() -> parseZipStream(ByteArrayInputStream(data), cacheDirectory) {}
+            firstContentByte == '{'.code.toByte() -> parseSubscriptionJson(data, checkActive)
+            data.hasPrefix(SQLITE_MAGIC) -> parseDatabaseFile(data, cacheDirectory, checkActive)
+            data.isZip() -> parseZipStream(ByteArrayInputStream(data), cacheDirectory, checkActive)
             else -> throw NewPipeBackupException(
                 "This is not a NewPipe export. Select its export ZIP, newpipe.db, or subscriptions.json.",
             )
         }
     }
 
-    private fun parseSubscriptionJson(data: ByteArray): NewPipeBackup {
+    private fun parseSubscriptionJson(data: ByteArray, checkActive: () -> Unit): NewPipeBackup {
+        if (data.size > 32 * 1024 * 1024) throw NewPipeBackupException("The subscriptions JSON exceeds the 32 MB import limit.")
         val root = runCatching {
             JsonParser.parseString(data.toString(Charsets.UTF_8).trimStart('\uFEFF'))
         }
@@ -265,6 +268,7 @@ internal object NewPipeBackupParser {
             throw NewPipeBackupException("The NewPipe export contains too many subscriptions.")
         }
         val subscriptions = array.mapNotNull { element ->
+            checkActive()
             val item = element.takeIf(JsonElement::isJsonObject)?.asJsonObject ?: return@mapNotNull null
             val url = item.string("url").takeIf(String::isNotBlank) ?: return@mapNotNull null
             NewPipeSubscription(
@@ -280,7 +284,7 @@ internal object NewPipeBackupParser {
     }
 
 
-    private fun parseDatabaseFile(data: ByteArray, cacheDirectory: File): NewPipeBackup {
+    private fun parseDatabaseFile(data: ByteArray, cacheDirectory: File, checkActive: () -> Unit): NewPipeBackup {
         if (!data.hasPrefix(SQLITE_MAGIC)) {
             throw NewPipeBackupException("The NewPipe database is invalid.")
         }
@@ -294,10 +298,12 @@ internal object NewPipeBackupParser {
                 SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
             )
             try {
-                parseDatabase(database)
+                parseDatabase(database, checkActive)
             } finally {
                 database.close()
             }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
         } catch (error: NewPipeBackupException) {
             throw error
         } catch (error: Throwable) {
@@ -310,22 +316,24 @@ internal object NewPipeBackupParser {
         }
     }
 
-    private fun parseDatabase(database: SQLiteDatabase): NewPipeBackup {
+    private fun parseDatabase(database: SQLiteDatabase, checkActive: () -> Unit): NewPipeBackup {
+        checkActive()
         if (!database.hasTable("subscriptions") && !database.hasTable("streams")) {
             throw NewPipeBackupException("This database does not contain NewPipe data.")
         }
-        val subscriptions = database.readSubscriptions()
-        val streams = database.readStreams()
-        val progressByStream = database.readStreamProgress()
-        val history = database.readHistory(progressByStream)
-        val playlists = database.readPlaylists()
+        val subscriptions = database.readSubscriptions(checkActive)
+        val streams = database.readStreams(checkActive)
+        val progressByStream = database.readStreamProgress(checkActive)
+        val history = database.readHistory(progressByStream, checkActive)
+        val playlists = database.readPlaylists(checkActive)
         return NewPipeBackup(subscriptions, streams.associateBy(NewPipeStream::id), history, playlists)
     }
 
-    private fun SQLiteDatabase.readSubscriptions(): List<NewPipeSubscription> {
+    private fun SQLiteDatabase.readSubscriptions(checkActive: () -> Unit): List<NewPipeSubscription> {
+        checkActive()
         if (!hasTable("subscriptions")) return emptyList()
         val columns = tableColumns("subscriptions")
-        return rawQuery("SELECT * FROM `subscriptions` LIMIT $MAX_SUBSCRIPTIONS", null).useRows { cursor ->
+        return rawQuery("SELECT * FROM `subscriptions` LIMIT $MAX_SUBSCRIPTIONS", null).useRows(checkActive) { cursor ->
             val url = cursor.string("url")
             url.takeIf(String::isNotBlank)?.let {
                 NewPipeSubscription(
@@ -340,10 +348,11 @@ internal object NewPipeBackupParser {
         }.distinctBy(NewPipeSubscription::url)
     }
 
-    private fun SQLiteDatabase.readStreams(): List<NewPipeStream> {
+    private fun SQLiteDatabase.readStreams(checkActive: () -> Unit): List<NewPipeStream> {
+        checkActive()
         if (!hasTable("streams")) return emptyList()
         val columns = tableColumns("streams")
-        return rawQuery("SELECT * FROM `streams` LIMIT $MAX_STREAMS", null).useRows { cursor ->
+        return rawQuery("SELECT * FROM `streams` LIMIT $MAX_STREAMS", null).useRows(checkActive) { cursor ->
             val url = cursor.string("url")
             url.takeIf(String::isNotBlank)?.let {
                 NewPipeStream(
@@ -362,7 +371,8 @@ internal object NewPipeBackupParser {
         }.distinctBy(NewPipeStream::id)
     }
 
-    private fun SQLiteDatabase.readStreamProgress(): Map<Long, Long> {
+    private fun SQLiteDatabase.readStreamProgress(checkActive: () -> Unit): Map<Long, Long> {
+        checkActive()
         if (!hasTable("stream_state")) return emptyMap()
         val columns = tableColumns("stream_state")
         if ("stream_id" !in columns || "progress_time" !in columns) return emptyMap()
@@ -370,10 +380,11 @@ internal object NewPipeBackupParser {
             "SELECT `stream_id`, MAX(`progress_time`) AS `progress_time` FROM `stream_state` " +
                 "GROUP BY `stream_id` LIMIT $MAX_HISTORY",
             null,
-        ).useRows { cursor -> cursor.long("stream_id") to cursor.long("progress_time") }.toMap()
+        ).useRows(checkActive) { cursor -> cursor.long("stream_id") to cursor.long("progress_time") }.toMap()
     }
 
-    private fun SQLiteDatabase.readHistory(progressByStream: Map<Long, Long>): List<NewPipeHistoryEntry> {
+    private fun SQLiteDatabase.readHistory(progressByStream: Map<Long, Long>, checkActive: () -> Unit): List<NewPipeHistoryEntry> {
+        checkActive()
         if (!hasTable("stream_history")) return emptyList()
         val columns = tableColumns("stream_history")
         if ("stream_id" !in columns || "access_date" !in columns) return emptyList()
@@ -381,7 +392,7 @@ internal object NewPipeBackupParser {
             "SELECT `stream_id`, MAX(`access_date`) AS `access_date` FROM `stream_history` " +
                 "GROUP BY `stream_id` ORDER BY `access_date` DESC LIMIT $MAX_HISTORY",
             null,
-        ).useRows { cursor ->
+        ).useRows(checkActive) { cursor ->
             val streamId = cursor.long("stream_id")
             NewPipeHistoryEntry(
                 streamId = streamId,
@@ -391,7 +402,8 @@ internal object NewPipeBackupParser {
         }
     }
 
-    private fun SQLiteDatabase.readPlaylists(): List<NewPipePlaylistEntry> {
+    private fun SQLiteDatabase.readPlaylists(checkActive: () -> Unit): List<NewPipePlaylistEntry> {
+        checkActive()
         if (!hasTable("playlists") || !hasTable("playlist_stream_join")) return emptyList()
         val playlistColumns = tableColumns("playlists")
         val joinColumns = tableColumns("playlist_stream_join")
@@ -402,14 +414,21 @@ internal object NewPipeBackupParser {
         val playlists = rawQuery(
             "SELECT `uid`, `name` FROM `playlists` ORDER BY $order LIMIT $MAX_PLAYLISTS",
             null,
-        ).useRows { cursor -> cursor.long("uid") to cursor.string("name") }
+        ).useRows(checkActive) { cursor -> cursor.long("uid") to cursor.string("name") }
+        var totalStreamReferences = 0
         return playlists.map { (playlistId, name) ->
+            checkActive()
             val joinOrder = if ("join_index" in joinColumns) "`join_index`" else "rowid"
             val streamIds = rawQuery(
                 "SELECT `stream_id` FROM `playlist_stream_join` WHERE `playlist_id` = ? " +
                     "ORDER BY $joinOrder LIMIT $MAX_PLAYLIST_STREAMS",
                 arrayOf(playlistId.toString()),
-            ).useRows { it.long("stream_id") }
+            ).useRows(checkActive) {
+                if (++totalStreamReferences > MAX_TOTAL_PLAYLIST_STREAMS) {
+                    throw NewPipeBackupException("The NewPipe export contains too many playlist entries.")
+                }
+                it.long("stream_id")
+            }
             NewPipePlaylistEntry(playlistId, name, streamIds)
         }
     }
@@ -424,9 +443,13 @@ internal object NewPipeBackupParser {
             it.string("name")
         }.toSet()
 
-    private inline fun <T> Cursor.useRows(block: (Cursor) -> T?): List<T> = use { cursor ->
+    private inline fun <T> Cursor.useRows(checkActive: () -> Unit = {}, block: (Cursor) -> T?): List<T> = use { cursor ->
         buildList {
-            while (cursor.moveToNext()) block(cursor)?.let(::add)
+            while (true) {
+                checkActive()
+                if (!cursor.moveToNext()) break
+                block(cursor)?.let(::add)
+            }
         }
     }
 
@@ -459,6 +482,7 @@ internal object NewPipeBackupParser {
     private const val MAX_HISTORY = 250_000
     private const val MAX_PLAYLISTS = 20_000
     private const val MAX_PLAYLIST_STREAMS = 250_000
+    private const val MAX_TOTAL_PLAYLIST_STREAMS = 250_000
     private val SQLITE_MAGIC = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
     private val UTF8_BOM = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
 }

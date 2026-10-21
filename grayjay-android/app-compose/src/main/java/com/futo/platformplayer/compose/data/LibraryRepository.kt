@@ -632,8 +632,9 @@ internal class SharedPreferencesLibraryRepository(
 
     private fun readVideos(): List<VideoUiModel> {
         recoverInterruptedImport()
-        val storedJson = preferences.getString(KEY_VIDEOS, null)
-        val revision = watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0)
+        val storedJson = runCatching { preferences.getString(KEY_VIDEOS, null) }.getOrNull()
+        val revision = runCatching { watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0L) }
+            .getOrDefault(Long.MIN_VALUE)
         if (cachedVideosJson === storedJson && cachedProgressRevision == revision) {
             cachedVideos?.let { return it }
         }
@@ -667,7 +668,7 @@ internal class SharedPreferencesLibraryRepository(
 
     private fun readPlaylists(): List<PlaylistUiModel> {
         recoverInterruptedImport()
-        val storedJson = preferences.getString(KEY_PLAYLISTS, null)
+        val storedJson = runCatching { preferences.getString(KEY_PLAYLISTS, null) }.getOrNull()
         if (cachedPlaylistsJson === storedJson) cachedPlaylists?.let { return it }
         return runCatching {
             storedJson
@@ -692,7 +693,7 @@ internal class SharedPreferencesLibraryRepository(
     }
 
     private fun nextProgressRevision(): Long =
-        watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0L) + 1L
+        runCatching { watchProgressPreferences.getLong(KEY_PROGRESS_REVISION, 0L) }.getOrDefault(0L) + 1L
 
     private companion object {
         const val FILE_NAME = "grayjay_compose_library_v2"

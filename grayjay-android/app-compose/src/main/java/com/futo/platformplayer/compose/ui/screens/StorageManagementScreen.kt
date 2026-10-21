@@ -99,7 +99,7 @@ internal fun StorageManagementScreen(
         if (uri != null && selectedIds.isNotEmpty()) {
             onExport(
                 selectedIds.toList(),
-                DownloadMediaType.valueOf(exportMediaTypeName),
+                com.futo.platformplayer.compose.ui.restoredEnumValue(exportMediaTypeName, DownloadMediaType.Video),
                 uri,
             )
             selectedIds.clear()
@@ -314,7 +314,7 @@ internal fun StorageManagementScreen(
                 }
                 Button(
                     onClick = { directoryPicker.launch(null) },
-                    enabled = when (DownloadMediaType.valueOf(exportMediaTypeName)) {
+                    enabled = when (com.futo.platformplayer.compose.ui.restoredEnumValue(exportMediaTypeName, DownloadMediaType.Video)) {
                         DownloadMediaType.Video -> videoAvailable
                         DownloadMediaType.Audio -> audioAvailable
                     },

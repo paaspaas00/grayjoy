@@ -33,9 +33,13 @@ internal object CrashLogStore {
     @Volatile
     private var beforeCrashHook: (() -> Unit)? = null
 
-    fun isEnabled(context: Context): Boolean = context.applicationContext
-        .getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-        .getBoolean(KEY_ENABLED, false)
+    fun isEnabled(context: Context): Boolean = try {
+        context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+            .getBoolean(KEY_ENABLED, false)
+    } catch (_: ClassCastException) {
+        // Called synchronously at startup and again from the uncaught-exception handler.
+        false
+    }
 
     fun setEnabled(context: Context, enabled: Boolean) {
         context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)

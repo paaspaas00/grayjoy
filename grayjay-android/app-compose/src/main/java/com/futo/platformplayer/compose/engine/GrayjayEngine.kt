@@ -267,9 +267,10 @@ private enum class MixedContinuationKind { Search, Home }
 
 private data class MixedContinuation(
     val kind: MixedContinuationKind,
-    var newPipeId: String?,
-    var pluginId: String?,
-)
+    val pages: RetainedPageSequence<GrayjayPluginSearchResult>,
+) : AutoCloseable {
+    override fun close() = pages.close()
+}
 
 internal data class SubscriptionChannelPartition(
     val newPipeChannels: List<ChannelUiModel>,
@@ -656,7 +657,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private var youtubeChannelSearchFallbackNotified = false
     @Volatile
     private var youtubeSubscriptionFetchMode = YoutubeSubscriptionFetchMode.Fast
-    private val mixedContinuations = ConcurrentHashMap<String, MixedContinuation>()
+    private val mixedContinuations = BoundedSessionRegistry<MixedContinuation>(64)
+    private val paginationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val youtubeResolverByVideoId = ConcurrentHashMap<String, YoutubePlaybackResolver>()
     private val youtubeResolveRequestByVideoId =
         ConcurrentHashMap<String, YoutubeResolveRequest>()
@@ -782,7 +784,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     } else if (scheduleConnectivityRecovery(error)) return
                     resetConnectivityRecovery()
                     if (startYoutubeRuntimeFallback(error)) return
-                    val rootCause = generateSequence<Throwable>(error) { it.cause }.last()
+                    val rootCause = error.boundedCauses().last()
                     Log.e(
                         TAG,
                         "Playback failed: ${rootCause.javaClass.simpleName}: ${rootCause.localizedMessage}",
@@ -835,7 +837,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         connectivityRecoveryVideoId = videoId
         val retryAttempt = connectivityRecoveryAttempt++
         val failurePositionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
-        val rootCause = generateSequence(error) { it.cause }.last()
+        val rootCause = error.boundedCauses().last()
         Log.w(
             TAG,
             "Temporary network playback failure for $videoId; waiting to retry " +
@@ -888,14 +890,23 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     private fun registerMixedContinuation(
         kind: MixedContinuationKind,
-        newPipeId: String?,
-        pluginId: String?,
+        ids: List<String>,
     ): String? {
-        if (newPipeId == null && pluginId == null) return null
-        if (pluginId == null) return newPipeId
-        if (newPipeId == null) return pluginId
+        val continuations = ids.distinct()
+        if (continuations.isEmpty()) return null
+        if (continuations.size == 1) return continuations.single()
         val id = "mixed:${UUID.randomUUID()}"
-        mixedContinuations[id] = MixedContinuation(kind, newPipeId, pluginId)
+        mixedContinuations[id] = MixedContinuation(kind, RetainedPageSequence(paginationScope, continuations,
+            load = { token ->
+                if (kind == MixedContinuationKind.Search) {
+                    if (token.startsWith("np:")) newPipeYoutubeContentBackend.loadMoreSearch(token)
+                    else pluginBackend.loadMoreSearch(token)
+                } else {
+                    val page = if (token.startsWith("np:")) newPipeYoutubeContentBackend.loadMoreVideos(token)
+                        else pluginBackend.loadMoreVideos(token)
+                    GrayjayPluginSearchResult(videos = page.videos, continuationId = page.continuationId, hasMore = page.hasMore)
+                }
+            }, continuation = GrayjayPluginSearchResult::continuationId))
         return id
     }
 
@@ -913,7 +924,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
         val fallbackResolver = YoutubePlaybackResolver.entries.first { it != currentResolver }
         val fallbackGeneration = ++youtubeFallbackGeneration
-        val originalCause = generateSequence<Throwable>(error) { it.cause }.last()
+        val originalCause = error.boundedCauses().last()
         Log.w(
             TAG,
             "YouTube ${currentResolver.name} stream failed during playback; " +
@@ -1006,6 +1017,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun setProfile(profileId: String) {
+        if (pluginProfileId != profileId) mixedContinuations.clear()
         pluginProfileId = profileId
         if (pluginBackendDelegate.isInitialized()) pluginBackend.setProfile(profileId)
     }
@@ -1260,10 +1272,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             results = results,
             continuationId = registerMixedContinuation(
                 MixedContinuationKind.Search,
-                results.asSequence().mapNotNull(GrayjayPluginSearchResult::continuationId)
-                    .firstOrNull { it.startsWith("np:") },
-                results.asSequence().mapNotNull(GrayjayPluginSearchResult::continuationId)
-                    .firstOrNull { !it.startsWith("np:") },
+                results.mapNotNull(GrayjayPluginSearchResult::continuationId),
             ),
         )
     }
@@ -1271,6 +1280,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override suspend fun loadMoreSearch(continuationId: String): EngineSearchResult {
         val mixed = mixedContinuations[continuationId]
         if (mixed == null) {
+            check(!continuationId.startsWith("mixed:")) { appContext.getString(R.string.results_page_expired) }
             val result = if (continuationId.startsWith("np:")) {
                 newPipeYoutubeContentBackend.loadMoreSearch(continuationId)
             } else {
@@ -1278,18 +1288,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             }
             return mergeSearchResults(listOf(result), result.continuationId)
         }
-        val results = coroutineScope {
-            listOfNotNull(
-                mixed.newPipeId?.let { id -> async { newPipeYoutubeContentBackend.loadMoreSearch(id) } },
-                mixed.pluginId?.let { id -> async { pluginBackend.loadMoreSearch(id) } },
-            ).awaitAll()
-        }
-        mixed.newPipeId = results.firstOrNull { it.continuationId?.startsWith("np:") == true }
-            ?.continuationId
-        mixed.pluginId = results.firstOrNull { it.continuationId?.startsWith("np:") != true }
-            ?.continuationId
-        if (mixed.newPipeId == null && mixed.pluginId == null) mixedContinuations.remove(continuationId)
-        return mergeSearchResults(results, continuationId.takeIf { mixedContinuations.containsKey(it) })
+        check(mixed.kind == MixedContinuationKind.Search)
+        val results = mixed.pages.next()
+        val next = continuationId.takeIf { mixed.pages.hasMore }
+        if (next == null) mixedContinuations.remove(continuationId)
+        return mergeSearchResults(results, next)
     }
 
     private fun mergeSearchResults(
@@ -1423,10 +1426,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         }
         val continuationId = registerMixedContinuation(
             MixedContinuationKind.Home,
-            pages.asSequence().mapNotNull(GrayjayVideoPage::continuationId)
-                .firstOrNull { it.startsWith("np:") },
-            pages.asSequence().mapNotNull(GrayjayVideoPage::continuationId)
-                .firstOrNull { !it.startsWith("np:") },
+            pages.mapNotNull(GrayjayVideoPage::continuationId),
         )
         val merged = GrayjayVideoPage(
             videos = pages.flatMap(GrayjayVideoPage::videos),
@@ -1442,6 +1442,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     ): EngineVideoPage {
         val mixed = mixedContinuations[continuationId]
         if (mixed == null) {
+            check(!continuationId.startsWith("mixed:")) { appContext.getString(R.string.results_page_expired) }
             val page = if (continuationId.startsWith("np:")) {
                 newPipeYoutubeContentBackend.loadMoreVideos(continuationId)
             } else {
@@ -1449,21 +1450,14 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             }
             return page.toEngineVideoPage(feed)
         }
-        val pages = coroutineScope {
-            listOfNotNull(
-                mixed.newPipeId?.let { id -> async { newPipeYoutubeContentBackend.loadMoreVideos(id) } },
-                mixed.pluginId?.let { id -> async { pluginBackend.loadMoreVideos(id) } },
-            ).awaitAll()
-        }
-        mixed.newPipeId = pages.firstOrNull { it.continuationId?.startsWith("np:") == true }
-            ?.continuationId
-        mixed.pluginId = pages.firstOrNull { it.continuationId?.startsWith("np:") != true }
-            ?.continuationId
-        if (mixed.newPipeId == null && mixed.pluginId == null) mixedContinuations.remove(continuationId)
+        check(mixed.kind == MixedContinuationKind.Home)
+        val pages = mixed.pages.next()
+        val next = continuationId.takeIf { mixed.pages.hasMore }
+        if (next == null) mixedContinuations.remove(continuationId)
         return GrayjayVideoPage(
-            videos = pages.flatMap(GrayjayVideoPage::videos),
-            continuationId = continuationId.takeIf { mixedContinuations.containsKey(it) },
-            hasMore = mixedContinuations.containsKey(continuationId),
+            videos = pages.flatMap(GrayjayPluginSearchResult::videos),
+            continuationId = next,
+            hasMore = next != null,
         ).toEngineVideoPage(feed)
     }
 
@@ -2569,8 +2563,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun togglePlayback() {
         if (exoPlayer.mediaItemCount == 0) return
-        if (exoPlayer.playbackState == Player.STATE_ENDED) exoPlayer.seekToDefaultPosition()
-        if (exoPlayer.playWhenReady) pausePlayback() else resumePlayback()
+        if (exoPlayer.playbackState == Player.STATE_ENDED || !exoPlayer.playWhenReady) resumePlayback()
+        else pausePlayback()
         syncPlayback()
     }
 
@@ -2874,6 +2868,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override fun refreshProgress() = syncPlayback()
 
     override fun release() {
+        mixedContinuations.clear()
+        paginationScope.cancel()
         playStartGeneration++
         youtubeFallbackGeneration++
         youtubeFallbackVideoId = null

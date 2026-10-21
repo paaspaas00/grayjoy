@@ -293,7 +293,7 @@ internal class OfflineVoiceRuntime(private val context: Context, private val sco
         }
     } }
     override fun close() {
-        synchronized(this) { closing = true }
+        synchronized(this) { if (closing) return; closing = true }
         clearFollowup()
         llm.cancel(); expiry?.cancel(); prefill?.cancel()
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch { releaseHeavyModels(); cancel() }

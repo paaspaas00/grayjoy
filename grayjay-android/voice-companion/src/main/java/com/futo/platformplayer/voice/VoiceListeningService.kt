@@ -27,22 +27,29 @@ class VoiceListeningService : Service() {
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val active = AtomicBoolean(false)
-    private var recorder: AudioRecord? = null
-    private var runtime: OfflineVoiceRuntime? = null
-    private var client: GrayjoyMcpClient? = null
+    @Volatile private var recorder: AudioRecord? = null
+    @Volatile private var runtime: OfflineVoiceRuntime? = null
+    @Volatile private var client: GrayjoyMcpClient? = null
     private var lastNotification = 0L
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "stop") { stopSelf(); return START_NOT_STICKY }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { stopSelf(); return START_NOT_STICKY }
         if (!active.compareAndSet(false, true)) return START_NOT_STICKY
+        try {
+            startForeground(101, notification("Avvio offline…"))
+        } catch (error: Exception) {
+            getSharedPreferences("voice", 0).edit().putString("last_error", error.message?.take(300) ?: error.javaClass.simpleName).apply()
+            active.set(false)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         isListening = true
         listeningStatus.value = "Avvio offline…"
         lastHeard.value = ""
         wakeDiagnostics.value = WakeDiagnostics()
         voicePreparation.value = ""
         interpreterPreparation.value = ""
-        startForeground(101, notification("Avvio offline…"))
         scope.launch {
             try { listen() }
             catch (cancelled: CancellationException) { throw cancelled }
@@ -51,7 +58,7 @@ class VoiceListeningService : Service() {
                     getSharedPreferences("voice", 0).edit().putString("last_error", error.message?.take(300) ?: error.javaClass.simpleName).apply()
                     notifyStatus("Errore: ${error.message?.take(100)}")
                 }
-            } finally { withContext(Dispatchers.Main) { stopSelf() } }
+            } finally { withContext(NonCancellable + Dispatchers.Main) { stopSelf() } }
         }
         // A microphone foreground service cannot be silently recreated from the background.
         return START_NOT_STICKY
@@ -85,6 +92,9 @@ class VoiceListeningService : Service() {
         val microphone = VoiceMicrophone.open()
         val input = microphone.record
         recorder = input
+        var commandRecognizer: Recognizer? = null
+        var confirmationRecognizer: Recognizer? = null
+        try {
         microphoneProcessing.value = microphone.description
         val captureGain = VoiceInputGain(enabled = !microphone.gainControl)
         val chunk = ShortArray(1600)
@@ -96,8 +106,9 @@ class VoiceListeningService : Service() {
         var waitingFrames = 0
         var diagnosticUpdate = 0L
         var callModeCheckedAt = 0L
-        val commandRecognizer = commandModel?.let { Recognizer(it, 16000f).apply { setWords(true) } }
-        val confirmationRecognizer = createReplyRecognizer(commandModel, language)
+        commandRecognizer = commandModel?.let { Recognizer(it, 16000f) }
+        commandRecognizer?.setWords(true)
+        confirmationRecognizer = createReplyRecognizer(commandModel, language)
         val replyEndpoint = ReplyEndpoint()
         val streamingText = StringBuilder()
         var confidence = 0.0
@@ -119,7 +130,6 @@ class VoiceListeningService : Service() {
             startInput()
             notifyStatus("Attendo una risposta…")
         }
-        try {
             controllerReady.await()
             startInput()
             notifyStatus("In ascolto · ok Grayjoy")
@@ -237,8 +247,8 @@ class VoiceListeningService : Service() {
         } finally {
             voice.onReplyCaptureReady = null
             microphone.close(); recorder = null
-            commandRecognizer?.close()
-            confirmationRecognizer?.close()
+            runCatching { commandRecognizer?.close() }
+            runCatching { confirmationRecognizer?.close() }
             withContext(NonCancellable) {
                 try { withTimeout(2_000L) { releaseDucking() } }
                 finally { nextClient.close() }
@@ -271,7 +281,11 @@ class VoiceListeningService : Service() {
         listeningStatus.value = message
         getSharedPreferences("voice", 0).edit().putString("status", message).apply()
         val now = SystemClock.elapsedRealtime()
-        if (now - lastNotification > 250L) { getSystemService(NotificationManager::class.java).notify(101, notification(message)); lastNotification = now }
+        if (now - lastNotification > 250L) {
+            try { getSystemService(NotificationManager::class.java).notify(101, notification(message)) }
+            catch (_: SecurityException) { /* Listening still works when notifications are denied. */ }
+            lastNotification = now
+        }
     }
     override fun onDestroy() {
         isListening = false
@@ -282,7 +296,11 @@ class VoiceListeningService : Service() {
         voicePreparation.value = ""
         interpreterPreparation.value = ""
         microphoneProcessing.value = ""
-        active.set(false); runCatching { recorder?.stop() }; runtime?.close(); client?.close(); scope.cancel()
+        active.set(false)
+        runCatching { recorder?.stop() }
+        scope.cancel()
+        runCatching { runtime?.close() }
+        runCatching { client?.close() }
         getSharedPreferences("voice", 0).edit().putBoolean("running", false).putString("status", "Disabilitato").apply()
         super.onDestroy()
     }

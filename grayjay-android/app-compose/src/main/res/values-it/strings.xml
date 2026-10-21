@@ -1,4 +1,8 @@
 <resources>
+    <string name="results_page_expired">Questi risultati sono scaduti. Aggiorna la lista per continuare.</string>
+    <string name="profile_switching">Cambio profilo…</string>
+    <string name="profile_operation_failed">Impossibile completare l’operazione sul profilo. Riprova.</string>
+    <string name="profile_data_unavailable">Impossibile leggere i dati dei profili. Le modifiche sono bloccate per preservare i tuoi dati.</string>
     <string name="search_results_playlist_title">Ricerca: %1$s</string>
     <string name="shuffle_playlist">Riproduzione casuale</string>
     <string name="recent_playlists">Playlist ascoltate di recente</string>

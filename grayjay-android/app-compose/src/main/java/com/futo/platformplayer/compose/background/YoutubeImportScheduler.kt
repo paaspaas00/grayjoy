@@ -22,6 +22,8 @@ import com.futo.platformplayer.compose.data.LocalContentRepository
 import com.futo.platformplayer.compose.data.SharedPreferencesLibraryRepository
 import com.futo.platformplayer.compose.data.SharedPreferencesSourceRepository
 import com.futo.platformplayer.compose.data.applyAccountImportTransaction
+import com.futo.platformplayer.compose.data.wasProfileDeleted
+import com.futo.platformplayer.compose.data.DeletedProfileException
 import com.futo.platformplayer.compose.engine.AndroidGrayjayEngine
 import com.futo.platformplayer.compose.engine.EngineUserImportSelection
 import com.futo.platformplayer.compose.ui.YoutubeImportInterval
@@ -152,6 +154,7 @@ class YoutubeAccountImportWorker(
         val profileId = inputData.getString(KEY_PROFILE_ID).orEmpty()
         val sourceId = inputData.getString(KEY_SOURCE_ID).orEmpty()
         if (profileId.isBlank() || sourceId.isBlank()) return Result.failure()
+        if (wasProfileDeleted(applicationContext, profileId)) return Result.success()
         try {
             setForeground(createForegroundInfo())
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -227,6 +230,8 @@ class YoutubeAccountImportWorker(
             Result.success()
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
+        } catch (_: DeletedProfileException) {
+            Result.success()
         } catch (_: Throwable) {
             Result.retry()
         } finally {

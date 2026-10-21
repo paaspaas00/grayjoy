@@ -7,6 +7,13 @@ class VoiceBridgeTest {
     @Test fun framesAreBoundedAndTruncatedSessionsAreSafe() {
         assertEquals("abc", readBoundedLine("abc\nignored".reader()))
         assertNull(readBoundedLine("".reader()))
+        assertTrue(runCatching { readBoundedLine("""{"method":"tools/call"}""".reader()) }.isFailure)
+        repeat(128) { size ->
+            val frame = "x".repeat(size)
+            assertEquals(frame, readBoundedLine((frame + "\n").reader(), size))
+            if (size > 0) assertTrue(runCatching { readBoundedLine(frame.reader(), size) }.isFailure)
+            assertTrue(runCatching { readBoundedLine((frame + "x\n").reader(), size) }.isFailure)
+        }
         assertTrue(runCatching { readBoundedLine("x".repeat(17_000).reader()) }.isFailure)
     }
     @Test fun mcpToolsDoNotExposeDataMutationOrArbitraryUrls() {

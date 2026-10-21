@@ -1,4 +1,8 @@
 <resources>
+    <string name="results_page_expired">These results have expired. Refresh the list to continue.</string>
+    <string name="profile_switching">Switching profile…</string>
+    <string name="profile_operation_failed">Could not complete the profile operation. Please try again.</string>
+    <string name="profile_data_unavailable">Profile data could not be read. Changes are blocked to preserve your data.</string>
     <string name="search_results_playlist_title">Search: %1$s</string>
     <string name="shuffle_playlist">Shuffle playback</string>
     <string name="recent_playlists">Recently played playlists</string>

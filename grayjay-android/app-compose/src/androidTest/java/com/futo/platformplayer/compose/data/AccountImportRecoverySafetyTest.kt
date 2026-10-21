@@ -53,7 +53,7 @@ class AccountImportRecoverySafetyTest {
         assertEquals("invalid snapshot", quarantinedFiles(context).single().readText())
     }
 
-    @Test fun failedPreferenceRestoreIsQuarantinedInsteadOfReplayedOverNewWrites() = withProfile { context, profile ->
+    @Test fun failedPreferenceRestoreBlocksWritesAndRetriesAfterStorageRecovers() = withProfile { context, profile ->
         val repository = SharedPreferencesLibraryRepository(context, profile)
         repository.saveVideo(video("original"))
         repository.importJournal.begin()
@@ -79,10 +79,17 @@ class AccountImportRecoverySafetyTest {
         }
         val reopened = SharedPreferencesLibraryRepository(failing, profile)
         assertEquals(setOf("original"), reopened.ids())
-        reopened.saveVideo(video("saved-after-failure"))
-        assertEquals(setOf("original", "saved-after-failure"),
+        assertThrows(AccountImportRecoveryBlockedException::class.java) {
+            reopened.saveVideo(video("must-not-overwrite-recovery"))
+        }
+        assertTrue(quarantinedFiles(context).isEmpty())
+        assertArrayEquals(originalSnapshot, journalFile(context, profile).readBytes())
+        val recovered = SharedPreferencesLibraryRepository(context, profile)
+        assertEquals(setOf("original"), recovered.ids())
+        assertFalse(journalFile(context, profile).exists())
+        recovered.saveVideo(video("saved-after-recovery"))
+        assertEquals(setOf("original", "saved-after-recovery"),
             SharedPreferencesLibraryRepository(context, profile).ids())
-        assertArrayEquals(originalSnapshot, quarantinedFiles(context).single().readBytes())
     }
 
     @Test fun persistedQuarantineMarkerNeverResumesAutomaticRollback() = withProfile { context, profile ->

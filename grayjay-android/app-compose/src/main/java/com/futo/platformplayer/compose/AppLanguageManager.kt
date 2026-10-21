@@ -28,10 +28,15 @@ internal object AppLanguageManager {
         UiLanguageOption("zh", "中文"),
     )
 
-    fun selectedLanguageTag(context: Context): String = normalizeLanguageTag(
-        context.getSharedPreferences(PREFERENCES_FILE, Context.MODE_PRIVATE)
-            .getString(KEY_LANGUAGE_TAG, SYSTEM_LANGUAGE_TAG),
-    )
+    fun selectedLanguageTag(context: Context): String {
+        // This runs before Application.onCreate and the crash logger. A restored preference
+        // with the wrong primitive type must not prevent the process from starting.
+        val stored = try {
+            context.getSharedPreferences(PREFERENCES_FILE, Context.MODE_PRIVATE)
+                .getString(KEY_LANGUAGE_TAG, SYSTEM_LANGUAGE_TAG)
+        } catch (_: ClassCastException) { null }
+        return normalizeLanguageTag(stored)
+    }
 
     fun setSelectedLanguageTag(context: Context, languageTag: String) {
         val normalized = normalizeLanguageTag(languageTag)

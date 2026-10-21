@@ -13,6 +13,32 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OfflinePlaybackDescriptorTest {
+    @Test fun filteringSubtitleUrlsKeepsTheOriginalLanguageIndicesAndHeaders() {
+        val captions = listOf(
+            SubtitleUiModel("English", "en", "", "text/vtt"),
+            SubtitleUiModel("Deutsch", "de", "https://media.example/de.vtt", "text/vtt", mapOf("Authorization" to "subtitle-token")),
+            SubtitleUiModel("Duplicate", "de", "https://media.example/de.vtt", "text/vtt"),
+            SubtitleUiModel("Italiano", "it", "https://media.example/it.vtt", "text/vtt"),
+        )
+        val selected = downloadableSubtitleTracks(captions)
+        assertEquals(listOf(1, 3), selected.map { it.index })
+        assertEquals(mapOf("Authorization" to "subtitle-token"), selected.first().value.requestHeaders)
+    }
+
+    @Test fun olderRenumberedSubtitleDownloadsRecoverTheirLanguageFromTheUri() {
+        val source = video().copy(subtitleTracks = listOf(
+            SubtitleUiModel("English", "en", "", "text/vtt"),
+            SubtitleUiModel("Deutsch", "de", "https://media.example/de.vtt", "text/vtt"),
+        ))
+        val descriptor = source.withOfflinePlayback(listOf(
+            part(DownloadMediaType.Video, "video", "https://media.example/video.mp4", expectedPartCount = 2),
+            part(DownloadMediaType.Video, "subtitle-0", "https://media.example/de.vtt", expectedPartCount = 2),
+        ))
+        assertNotNull(descriptor)
+        assertEquals("Deutsch", descriptor!!.subtitleTracks.single().name)
+        assertEquals("de", descriptor.subtitleTracks.single().language)
+    }
+
     @Test
     fun intentionalRemovalNeverLooksLikeFailedCompletedDownload() {
         assertEquals(

@@ -11,9 +11,10 @@ internal object VoiceAccess {
         context.packageManager.checkSignatures(context.packageName, companionPackage(context)) ==
             android.content.pm.PackageManager.SIGNATURE_MATCH
     }.getOrDefault(false)
-    fun enabled(context: Context) = isInstalled(context) && context.getSharedPreferences("voice_access", 0)
-        .getBoolean("enabled", false)
-    fun sessionRevision(context: Context) = context.getSharedPreferences("voice_access", 0).getLong("revision", 0L)
+    fun enabled(context: Context) = isInstalled(context) &&
+        readVoiceAccessState(context.getSharedPreferences("voice_access", 0)).enabled
+    fun sessionRevision(context: Context) =
+        readVoiceAccessState(context.getSharedPreferences("voice_access", 0)).revision
     fun setEnabled(context: Context, value: Boolean) {
         context.getSharedPreferences("voice_access", 0).edit().putBoolean("enabled", value && isInstalled(context)).apply()
         if (!value) stopListening(context)
@@ -27,4 +28,13 @@ internal object VoiceAccess {
         if (isInstalled(context)) context.packageManager.getLaunchIntentForPackage(companionPackage(context))
             ?.let { context.startActivity(it) }
     }
+}
+
+internal data class VoiceAccessState(val enabled: Boolean, val revision: Long)
+
+/** Unknown/corrupt authorization state cannot grant access or crash a bound service. */
+internal fun readVoiceAccessState(preferences: android.content.SharedPreferences): VoiceAccessState = try {
+    VoiceAccessState(preferences.getBoolean("enabled", false), preferences.getLong("revision", 0L))
+} catch (_: ClassCastException) {
+    VoiceAccessState(false, 0L)
 }

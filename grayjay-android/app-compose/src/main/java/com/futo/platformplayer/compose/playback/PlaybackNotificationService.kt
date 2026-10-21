@@ -36,10 +36,12 @@ class PlaybackNotificationService : Service() {
     private lateinit var descriptionAdapter: DescriptionAdapter
     private var closingFromNotification = false
     private var foregroundReady = false
+    private var hostedGeneration = Long.MIN_VALUE
+    private var hostedPlayer: Player? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val restoreNotification = Runnable {
         val playback = attachment
-        if (playback == null || closingFromNotification) return@Runnable
+        if (playback == null || closingFromNotification || liveService !== this) return@Runnable
         // Run after PlayerNotificationManager has completely finished its transient cancellation.
         // Reposting synchronously from onNotificationCancelled can be overwritten by the tail of
         // the same Media3 update, which is most visible while a playlist grows or changes items.
@@ -47,7 +49,11 @@ class PlaybackNotificationService : Service() {
             stopSelf()
             return@Runnable
         }
-        attachAndInvalidate(playback)
+        // An idle/empty player makes Media3 cancel its notification again. Keep the bootstrap
+        // until its existing listener observes a playable state instead of reposting in a loop.
+        if (canRebuildPlaybackNotification(playback.player.mediaItemCount, playback.player.playbackState)) {
+            attachAndInvalidate(playback)
+        }
     }
 
     override fun onCreate() {
@@ -61,6 +67,7 @@ class PlaybackNotificationService : Service() {
                         notification: Notification,
                         ongoing: Boolean,
                     ) {
+                        if (closingFromNotification || liveService !== this@PlaybackNotificationService) return
                         // A paused player is still an active playback session. Detaching the
                         // foreground service here lets Android kill it after the screen locks,
                         // which also loses the player and queue. Keep the service foreground
@@ -127,6 +134,7 @@ class PlaybackNotificationService : Service() {
         foregroundStartPending = false
         val playback = attachment
         if (playback == null) {
+            prepareForStop()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf(startId)
             return START_NOT_STICKY
@@ -141,7 +149,11 @@ class PlaybackNotificationService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        if (!closingFromNotification) attachment?.player?.pause()
+        val current = attachment
+        if (!closingFromNotification &&
+            (current?.generation == hostedGeneration || current?.player !== hostedPlayer)) {
+            hostedPlayer?.pause()
+        }
         // Detaching Media3 can synchronously report cancellation. Do not enqueue a
         // notification restore against this service after its destruction has begun.
         closingFromNotification = true
@@ -154,8 +166,17 @@ class PlaybackNotificationService : Service() {
         super.onDestroy()
     }
 
+    private fun prepareForStop() {
+        closingFromNotification = true
+        foregroundReady = false
+        mainHandler.removeCallbacks(restoreNotification)
+        if (::playerNotificationManager.isInitialized) playerNotificationManager.setPlayer(null)
+    }
+
     private fun attachAndInvalidate(playback: Attachment) {
         if (attachment !== playback) return
+        hostedGeneration = playback.generation
+        hostedPlayer = playback.player
         playerNotificationManager.setMediaSessionToken(playback.mediaSession.platformToken)
         playerNotificationManager.setPlayer(playback.player)
         playerNotificationManager.invalidate()
@@ -221,6 +242,7 @@ class PlaybackNotificationService : Service() {
         } catch (error: RuntimeException) {
             // Android can restart a sticky service before the app has returned to the foreground.
             // It is illegal to promote that restart, but it must not crash the whole process.
+            foregroundReady = false
             Log.w(TAG, "Playback notification restart was not allowed; waiting for foreground playback.", error)
             false
         }
@@ -352,6 +374,7 @@ class PlaybackNotificationService : Service() {
     }
 
     private data class Attachment(
+        val generation: Long,
         val player: Player,
         val mediaSession: MediaSession,
         val closePlayback: () -> Unit,
@@ -370,6 +393,7 @@ class PlaybackNotificationService : Service() {
         @Volatile
         private var attachment: Attachment? = null
         private var liveService: PlaybackNotificationService? = null
+        private val attachmentGeneration = java.util.concurrent.atomic.AtomicLong(0)
 
         internal fun hosts(player: Player): Boolean = liveService?.foregroundReady == true && attachment?.player === player
 
@@ -390,7 +414,7 @@ class PlaybackNotificationService : Service() {
             onReady: (() -> Unit)? = null,
             onUnavailable: (() -> Unit)? = null,
         ) {
-            attachment = Attachment(player, mediaSession, closePlayback, artworkHeaders, onReady, onUnavailable)
+            attachment = Attachment(attachmentGeneration.incrementAndGet(), player, mediaSession, closePlayback, artworkHeaders, onReady, onUnavailable)
             startIfAllowed(context)
         }
 
@@ -405,6 +429,8 @@ class PlaybackNotificationService : Service() {
             // engine must not detach the session which is playing in the UI or on Bluetooth.
             if (attachment?.player !== owner) return false
             attachment = null
+            // stopService is asynchronous. A subsequent show must not reuse the dying host.
+            liveService?.prepareForStop()
             NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
             // A startForegroundService request already in the main-thread queue still needs its
             // startForeground acknowledgement. Let onStartCommand post/remove the bootstrap when
@@ -448,3 +474,6 @@ internal fun shouldRestorePlaybackNotification(
     closingFromNotification: Boolean,
     dismissedByUser: Boolean,
 ): Boolean = hasAttachment && !closingFromNotification && !dismissedByUser
+
+internal fun canRebuildPlaybackNotification(mediaItemCount: Int, state: Int): Boolean =
+    mediaItemCount > 0 && state != Player.STATE_IDLE

@@ -92,7 +92,7 @@ internal class GrayjoyDownloadQueue(context: Context) {
     }
 
     private fun load(): List<QueuedDownload> {
-        val raw = preferences.getString(KEY_RECORDS, null) ?: return emptyList()
+        val raw = runCatching { preferences.getString(KEY_RECORDS, null) }.getOrNull() ?: return emptyList()
         return parseDownloadQueueRecords(raw)
     }
 

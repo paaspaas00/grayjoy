@@ -86,6 +86,7 @@ data class GrayjayUiState(
     val externalNavigation: ExternalNavigationUiModel? = null,
     val availableUpdate: ReleaseUpdateUiModel? = null,
     val videoOpenDialog: VideoOpenDialogUiModel? = null,
+    val isSwitchingProfile: Boolean = false,
 )
 
 data class DownloadStorageUiState(

@@ -46,4 +46,36 @@ class HttpRequestReaderTest {
             if (parsed != null) assertTrue(parsed.body.size <= 1024)
         }
     }
+
+    @Test fun steadyHeaderDripCannotKeepAWorkerOccupiedBeyondTheRequestDeadline() {
+        var now = 0L
+        var reads = 0
+        val request = ("GET / HTTP/1.1\r\nX-Slow: " + "a".repeat(500) + "\r\n\r\n").toByteArray()
+        val input = object : InputStream() {
+            override fun read(): Int {
+                now += 500_000_000L
+                return request.getOrNull(reads++)?.toInt() ?: -1
+            }
+        }
+        assertNull(readHttpRequest(input, 0, maxReadDurationMs = 10_000L, nanoTime = { now }))
+        assertTrue(reads <= 20)
+    }
+
+    @Test fun bodyDeadlineIsCheckedEvenWhenEachReadKeepsTheSocketAlive() {
+        var now = 0L
+        val prefix = "POST / HTTP/1.1\r\nContent-Length: 4\r\n\r\n".toByteArray()
+        var offset = 0
+        var bodyReads = 0
+        val input = object : InputStream() {
+            override fun read(): Int = prefix.getOrNull(offset++)?.toInt() ?: -1
+            override fun read(buffer: ByteArray, start: Int, length: Int): Int {
+                now += 6_000_000_000L
+                bodyReads++
+                buffer[start] = 'x'.code.toByte()
+                return 1
+            }
+        }
+        assertNull(readHttpRequest(input, 10, maxReadDurationMs = 10_000L, nanoTime = { now }))
+        assertEquals(2, bodyReads)
+    }
 }

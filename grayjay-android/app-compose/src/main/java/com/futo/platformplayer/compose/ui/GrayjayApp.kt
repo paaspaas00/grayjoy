@@ -92,7 +92,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -534,21 +533,20 @@ private val GrayjayTransientUiStateSaver =
                 state.actionIsRemotePlaylistVideo,
                 state.actionIsQueueVideo,
                 state.actionCanAddToQueue,
-                state.playlistPickerVideoIds,
+                savedBulkSelection(state.playlistPickerVideoIds),
                 state.profileDialogVisible,
                 state.chromecastSheetVisible,
             )
         },
         restore = { values ->
-            @Suppress("UNCHECKED_CAST")
             GrayjayTransientUiState(
-                actionVideoId = values[0] as String?,
-                actionIsRemotePlaylistVideo = values[1] as Boolean,
-                actionIsQueueVideo = values[2] as Boolean,
-                actionCanAddToQueue = values[3] as Boolean,
-                playlistPickerVideoIds = values[4] as List<String>,
-                profileDialogVisible = values[5] as Boolean,
-                chromecastSheetVisible = values[6] as Boolean,
+                actionVideoId = (values.getOrNull(0) as? String)?.takeIf { it.length <= 4_096 },
+                actionIsRemotePlaylistVideo = values.getOrNull(1) as? Boolean ?: false,
+                actionIsQueueVideo = values.getOrNull(2) as? Boolean ?: false,
+                actionCanAddToQueue = values.getOrNull(3) as? Boolean ?: false,
+                playlistPickerVideoIds = savedBulkSelection(values.getOrNull(4) as? List<*> ?: emptyList<String>()),
+                profileDialogVisible = values.getOrNull(5) as? Boolean ?: false,
+                chromecastSheetVisible = values.getOrNull(6) as? Boolean ?: false,
             )
         },
     )
@@ -566,8 +564,16 @@ fun GrayjayApp(
     pictureInPictureMode: Boolean = false,
 ) {
     val context = LocalContext.current
+    if (uiState.isSwitchingProfile) androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
+        androidx.compose.material3.Surface(shape = MaterialTheme.shapes.large) {
+            Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp))
+                Text(stringResource(R.string.profile_switching))
+            }
+        }
+    }
     val displayClock = rememberDisplayClock()
-    val pageStateHolder = rememberSaveableStateHolder()
     val channelArtworkIndex = remember(uiState.channels, uiState.channelDetail.channel) {
         ChannelArtworkIndex(listOfNotNull(uiState.channelDetail.channel) + uiState.channels)
     }
@@ -590,6 +596,10 @@ fun GrayjayApp(
         androidx.compose.runtime.mutableStateMapOf<String, ChannelUiModel>()
     }
     var navigationProfileId by rememberSaveable { mutableStateOf(uiState.activeProfileId) }
+    val protectedPageKeys = remember(uiState.activeProfileId, browseHistory, uiState.playbackPlaylist?.id) {
+        protectedNavigationPageKeys(uiState.activeProfileId, browseHistory, uiState.playbackPlaylist?.id)
+    }
+    val pageStateHolder = rememberBoundedPageStateHolder(protectedKeys = protectedPageKeys)
     var searchAutoFocusRequested by rememberSaveable { mutableStateOf(false) }
     var libraryFilterName by rememberSaveable { mutableStateOf(LibraryFilter.History.name) }
     var pendingPageSlideDirection by rememberSaveable { mutableStateOf(0) }
@@ -612,7 +622,7 @@ fun GrayjayApp(
     val transientUi = rememberSaveable(saver = GrayjayTransientUiStateSaver) {
         GrayjayTransientUiState()
     }
-    val selected = GrayjayDestination.valueOf(destinationName)
+    val selected = restoredEnumValue(destinationName, GrayjayDestination.Home)
     // Player-transition progress changes every frame. Building a combined list and linearly
     // searching it for every item in a large imported playlist made collapsing an 800-item queue
     // perform millions of comparisons per frame. Memoize one first-match index instead.
@@ -1209,7 +1219,7 @@ fun GrayjayApp(
         onRenamePlaylist = actions.onRenamePlaylist,
         shuffledPlaylistIds = uiState.shuffledPlaylistIds,
         onPlaylistShuffleChange = actions.onPlaylistShuffleChange,
-        libraryFilter = LibraryFilter.valueOf(libraryFilterName),
+        libraryFilter = restoredEnumValue(libraryFilterName, LibraryFilter.History),
         onLibraryFilterChange = {
             focusManager.clearFocus(force = true)
             keyboardController?.hide()
@@ -1579,7 +1589,7 @@ fun GrayjayApp(
             NavigationLayout.BottomBar -> BottomNavigationLayout(
                 selected = selected,
                 navigationSelected = nestedBackDestinationName
-                    ?.let(GrayjayDestination::valueOf)
+                    ?.let { restoredEnumValue(it, GrayjayDestination.Home) }
                     ?: selected,
                 selectedVideo = selectedVideo,
                 selectedChannel = selectedChannel,

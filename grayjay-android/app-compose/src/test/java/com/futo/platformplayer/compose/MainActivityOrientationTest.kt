@@ -12,6 +12,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MainActivityOrientationTest {
+    @Test fun unsupportedDevicesNeverRequestPictureInPicture() {
+        assertFalse(shouldEnterPictureInPicture(enabled = true, hasVideo = true, audioOnly = false,
+            isPlaying = true, isBuffering = false, isLoading = false, supportedByDevice = false))
+    }
     @Test
     fun `picture in picture aspect ratio follows video and clamps unsupported extremes`() {
         assertEquals(16 to 9, normalizedPictureInPictureAspectRatio(0, 0))

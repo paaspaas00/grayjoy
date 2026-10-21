@@ -4,5 +4,6 @@ package com.futo.platformplayer.compose
 internal class RequestEpoch {
     @Volatile private var value = 0L
     fun next(): Long = ++value
+    fun current(): Long = value
     fun isCurrent(token: Long): Boolean = token == value
 }

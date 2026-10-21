@@ -170,7 +170,7 @@ class NewPipeYoutubeContentBackend(
         channelTabs[canonicalUrl] = info.tabs
         channelTabs[channelUrl] = info.tabs
         val videosHandler = info.tabs.firstOrNull { it.contentFilter() == ChannelTabs.VIDEOS }
-        val firstPage = videosHandler?.let(::loadChannelTabFirstPage)
+        val firstPage = videosHandler?.let { loadChannelTabFirstPage(it, videoLimit) }
         GrayjayChannelDetails(
             url = canonicalUrl,
             name = info.name,
@@ -181,7 +181,6 @@ class NewPipeYoutubeContentBackend(
             links = emptyMap(),
             videos = firstPage?.items
                 ?.filterIsInstance<StreamInfoItem>()
-                ?.take(videoLimit)
                 ?.map { it.toGrayjaySearchItem() }
                 .orEmpty(),
             continuationId = firstPage?.continuationId,
@@ -219,11 +218,14 @@ class NewPipeYoutubeContentBackend(
         videoLimit: Int = 30,
     ): GrayjayPlaylistDetails = withContext(Dispatchers.IO) {
         val info = PlaylistInfo.getInfo(service, playlistUrl)
-        val videos = info.relatedItems.take(videoLimit).map { it.toGrayjaySearchItem() }
+        val pageSize = videoLimit.coerceAtLeast(1)
+        val videos = info.relatedItems.take(pageSize).map { it.toGrayjaySearchItem() }
         val continuationId = registerPager(
             kind = PagerKind.Playlist,
             nextPage = info.nextPage,
             loader = { page -> PlaylistInfo.getMoreItems(service, info.url, page) },
+            pendingItems = info.relatedItems.drop(pageSize),
+            pageSize = pageSize,
         )
         GrayjayPlaylistDetails(
             playlist = GrayjaySearchPlaylist(
@@ -238,7 +240,7 @@ class NewPipeYoutubeContentBackend(
             ),
             videos = videos,
             continuationId = continuationId,
-            hasMore = Page.isValid(info.nextPage),
+            hasMore = continuationId != null,
         )
     }
 
@@ -324,45 +326,62 @@ class NewPipeYoutubeContentBackend(
             )
         }
 
-    private fun loadChannelTabFirstPage(handler: ListLinkHandler): LoadedPage {
+    private fun loadChannelTabFirstPage(handler: ListLinkHandler, pageSize: Int = 30): LoadedPage {
         val extractor = service.getChannelTabExtractor(handler)
         extractor.fetchPage()
         val page = extractor.initialPage
-        return LoadedPage(
-            items = page.items,
-            continuationId = registerPager(
-                kind = if (handler.contentFilter() == ChannelTabs.PLAYLISTS) {
+        val limit = pageSize.coerceAtLeast(1)
+        val continuationId = registerPager(
+                kind = if (handler.contentFilter() in setOf(ChannelTabs.PLAYLISTS, ChannelTabs.ALBUMS)) {
                     PagerKind.ChannelPlaylists
                 } else {
                     PagerKind.ChannelVideos
                 },
                 nextPage = page.nextPage,
                 loader = extractor::getPage,
-            ),
-            hasMore = Page.isValid(page.nextPage),
+                pendingItems = page.items.drop(limit),
+                pageSize = limit,
+            )
+        return LoadedPage(
+            items = page.items.take(limit),
+            continuationId = continuationId,
+            hasMore = continuationId != null,
         )
     }
 
     internal suspend fun loadPage(continuationId: String): LoadedPage =
         withContext(Dispatchers.IO) {
-            val session = pagers[continuationId] ?: return@withContext LoadedPage()
+            val session = pagers[continuationId] ?: throw SourceSessionChangedException()
             session.mutex.withLock {
-                val next = session.nextPage ?: return@withLock LoadedPage()
-                val page = session.loader(next)
+                if (pagers[continuationId] !== session) throw SourceSessionChangedException()
+                val next = session.nextPage
+                val buffered = session.pendingItems.isNotEmpty()
+                val page = if (buffered) null else next?.let(session.loader)
+                val incoming = if (buffered) session.pendingItems else page?.items.orEmpty()
                 // A cancelled request must not consume a page that its caller will never receive.
                 currentCoroutineContext().ensureActive()
-                session.nextPage = page.nextPage
-                if (!Page.isValid(page.nextPage)) pagers.remove(continuationId, session)
+                if (pagers[continuationId] !== session) throw SourceSessionChangedException()
+                if (!buffered && next != null) {
+                    session.visitedPages.add(newPipePageIdentity(next))
+                    while (session.visitedPages.size > 128) session.visitedPages.remove(session.visitedPages.first())
+                    session.nextPage = page?.nextPage?.takeIf {
+                        Page.isValid(it) && newPipePageIdentity(it) !in session.visitedPages
+                    }
+                }
+                val visible = incoming.take(session.pageSize)
+                session.pendingItems = incoming.drop(session.pageSize)
+                val hasMore = session.pendingItems.isNotEmpty() || Page.isValid(session.nextPage)
+                if (!hasMore) pagers.remove(continuationId, session)
                 LoadedPage(
                     kind = session.kind,
                     contentUrl = session.contentUrl,
                     items = if (session.liveOnly) {
-                        page.items.filterIsInstance<StreamInfoItem>().filter { it.isLiveStream() }
+                        visible.filterIsInstance<StreamInfoItem>().filter { it.isLiveStream() }
                     } else {
-                        page.items
+                        visible
                     },
-                    continuationId = continuationId.takeIf { Page.isValid(page.nextPage) },
-                    hasMore = Page.isValid(page.nextPage),
+                    continuationId = continuationId.takeIf { hasMore },
+                    hasMore = hasMore,
                 )
             }
         }
@@ -373,10 +392,13 @@ class NewPipeYoutubeContentBackend(
         loader: (Page) -> ListExtractor.InfoItemsPage<out InfoItem>,
         liveOnly: Boolean = false,
         contentUrl: String = "",
+        pendingItems: List<InfoItem> = emptyList(),
+        pageSize: Int = Int.MAX_VALUE,
     ): String? {
-        if (!Page.isValid(nextPage)) return null
+        if (!Page.isValid(nextPage) && pendingItems.isEmpty()) return null
         val id = "np:${UUID.randomUUID()}"
-        pagers[id] = PagerSession(kind, nextPage, loader, liveOnly, contentUrl)
+        pagers[id] = PagerSession(kind, nextPage, loader, liveOnly, contentUrl,
+            pendingItems = pendingItems, pageSize = pageSize.coerceAtLeast(1))
         return id
     }
 
@@ -599,6 +621,9 @@ class NewPipeYoutubeContentBackend(
         val liveOnly: Boolean,
         val contentUrl: String,
         val mutex: Mutex = Mutex(),
+        var pendingItems: List<InfoItem> = emptyList(),
+        val pageSize: Int = Int.MAX_VALUE,
+        val visitedPages: MutableSet<String> = linkedSetOf(),
     )
 
     internal enum class PagerKind { Search, Kiosk, ChannelVideos, ChannelPlaylists, Playlist, Comments }

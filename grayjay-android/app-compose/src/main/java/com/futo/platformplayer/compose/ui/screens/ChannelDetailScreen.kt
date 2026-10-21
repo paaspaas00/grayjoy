@@ -108,7 +108,7 @@ fun ChannelDetailScreen(
     val performance = rememberDevicePerformanceProfile()
     val compactLayout = compactUi()
     val query = detail.searchQuery
-    var selectedVideoIds by rememberSaveable(channel.id, detail.selectedTab, query) { mutableStateOf(emptyList<String>()) }
+    var selectedVideoIds by remember(channel.id, detail.selectedTab, query) { mutableStateOf(emptyList<String>()) }
     val selectionMode = selectedVideoIds.isNotEmpty()
     PageBackHandler(enabled = selectionMode) { selectedVideoIds = emptyList() }
     var showSettingsSheet by rememberSaveable(channel.id) { mutableStateOf(false) }
@@ -174,11 +174,13 @@ fun ChannelDetailScreen(
         }
     }
     val displayedChannel = detail.channel ?: channel
-    val currentVideos = when (detail.selectedTab) {
-        ChannelContentTab.Videos -> detail.videos
-        ChannelContentTab.Shorts -> detail.shorts
-        ChannelContentTab.Live -> detail.liveStreams
-        ChannelContentTab.Playlists, ChannelContentTab.Releases -> emptyList()
+    val currentVideos = remember(detail.selectedTab, detail.videos, detail.shorts, detail.liveStreams) {
+        when (detail.selectedTab) {
+            ChannelContentTab.Videos -> detail.videos
+            ChannelContentTab.Shorts -> detail.shorts
+            ChannelContentTab.Live -> detail.liveStreams
+            ChannelContentTab.Playlists, ChannelContentTab.Releases -> emptyList()
+        }.distinctBy(VideoUiModel::id)
     }
     val filteredVideos = remember(currentVideos, query) {
         val normalizedQuery = query.trim()
@@ -196,6 +198,12 @@ fun ChannelDetailScreen(
     }
     val visibleVideos = remember(searchBaseVideos, sortMode, sortAscending) {
         sortChannelVideos(searchBaseVideos, sortMode, sortAscending)
+    }
+    val visibleVideoIds = remember(visibleVideos) { visibleVideos.mapTo(hashSetOf(), VideoUiModel::id) }
+    LaunchedEffect(visibleVideoIds, detail.isLoading, detail.isSearching) {
+        if (!detail.isLoading && !detail.isSearching) {
+            selectedVideoIds = selectedVideoIds.filter(visibleVideoIds::contains)
+        }
     }
     val visiblePlaylists = remember(detail.playlists, detail.releases, detail.selectedTab, sortAscending) {
         sortChannelPlaylists(if (detail.selectedTab == ChannelContentTab.Releases) detail.releases else detail.playlists, sortAscending)
@@ -269,7 +277,10 @@ fun ChannelDetailScreen(
             TextButton(onClick = { selectedVideoIds = emptyList() }, modifier = Modifier.testTag("channel-selection-cancel")) {
                 Text(stringResource(R.string.cancel))
             }
-            IconButton(onClick = { onAddSelectionToPlaylist(selectedVideoIds) }, modifier = Modifier.testTag("channel-selection-add")) {
+            IconButton(onClick = {
+                selectedVideoIds.filter(visibleVideoIds::contains).takeIf(List<String>::isNotEmpty)
+                    ?.let(onAddSelectionToPlaylist)
+            }, modifier = Modifier.testTag("channel-selection-add")) {
                 Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, contentDescription = stringResource(R.string.add_to_playlist))
             }
             IconButton(onClick = {
@@ -753,10 +764,11 @@ internal fun sortChannelVideos(
     mode: ChannelSortMode,
     ascending: Boolean,
 ): List<VideoUiModel> {
+    val unique = videos.distinctBy(VideoUiModel::id)
     val known = when (mode) {
-        ChannelSortMode.UploadDate -> videos.filter { it.publishedAtMs > 0L }
-        ChannelSortMode.Popularity -> videos.filter { it.viewCount > 0L }
-        ChannelSortMode.Name -> videos
+        ChannelSortMode.UploadDate -> unique.filter { it.publishedAtMs > 0L }
+        ChannelSortMode.Popularity -> unique.filter { it.viewCount > 0L }
+        ChannelSortMode.Name -> unique
     }
     val unknownIds = known.mapTo(mutableSetOf(), VideoUiModel::id)
     val sorted = when (mode) {
@@ -764,12 +776,13 @@ internal fun sortChannelVideos(
         ChannelSortMode.Popularity -> known.sortedBy(VideoUiModel::viewCount)
         ChannelSortMode.Name -> known.sortedBy { it.title.lowercase() }
     }.let { if (ascending) it else it.asReversed() }
-    return sorted + videos.filterNot { it.id in unknownIds }
+    return sorted + unique.filterNot { it.id in unknownIds }
 }
 
 internal fun sortChannelPlaylists(
     playlists: List<PlaylistUiModel>,
     ascending: Boolean,
 ): List<PlaylistUiModel> = playlists
+    .distinctBy(PlaylistUiModel::id)
     .sortedBy { it.title.lowercase() }
     .let { if (ascending) it else it.asReversed() }

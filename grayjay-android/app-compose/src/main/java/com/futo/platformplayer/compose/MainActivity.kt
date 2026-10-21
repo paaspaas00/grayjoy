@@ -77,6 +77,10 @@ class MainActivity : FragmentActivity() {
     private var playerFullscreen = false
     private var playerExpanded by mutableStateOf(false)
     private var playerLandscapeFullscreen = false
+    private val pictureInPictureSupported by lazy {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+    }
     private val updateInstaller by lazy { GrayjoyUpdateInstaller(this) }
     private var pendingUpdateApk: File? = null
     private var updateDownloadState by mutableStateOf<UpdateDownloadUiModel?>(null)
@@ -96,10 +100,7 @@ class MainActivity : FragmentActivity() {
         requestedOrientation = appOrientationForWindow(
             supportsResponsiveLayout = resources.configuration.smallestScreenWidthDp >= 600,
         )
-        pendingSourceUrl = intent.pluginSourceUrlOrNull()
-        pendingDatabaseImportUri = intent.databaseImportUriOrNull()
-        pendingExternalContentUrl = intent.externalContentUrlOrNull()
-        pendingPcPairingUrl = intent.pcPairingUrlOrNull()
+        acceptPendingLaunchActions(launchActionsForCreation(savedInstanceState) { intent.launchActions() })
         enableEdgeToEdge()
         // UI state collection stops at onStop. Job notifications must keep following progress
         // while the screen is locked or another app is in front, and disappear on completion.
@@ -591,6 +592,19 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        PendingLaunchActions(pendingSourceUrl, pendingDatabaseImportUri?.toString(),
+            pendingExternalContentUrl, pendingPcPairingUrl).saveTo(outState)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun acceptPendingLaunchActions(actions: PendingLaunchActions) {
+        pendingSourceUrl = actions.sourceUrl
+        pendingDatabaseImportUri = actions.importUri?.let(Uri::parse)
+        pendingExternalContentUrl = actions.contentUrl
+        pendingPcPairingUrl = actions.pairingUrl
+    }
+
     override fun onPause() {
         grayjayViewModel.setAppForeground(false)
         if (!pictureInPictureEntryPending && !pictureInPictureMode && !isInPictureInPictureMode) {
@@ -602,17 +616,18 @@ class MainActivity : FragmentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (!shouldEnterPictureInPicture(grayjayViewModel.uiState.value)) {
+        if (!shouldEnterPictureInPicture(grayjayViewModel.uiState.value, pictureInPictureSupported)) {
             pictureInPictureEntryPending = false
             return
         }
-        pictureInPictureEntryPending = true
-        capturePictureInPictureSourceRect()
-        val params = buildPictureInPictureParams()
-        setPictureInPictureParams(params)
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            runCatching { enterPictureInPictureMode(params) }
-                .onFailure { pictureInPictureEntryPending = false }
+        pictureInPictureEntryPending = runCatching {
+            capturePictureInPictureSourceRect()
+            val params = buildPictureInPictureParams()
+            setPictureInPictureParams(params)
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) enterPictureInPictureMode(params) else true
+        }.getOrElse {
+            android.util.Log.w("MainActivity", "Picture-in-picture could not be started.", it)
+            false
         }
     }
 
@@ -660,10 +675,7 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        pendingSourceUrl = intent.pluginSourceUrlOrNull()
-        pendingDatabaseImportUri = intent.databaseImportUriOrNull()
-        pendingExternalContentUrl = intent.externalContentUrlOrNull()
-        pendingPcPairingUrl = intent.pcPairingUrlOrNull()
+        acceptPendingLaunchActions(intent.launchActions())
     }
 
     private fun downloadAndInstallUpdate(update: ReleaseUpdateUiModel) {
@@ -760,7 +772,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun updatePictureInPictureParams() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (!pictureInPictureSupported) return
         if (!pictureInPictureMode) capturePictureInPictureSourceRect()
         runCatching { setPictureInPictureParams(buildPictureInPictureParams()) }
     }
@@ -769,7 +781,7 @@ class MainActivity : FragmentActivity() {
         val state = grayjayViewModel.uiState.value
         val hasVideo = state.nowPlaying.video != null &&
             state.playback.currentVideoId != null
-        val autoEnter = shouldEnterPictureInPicture(state)
+        val autoEnter = shouldEnterPictureInPicture(state, pictureInPictureSupported)
         val videoSize = if (state.nowPlaying.video?.playbackAudioOnly == true) {
             16 to 9
         } else {
@@ -869,7 +881,10 @@ internal fun normalizedPictureInPictureAspectRatio(width: Int, height: Int): Pai
     }
 }
 
-internal fun shouldEnterPictureInPicture(state: com.futo.platformplayer.compose.ui.GrayjayUiState): Boolean =
+internal fun shouldEnterPictureInPicture(
+    state: com.futo.platformplayer.compose.ui.GrayjayUiState,
+    supportedByDevice: Boolean = true,
+): Boolean =
     shouldEnterPictureInPicture(
         enabled = state.pictureInPictureEnabled,
         hasVideo = state.nowPlaying.video != null,
@@ -878,6 +893,7 @@ internal fun shouldEnterPictureInPicture(state: com.futo.platformplayer.compose.
         isBuffering = state.playback.isBuffering,
         isLoading = state.nowPlaying.isLoadingPlayback,
         isCasting = state.chromecast.isConnected || state.chromecast.isConnecting,
+        supportedByDevice = supportedByDevice,
     )
 
 internal fun shouldEnterPictureInPicture(
@@ -888,7 +904,8 @@ internal fun shouldEnterPictureInPicture(
     isBuffering: Boolean,
     isLoading: Boolean,
     isCasting: Boolean = false,
-): Boolean = enabled && hasVideo && !isCasting
+    supportedByDevice: Boolean = true,
+): Boolean = supportedByDevice && enabled && hasVideo && !isCasting
 
 internal fun fullscreenPlayerOrientation(
     fullscreen: Boolean,
@@ -951,6 +968,39 @@ internal fun updateDownloadCompletionBatch(
     )
 }
 
+internal data class PendingLaunchActions(
+    val sourceUrl: String? = null,
+    val importUri: String? = null,
+    val contentUrl: String? = null,
+    val pairingUrl: String? = null,
+) {
+    fun saveTo(state: Bundle) {
+        listOf(sourceUrl, importUri, contentUrl, pairingUrl).forEachIndexed { index, value ->
+            state.putString("pending-launch-$index", value?.takeIf { it.length <= 16_384 })
+        }
+    }
+
+    companion object {
+        fun restore(state: Bundle): PendingLaunchActions {
+            val values = (0..3).map { index ->
+                runCatching { state.getString("pending-launch-$index") }.getOrNull()
+                    ?.takeIf { it.length <= 16_384 }
+            }
+            return PendingLaunchActions(values[0], values[1], values[2], values[3])
+        }
+    }
+}
+
+internal fun launchActionsForCreation(savedState: Bundle?, readIntent: () -> PendingLaunchActions): PendingLaunchActions =
+    if (savedState == null) readIntent() else PendingLaunchActions.restore(savedState)
+
+private fun Intent.launchActions(): PendingLaunchActions = PendingLaunchActions(
+    sourceUrl = runCatching { pluginSourceUrlOrNull() }.getOrNull(),
+    importUri = runCatching { databaseImportUriOrNull()?.toString() }.getOrNull(),
+    contentUrl = runCatching { externalContentUrlOrNull() }.getOrNull(),
+    pairingUrl = runCatching { pcPairingUrlOrNull() }.getOrNull(),
+)
+
 private fun Intent.pluginSourceUrlOrNull(): String? = dataString?.takeIf { value ->
     value.startsWith("grayjay://plugin/", ignoreCase = true) ||
         value.startsWith("vfuto://", ignoreCase = true)
@@ -963,7 +1013,7 @@ private fun Intent.pcPairingUrlOrNull(): String? = dataString?.takeIf { value ->
 private fun Intent.externalContentUrlOrNull(): String? = externalContentUrl(
     action = action,
     dataString = dataString,
-    sharedText = getStringExtra(Intent.EXTRA_TEXT),
+    sharedText = getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString(),
 )
 
 internal fun externalContentUrl(

@@ -85,6 +85,9 @@ fun SearchScreen(
     onNavigationMenuClick: () -> Unit = {},
 ) {
     val listState = rememberContentListState()
+    val resultVideos = remember(search.videos) { search.videos.distinctBy(VideoUiModel::id) }
+    val resultChannels = remember(search.channels) { search.channels.distinctBy(ChannelUiModel::id) }
+    val resultPlaylists = remember(search.playlists) { search.playlists.distinctBy(PlaylistUiModel::id) }
     val compactLayout = compactUi()
     val suggestions = remember(search.suggestions) { uniqueSearchSuggestions(search.suggestions) }
     var typeName by rememberSaveable { mutableStateOf(SearchContentType.Videos.name) }
@@ -93,7 +96,7 @@ fun SearchScreen(
     var sourcesInitialized by rememberSaveable { mutableStateOf(false) }
     var showSourcePicker by rememberSaveable { mutableStateOf(false) }
     var showFilterPicker by rememberSaveable { mutableStateOf(false) }
-    val type = SearchContentType.valueOf(typeName)
+    val type = com.futo.platformplayer.compose.ui.restoredEnumValue(typeName, SearchContentType.Videos)
     val activeSources = sources.filter {
         it.isEnabled && it.availability != SourceAvailability.MissingPlugin
     }
@@ -129,14 +132,14 @@ fun SearchScreen(
         )
     }
     val resultCount = when (type) {
-        SearchContentType.Creators -> search.channels.size
-        SearchContentType.Playlists -> search.playlists.size
-        SearchContentType.Videos -> search.videos.size
+        SearchContentType.Creators -> resultChannels.size
+        SearchContentType.Playlists -> resultPlaylists.size
+        SearchContentType.Videos -> resultVideos.size
     }
     val showingResults = search.isLoading || search.hasSearched || search.errorMessage != null
-    val playableResultIds = remember(search.videos) {
+    val playableResultIds = remember(resultVideos) {
         val now = System.currentTimeMillis()
-        search.videos.filter { it.isAvailable && it.scheduledStartAtMs <= now }.map(VideoUiModel::id).distinct()
+        resultVideos.filter { it.isAvailable && it.scheduledStartAtMs <= now }.map(VideoUiModel::id).distinct()
     }
     RequestNextPageEffect(
         listState = listState,
@@ -412,7 +415,7 @@ fun SearchScreen(
                 }
                 else -> when (type) {
                     SearchContentType.Creators -> items(
-                        items = search.channels,
+                        items = resultChannels,
                         key = ChannelUiModel::id,
                         contentType = { "creator" },
                     ) { channel ->
@@ -425,7 +428,7 @@ fun SearchScreen(
                         )
                     }
                     SearchContentType.Playlists -> items(
-                        items = search.playlists,
+                        items = resultPlaylists,
                         key = PlaylistUiModel::id,
                         contentType = { "playlist" },
                     ) { playlist ->
@@ -449,11 +452,11 @@ fun SearchScreen(
                                 Text(stringResource(R.string.play_all), Modifier.padding(start = 6.dp))
                             }
                         }
-                        if (search.videos.isNotEmpty() && !compactLayout) {
+                        if (resultVideos.isNotEmpty() && !compactLayout) {
                             item { SectionHeading(stringResource(R.string.videos)) }
                         }
                         itemsIndexed(
-                            search.videos,
+                            resultVideos,
                             key = { _, video -> video.id },
                             contentType = { _, _ -> "video" },
                         ) { index, video ->

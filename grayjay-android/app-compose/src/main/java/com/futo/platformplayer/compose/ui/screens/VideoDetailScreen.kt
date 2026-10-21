@@ -396,7 +396,7 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
         )
     }
     val displayedCreatorChannel = creatorChannel ?: fallbackCreatorChannel
-    val selectedSection = DetailSection.valueOf(selectedSectionName)
+    val selectedSection = com.futo.platformplayer.compose.ui.restoredEnumValue(selectedSectionName, DetailSection.UpNext)
     val topPlayerControlsAtStart = shouldUseSideBySideNowPlaying(
         drawerHidden = allowSideBySideLayout,
         availableWidthDp = LocalConfiguration.current.screenWidthDp.toFloat(),
@@ -1331,7 +1331,7 @@ internal fun PlayerSurface(
 
     if (showSettings) {
         PlayerSettingsSheet(
-            page = PlayerSettingsPage.valueOf(settingsPageName),
+            page = com.futo.platformplayer.compose.ui.restoredEnumValue(settingsPageName, PlayerSettingsPage.Main),
             video = video,
             playback = playback,
             isFullscreen = isFullscreen,
@@ -2793,7 +2793,7 @@ private fun DownloadOptionsSheet(
                 else availableAudioBitrates.firstOrNull(),
         )
     }
-    val mediaType = DownloadMediaType.valueOf(mediaTypeName)
+    val mediaType = com.futo.platformplayer.compose.ui.restoredEnumValue(mediaTypeName, DownloadMediaType.Video)
     val isComplete = download?.isComplete(mediaType) == true
     val isActive = download?.isActive(mediaType) == true
     val isFailed = mediaType in download?.failedMediaTypes.orEmpty()

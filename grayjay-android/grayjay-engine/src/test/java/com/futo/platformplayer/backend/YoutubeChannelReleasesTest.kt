@@ -1,13 +1,83 @@
 package com.futo.platformplayer.backend
 
 import com.google.gson.JsonParser
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class YoutubeChannelReleasesTest {
+    private fun firstPageHtml(token: String = "next") = """var ytInitialData = {
+        "channelMetadataRenderer":{"title":"Artist"},
+        "tabRenderer":{"endpoint":{"commandMetadata":{"webCommandMetadata":{"url":"/@artist/releases"}}},
+        "content":{"gridPlaylistRenderer":{"playlistId":"PLone","title":{"simpleText":"Album"}},
+        "continuationCommand":{"token":"$token"}}}};
+        var ytcfg = {"INNERTUBE_CLIENT_VERSION":"test-version"};"""
+
+    @Test fun repeatedContinuationStopsInsteadOfCreatingAnInfiniteFeed() = runBlocking {
+        val requests = AtomicInteger()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            requests.incrementAndGet()
+            val body = if (chain.request().method == "GET") firstPageHtml()
+                else """{"gridPlaylistRenderer":{"playlistId":"PLtwo","title":{"simpleText":"Second"}},"continuationCommand":{"token":"next"}}"""
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(body.toResponseBody()).build()
+        }.build()
+        try {
+            val reader = YoutubeChannelReleasesBackend(client)
+            val first = reader.firstPage("https://www.youtube.com/@artist")
+            val next = reader.loadMore(first.page.continuationId!!)
+            assertFalse(next.hasMore)
+            assertEquals("PLtwo", next.playlists.single().id)
+            assertEquals(next, reader.loadMore(first.page.continuationId!!))
+            assertEquals(2, requests.get())
+        } finally { client.dispatcher.executorService.shutdown(); client.connectionPool.evictAll() }
+    }
+
+    @Test fun clearDuringRequestPreventsOldResultsFromRepopulatingTheCache() = runBlocking {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val requests = AtomicInteger()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            if (requests.incrementAndGet() == 1) {
+                started.countDown()
+                check(release.await(3, TimeUnit.SECONDS))
+            }
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(firstPageHtml().toResponseBody()).build()
+        }.build()
+        try {
+            val reader = YoutubeChannelReleasesBackend(client)
+            val task = async { runCatching { reader.firstPage("https://www.youtube.com/@artist") } }
+            withContext(Dispatchers.IO) { assertTrue(started.await(3, TimeUnit.SECONDS)) }
+            reader.clear()
+            release.countDown()
+            assertTrue(task.await().exceptionOrNull() is SourceSessionChangedException)
+            assertTrue(reader.firstPage("https://www.youtube.com/@artist").available)
+            assertEquals(2, requests.get())
+        } finally { release.countDown(); client.dispatcher.executorService.shutdown(); client.connectionPool.evictAll() }
+    }
+
+    @Test fun rejectsExcessiveJsonNestingBeforeAllocatingADeepTree() {
+        for (depth in listOf(101, 1_000, 10_000)) {
+            assertTrue(runCatching { parseBoundedYoutubeJson("[".repeat(depth) + "]".repeat(depth)) }.isFailure)
+        }
+        assertTrue(runCatching { parseYoutubeInitialData("var ytInitialData = null; function unrelated(){ }") }.isFailure)
+        assertTrue(runCatching { parseBoundedYoutubeJson("[" + List(100_001) { "0" }.joinToString(",") + "]") }.isFailure)
+        assertEquals("[[]]", parseBoundedYoutubeJson("[[]]").toString())
+    }
+
+    @Test fun percentEncodedHandleCannotTurnIntoQueryParameters() {
+        assertEquals("https://www.youtube.com/@a%3Fb/releases?hl=en", youtubeReleasesUrl("https://www.youtube.com/@a%3Fb/videos"))
+    }
+
     @Test fun normalizesOnlyYoutubeChannelUrls() {
         assertEquals("https://www.youtube.com/@artist/releases?hl=en", youtubeReleasesUrl("https://www.youtube.com/@artist/videos?x=1"))
         assertEquals("https://www.youtube.com/channel/UC123/releases?hl=en", youtubeReleasesUrl("https://youtube.com/channel/UC123/playlists"))

@@ -16,6 +16,43 @@ import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 class LegacyGrayjayBackupTest {
+    @Test fun directoryEntriesAreIncludedInTheArchiveEntryLimit() {
+        val entries = (0..256).associate { "folder-$it/" to "" } + ("exportInfo" to "{}")
+        val error = assertThrows(LegacyBackupException::class.java) {
+            LegacyGrayjayBackupParser.parse(zipOf(entries))
+        }
+        assertTrue(error.message.orEmpty().contains("too many files"))
+    }
+
+    @Test fun directoryPayloadCannotBypassExpandedByteLimit() {
+        val compressed = ByteArrayOutputStream().use { output ->
+            ZipOutputStream(output).use { zip ->
+                zip.putNextEntry(ZipEntry("directory/"))
+                val block = ByteArray(64 * 1024)
+                repeat(513) { zip.write(block) }
+                zip.closeEntry()
+                zip.putNextEntry(ZipEntry("exportInfo"))
+                zip.write("{}".toByteArray())
+                zip.closeEntry()
+            }
+            output.toByteArray()
+        }
+        assertTrue(compressed.size < 100_000)
+        val error = assertThrows(LegacyBackupException::class.java) { LegacyGrayjayBackupParser.parse(compressed) }
+        assertTrue(error.message.orEmpty().contains("safe import limit"))
+    }
+
+    @Test fun cancelledArchiveStopsWhileDrainingIgnoredEntries() {
+        var checks = 0
+        val cancelled = java.util.concurrent.CancellationException("cancelled fixture")
+        val error = assertThrows(java.util.concurrent.CancellationException::class.java) {
+            LegacyGrayjayBackupParser.parse(zipOf(mapOf("ignored.bin" to "x".repeat(100_000), "exportInfo" to "{}")),
+                checkActive = { if (++checks == 5) throw cancelled })
+        }
+        assertTrue(error === cancelled)
+        assertEquals(5, checks)
+    }
+
     @Test fun extremeImportedTimestampsCannotWrapIntoNegativeHistoryDates() {
         val backup = LegacyGrayjayBackupParser.parse(zipOf(mapOf(
             "exportInfo" to "{}",

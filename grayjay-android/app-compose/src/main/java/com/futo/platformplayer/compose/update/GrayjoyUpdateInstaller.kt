@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicReference
 
 internal class GrayjoyUpdateInstaller(private val context: Context) {
     suspend fun download(
@@ -29,26 +30,28 @@ internal class GrayjoyUpdateInstaller(private val context: Context) {
         val destination = files.destination
         val temporary = files.temporary
         var current = URL(downloadUrl)
-        var connection: HttpURLConnection? = null
+        val activeConnection = AtomicReference<HttpURLConnection?>()
         var completed = false
         try {
+            withUpdateConnectionCleanup(disconnect = { activeConnection.getAndSet(null)?.disconnect() }) {
             repeat(6) {
                 currentCoroutineContext().ensureActive()
-                connection?.disconnect()
-                connection = current.openConnection() as HttpURLConnection
-                connection!!.instanceFollowRedirects = false
-                connection!!.connectTimeout = 12_000
-                connection!!.readTimeout = 30_000
-                connection!!.setRequestProperty("User-Agent", "Grayjoy/$versionName")
-                val code = connection!!.responseCode
+                activeConnection.getAndSet(null)?.disconnect()
+                val connection = (current.openConnection() as HttpURLConnection).also(activeConnection::set)
+                currentCoroutineContext().ensureActive()
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 12_000
+                connection.readTimeout = 30_000
+                connection.setRequestProperty("User-Agent", "Grayjoy/$versionName")
+                val code = connection.responseCode
                 if (code in 300..399) {
                     current = URL(current,
-                        connection!!.getHeaderField("Location") ?: error("Missing redirect"),
+                        connection.getHeaderField("Location") ?: error("Missing redirect"),
                     )
                     require(current.protocol == "https") { "Update redirect must use HTTPS" }
                 } else {
                     require(code in 200..299) { "Update download failed with HTTP $code" }
-                    val expected = connection!!.contentLengthLong
+                    val expected = connection.contentLengthLong
                     require(expected <= MAX_APK_BYTES) { "Update is too large" }
                     val totalBytes = expected.takeIf { it > 0L }
                     DownloadStorageGuard.requireCapacity(
@@ -59,13 +62,14 @@ internal class GrayjoyUpdateInstaller(private val context: Context) {
                     var copied = 0L
                     var lastProgressAt = 0L
                     var lastStorageCheckAt = 0L
-                    connection!!.inputStream.use { input ->
+                    connection.inputStream.use { input ->
                         temporary.outputStream().use { output ->
                             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                             while (true) {
                                 currentCoroutineContext().ensureActive()
                                 val count = input.read(buffer)
                                 if (count < 0) break
+                                require(count > 0) { "Update download made no progress" }
                                 copied += count
                                 require(copied <= MAX_APK_BYTES) { "Update is too large" }
                                 if (copied - lastStorageCheckAt >= STORAGE_CHECK_INTERVAL_BYTES) {
@@ -83,21 +87,23 @@ internal class GrayjoyUpdateInstaller(private val context: Context) {
                                     lastProgressAt = now
                                 }
                             }
+                            output.fd.sync()
                         }
                     }
                     require(copied > 0L && (expected <= 0L || copied == expected)) {
                         "Incomplete update download"
                     }
                     onProgress(copied, totalBytes ?: copied)
-                    if (destination.exists()) destination.delete()
-                    require(temporary.renameTo(destination)) { "Could not finish update download" }
+                    val coroutine = currentCoroutineContext()
+                    publishUpdateDownload(files) { coroutine.ensureActive() }
                     completed = true
-                    return@withContext destination
+                    return@withUpdateConnectionCleanup destination
                 }
             }
             error("Too many update redirects")
+            }
         } finally {
-            connection?.disconnect()
+            activeConnection.getAndSet(null)?.disconnect()
             if (!completed) temporary.delete()
         }
     }

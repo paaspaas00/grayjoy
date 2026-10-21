@@ -15,11 +15,13 @@ class YoutubeAutoplayLiveTest {
         lateinit var model: GrayjayViewModel
         scenario.onActivity { model = (it.application as GrayjoyApplication).playbackViewModel }
         val previous = withContext(Dispatchers.Main) { model.uiState.value.youtubeAutoplayEnabled }
+        val previousRecommendations = withContext(Dispatchers.Main) { model.uiState.value.showRecommendations }
         val previousVolume = withContext(Dispatchers.Main) { model.player.volume }
         val playlistIds = withContext(Dispatchers.Main) { model.uiState.value.playlists.map { it.id } }
         try {
             withContext(Dispatchers.Main) {
                 model.setYoutubeAutoplayEnabled(true)
+                model.setShowRecommendations(false)
                 model.player.volume = 0f
             }
             suspend fun openAndFinish(): String {
@@ -44,14 +46,22 @@ class YoutubeAutoplayLiveTest {
             delay(11_000L)
             assertNull(model.uiState.value.youtubeAutoplay)
             assertEquals(first, model.uiState.value.playback.currentVideoId)
-            val second = openAndFinish()
-            withTimeout(25_000L) { while (model.uiState.value.playback.currentVideoId == second) delay(100L) }
+            // Same ended video, with its recommendation UI disabled: enabling must use the
+            // backend recommendations and clear the previous cancellation, not require a reopen.
+            withContext(Dispatchers.Main) {
+                assertTrue(model.uiState.value.nowPlaying.recommendations.isEmpty())
+                model.setYoutubeAutoplayEnabled(false)
+                model.setYoutubeAutoplayEnabled(true)
+            }
+            withTimeout(30_000L) { while (model.uiState.value.youtubeAutoplay == null) delay(100L) }
+            withTimeout(25_000L) { while (model.uiState.value.playback.currentVideoId == first) delay(100L) }
             assertNull(model.uiState.value.youtubeAutoplay)
             assertEquals(playlistIds, model.uiState.value.playlists.map { it.id })
         } finally {
             withContext(Dispatchers.Main) {
                 model.closePlayback()
                 model.setYoutubeAutoplayEnabled(previous)
+                model.setShowRecommendations(previousRecommendations)
                 model.player.volume = previousVolume
             }
             scenario.close()

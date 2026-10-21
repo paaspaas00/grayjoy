@@ -590,7 +590,6 @@ private data class SourcePagerSession(
     val pager: IPager<*>,
     val commentClient: IPlatformClient? = null,
     val emittedKeys: MutableSet<String> = linkedSetOf(),
-    var failed: Boolean = false,
 )
 
 private data class PagerSession(
@@ -608,6 +607,8 @@ private data class PagerBatch(
     val continuationId: String? = null,
     val hasMore: Boolean = false,
 )
+
+private data class UncommittedSourceBatch(val page: UncommittedPluginPage, val batch: PagerBatch)
 
 private data class SubscriptionLoadOutcome(
     val sourcePager: SourcePagerSession? = null,
@@ -676,9 +677,9 @@ class GrayjayPluginBackend(
         "Compose account import",
         ACCOUNT_IMPORT_CLIENT_CONCURRENCY,
     )
-    private val storyboardCache = ConcurrentHashMap<String, CachedStoryboard>()
-    private val storyboardFailures = ConcurrentHashMap<String, Long>()
-    private val storyboardDurations = ConcurrentHashMap<String, Long>()
+    private val storyboardCache = BoundedSessionCache<String, CachedStoryboard>(16)
+    private val storyboardFailures = BoundedSessionCache<String, Long>(128)
+    private val storyboardDurations = BoundedSessionCache<String, Long>(128)
     private val resolvedVideoDetails = BoundedSessionCache<String, CachedVideoDetails>(24)
     private val commentHandles = ConcurrentHashMap<String, CommentHandle>()
     private val loadMutex = Mutex()
@@ -2330,12 +2331,29 @@ class GrayjayPluginBackend(
         continuationId: String,
         pageSize: Int,
     ): PagerBatch {
-        val session = pagerSessions[continuationId] ?: return PagerBatch()
+        val session = pagerSessions[continuationId] ?: throw SourceSessionChangedException()
         return session.mutex.withLock {
-            val sourceBatches = session.sources.map { source ->
-                readSourcePage(session.kind, source, pageSize.coerceAtLeast(1))
+            if (pagerSessions[continuationId] !== session) throw SourceSessionChangedException()
+            var pageFailure: Exception? = null
+            val staged = session.sources.map { source ->
+                try {
+                    readSourcePage(session.kind, source, pageSize.coerceAtLeast(1))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    if (pageFailure == null) pageFailure = error
+                    null
+                }
             }
-            val hasMore = session.sources.any(::sourceHasMore)
+            currentCoroutineContext().ensureActive()
+            if (pagerSessions[continuationId] !== session) throw SourceSessionChangedException()
+            val successful = staged.filterNotNull()
+            // Keep successful sources visible, but do not silently turn a failed next page into
+            // end-of-list or emit endless empty pages. The same handle remains available to retry.
+            if (successful.none { it.page.items.isNotEmpty() }) pageFailure?.let { throw it }
+            staged.forEachIndexed { index, source -> source?.let { session.sources[index].emittedKeys.addAll(it.page.keys) } }
+            val sourceBatches = successful.map(UncommittedSourceBatch::batch)
+            val hasMore = pageFailure != null || successful.any { it.page.hasMore }
             if (!hasMore) pagerSessions.remove(continuationId, session)
             PagerBatch(
                 videos = if (session.newestFirst) {
@@ -2357,35 +2375,14 @@ class GrayjayPluginBackend(
         }
     }
 
-    private fun readSourcePage(
+    private suspend fun readSourcePage(
         kind: PagerContentKind,
         source: SourcePagerSession,
         pageSize: Int,
-    ): PagerBatch {
-        if (source.failed) return PagerBatch()
-
-        fun unreadResults(): List<Any> = source.pager.getResults()
-            .asSequence()
-            .filter { item -> item != null && pagerItemKey(item) !in source.emittedKeys }
-            .take(pageSize)
-            .map { requireNotNull(it) }
-            .toList()
-
-        var rawItems = runCatching(::unreadResults).getOrElse {
-            source.failed = true
-            Log.e(TAG, "Reading a plugin page failed for ${source.sourceId}.", it)
-            emptyList()
-        }
-        if (rawItems.isEmpty() && !source.failed && source.pager.hasMorePages()) {
-            runCatching(source.pager::nextPage).onFailure {
-                source.failed = true
-                Log.e(TAG, "Loading the next plugin page failed for ${source.sourceId}.", it)
-            }
-            if (!source.failed) rawItems = runCatching(::unreadResults).getOrDefault(emptyList())
-        }
-        rawItems.forEach { source.emittedKeys += pagerItemKey(it) }
-
-        return when (kind) {
+    ): UncommittedSourceBatch {
+        val page = readUncommittedPluginPage(source.pager, source.emittedKeys, pageSize, ::pagerItemKey)
+        val rawItems = page.items
+        val batch = when (kind) {
             PagerContentKind.Videos -> PagerBatch(
                 videos = rawItems.filterIsInstance<IPlatformVideo>()
                     .map { it.toSearchItem(source.sourceId, source.pluginId) },
@@ -2403,16 +2400,7 @@ class GrayjayPluginBackend(
                     .map { it.toComment(source) },
             )
         }
-    }
-
-    private fun sourceHasMore(source: SourcePagerSession): Boolean {
-        if (source.failed) return false
-        val hasUnreadCurrent = runCatching {
-            source.pager.getResults().any { item ->
-                item != null && pagerItemKey(item) !in source.emittedKeys
-            }
-        }.getOrDefault(false)
-        return hasUnreadCurrent || runCatching(source.pager::hasMorePages).getOrDefault(false)
+        return UncommittedSourceBatch(page, batch)
     }
 
     private fun pagerItemKey(item: Any): String = when (item) {

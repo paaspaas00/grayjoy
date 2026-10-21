@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.saveable.listSaver
 import kotlinx.coroutines.CancellationException
+import com.futo.platformplayer.compose.ui.screens.LibraryFilter
 
 /** Outgoing pages and pages covered by the player must never consume system back. */
 internal val LocalPageBackEnabled = staticCompositionLocalOf { true }
@@ -56,7 +57,7 @@ internal fun historyForRemotePlaybackPlaylistReturn(
     else appendBrowseRoute(history, current.copy(videoId = null))
 
 internal fun encodeBrowseHistory(history: List<BrowseRoute>): List<String> =
-    listOf("routes-v2") + history.takeLast(40).flatMap {
+    listOf("routes-v2") + boundedBrowseHistory(history).flatMap {
         listOf(it.destination, it.channelId.orEmpty(), it.playlistId.orEmpty(), it.libraryFilter,
             it.videoId.orEmpty(), it.parentDestination.orEmpty())
     }
@@ -64,12 +65,34 @@ internal fun encodeBrowseHistory(history: List<BrowseRoute>): List<String> =
 internal fun decodeBrowseHistory(values: List<String>): List<BrowseRoute> {
     val versioned = values.firstOrNull() == "routes-v2"
     val fields = if (versioned) 6 else 5
-    return (if (versioned) values.drop(1) else values).chunked(fields)
+    return boundedBrowseHistory((if (versioned) values.drop(1) else values).chunked(fields)
         .filter { it.size == fields }
         .map {
             BrowseRoute(it[0], it[1].ifEmpty { null }, it[2].ifEmpty { null }, it[3],
                 it[4].ifEmpty { null }, it.getOrNull(5)?.ifEmpty { null })
-        }.takeLast(40)
+        })
+}
+
+private fun boundedBrowseHistory(history: List<BrowseRoute>): List<BrowseRoute> {
+    val destinations = GrayjayDestination.entries.mapTo(hashSetOf()) { it.name }
+    var remainingCharacters = 16_384
+    val bounded = mutableListOf<BrowseRoute>()
+    for (candidate in history.asReversed()) {
+        if (bounded.size >= 40) break
+        if (candidate.destination !in destinations) continue
+        val identities = listOfNotNull(candidate.channelId, candidate.playlistId, candidate.videoId)
+        if (identities.any { it.length > 4_096 }) continue
+        val route = candidate.copy(
+            libraryFilter = restoredEnumValue(candidate.libraryFilter, LibraryFilter.History).name,
+            parentDestination = candidate.parentDestination?.takeIf(destinations::contains),
+        )
+        val size = route.destination.length + route.libraryFilter.length +
+            identities.sumOf(String::length) + route.parentDestination.orEmpty().length
+        if (size > remainingCharacters) continue
+        bounded += route
+        remainingCharacters -= size
+    }
+    return bounded.asReversed()
 }
 
 internal val BrowseHistorySaver = listSaver<List<BrowseRoute>, String>(

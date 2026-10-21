@@ -19,8 +19,13 @@ internal fun createReplyRecognizer(model: Model?, language: String): Recognizer?
     ) else listOf("yes", "yes please", "yes read it", "read it please", "sure", "okay",
         "no", "no thanks", "do not read it", "yes do not read it", "anything", "whatever",
         "cancel", "pause", "stop", "shall i read it")
-    return Recognizer(model, 16000f, JSONArray(phrases + "[unk]").toString()).apply {
-        setWords(true)
-        setEndpointerDelays(5f, .3f, 16f)
+    val recognizer = Recognizer(model, 16000f, JSONArray(phrases + "[unk]").toString())
+    try {
+        recognizer.setWords(true)
+        recognizer.setEndpointerDelays(5f, .3f, 16f)
+        return recognizer
+    } catch (error: Throwable) {
+        runCatching { recognizer.close() }
+        throw error
     }
 }

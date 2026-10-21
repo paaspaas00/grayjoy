@@ -21,7 +21,7 @@ internal class VoiceMicrophone private constructor(
     override fun close() {
         runCatching { record.stop() }
         effects.forEach { runCatching { it.release() } }
-        record.release()
+        runCatching { record.release() }
     }
 
     companion object {

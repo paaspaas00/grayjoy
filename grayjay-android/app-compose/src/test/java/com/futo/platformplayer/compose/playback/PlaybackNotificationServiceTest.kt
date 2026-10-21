@@ -5,6 +5,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackNotificationServiceTest {
+    @Test fun idleAndEmptyPlayersDoNotCreateAnEndlessRestoreLoop() {
+        assertFalse(canRebuildPlaybackNotification(0, androidx.media3.common.Player.STATE_READY))
+        assertFalse(canRebuildPlaybackNotification(1, androidx.media3.common.Player.STATE_IDLE))
+        assertTrue(canRebuildPlaybackNotification(1, androidx.media3.common.Player.STATE_BUFFERING))
+        assertTrue(canRebuildPlaybackNotification(1, androidx.media3.common.Player.STATE_READY))
+        assertTrue(canRebuildPlaybackNotification(1, androidx.media3.common.Player.STATE_ENDED))
+    }
+
     @Test
     fun `transient Media3 cancellation restores an attached playback notification`() {
         assertTrue(

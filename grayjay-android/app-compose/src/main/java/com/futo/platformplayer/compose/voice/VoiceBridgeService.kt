@@ -39,14 +39,23 @@ class VoiceBridgeService : Service() {
     override fun onBind(intent: Intent): IBinder? {
         if (!VoiceAccess.enabled(this)) return null
         if (server == null) {
-            val socket = ServerSocket(0, 2, InetAddress.getByName("127.0.0.1"))
+            val socket = try { ServerSocket(0, 2, InetAddress.getByName("127.0.0.1")) }
+            catch (error: Exception) {
+                android.util.Log.w("VoiceBridge", "Could not open the voice command socket.", error)
+                stopSelf()
+                return null
+            }
             server = socket
             scope.launch {
                 while (isActive) {
                     val client = try { socket.accept() } catch (_: Exception) { break }
                     if (connections.size >= 2) { client.close(); continue }
                     connections.add(client)
-                    launch { slots.withPermit { serve(client) } }
+                    launch { slots.withPermit { serve(client) } }.invokeOnCompletion {
+                        // Destruction can cancel the child before serve() reaches its finally.
+                        connections.remove(client)
+                        runCatching { client.close() }
+                    }
                 }
             }
         }
@@ -115,7 +124,10 @@ class VoiceBridgeService : Service() {
         } finally {
             connections.remove(socket); runCatching { socket.close() }
             if (touchedVolume) withContext(NonCancellable + Dispatchers.Main.immediate) {
-                (application as GrayjoyApplication).playbackViewModel.releaseVoiceVolume(owner)
+                try { (application as GrayjoyApplication).playbackViewModel.releaseVoiceVolume(owner) }
+                catch (error: Exception) {
+                    android.util.Log.w("VoiceBridge", "Could not release a closed voice session's volume lease.", error)
+                }
             }
         }
     }
@@ -130,7 +142,10 @@ internal fun readBoundedLine(reader: java.io.Reader, maximum: Int = 16_384): Str
     val value = StringBuilder()
     while (value.length <= maximum) {
         val next = reader.read()
-        if (next < 0) return value.takeIf { it.isNotEmpty() }?.toString()
+        if (next < 0) {
+            check(value.isEmpty()) { "Truncated MCP frame" }
+            return null
+        }
         if (next == 10) return value.toString()
         value.append(next.toChar())
     }

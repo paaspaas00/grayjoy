@@ -2,8 +2,10 @@ package com.futo.platformplayer.compose.downloads
 
 import android.content.Context
 import com.futo.platformplayer.compose.ui.DownloadMediaType
+import com.futo.platformplayer.compose.ui.DownloadUiModel
 import org.json.JSONArray
 import org.json.JSONObject
+import com.google.gson.JsonParser
 
 /** Persistent equivalent of Grayjay's PlaylistDownloadDescriptor store. */
 internal data class OfflinePlaylistDownload(
@@ -25,6 +27,24 @@ internal class GrayjoyOfflinePlaylistStore(context: Context) {
     @Synchronized
     fun all(profileId: String): List<OfflinePlaylistDownload> = records.values
         .filter { it.profileId == profileId }
+
+    /** A background reconciliation must not overwrite a newer cancel/register action. */
+    @Synchronized
+    fun replaceProfileIfUnchanged(
+        profileId: String,
+        expected: List<OfflinePlaylistDownload>,
+        updated: List<OfflinePlaylistDownload>,
+    ): Boolean {
+        require(expected.all { it.profileId == profileId } && updated.all { it.profileId == profileId })
+        val before = expected.associateBy { it.storageKey() }
+        if (records.filterValues { it.profileId == profileId } != before) return false
+        val replacement = updated.associateBy { it.storageKey() }
+        if (before == replacement) return true
+        before.keys.forEach(records::remove)
+        records.putAll(replacement)
+        save()
+        return true
+    }
 
     /** An explicit "download playlist" action re-enables every current member. */
     @Synchronized
@@ -93,24 +113,9 @@ internal class GrayjoyOfflinePlaylistStore(context: Context) {
         if (changed) save()
     }
 
-    private fun load(): List<OfflinePlaylistDownload> = runCatching {
-        val array = JSONArray(preferences.getString(KEY_RECORDS, "[]"))
-        buildList {
-            repeat(array.length()) { index ->
-                val json = array.getJSONObject(index)
-                add(
-                    OfflinePlaylistDownload(
-                        profileId = json.getString("profileId"),
-                        playlistId = json.getString("playlistId"),
-                        mediaType = DownloadMediaType.valueOf(json.getString("mediaType")),
-                        managedVideoIds = json.getJSONArray("managedVideoIds").toStringSet(),
-                        excludedVideoIds = json.optJSONArray("excludedVideoIds").toStringSet(),
-                        targetVideoHeight = json.optInt("targetVideoHeight").takeIf { it > 0 },
-                    ),
-                )
-            }
-        }
-    }.getOrDefault(emptyList())
+    private fun load(): List<OfflinePlaylistDownload> = parseOfflinePlaylistRecords(
+        runCatching { preferences.getString(KEY_RECORDS, "[]") }.getOrNull().orEmpty(),
+    )
 
     private fun save() {
         val array = JSONArray().apply {
@@ -144,4 +149,49 @@ internal class GrayjoyOfflinePlaylistStore(context: Context) {
         fun key(profileId: String, playlistId: String, mediaType: DownloadMediaType): String =
             "$profileId\u0000$playlistId\u0000${mediaType.name}"
     }
+}
+
+/** Consult the latest descriptors after reconciliation and again before starting a transfer. */
+internal fun automaticPlaylistDownloadCandidate(
+    descriptors: List<OfflinePlaylistDownload>,
+    profileId: String,
+    videoId: String,
+    mediaType: DownloadMediaType,
+    download: DownloadUiModel?,
+): OfflinePlaylistDownload? {
+    val existing = download?.takeIf { it.profileId == profileId && it.videoId == videoId }
+    if (existing?.isComplete(mediaType) == true || existing?.isActive(mediaType) == true) return null
+    return descriptors.firstOrNull {
+        it.profileId == profileId && it.mediaType == mediaType &&
+            videoId in it.managedVideoIds && videoId !in it.excludedVideoIds
+    }
+}
+
+internal fun offlinePlaylistHasOwner(
+    descriptors: List<OfflinePlaylistDownload>,
+    profileId: String,
+    videoId: String,
+    mediaType: DownloadMediaType,
+): Boolean = descriptors.any {
+    it.profileId == profileId && it.mediaType == mediaType && videoId in it.managedVideoIds
+}
+
+/** A damaged record must not disable automatic downloads for unrelated playlists/profiles. */
+internal fun parseOfflinePlaylistRecords(raw: String): List<OfflinePlaylistDownload> {
+    val array = runCatching { JsonParser.parseString(raw).asJsonArray }.getOrNull() ?: return emptyList()
+    return array.mapNotNull { element -> runCatching {
+        if (!element.isJsonObject) return@runCatching null
+        val json = element.asJsonObject
+        fun id(name: String): String? = json.get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+            ?.asString?.takeIf { it.isNotBlank() && '\u0000' !in it }
+        fun ids(name: String): Set<String> = json.get(name)?.takeIf { it.isJsonArray }?.asJsonArray
+            ?.mapNotNull { it.takeIf { value -> value.isJsonPrimitive && value.asJsonPrimitive.isString }
+                ?.asString?.takeIf(String::isNotBlank) }?.toSet().orEmpty()
+        val profile = id("profileId") ?: return@runCatching null
+        val playlist = id("playlistId") ?: return@runCatching null
+        val type = id("mediaType")?.let(DownloadMediaType::valueOf) ?: return@runCatching null
+        if (json.get("managedVideoIds")?.isJsonArray != true) return@runCatching null
+        OfflinePlaylistDownload(profile, playlist, type, ids("managedVideoIds"), ids("excludedVideoIds"),
+            runCatching { json.get("targetVideoHeight")?.asInt }.getOrNull()?.takeIf { it > 0 })
+    }.getOrNull() }
 }

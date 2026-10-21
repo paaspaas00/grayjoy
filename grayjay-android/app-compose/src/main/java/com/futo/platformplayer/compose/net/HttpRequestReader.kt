@@ -13,12 +13,22 @@ internal data class HttpRequest(
 )
 
 /** One bounded request per socket; both LAN endpoints close the connection after responding. */
-internal fun readHttpRequest(input: InputStream, maxBodyBytes: Int): HttpRequest? {
+internal fun readHttpRequest(
+    input: InputStream,
+    maxBodyBytes: Int,
+    maxReadDurationMs: Long = 10_000L,
+    nanoTime: () -> Long = System::nanoTime,
+): HttpRequest? {
     require(maxBodyBytes >= 0)
+    require(maxReadDurationMs > 0L)
+    val startedAt = nanoTime()
+    val budget = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(maxReadDurationMs)
+    fun expired(): Boolean = nanoTime() - startedAt >= budget
     var remainingHeaderBytes = 32 * 1024
     fun line(): String? {
         val bytes = ByteArrayOutputStream()
         while (remainingHeaderBytes-- > 0 && bytes.size() <= 8 * 1024) {
+            if (expired()) return null
             val value = input.read()
             if (value < 0) return null
             if (value == 10) {
@@ -55,11 +65,12 @@ internal fun readHttpRequest(input: InputStream, maxBodyBytes: Int): HttpRequest
     val body = ByteArray(length)
     var offset = 0
     while (offset < length) {
+        if (expired()) return null
         val read = input.read(body, offset, length - offset)
         if (read <= 0) return null
         offset += read
     }
-    return HttpRequest(start[0].uppercase(Locale.ROOT), start[1], headers, body)
+    return if (expired()) null else HttpRequest(start[0].uppercase(Locale.ROOT), start[1], headers, body)
 }
 
 private val HTTP_TOKEN = Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+")

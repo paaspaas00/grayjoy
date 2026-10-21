@@ -27,6 +27,53 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class ArtworkCacheTest {
+    @Test fun rapidScrollBoundsPendingWorkAndRevivesAnEvictedFlow() = runBlocking {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(app.cacheDir, "cache-stress-${UUID.randomUUID()}").apply { mkdirs() }
+        val context = object : ContextWrapper(app) {
+            override fun getApplicationContext(): Context = this
+            override fun getCacheDir(): File = root
+        }
+        val bytes = ByteArrayOutputStream().use { out ->
+            val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            bitmap.recycle()
+            out.toByteArray()
+        }
+        val release = CountDownLatch(1)
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            check(release.await(15, TimeUnit.SECONDS))
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Result")
+                .body(bytes.toResponseBody("image/png".toMediaType())).build()
+        }.build()
+        val cache = ArtworkCache(context, networkEvents = false, httpClient = client)
+        try {
+            val oldFlow = cache.observe("https://images.example/old")
+            val visible = async(start = CoroutineStart.UNDISPATCHED) {
+                cache.observe("https://images.example/visible").filterNotNull().first()
+            }
+            repeat(5_000) { index ->
+                cache.observe("https://images.example/scroll-$index")
+                assertTrue("Entries grew while network requests stalled", cache.retainedEntryCount <= 256)
+                assertTrue("Pending requests grew while network requests stalled", cache.retainedRequestCount <= 10)
+            }
+            val returned = async(start = CoroutineStart.UNDISPATCHED) { oldFlow.filterNotNull().first() }
+            val newest = async(start = CoroutineStart.UNDISPATCHED) {
+                cache.observe("https://images.example/scroll-4999").filterNotNull().first()
+            }
+            release.countDown()
+            withTimeout(10_000) {
+                for (image in listOf(visible.await(), returned.await(), newest.await())) assertTrue(image.file?.isFile == true)
+            }
+            assertTrue(cache.retainedEntryCount <= 256)
+        } finally {
+            release.countDown()
+            cache.invalidate()
+            cache.close()
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun invalidationInterruptsAStalledResponseBodyWithoutLeavingPartialFiles() = runBlocking {
         val app = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(app.cacheDir, "cache-test-${UUID.randomUUID()}").apply { mkdirs() }

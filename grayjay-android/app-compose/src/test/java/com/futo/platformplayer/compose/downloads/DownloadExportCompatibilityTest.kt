@@ -8,6 +8,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DownloadExportCompatibilityTest {
+    @Test fun contentTypeAudioInDashStillRequiresAnExportedAudioTrack() {
+        val source = video(manifest = "<MPD><Period><AdaptationSet contentType='audio' codecs='mp4a.40.2'/></Period></MPD>")
+        assertTrue(rawDashManifestContainsAudio(source.playbackManifest))
+        assertTrue(source.expectsAudioInVideoExport())
+        assertFalse(isCompatibleExport(DownloadMediaType.Video, source.expectsAudioInVideoExport(), listOf(MimeTypes.VIDEO_H264)))
+        assertFalse(rawDashManifestContainsAudio("<AdaptationSet contentType='video' mimeType='video/mp4'/>"))
+        assertFalse(rawDashManifestContainsAudio("<AdaptationSet contentType='audiobook'/>"))
+    }
+
     @Test
     fun `video export rejects Opus in MP4 when audio is expected`() {
         assertFalse(

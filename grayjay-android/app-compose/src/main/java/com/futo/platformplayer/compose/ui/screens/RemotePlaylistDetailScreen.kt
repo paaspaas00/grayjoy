@@ -98,7 +98,7 @@ fun RemotePlaylistDetailScreen(
         mutableStateOf(RemotePlaylistSortMode.PlaylistOrder.name)
     }
     var sortAscending by rememberSaveable(playlist.id) { mutableStateOf(true) }
-    val sortMode = RemotePlaylistSortMode.valueOf(sortModeName)
+    val sortMode = com.futo.platformplayer.compose.ui.restoredEnumValue(sortModeName, RemotePlaylistSortMode.PlaylistOrder)
     val sortedVideos = remember(detail.videos, sortMode, sortAscending) {
         sortedRemotePlaylistVideos(detail.videos, sortMode, sortAscending).distinctBy(VideoUiModel::id)
     }

@@ -12,6 +12,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.futo.platformplayer.backend.YouTubeMusicMetadataResolver
 import com.futo.platformplayer.compose.data.SharedPreferencesLibraryRepository
+import com.futo.platformplayer.compose.data.wasProfileDeleted
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +51,7 @@ internal object HistoryMusicClassifier {
 class HistoryMusicWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val profile = inputData.getString(HistoryMusicClassifier.PROFILE) ?: return@withContext Result.failure()
+        if (wasProfileDeleted(applicationContext, profile)) return@withContext Result.success()
         val repository = SharedPreferencesLibraryRepository(applicationContext, profile)
         val ledger = applicationContext.getSharedPreferences("music_classification_$profile", Context.MODE_PRIVATE)
         val resolver = YouTubeMusicMetadataResolver()
@@ -75,6 +77,7 @@ class HistoryMusicWorker(context: Context, parameters: WorkerParameters) : Corou
         fun flush() {
             if (pending.isEmpty()) return
             synchronized(repository.transactionLock) {
+                if (wasProfileDeleted(applicationContext, profile)) { pending.clear(); return }
                 val patches = repository.loadSavedVideos().mapNotNull { video ->
                     pending[video.id]?.takeIf { video.isMusic == null }?.let { video.copy(isMusic = it) }
                 }
@@ -85,6 +88,7 @@ class HistoryMusicWorker(context: Context, parameters: WorkerParameters) : Corou
         try {
             for ((index, video) in candidates.withIndex()) {
                 coroutineContext.ensureActive()
+                if (wasProfileDeleted(applicationContext, profile)) return@withContext Result.success()
                 while (HistoryMusicClassifier.deferForPlaybackBuffering) delay(1000L)
                 if (android.os.SystemClock.elapsedRealtime() - started > TimeUnit.MINUTES.toMillis(8)) {
                     continueImmediately = true
@@ -94,6 +98,7 @@ class HistoryMusicWorker(context: Context, parameters: WorkerParameters) : Corou
                 if (ledger.getLong(video.id, 0L) > now) { retryNeeded = true; continue }
                 val result = resolver.classifyWithStatus(video.contentUrl.ifBlank { video.id })
                 coroutineContext.ensureActive()
+                if (wasProfileDeleted(applicationContext, profile)) return@withContext Result.success()
                 val classification = result.isMusic
                 if (classification != null) {
                     // A tiny durable checkpoint prevents repeat requests after an abrupt process
