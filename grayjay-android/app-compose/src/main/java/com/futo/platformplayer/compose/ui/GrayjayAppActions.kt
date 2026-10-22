@@ -131,6 +131,7 @@ class GrayjayAppActions {
     var onPerChannelPlaybackSpeedChange: (Boolean) -> Unit = { _ -> }
     var onHoldToSpeedChange: (Boolean) -> Unit = {}
     var onSponsorBlockEnabledChange: (Boolean) -> Unit = {}
+    var onSponsorBlockAutomaticSkipChange: (Boolean) -> Unit = {}
     var onSponsorBlockSkipNoticesEnabledChange: (Boolean) -> Unit = {}
     var onSponsorBlockCategoriesChange: (Set<SponsorBlockCategory>) -> Unit = {}
     var onChannelSponsorBlockOverrideChange: (String, SponsorBlockRule?) -> Unit = { _, _ -> }

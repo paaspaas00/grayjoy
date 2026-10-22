@@ -114,6 +114,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -2222,9 +2224,17 @@ private fun GrayjayScaffold(
                         }
                     },
                     navigationIcon = {
+                        val guidedSetup = com.futo.platformplayer.compose.onboarding.LocalGuidedSetup.current
                         val hasBack = selectedChannel != null ||
                             selectedPlaylist != null || nestedBackEnabled
                         Row {
+                            if (!hasBack && selected == GrayjayDestination.Home) {
+                                IconButton(onClick = guidedSetup.open, modifier = Modifier.testTag("home-guided-setup")) {
+                                    com.futo.platformplayer.compose.onboarding.WizardMark(
+                                        Modifier.size(28.dp).semantics { contentDescription = context.getString(R.string.setup_reopen) },
+                                    )
+                                }
+                            }
                             if (onToggleDrawer != null && !drawerVisible) {
                                 IconButton(onClick = onToggleDrawer) {
                                     Icon(
@@ -2346,7 +2356,7 @@ private fun GrayjayScaffold(
                                     scaffoldTopInRoot = rootTopPx,
                                 )
                             },
-                            modifier = transitionDragModifier,
+                            modifier = if (transitionActive) Modifier else transitionDragModifier,
                         )
                     }
                     Box(
@@ -2754,8 +2764,10 @@ private fun GrayjayScaffold(
                     .padding(
                         bottom = with(density) { searchMiniplayerBottomPx.toDp() },
                     )
-                    .then(transitionDragModifier)
-                    .zIndex(2f),
+                    .then(if (transitionActive) Modifier else transitionDragModifier)
+                    // Alpha alone does not remove a composable from hit testing. The hidden
+                    // search mini-player must be below the expanded, scrollable details.
+                    .zIndex(if (transitionActive) 0f else 2f),
             )
         }
 

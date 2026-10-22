@@ -740,7 +740,7 @@ fun FullscreenPlayerScreen(
     val canGoPrevious = queueIndex > 0 || player.currentPosition > 5_000L
     val canGoNext = queueIndex >= 0 && queueIndex < playback.queueVideoIds.lastIndex
 
-    Surface(modifier = modifier.fillMaxSize(), color = Color.Black) {
+    Surface(modifier = modifier.fillMaxSize().testTag("fullscreen-player"), color = Color.Black) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val coverOrientationHandoff = shouldCoverFullscreenOrientationHandoff(
                 portraitFullscreen = portraitFullscreen,
@@ -794,6 +794,11 @@ fun FullscreenPlayerScreen(
                 resumePositionFraction = resumePositionFraction,
                 onResumeFromHistory = onResumeFromHistory,
                 modifier = Modifier.fillMaxSize(),
+            )
+            // A decision at the end of playback is not part of the auto-hiding transport
+            // controls. Keep it in the fullscreen viewport, above the video and gestures.
+            com.futo.platformplayer.compose.ui.YoutubeAutoplayPrompt(
+                Modifier.align(Alignment.Center).zIndex(10f),
             )
         }
     }
@@ -936,17 +941,19 @@ internal fun PlayerSurface(
         // Widevine video must bypass HWUI. Feeding a protected decoder buffer into the normal
         // TextureView makes Android's RenderThread abort with Invalid GrBackendTexture. Recreate
         // the PlayerView when resolution discovers DRM and use the same SurfaceView path as the
-        // original Grayjay player. Non-DRM playback keeps TextureView so its morph remains smooth.
-        key(video.id, video.isDrmProtected) {
+        // original Grayjay player. Fullscreen also uses a separate surface for accurate frame
+        // pacing independent of UI redraws. The morphing inline player retains its TextureView.
+        key(video.id, video.isDrmProtected, isFullscreen) {
             AndroidView(
                 factory = { context ->
                     (LayoutInflater.from(context).inflate(
-                        playerViewLayout(video.isDrmProtected),
+                        playerViewLayout(video.isDrmProtected, isFullscreen),
                         null,
                         false,
                     ) as PlayerView).apply {
                         useController = false
                         (videoSurfaceView as? SurfaceView)?.setSecure(video.isDrmProtected)
+                        if (android.os.Build.VERSION.SDK_INT == 34) setEnableComposeSurfaceSyncWorkaround(true)
                         keepScreenOn = true
                     }
                 },
@@ -1326,7 +1333,15 @@ internal fun PlayerSurface(
             }
         }
         }
-        if (controlsAlpha > 0.5f) com.futo.platformplayer.compose.ui.YoutubeAutoplayPrompt(Modifier.align(Alignment.Center))
+        if (!isFullscreen && controlsAlpha > 0.5f) com.futo.platformplayer.compose.ui.YoutubeAutoplayPrompt(Modifier.align(Alignment.Center).zIndex(10f))
+        val manualSponsor = com.futo.platformplayer.compose.ui.LocalManualSponsorSkip.current
+        if (manualSponsor.segment != null && (isFullscreen || controlsAlpha > 0.5f)) {
+            Button(
+                onClick = manualSponsor.skip,
+                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).zIndex(10f)
+                    .testTag("sponsorblock-manual-skip"),
+            ) { Text(stringResource(R.string.sponsorblock_skip_now)) }
+        }
     }
 
     if (showSettings) {
@@ -1397,7 +1412,7 @@ private fun sponsorBlockSkipNoticeText(category: SponsorBlockCategory): Int = wh
 }
 
 @androidx.annotation.LayoutRes
-internal fun playerViewLayout(isDrmProtected: Boolean): Int = if (isDrmProtected) {
+internal fun playerViewLayout(isDrmProtected: Boolean, isFullscreen: Boolean = false): Int = if (isDrmProtected || isFullscreen) {
     R.layout.view_compose_secure_player
 } else {
     R.layout.view_compose_player

@@ -19,6 +19,37 @@ class DescriptionScrollRegressionTest {
     private lateinit var player: ExoPlayer
     @After fun release() { if (::player.isInitialized) rule.runOnUiThread { player.release() } }
 
+    @Test fun hiddenSearchMiniplayerCannotInterceptDescriptionGesturesOrClicks() {
+        rule.runOnUiThread { player = ExoPlayer.Builder(rule.activity).build() }
+        val video = VideoUiModel("search-description", "Video", "Channel", "", "1:00",
+            description = "Description text and details. ".repeat(100))
+        var toggles = 0
+        val actions = GrayjayAppActions().apply { onTogglePlayback = { toggles++ } }
+        rule.setContent { GrayjayTheme(dynamicColor = false) { GrayjayApp(
+            GrayjayUiState(videos = listOf(video), nowPlaying = NowPlayingUiState(video = video,
+                recommendations = (1..20).map { video.copy(id = "next-$it", description = "") }),
+                playback = PlaybackUiState(currentVideoId = video.id)),
+            player, actions,
+        ) } }
+        rule.onNodeWithText(rule.activity.getString(R.string.nav_search)).performClick()
+        val oldMiniBounds = rule.onNodeWithTag("mini-player").fetchSemanticsNode().boundsInRoot
+        val toggleBounds = rule.onNodeWithTag("mini-player-toggle").fetchSemanticsNode().boundsInRoot
+        rule.onNodeWithTag("mini-player").performClick()
+        rule.waitForIdle()
+        val list = rule.onNodeWithTag("video-detail-list")
+        val viewport = list.fetchSemanticsNode().boundsInRoot
+        fun position() = list.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+        val start = Offset(viewport.width * .5f, oldMiniBounds.center.y - viewport.top)
+        assertTrue("The old mini-player overlaps the detail viewport", start.y > 0 && start.y < viewport.height)
+        val before = position()
+        list.performTouchInput { swipe(start, start - Offset(0f, 260f), durationMillis = 500) }
+        rule.waitForIdle()
+        assertTrue("Invisible Search miniplayer swallowed the scroll", position() > before + 20f)
+        list.performTouchInput { click(Offset(toggleBounds.center.x - viewport.left, toggleBounds.center.y - viewport.top)) }
+        rule.runOnIdle { assertTrue("Invisible transport button received a click", toggles == 0) }
+        rule.onNodeWithTag("video-detail-list").assertIsDisplayed()
+    }
+
     @Test fun everyPartOfTheCollapsedAndExpandedDescriptionScrollsThePage() {
         rule.runOnUiThread { player = ExoPlayer.Builder(rule.activity).build() }
         val video = VideoUiModel("description-fixture", "Title", "Channel", "", "1:00",

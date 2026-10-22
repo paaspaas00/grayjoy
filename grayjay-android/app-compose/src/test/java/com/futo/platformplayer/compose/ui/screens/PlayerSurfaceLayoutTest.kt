@@ -14,4 +14,9 @@ class PlayerSurfaceLayoutTest {
     fun ordinaryPlaybackKeepsMorphableTextureViewLayout() {
         assertEquals(R.layout.view_compose_player, playerViewLayout(isDrmProtected = false))
     }
+
+    @Test
+    fun fullscreenKeepsVideoTimingIndependentOfComposeRedraws() {
+        assertEquals(R.layout.view_compose_secure_player, playerViewLayout(isDrmProtected = false, isFullscreen = true))
+    }
 }

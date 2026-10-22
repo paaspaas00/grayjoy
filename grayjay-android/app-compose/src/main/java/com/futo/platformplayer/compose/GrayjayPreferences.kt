@@ -108,6 +108,10 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
             preferences.edit().putBoolean(KEY_SPONSORBLOCK_SKIP_NOTICES, value).apply()
         }
 
+    var sponsorBlockAutomaticSkip: Boolean
+        get() = preferences.getBoolean("sponsorblock_automatic_skip", true)
+        set(value) { preferences.edit().putBoolean("sponsorblock_automatic_skip", value).apply() }
+
     var sponsorBlockCategories: Set<SponsorBlockCategory>
         get() = if (!preferences.contains(KEY_SPONSORBLOCK_CATEGORIES)) {
             SponsorBlockCategory.defaultCategories

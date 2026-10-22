@@ -172,17 +172,31 @@ fun SettingsScreen(
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
     var showVoiceControl by rememberSaveable { mutableStateOf(false) }
     val extras = LocalExtraPreferences.current
+    val guidedSetup = com.futo.platformplayer.compose.onboarding.LocalGuidedSetup.current
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val groupSpacing = if (performance.compactContent) 10.dp else 16.dp
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    val resources = androidx.compose.ui.platform.LocalContext.current.resources
+    val matching = androidx.compose.runtime.remember(searchQuery, configuration) {
+        matchingSettings(resources, searchQuery)
+    }
+    val unfilteredList = rememberSettingsListState()
+    val filteredList = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(searchQuery) { filteredList.scrollToItem(0) }
+    Column {
+    PreferencesSearchField(searchQuery, { searchQuery = it })
     LazyColumn(
-        state = rememberSettingsListState(),
+        state = if (searchQuery.isBlank()) unfilteredList else filteredList,
         modifier = Modifier.testTag("settings-list"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             if (performance.compactContent) 10.dp else 16.dp,
         ),
         verticalArrangement = Arrangement.Top,
     ) {
-        settingsGroup("settings-group-1", R.string.settings_appearance, groupSpacing) {
+        if (searchQuery.isNotBlank() && matching.isEmpty()) item {
+            Text(stringResource(R.string.settings_no_matches), Modifier.padding(16.dp))
+        }
+        settingsGroup("settings-group-1", R.string.settings_appearance, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
             setting("app-language", "link") {
                 val systemLanguageLabel = stringResource(R.string.system_default_language)
                 LinkSetting(
@@ -222,7 +236,7 @@ fun SettingsScreen(
                 )
             }
         }
-        settingsGroup("settings-group-2", R.string.settings_playback, groupSpacing) {
+        settingsGroup("settings-group-2", R.string.settings_playback, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
             if (supportsShortsFeedPlayer(configuration.screenWidthDp, configuration.screenHeightDp, configuration.smallestScreenWidthDp)) setting("brainrot-shorts", "toggle") {
                 ToggleSetting(stringResource(R.string.brainrot_shorts), stringResource(R.string.brainrot_shorts_description), Icons.Outlined.PictureInPicture,
                     extras.brainrotEnabled, extras.onBrainrotChange, "brainrot-shorts")
@@ -285,7 +299,7 @@ fun SettingsScreen(
                 )
             }
         }
-        settingsGroup("settings-group-3", null, groupSpacing) {
+        settingsGroup("settings-group-3", null, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
             setting("preferred-audio-quality", "link") {
                 LinkSetting(
                     title = stringResource(R.string.preferred_audio_quality),
@@ -384,7 +398,7 @@ fun SettingsScreen(
                 )
             }
         }
-        settingsGroup("settings-group-4", null, groupSpacing) {
+        settingsGroup("settings-group-4", null, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
             setting("picture-in-picture", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.picture_in_picture),
@@ -430,7 +444,7 @@ fun SettingsScreen(
                 )
             }
         }
-        settingsGroup("settings-group-5", R.string.settings_content, groupSpacing) {
+        settingsGroup("settings-group-5", R.string.settings_content, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
             setting("show-recommendations", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.show_recommendations),
@@ -452,7 +466,7 @@ fun SettingsScreen(
                 )
             }
         }
-        settingsGroup("settings-group-6", R.string.settings_privacy, groupSpacing) {
+        settingsGroup("settings-group-6", R.string.settings_privacy, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
             setting("toggle-private-session", "toggle") {
                 ToggleSetting(
                     title = stringResource(R.string.private_session),
@@ -483,7 +497,7 @@ fun SettingsScreen(
                 )
             }
         }
-        settingsGroup("settings-group-7", R.string.settings_sources, groupSpacing) {
+        settingsGroup("settings-group-7", R.string.settings_sources, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
             setting("manage-sources", "link") {
                 LinkSetting(
                     title = stringResource(R.string.manage_sources),
@@ -498,7 +512,7 @@ fun SettingsScreen(
                 )
             }
         }
-        settingsGroup("settings-group-8", R.string.settings_connections, groupSpacing) {
+        settingsGroup("settings-group-8", R.string.settings_connections, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
             setting("paired-computers", "link") {
                 LinkSetting(
                     title = stringResource(R.string.paired_computers),
@@ -512,7 +526,7 @@ fun SettingsScreen(
                 )
             }
         }
-        settingsGroup("settings-group-9", R.string.settings_data, groupSpacing) {
+        settingsGroup("settings-group-9", R.string.settings_data, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
             setting("import-grayjay-database", "link") {
                 LinkSetting(
                     title = stringResource(R.string.import_grayjay_database),
@@ -565,15 +579,19 @@ fun SettingsScreen(
                 )
             }
         }
-        item(key = "advanced-preferences") {
+        if (searchQuery.isBlank() || "guided-setup" in matching) item(key = "guided-setup") {
+            LinkSetting(stringResource(R.string.setup_title), stringResource(R.string.setup_reopen),
+                Icons.Outlined.Language, guidedSetup.open, "open-guided-setup")
+        }
+        if (searchQuery.isBlank() || "advanced-preferences" in matching) item(key = "advanced-preferences") {
             LinkSetting(stringResource(R.string.advanced_settings), stringResource(R.string.advanced_settings_description), Icons.Outlined.BugReport,
                 { showAdvanced = true }, "advanced-settings")
         }
-        item(key = "voice-preferences") {
+        if (searchQuery.isBlank() || "voice-preferences" in matching) item(key = "voice-preferences") {
             LinkSetting(stringResource(R.string.voice_control), stringResource(R.string.voice_control_description),
                 Icons.Outlined.MusicNote, { showVoiceControl = true }, "voice-control-settings")
         }
-        item {
+        if (searchQuery.isBlank()) item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -599,6 +617,8 @@ fun SettingsScreen(
         }
     }
 
+    }
+
     if (showAdvanced) AdvancedPreferencesDialog(sources, onDismiss = { showAdvanced = false })
     if (showVoiceControl) VoiceControlPreferences(onDismiss = { showVoiceControl = false })
     if (showSponsorBlockDialog) {
@@ -606,6 +626,11 @@ fun SettingsScreen(
             onDismissRequest = { showSponsorBlockDialog = false },
             title = { Text(stringResource(R.string.sponsorblock_global_settings)) },
             text = {
+                Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                com.futo.platformplayer.compose.onboarding.SetupToggle(
+                    stringResource(R.string.sponsorblock_automatic_skip), guidedSetup.sponsorAutomatic,
+                    guidedSetup.setSponsorAutomatic, sponsorBlockEnabled)
+                Text(stringResource(R.string.sponsorblock_manual_description), style = MaterialTheme.typography.bodySmall)
                 SponsorBlockRuleEditor(
                     rule = SponsorBlockRule(sponsorBlockEnabled, sponsorBlockCategories),
                     onRuleChange = { rule ->
@@ -618,8 +643,8 @@ fun SettingsScreen(
                     },
                     skipNoticesEnabled = sponsorBlockSkipNoticesEnabled,
                     onSkipNoticesEnabledChange = onSponsorBlockSkipNoticesEnabledChange,
-                    modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 )
+                }
             },
             confirmButton = {
                 TextButton(onClick = { showSponsorBlockDialog = false }) {

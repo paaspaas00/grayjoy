@@ -160,6 +160,12 @@ class SourceLoginActivity : ComponentActivity() {
                 return true
             }
         }
+        val youtubeMenuHint = TextView(this).apply {
+            text = "↓  ☰  " + getString(R.string.youtube_open_menu_instruction)
+            setPadding(24, 12, 24, 12)
+            textSize = 16f
+            visibility = android.view.View.GONE
+        }
         client.onPageLoaded.subscribe { _, url ->
             if (isFinishing || isDestroyed || webView !== browser) return@subscribe
             val pageUri = Uri.parse(url.orEmpty())
@@ -176,19 +182,17 @@ class SourceLoginActivity : ComponentActivity() {
                     )
             if (!chooseAccountProfile) statusText.text = when {
                 isChannelSwitcher ->
-                    getString(R.string.select_youtube_channel_to_finish)
+                    getString(R.string.youtube_open_menu_instruction)
                 Uri.parse(url.orEmpty()).host.orEmpty().contains("accounts.google", ignoreCase = true) ->
                     getString(R.string.sign_in_to_source_name, config.name)
                 else -> getString(R.string.finishing_source_sign_in, config.name)
             }
             if (isChannelSwitcher && !channelWarningShown) {
                 channelWarningShown = true
+                youtubeMenuHint.visibility = android.view.View.VISIBLE
                 AlertDialog.Builder(this)
-                    .setTitle(getString(R.string.select_youtube_channel))
-                    .setMessage(
-                        authConfig.loginWarning
-                            ?: getString(R.string.youtube_channel_choice_description),
-                    )
+                    .setTitle(getString(R.string.youtube_open_menu_title))
+                    .setMessage("↖  ☰\n\n" + getString(R.string.youtube_open_menu_instruction))
                     .setPositiveButton(getString(R.string.continue_action), null)
                     .show()
             }
@@ -219,6 +223,7 @@ class SourceLoginActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             addView(toolbar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(useProfile, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(youtubeMenuHint, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(browser, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->

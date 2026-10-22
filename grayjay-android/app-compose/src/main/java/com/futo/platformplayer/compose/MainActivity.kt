@@ -72,6 +72,8 @@ class MainActivity : FragmentActivity() {
     private var pendingExternalContentUrl by mutableStateOf<String?>(null)
     private var pendingPcPairingUrl by mutableStateOf<String?>(null)
     private var pictureInPictureMode by mutableStateOf(false)
+    private var guidedLauncherRequest by mutableStateOf(0)
+    private var guidedExternalRequest by mutableStateOf(0)
     private var pictureInPictureEntryPending = false
     private var pictureInPictureSourceRect: Rect? = null
     private var playerFullscreen = false
@@ -97,6 +99,8 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        guidedLauncherRequest = savedInstanceState?.getInt("guidedLauncherRequest") ?: 0
+        guidedExternalRequest = savedInstanceState?.getInt("guidedExternalRequest") ?: 0
         requestedOrientation = appOrientationForWindow(
             supportsResponsiveLayout = resources.configuration.smallestScreenWidthDp >= 600,
         )
@@ -449,6 +453,7 @@ class MainActivity : FragmentActivity() {
                     onPerChannelPlaybackSpeedChange = viewModel::setPerChannelPlaybackSpeedEnabled
                     onHoldToSpeedChange = viewModel::setHoldToSpeedEnabled
                     onSponsorBlockEnabledChange = viewModel::setSponsorBlockEnabled
+                    onSponsorBlockAutomaticSkipChange = viewModel::setSponsorBlockAutomaticSkip
                     onSponsorBlockSkipNoticesEnabledChange = viewModel::setSponsorBlockSkipNoticesEnabled
                     onSponsorBlockCategoriesChange = viewModel::setSponsorBlockCategories
                     onChannelSponsorBlockOverrideChange = viewModel::setChannelSponsorBlockOverride
@@ -522,8 +527,17 @@ class MainActivity : FragmentActivity() {
                 musicProfile = uiState.sources.isSpotifyOnly(),
             ) {
                 androidx.compose.runtime.CompositionLocalProvider(
+                    com.futo.platformplayer.compose.ui.LocalManualSponsorSkip provides
+                        com.futo.platformplayer.compose.ui.ManualSponsorSkip(
+                            uiState.sponsorBlockManualSegment, viewModel::skipCurrentSponsorSegment),
                     com.futo.platformplayer.compose.ui.LocalYoutubeAutoplay provides
                         com.futo.platformplayer.compose.ui.YoutubeAutoplayControls(uiState.youtubeAutoplay, viewModel::cancelYoutubeAutoplay),
+                ) {
+                com.futo.platformplayer.compose.onboarding.GuidedSetupHost(
+                    state = uiState, actions = appActions,
+                    allowStartupDialogs = intent.action == Intent.ACTION_MAIN,
+                    launcherRequest = guidedLauncherRequest,
+                    externalRequest = guidedExternalRequest,
                 ) {
                 GrayjayApp(
                     uiState = uiState,
@@ -538,6 +552,7 @@ class MainActivity : FragmentActivity() {
                     automaticPlayerRotationEnabled = deviceRotation.enabled,
                     pictureInPictureMode = pictureInPictureMode,
                 )
+                }
                 }
                 if (showJobNotificationSettings) {
                     androidx.compose.material3.AlertDialog(
@@ -593,6 +608,8 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("guidedLauncherRequest", guidedLauncherRequest)
+        outState.putInt("guidedExternalRequest", guidedExternalRequest)
         PendingLaunchActions(pendingSourceUrl, pendingDatabaseImportUri?.toString(),
             pendingExternalContentUrl, pendingPcPairingUrl).saveTo(outState)
         super.onSaveInstanceState(outState)
@@ -675,6 +692,8 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.action == Intent.ACTION_MAIN) guidedLauncherRequest++
+        else if (intent.data != null) guidedExternalRequest++
         acceptPendingLaunchActions(intent.launchActions())
     }
 

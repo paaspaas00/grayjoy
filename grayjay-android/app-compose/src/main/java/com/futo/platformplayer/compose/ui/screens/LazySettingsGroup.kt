@@ -31,8 +31,11 @@ internal fun LazyListScope.settingsGroup(
     key: String,
     titleRes: Int?,
     gap: Dp,
+    matches: (String) -> Boolean = { true },
     content: SettingsGroupScope.() -> Unit,
 ) {
+    val rows = SettingsGroupScope().apply(content).rows.filter { matches(it.key) }
+    if (rows.isEmpty()) return
     if (titleRes != null) item(key = "$key-heading", contentType = "settings-heading") {
         Text(
             stringResource(titleRes),
@@ -41,7 +44,6 @@ internal fun LazyListScope.settingsGroup(
             style = if (compactUi()) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
         )
     }
-    val rows = SettingsGroupScope().apply(content).rows
     rows.forEachIndexed { index, row ->
         item(key = row.key, contentType = row.type) {
             val lowEnd = rememberDevicePerformanceProfile().isLowEnd

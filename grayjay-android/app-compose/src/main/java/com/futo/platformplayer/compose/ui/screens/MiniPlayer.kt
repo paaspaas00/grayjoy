@@ -78,7 +78,8 @@ fun MiniPlayer(
             video = video,
             isPlaying = isPlaying,
             progress = progress,
-            player = player,
+            player = player.takeIf { normalizedAlpha > 0.001f },
+            controlsEnabled = normalizedAlpha > 0.95f,
             canSkip = canSkip,
             onTogglePlayback = onTogglePlayback,
             onSkipToNext = onSkipToNext,
@@ -101,6 +102,7 @@ internal fun MiniPlayerChrome(
     modifier: Modifier = Modifier,
     onVideoBoundsChanged: ((Rect) -> Unit)? = null,
     applyTestTags: Boolean = true,
+    controlsEnabled: Boolean = true,
 ) {
     val displayedProgress by produceState(
         initialValue = progress.coerceIn(0f, 1f),
@@ -197,6 +199,7 @@ internal fun MiniPlayerChrome(
             }
             IconButton(
                 onClick = onTogglePlayback,
+                enabled = controlsEnabled,
                 modifier = if (applyTestTags) Modifier.testTag("mini-player-toggle") else Modifier,
             ) {
                 Icon(
@@ -210,6 +213,7 @@ internal fun MiniPlayerChrome(
             if (canSkip) {
                 IconButton(
                     onClick = onSkipToNext,
+                    enabled = controlsEnabled,
                     modifier = if (applyTestTags) Modifier.testTag("mini-player-next") else Modifier,
                 ) {
                     Icon(
@@ -221,6 +225,7 @@ internal fun MiniPlayerChrome(
             }
             IconButton(
                 onClick = onClose,
+                enabled = controlsEnabled,
                 modifier = if (applyTestTags) Modifier.testTag("mini-player-close") else Modifier,
             ) {
                 Icon(

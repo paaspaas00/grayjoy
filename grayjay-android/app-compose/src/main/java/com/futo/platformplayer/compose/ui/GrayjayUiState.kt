@@ -30,6 +30,8 @@ data class GrayjayUiState(
     val channelPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val videoPlaybackSpeeds: Map<String, Float> = emptyMap(),
     val sponsorBlockEnabled: Boolean = true,
+    val sponsorBlockAutomaticSkip: Boolean = true,
+    val sponsorBlockManualSegment: SponsorBlockSegment? = null,
     val sponsorBlockSkipNoticesEnabled: Boolean = true,
     val sponsorBlockCategories: Set<SponsorBlockCategory> = SponsorBlockCategory.defaultCategories,
     val channelSponsorBlockOverrides: Map<String, SponsorBlockRule> = emptyMap(),

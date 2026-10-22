@@ -721,6 +721,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             sponsorBlockEnabled = preferences.sponsorBlockEnabled,
+            sponsorBlockAutomaticSkip = preferences.sponsorBlockAutomaticSkip,
             sponsorBlockSkipNoticesEnabled = preferences.sponsorBlockSkipNoticesEnabled,
             sponsorBlockCategories = preferences.sponsorBlockCategories,
             channelSponsorBlockOverrides = preferences.channelSponsorBlockOverrides(),
@@ -997,6 +998,29 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         preferences.sponsorBlockEnabled = enabled
         _uiState.update { it.copy(sponsorBlockEnabled = enabled) }
         requestSponsorBlockSegments(_uiState.value.nowPlaying.video)
+    }
+
+    fun setSponsorBlockAutomaticSkip(enabled: Boolean) {
+        preferences.sponsorBlockAutomaticSkip = enabled
+        _uiState.update { it.copy(sponsorBlockAutomaticSkip = enabled, sponsorBlockManualSegment = null) }
+    }
+
+    fun skipCurrentSponsorSegment() {
+        val segment = _uiState.value.sponsorBlockManualSegment ?: return
+        val video = _uiState.value.nowPlaying.video ?: return
+        val cast = chromecastManager.state.value
+        val position = if (cast.isConnected) cast.positionMs else engine.player.currentPosition
+        if (video.id != sponsorBlockVideoId || !segment.contains(position)) return
+        val duration = if (cast.isConnected) cast.durationMs else engine.player.duration
+        val target = segment.endMs.coerceAtMost(duration.takeIf { it > 0L } ?: segment.endMs)
+        lastAutomaticallySkippedSponsorSegment = segment.id
+        if (cast.isConnected) chromecastManager.seekTo(target)
+        else {
+            automaticSponsorSeekTarget = video.id to target
+            engine.player.seekTo(target)
+        }
+        _uiState.update { it.copy(sponsorBlockManualSegment = null) }
+        showSponsorBlockSkipNotice(segment.category)
     }
 
     fun setSponsorBlockSkipNoticesEnabled(enabled: Boolean) {
@@ -2244,6 +2268,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
             videoPlaybackSpeeds = preferences.videoPlaybackSpeeds(),
             sponsorBlockEnabled = preferences.sponsorBlockEnabled,
+            sponsorBlockAutomaticSkip = preferences.sponsorBlockAutomaticSkip,
             sponsorBlockSkipNoticesEnabled = preferences.sponsorBlockSkipNoticesEnabled,
             sponsorBlockCategories = preferences.sponsorBlockCategories,
             channelSponsorBlockOverrides = preferences.channelSponsorBlockOverrides(),
@@ -8405,6 +8430,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         )
 
     private fun requestSponsorBlockSegments(video: VideoUiModel?) {
+        _uiState.update { if (it.sponsorBlockManualSegment == null) it else it.copy(sponsorBlockManualSegment = null) }
         sponsorBlockJob?.cancel()
         sponsorBlockPlaybackMonitorJob?.cancel()
         sponsorBlockPlaybackMonitorJob = null
@@ -8460,6 +8486,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun resetSponsorBlockSession(videoId: String) {
+        _uiState.update { if (it.sponsorBlockManualSegment == null) it else it.copy(sponsorBlockManualSegment = null) }
         sponsorBlockJob?.cancel()
         sponsorBlockPlaybackMonitorJob?.cancel()
         sponsorBlockNoticeJob?.cancel()
@@ -8487,6 +8514,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private fun markManualSponsorSeek(targetPositionMs: Long) {
         if (pendingPlaybackVideoId != null) return
+        _uiState.update { if (it.sponsorBlockManualSegment == null) it else it.copy(sponsorBlockManualSegment = null) }
         manualSponsorSeekPositions += targetPositionMs
         if (manualSponsorSeekPositions.size > 32) manualSponsorSeekPositions.removeAt(0)
         _uiState.value.nowPlaying.sponsorBlockSegments
@@ -8497,6 +8525,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private fun maybeSkipSponsorSegment(positionMs: Long, durationMs: Long) {
         val video = _uiState.value.nowPlaying.video ?: return
         if (pendingPlaybackVideoId != null || video.id != sponsorBlockVideoId) return
+        _uiState.value.sponsorBlockManualSegment?.let { segment ->
+            if (!segment.contains(positionMs)) _uiState.update { it.copy(sponsorBlockManualSegment = null) }
+        }
         val cast = chromecastManager.state.value
         if (cast.isConnected) {
             if (!cast.isPlaying) return
@@ -8516,6 +8547,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             lastSkippedId = lastAutomaticallySkippedSponsorSegment,
         ) ?: run {
             lastAutomaticallySkippedSponsorSegment = null
+            _uiState.update { if (it.sponsorBlockManualSegment == null) it else it.copy(sponsorBlockManualSegment = null) }
+            return
+        }
+        if (!preferences.sponsorBlockAutomaticSkip) {
+            _uiState.update { if (it.sponsorBlockManualSegment == segment) it else it.copy(sponsorBlockManualSegment = segment) }
             return
         }
         lastAutomaticallySkippedSponsorSegment = segment.id
