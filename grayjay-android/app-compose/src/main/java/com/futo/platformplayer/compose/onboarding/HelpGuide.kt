@@ -166,10 +166,13 @@ internal fun Modifier.helpAnchor(name: String): Modifier = composed {
 }
 
 @Composable
-internal fun HelpButton() {
+internal fun HelpButton(
+    tint: androidx.compose.ui.graphics.Color = LocalContentColor.current,
+    beforeOpen: () -> Unit = {},
+) {
     val guide = LocalHelpGuide.current ?: return
-    IconButton(onClick = { guide.stop(); guide.visible = true }, modifier = Modifier.testTag("open-help")) {
-        Icon(Icons.Outlined.HelpOutline, stringResource(R.string.help_title))
+    IconButton(onClick = { beforeOpen(); guide.stop(); guide.visible = true }, modifier = Modifier.testTag("open-help")) {
+        Icon(Icons.Outlined.HelpOutline, stringResource(R.string.help_title), tint = tint)
     }
 }
 

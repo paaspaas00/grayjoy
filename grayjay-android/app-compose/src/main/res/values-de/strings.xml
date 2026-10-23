@@ -648,4 +648,14 @@
     <string name="history_music_unknown_hint">Videos ohne erkannte YouTube-Kategorie bleiben unter Alle.</string>
     <string name="history_music_identify_more">Weitere Videos erkennen</string>
     <string name="history_music_identifying">Erkennung %1$d / %2$d</string>
+    <string name="group_history_by_playlist">Nach Playlist gruppieren</string>
+    <string name="go_to_playlist">Zur Playlist</string>
+    <string name="playlist_unavailable">Playlist nicht verfügbar</string>
+    <string name="history_playlist_unavailable_description">Die Playlist wurde gelöscht oder ihre Quelle ist nicht verfügbar. Die Videos im Verlauf können weiterhin abgespielt werden.</string>
+    <string name="expand_history_playlist">Videos dieser Playlist anzeigen</string>
+    <string name="collapse_history_playlist">Videos dieser Playlist ausblenden</string>
+    <plurals name="history_playlist_video_count">
+        <item quantity="one">%1$d Video aus der Playlist %2$s</item>
+        <item quantity="other">%1$d Videos aus der Playlist %2$s</item>
+    </plurals>
 </resources>

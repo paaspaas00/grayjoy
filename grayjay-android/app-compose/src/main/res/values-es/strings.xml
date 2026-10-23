@@ -648,4 +648,14 @@
     <string name="history_music_unknown_hint">Los vídeos sin una categoría de YouTube reconocida permanecen en Todos.</string>
     <string name="history_music_identify_more">Identificar más vídeos</string>
     <string name="history_music_identifying">Identificando %1$d / %2$d</string>
+    <string name="group_history_by_playlist">Agrupar por playlist</string>
+    <string name="go_to_playlist">Ir a la playlist</string>
+    <string name="playlist_unavailable">Playlist no disponible</string>
+    <string name="history_playlist_unavailable_description">Esta playlist se ha eliminado o su fuente no está disponible. Puedes seguir reproduciendo los vídeos del historial.</string>
+    <string name="expand_history_playlist">Mostrar vídeos de esta playlist</string>
+    <string name="collapse_history_playlist">Ocultar vídeos de esta playlist</string>
+    <plurals name="history_playlist_video_count">
+        <item quantity="one">%1$d vídeo de la playlist %2$s</item>
+        <item quantity="other">%1$d vídeos de la playlist %2$s</item>
+    </plurals>
 </resources>

@@ -170,6 +170,7 @@ internal fun VideoCard(
     animateEntrance: Boolean = true,
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
+    containerColor: Color? = null,
 ) {
     CompactVideoCard(
         video = video,
@@ -184,6 +185,7 @@ internal fun VideoCard(
         animateEntrance = animateEntrance,
         isCurrent = isCurrent,
         isPlaying = isPlaying,
+        containerColor = containerColor,
     )
 }
 
@@ -202,6 +204,7 @@ internal fun CompactVideoCard(
     animateEntrance: Boolean = true,
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
+    containerColor: Color? = null,
 ) {
     val performance = rememberDevicePerformanceProfile()
     val dense = compactUi()
@@ -232,7 +235,7 @@ internal fun CompactVideoCard(
             .fillMaxWidth()
             .then(entranceModifier)
             .clip(cardShape)
-            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else containerColor ?: MaterialTheme.colorScheme.surfaceContainerLow)
             .then(if (isCurrent) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, cardShape) else Modifier)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .testTag("video-card-${video.id}").helpAnchor("video-card"),
@@ -299,7 +302,8 @@ internal fun CompactVideoCard(
                             .fillMaxWidth()
                             .minimumInteractiveComponentSize()
                             .clip(MaterialTheme.shapes.small)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .background(if (containerColor != null) MaterialTheme.colorScheme.surfaceContainerHighest
+                                else MaterialTheme.colorScheme.surfaceContainerHigh)
                             .combinedClickable(
                                 role = Role.Button,
                                 onClick = {

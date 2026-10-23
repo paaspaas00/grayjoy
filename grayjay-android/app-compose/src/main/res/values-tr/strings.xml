@@ -648,4 +648,14 @@
     <string name="history_music_unknown_hint">YouTube kategorisi tanınmayan videolar Tümü bölümünde kalır.</string>
     <string name="history_music_identify_more">Diğer videoları tanı</string>
     <string name="history_music_identifying">Tanımlanıyor %1$d / %2$d</string>
+    <string name="group_history_by_playlist">Oynatma listesine göre grupla</string>
+    <string name="go_to_playlist">Oynatma listesine git</string>
+    <string name="playlist_unavailable">Oynatma listesi kullanılamıyor</string>
+    <string name="history_playlist_unavailable_description">Oynatma listesi silinmiş veya kaynağı kullanılamıyor. Geçmişteki videoları oynatmaya devam edebilirsiniz.</string>
+    <string name="expand_history_playlist">Bu oynatma listesinin videolarını göster</string>
+    <string name="collapse_history_playlist">Bu oynatma listesinin videolarını gizle</string>
+    <plurals name="history_playlist_video_count">
+        <item quantity="one">%2$s oynatma listesinden %1$d video</item>
+        <item quantity="other">%2$s oynatma listesinden %1$d video</item>
+    </plurals>
 </resources>

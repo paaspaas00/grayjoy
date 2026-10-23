@@ -5,6 +5,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SourceProfileRulesTest {
+    @Test fun verticalSwipeThresholdRejectsHorizontalMotionAndJitter() {
+        assertEquals(0, profileSwipeDirection(0f, 7f, 8f))
+        assertEquals(-1, profileSwipeDirection(0f, 8f, 8f))
+        assertEquals(1, profileSwipeDirection(0f, -8f, 8f))
+        assertEquals(0, profileSwipeDirection(30f, 20f, 8f))
+        assertEquals(0, profileSwipeDirection(20f, 20f, 8f))
+        assertEquals(0, profileSwipeDirection(Float.NaN, 0f, 8f))
+        assertEquals(0, profileSwipeDirection(1f, Float.POSITIVE_INFINITY, 8f))
+    }
+    @Test fun swipeDirectionIsDensityIndependentAndAlwaysBounded() {
+        val random = kotlin.random.Random(7821)
+        repeat(10000) {
+            val dx = random.nextFloat() * 200 - 100
+            val dy = random.nextFloat() * 200 - 100
+            val density = random.nextFloat() * 5 + .5f
+            val direction = profileSwipeDirection(dx, dy, 8f)
+            assertTrue(direction in -1..1)
+            assertEquals(direction, profileSwipeDirection(dx * density, dy * density, 8f * density))
+        }
+        assertEquals(0, profileSwipeDirection(1f, 5f, 0f))
+    }
     private fun profile(id: String, protection: ProfileProtection = ProfileProtection.None) = ProfileUiModel(id, id, protection)
     @Test fun swipingSkipsAllProtectedProfilesInBothDirections() {
         val rows = listOf(profile("yt"), profile("pin", ProfileProtection.Pin),

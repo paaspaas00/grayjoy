@@ -120,11 +120,14 @@ internal fun StorageManagementScreen(
                     CenterAlignedTopAppBar(
                         title = { Text(stringResource(R.string.storage_management)) },
                         navigationIcon = {
+                            Row {
                             IconButton(onClick = onDismiss) {
                                 Icon(
                                     Icons.Outlined.Close,
                                     contentDescription = stringResource(R.string.close),
                                 )
+                            }
+                            com.futo.platformplayer.compose.onboarding.HelpButton(beforeOpen = onDismiss)
                             }
                         },
                         actions = {

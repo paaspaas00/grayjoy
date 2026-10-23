@@ -241,6 +241,7 @@ fun SearchScreen(
                     )
                 }
             }
+            HelpButton()
             OutlinedTextField(
                 value = queryFieldValue,
                 onValueChange = { value ->
@@ -284,7 +285,6 @@ fun SearchScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { submit(search.query) }),
             )
-            HelpButton()
             }
         }
 

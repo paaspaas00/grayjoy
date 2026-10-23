@@ -823,4 +823,14 @@
     <string name="voice_companion_missing">Installa Grayjoy Voice per abilitare questa funzionalità.</string>
     <string name="voice_control_enable">Consenti i comandi vocali</string>
     <string name="voice_control_open">Apri Grayjoy Voice</string>
+    <string name="group_history_by_playlist">Raggruppa per playlist</string>
+    <string name="go_to_playlist">Vai alla playlist</string>
+    <string name="playlist_unavailable">Playlist non disponibile</string>
+    <string name="history_playlist_unavailable_description">La playlist è stata eliminata o la sua sorgente non è disponibile. Puoi comunque riprodurre i video presenti nella cronologia.</string>
+    <string name="expand_history_playlist">Mostra i video della playlist</string>
+    <string name="collapse_history_playlist">Nascondi i video della playlist</string>
+    <plurals name="history_playlist_video_count">
+        <item quantity="one">%1$d video dalla playlist %2$s</item>
+        <item quantity="other">%1$d video dalla playlist %2$s</item>
+    </plurals>
 </resources>

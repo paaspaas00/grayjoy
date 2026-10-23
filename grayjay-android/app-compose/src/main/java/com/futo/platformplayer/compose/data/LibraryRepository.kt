@@ -5,6 +5,7 @@ import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.SubtitleUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.ui.HistoryPlaylistOrigin
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -25,6 +26,7 @@ data class LibraryVideoState(
     val watchProgress: Float,
     val isLiked: Boolean = false,
     val lastWatchedAt: Long = 0L,
+    val historyPlaylistOrigin: HistoryPlaylistOrigin? = null,
     val playlistNames: List<String> = emptyList(),
     val isMusic: Boolean? = null,
 )
@@ -110,7 +112,7 @@ interface LibraryRepository {
         }
         return changed
     }
-    fun recordHistory(video: VideoUiModel, progress: Float = video.watchProgress)
+    fun recordHistory(video: VideoUiModel, progress: Float = video.watchProgress, watchedAt: Long = System.currentTimeMillis())
     fun setWatchLater(videoId: String, enabled: Boolean)
     fun setDownloaded(videoId: String, enabled: Boolean)
     fun setLiked(videoId: String, enabled: Boolean)
@@ -216,6 +218,7 @@ internal class SharedPreferencesLibraryRepository(
                 watchProgress = stored?.watchProgress ?: video.watchProgress,
                 isLiked = stored?.isLiked ?: video.isLiked,
                 lastWatchedAt = stored?.lastWatchedAt ?: video.lastWatchedAt,
+                historyPlaylistOrigin = if (stored != null) stored.historyPlaylistOrigin else video.historyPlaylistOrigin,
                 playlistNames = stored?.playlistNames ?: video.playlistNames,
                 isMusic = video.isMusic ?: stored?.isMusic,
             )
@@ -256,6 +259,7 @@ internal class SharedPreferencesLibraryRepository(
                 isLiked = existing?.isLiked ?: video.isLiked,
                 watchProgress = existing?.watchProgress ?: video.watchProgress,
                 lastWatchedAt = existing?.lastWatchedAt ?: video.lastWatchedAt,
+                historyPlaylistOrigin = if (existing != null) existing.historyPlaylistOrigin else video.historyPlaylistOrigin,
                 playlistNames = existing?.playlistNames ?: video.playlistNames,
                 isMusic = video.isMusic ?: existing?.isMusic,
             ).forLocalStorage(preservePlayback = true)
@@ -304,7 +308,7 @@ internal class SharedPreferencesLibraryRepository(
         }
     }
 
-    override fun recordHistory(video: VideoUiModel, progress: Float) {
+    override fun recordHistory(video: VideoUiModel, progress: Float, watchedAt: Long) {
         return synchronized(transactionLock) {
             importJournal.ensureWritable()
             val normalizedProgress = normalizedLibraryProgress(progress)
@@ -316,7 +320,7 @@ internal class SharedPreferencesLibraryRepository(
                 isDownloaded = existing?.isDownloaded ?: video.isDownloaded,
                 isLiked = existing?.isLiked ?: video.isLiked,
                 playlistNames = existing?.playlistNames ?: video.playlistNames,
-                lastWatchedAt = System.currentTimeMillis(),
+                lastWatchedAt = watchedAt.coerceAtLeast(1L),
                 isMusic = video.isMusic ?: existing?.isMusic,
             ).preservingStoredPlayback(existing)
             writeVideos(videos.values.toList())
@@ -367,7 +371,7 @@ internal class SharedPreferencesLibraryRepository(
             if (removedIds.isEmpty()) return
             val videos = readVideos().mapNotNull { video ->
                 if (video.id !in removedIds) return@mapNotNull video
-                val withoutHistory = video.copy(watchProgress = 0f, lastWatchedAt = 0L)
+                val withoutHistory = video.copy(watchProgress = 0f, lastWatchedAt = 0L, historyPlaylistOrigin = null)
                 withoutHistory.takeIf {
                     it.isWatchLater || it.isDownloaded || it.isLiked || it.playlistNames.isNotEmpty()
                 }
@@ -624,6 +628,7 @@ internal class SharedPreferencesLibraryRepository(
                 isLiked = existing?.isLiked ?: video.isLiked,
                 watchProgress = existing?.watchProgress ?: video.watchProgress,
                 lastWatchedAt = existing?.lastWatchedAt ?: video.lastWatchedAt,
+                historyPlaylistOrigin = if (existing != null) existing.historyPlaylistOrigin else video.historyPlaylistOrigin,
                 playlistNames = existing?.playlistNames ?: video.playlistNames,
                 isMusic = video.isMusic ?: existing?.isMusic,
             ).preservingStoredPlayback(existing)
@@ -714,6 +719,7 @@ internal fun List<VideoUiModel>.withLibraryState(
             watchProgress = state.watchProgress,
             isLiked = state.isLiked,
             lastWatchedAt = state.lastWatchedAt,
+            historyPlaylistOrigin = state.historyPlaylistOrigin,
             playlistNames = state.playlistNames,
             isMusic = video.isMusic ?: state.isMusic,
         )
@@ -821,6 +827,7 @@ private fun VideoUiModel.mergeImported(
         isAvailable = isAvailable && imported.isAvailable,
         scheduledStartAtMs = maxOf(scheduledStartAtMs, imported.scheduledStartAtMs),
         watchProgress = if (importedHistoryIsNewer) imported.watchProgress else watchProgress,
+        historyPlaylistOrigin = if (importedHistoryIsNewer) imported.historyPlaylistOrigin else historyPlaylistOrigin,
         isDownloaded = isDownloaded || imported.isDownloaded,
         isWatchLater = isWatchLater || imported.isWatchLater,
         isLiked = isLiked || imported.isLiked,
@@ -863,6 +870,10 @@ internal fun VideoUiModel.toJson() = JSONObject().apply {
     put("isWatchLater", isWatchLater)
     put("isLiked", isLiked)
     put("lastWatchedAt", lastWatchedAt)
+    historyPlaylistOrigin?.let { origin ->
+        put("historyPlaylistOrigin", JSONObject().put("playlistId", origin.playlistId)
+            .put("sourceId", origin.sourceId).put("title", origin.title).put("runId", origin.runId))
+    }
     put("playlistNames", JSONArray(playlistNames))
     put("contentUrl", contentUrl)
     put("thumbnailUrl", thumbnailUrl)
@@ -928,6 +939,11 @@ internal fun JSONArray.toVideoList(): List<VideoUiModel> = buildList {
                 isWatchLater = json.optBoolean("isWatchLater"),
                 isLiked = json.optBoolean("isLiked"),
                 lastWatchedAt = json.optLong("lastWatchedAt"),
+                historyPlaylistOrigin = json.optJSONObject("historyPlaylistOrigin")?.let { origin ->
+                    HistoryPlaylistOrigin(origin.optString("playlistId"), origin.optString("sourceId"),
+                        origin.optString("title"), origin.optString("runId"))
+                        .takeIf { it.playlistId.isNotBlank() && it.runId.isNotBlank() }
+                },
                 playlistNames = json.optJSONArray("playlistNames").toStringList(),
                 contentUrl = json.optString("contentUrl"),
                 thumbnailUrl = json.optString("thumbnailUrl"),

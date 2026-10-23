@@ -688,4 +688,16 @@
     <string name="history_music_unknown_hint">Видео без распознанной категории YouTube остаются в разделе «Все».</string>
     <string name="history_music_identify_more">Определить другие видео</string>
     <string name="history_music_identifying">Определение %1$d / %2$d</string>
+    <string name="group_history_by_playlist">Группировать по плейлисту</string>
+    <string name="go_to_playlist">К плейлисту</string>
+    <string name="playlist_unavailable">Плейлист недоступен</string>
+    <string name="history_playlist_unavailable_description">Плейлист удалён или его источник недоступен. Видео из истории по-прежнему можно воспроизводить.</string>
+    <string name="expand_history_playlist">Показать видео из плейлиста</string>
+    <string name="collapse_history_playlist">Скрыть видео из плейлиста</string>
+    <plurals name="history_playlist_video_count">
+        <item quantity="one">%1$d видео из плейлиста %2$s</item>
+        <item quantity="few">%1$d видео из плейлиста %2$s</item>
+        <item quantity="many">%1$d видео из плейлиста %2$s</item>
+        <item quantity="other">%1$d видео из плейлиста %2$s</item>
+    </plurals>
 </resources>

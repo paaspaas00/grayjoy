@@ -36,6 +36,37 @@ class LibraryPersistenceTest {
     fun removeIsolatedStorage() {
         appContext.deleteSharedPreferences("grayjay_compose_library_v2_$profileId")
         appContext.deleteSharedPreferences("grayjay_compose_watch_progress_v1_$profileId")
+        appContext.deleteSharedPreferences("grayjay_compose_preferences_$profileId")
+    }
+
+    @Test fun historyOriginSurvivesSparseRefreshDownloadsAndCheckpointsButNotANewStandalonePlay() {
+        val repository = SharedPreferencesLibraryRepository(context, profileId)
+        val origin = com.futo.platformplayer.compose.ui.HistoryPlaylistOrigin("remote-list", "youtube", "Road trip", "run-1")
+        val video = VideoUiModel("origin-video", "Track", "Creator", "", "1:00", historyPlaylistOrigin = origin)
+        repository.recordHistory(video, watchedAt = 1234)
+        repository.saveVideo(video.copy(historyPlaylistOrigin = null, title = "Updated title"))
+        repository.saveDownloadDescriptor(video.copy(historyPlaylistOrigin = null, playbackUrl = "file:///fixture"))
+        repository.setWatchProgress(video.id, .7f)
+        val saved = SharedPreferencesLibraryRepository(context, profileId).loadSavedVideos().single()
+        assertEquals(origin, saved.historyPlaylistOrigin)
+        assertEquals(1234L, saved.lastWatchedAt)
+        repository.recordHistory(video.copy(historyPlaylistOrigin = null), watchedAt = 2345)
+        assertNull(repository.loadSavedVideos().single().historyPlaylistOrigin)
+        repository.recordHistory(video, watchedAt = 3456)
+        repository.setWatchLater(video.id, true)
+        repository.removeFromHistory(listOf(video.id))
+        val removed = SharedPreferencesLibraryRepository(context, profileId).loadSavedVideos().single()
+        assertEquals(0L, removed.lastWatchedAt)
+        assertNull(removed.historyPlaylistOrigin)
+    }
+
+    @Test fun historyGroupingPreferenceIsOptInAndPersistsPerProfile() {
+        val first = com.futo.platformplayer.compose.GrayjayPreferences(context, profileId)
+        org.junit.Assert.assertFalse(first.groupHistoryByPlaylist)
+        first.groupHistoryByPlaylist = true
+        assertTrue(com.futo.platformplayer.compose.GrayjayPreferences(context, profileId).groupHistoryByPlaylist)
+        first.groupHistoryByPlaylist = false
+        org.junit.Assert.assertFalse(com.futo.platformplayer.compose.GrayjayPreferences(context, profileId).groupHistoryByPlaylist)
     }
 
     @Test

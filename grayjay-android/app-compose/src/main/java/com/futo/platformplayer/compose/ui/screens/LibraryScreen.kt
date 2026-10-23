@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -54,6 +55,7 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -63,6 +65,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -81,6 +84,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.DownloadMediaType
@@ -88,6 +92,11 @@ import com.futo.platformplayer.compose.ui.DownloadUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.ui.HistoryMusicScanUiState
+import com.futo.platformplayer.compose.ui.SourceUiModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -196,6 +205,9 @@ internal fun LibraryScreen(
     onDownloadFocusConsumed: () -> Unit = {},
     historyMusicScan: HistoryMusicScanUiState = HistoryMusicScanUiState(),
     onRequestHistoryMusicClassification: (List<String>) -> Unit = {},
+    groupHistoryByPlaylist: Boolean = false,
+    onGroupHistoryByPlaylistChange: (Boolean) -> Unit = {},
+    sources: List<SourceUiModel> = emptyList(),
 ) {
     val compactLayout = compactUi()
     var selectionMode by rememberSaveable { mutableStateOf(false) }
@@ -206,8 +218,17 @@ internal fun LibraryScreen(
     var playlistQuery by rememberSaveable { mutableStateOf("") }
     var historyQuery by rememberSaveable { mutableStateOf("") }
     var historyMusicFilter by rememberSaveable { mutableStateOf(HistoryMusicFilter.All) }
+    var expandedHistoryGroups by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var unavailableHistoryPlaylist by remember { mutableStateOf(false) }
+    if (unavailableHistoryPlaylist) AlertDialog(
+        onDismissRequest = { unavailableHistoryPlaylist = false },
+        title = { Text(stringResource(R.string.playlist_unavailable)) },
+        text = { Text(stringResource(R.string.history_playlist_unavailable_description)) },
+        confirmButton = { TextButton(onClick = { unavailableHistoryPlaylist = false }) { Text(stringResource(R.string.ok)) } },
+    )
     var focusedSearchFilter by remember { mutableStateOf<LibraryFilter?>(null) }
     val selectedVideoIds = remember { mutableStateListOf<String>() }
+    val selectedHistoryVideoIds = selectedVideoIds.toHashSet()
     val selectedPlaylistIds = remember { mutableStateListOf<String>() }
     val filters = LibraryFilter.entries
     val pagerState = rememberPagerState(
@@ -386,6 +407,22 @@ internal fun LibraryScreen(
                     }
                 }
                 val isSelectedPage = pageFilter == selectedFilter
+                val groupedHistory = pageFilter == LibraryFilter.History && groupHistoryByPlaylist
+                val indexInput = remember(unfilteredPageVideos, pageVideos) { Any() }
+                val indexed by produceState<Pair<Any, HistoryPlaylistIndex>?>(null, indexInput, groupedHistory) {
+                    if (groupedHistory && value?.first !== indexInput) {
+                        value = withContext(Dispatchers.Default) {
+                            val context = coroutineContext
+                            indexInput to indexHistoryPlaylists(unfilteredPageVideos,
+                                pageVideos.mapTo(hashSetOf(), VideoUiModel::id)) { context.ensureActive() }
+                        }
+                    }
+                }
+                val pageEntries = remember(indexed, indexInput, pageVideos, groupedHistory, expandedHistoryGroups) {
+                    if (groupedHistory && indexed?.first === indexInput)
+                        indexed!!.second.entries(expandedHistoryGroups.toSet())
+                    else historyVideoEntries(pageVideos)
+                }
                 val pageListState = rememberContentListState()
                 val listState = if (pageFilter == LibraryFilter.Playlists) {
                     playlistListState
@@ -549,6 +586,16 @@ internal fun LibraryScreen(
                             )
                         }
                     }
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .toggleable(value = groupHistoryByPlaylist, role = Role.Switch,
+                            onValueChange = onGroupHistoryByPlaylistChange)
+                        .testTag("history-group-toggle"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(R.string.group_history_by_playlist), Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium)
+                        Switch(checked = groupHistoryByPlaylist, onCheckedChange = null)
+                    }
                 }
                 }
             }
@@ -589,10 +636,41 @@ internal fun LibraryScreen(
             }
         } else {
             itemsIndexed(
-                items = pageVideos,
-                key = { _, video -> video.id },
-                contentType = { _, _ -> "video" },
-            ) { index, video ->
+                items = pageEntries,
+                key = { _, entry -> entry.key },
+                contentType = { _, entry -> if (entry is HistoryListEntry.Folder) "history-folder" else "video" },
+            ) { index, entry ->
+                if (entry is HistoryListEntry.Folder) {
+                    HistoryPlaylistFolderCard(entry,
+                        selected = selectionMode && entry.videos.all { it.id in selectedHistoryVideoIds },
+                        onToggle = {
+                            expandedHistoryGroups = if (entry.key in expandedHistoryGroups)
+                                expandedHistoryGroups - entry.key else (expandedHistoryGroups + entry.key).takeLast(128)
+                        },
+                        onLongClick = {
+                            selectionMode = true
+                            val selected = selectedVideoIds.toHashSet()
+                            selectedVideoIds.addAll(entry.videos.map(VideoUiModel::id).filterNot(selected::contains))
+                            if (entry.key !in expandedHistoryGroups)
+                                expandedHistoryGroups = (expandedHistoryGroups + entry.key).takeLast(128)
+                        },
+                        onOpenPlaylist = {
+                            if (selectionMode) {
+                                val ids = entry.videos.map(VideoUiModel::id)
+                                if (ids.all { it in selectedVideoIds }) selectedVideoIds.removeAll(ids.toSet())
+                                else selectedVideoIds.addAll(ids.filterNot { it in selectedVideoIds })
+                                if (selectedVideoIds.isEmpty()) leaveSelectionMode()
+                            } else {
+                                val playlist = historyOriginPlaylist(entry.origin, playlists, sources)
+                                if (playlist == null) unavailableHistoryPlaylist = true else onPlaylistClick(playlist)
+                            }
+                        },
+                        modifier = Modifier.animateItem(),
+                    )
+                    return@itemsIndexed
+                }
+                val videoEntry = entry as HistoryListEntry.Video
+                val video = videoEntry.video
                 val watchedMetadata = if (
                     pageFilter == LibraryFilter.History && video.lastWatchedAt > 0L
                 ) {
@@ -609,6 +687,7 @@ internal fun LibraryScreen(
                 } else {
                     video.metadata
                 }
+                Box(if (groupedHistory) Modifier.animateItem() else Modifier) {
                 VideoCard(
                     video = video,
                     index = index,
@@ -621,10 +700,11 @@ internal fun LibraryScreen(
                         LibraryFilter.History,
                         LibraryFilter.Downloads,
                     ) && video.id in selectedVideoIds,
+                    containerColor = if (videoEntry.grouped) MaterialTheme.colorScheme.surfaceContainerHigh else null,
                     showProgress = pageFilter == LibraryFilter.History,
                     // Download progress invalidates active rows frequently. Per-item entrance
                     // layers on newly visible cards turn a fast fling into repeated GPU work.
-                    animateEntrance = pageFilter != LibraryFilter.Downloads &&
+                    animateEntrance = !groupedHistory && pageFilter != LibraryFilter.Downloads &&
                         !listState.isScrollInProgress,
                     onClick = {
                         if (
@@ -647,6 +727,7 @@ internal fun LibraryScreen(
                         }
                     },
                 )
+                }
             }
         }
         if (

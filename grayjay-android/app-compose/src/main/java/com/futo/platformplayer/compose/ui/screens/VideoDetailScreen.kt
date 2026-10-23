@@ -1095,6 +1095,7 @@ internal fun PlayerSurface(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (isFullscreen) {
+                    com.futo.platformplayer.compose.onboarding.HelpButton(tint = Color.White)
                     Column(
                         modifier = Modifier
                             .weight(1f)

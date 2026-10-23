@@ -254,6 +254,10 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
             preferences.edit().putBoolean(KEY_SEARCH_HISTORY_ENABLED, value).apply()
         }
 
+    var groupHistoryByPlaylist: Boolean
+        get() = preferences.getBoolean(KEY_GROUP_HISTORY_BY_PLAYLIST, false)
+        set(value) { preferences.edit().putBoolean(KEY_GROUP_HISTORY_BY_PLAYLIST, value).apply() }
+
     var keepScreenAwake: Boolean
         get() = preferences.getBoolean(KEY_KEEP_SCREEN_AWAKE, true)
         set(value) {
@@ -517,6 +521,7 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         private const val KEY_SUBTITLE_LANGUAGE = "subtitle_language"
         private const val KEY_SHOW_RECOMMENDATIONS = "show_recommendations"
         private const val KEY_SEARCH_HISTORY_ENABLED = "search_history_enabled"
+        private const val KEY_GROUP_HISTORY_BY_PLAYLIST = "group_history_by_playlist"
         private const val KEY_SEARCH_HISTORY = "search_history"
         private const val KEY_KEEP_SCREEN_AWAKE = "keep_screen_awake"
         private const val KEY_PICTURE_IN_PICTURE = "picture_in_picture_enabled"

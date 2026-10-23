@@ -648,4 +648,14 @@
     <string name="history_music_unknown_hint">YouTube のカテゴリを判別できない動画は「すべて」に表示されます。</string>
     <string name="history_music_identify_more">ほかの動画を判別</string>
     <string name="history_music_identifying">判別中 %1$d / %2$d</string>
+    <string name="group_history_by_playlist">プレイリスト別にまとめる</string>
+    <string name="go_to_playlist">プレイリストを開く</string>
+    <string name="playlist_unavailable">プレイリストを利用できません</string>
+    <string name="history_playlist_unavailable_description">プレイリストが削除されたか、ソースを利用できません。履歴の動画は引き続き再生できます。</string>
+    <string name="expand_history_playlist">このプレイリストの動画を表示</string>
+    <string name="collapse_history_playlist">このプレイリストの動画を隠す</string>
+    <plurals name="history_playlist_video_count">
+        <item quantity="one">プレイリスト「%2$s」から %1$d 本の動画</item>
+        <item quantity="other">プレイリスト「%2$s」から %1$d 本の動画</item>
+    </plurals>
 </resources>

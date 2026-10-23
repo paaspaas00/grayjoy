@@ -47,6 +47,7 @@ data class GrayjayUiState(
     val stickyCaptionsEnabled: Boolean = true,
     val showRecommendations: Boolean = true,
     val searchHistoryEnabled: Boolean = true,
+    val groupHistoryByPlaylist: Boolean = false,
     val crashLoggingEnabled: Boolean = false,
     val keepScreenAwake: Boolean = true,
     val pictureInPictureEnabled: Boolean = true,

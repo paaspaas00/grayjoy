@@ -13,6 +13,7 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
@@ -394,6 +395,7 @@ private data class PlaybackPresentation(
     val stickyCaptionsEnabled: Boolean,
     val showRecommendations: Boolean,
     val searchHistoryEnabled: Boolean,
+    val groupHistoryByPlaylist: Boolean,
     val crashLoggingEnabled: Boolean,
     val keepScreenAwake: Boolean,
     val pictureInPictureEnabled: Boolean,
@@ -422,6 +424,7 @@ private data class PlaybackPresentation(
     val onStickyCaptionsChange: (Boolean) -> Unit,
     val onShowRecommendationsChange: (Boolean) -> Unit,
     val onSearchHistoryChange: (Boolean) -> Unit,
+    val onGroupHistoryByPlaylistChange: (Boolean) -> Unit,
     val onCrashLoggingChange: (Boolean) -> Unit,
     val onKeepScreenAwakeChange: (Boolean) -> Unit,
     val onPictureInPictureChange: (Boolean) -> Unit,
@@ -455,12 +458,15 @@ private class PlayerTransitionState(initialProgress: Float) {
     var progress by mutableFloatStateOf(initialProgress)
     var target by mutableFloatStateOf(initialProgress)
     var isSettling by mutableStateOf(false)
+    var isDragging by mutableStateOf(false)
+    val isCollapsed: Boolean get() = !isDragging && !isSettling && target >= 0.999f && progress >= 0.999f
 
     fun snapTo(value: Float) {
         val normalized = value.coerceIn(0f, 1f)
         progress = normalized
         target = normalized
         isSettling = false
+        isDragging = false
     }
 }
 
@@ -715,16 +721,10 @@ private fun GrayjayAppContent(
     } ?: availableVideosById[uiState.playback.currentVideoId]
     val playerTransition = remember { PlayerTransitionState(initialPlayerTransitionProgress(selectedVideoId)) }
     LaunchedEffect(playerTransition) {
-        snapshotFlow {
-            Triple(
-                playerTransition.target,
-                playerTransition.progress,
-                playerTransition.isSettling,
-            )
-        }.collect { (target, progress, isSettling) ->
+        snapshotFlow { playerTransition.isCollapsed }.collect { collapsed ->
             // A lifecycle interruption can cancel the final animation callback after its last
             // frame was drawn. Never leave the transition overlay alive over navigation chrome.
-            if (!isSettling && target >= 0.999f && progress >= 0.999f) {
+            if (collapsed && playerTransition.isCollapsed) {
                 selectedVideoId = null
             }
         }
@@ -766,6 +766,7 @@ private fun GrayjayAppContent(
     }
     val settlePlayer: (Float, String?) -> Unit = { target, videoId ->
         playerTransitionJob?.cancel()
+        playerTransition.isDragging = false
         if (shouldRestorePlaylistOnPlayerSettle(playerTransition.target, target)) {
             restorePlaybackPlaylistDestination()
         }
@@ -932,8 +933,10 @@ private fun GrayjayAppContent(
     }
     val onPlaylistClick: (PlaylistUiModel) -> Unit = {
         val openedFromHome = selected == GrayjayDestination.Home && selectedPlaylistId == null
+        val openedFromHistory = selected == GrayjayDestination.Library &&
+            libraryFilterName == LibraryFilter.History.name && selectedPlaylistId == null
         visitedPlaylists[it.id] = it
-        if ((it.sourceId.isNotBlank() || openedFromHome) && selectedPlaylistId != it.id) rememberBrowseOrigin()
+        if ((it.sourceId.isNotBlank() || openedFromHome || openedFromHistory) && selectedPlaylistId != it.id) rememberBrowseOrigin()
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         searchAutoFocusRequested = false
@@ -942,7 +945,7 @@ private fun GrayjayAppContent(
             destinationName = GrayjayDestination.Library.name
             libraryFilterName = LibraryFilter.Playlists.name
             nestedBackDestinationName = null
-            if (!openedFromHome) browseHistory = emptyList()
+            if (!openedFromHome && !openedFromHistory) browseHistory = emptyList()
         }
         selectedPlaylistId = it.id
         selectedChannelId = null
@@ -1148,6 +1151,7 @@ private fun GrayjayAppContent(
         onCollapse = { settlePlayer(1f, selectedVideoId ?: playbackVideo?.id) },
         onTransitionDragStart = {
             playerTransitionJob?.cancel()
+            playerTransition.isDragging = true
             playerTransition.isSettling = false
             selectedVideoId = selectedVideoId ?: playbackVideo?.id
         },
@@ -1300,6 +1304,7 @@ private fun GrayjayAppContent(
         stickyCaptionsEnabled = uiState.stickyCaptionsEnabled,
         showRecommendations = uiState.showRecommendations,
         searchHistoryEnabled = uiState.searchHistoryEnabled,
+        groupHistoryByPlaylist = uiState.groupHistoryByPlaylist,
         crashLoggingEnabled = uiState.crashLoggingEnabled,
         keepScreenAwake = uiState.keepScreenAwake,
         pictureInPictureEnabled = uiState.pictureInPictureEnabled,
@@ -1328,6 +1333,7 @@ private fun GrayjayAppContent(
         onStickyCaptionsChange = actions.onStickyCaptionsChange,
         onShowRecommendationsChange = actions.onShowRecommendationsChange,
         onSearchHistoryChange = actions.onSearchHistoryChange,
+        onGroupHistoryByPlaylistChange = actions.onGroupHistoryByPlaylistChange,
         onCrashLoggingChange = actions.onCrashLoggingChange,
         onKeepScreenAwakeChange = actions.onKeepScreenAwakeChange,
         onPictureInPictureChange = actions.onPictureInPictureChange,
@@ -1725,21 +1731,6 @@ private fun GrayjayAppContent(
                 channels = uiState.channels,
                 playlists = uiState.playlists,
             )
-        }
-    }
-    LaunchedEffect(
-        playerTransition.progress,
-        playerTransition.target,
-        playerTransition.isSettling,
-        selectedVideoId,
-    ) {
-        if (
-            selectedVideoId != null &&
-            !playerTransition.isSettling &&
-            playerTransition.target >= 0.999f &&
-            playerTransition.progress >= 0.999f
-        ) {
-            selectedVideoId = null
         }
     }
     }
@@ -2171,7 +2162,7 @@ private fun GrayjayScaffold(
     var rootLeftPx by remember { mutableFloatStateOf(0f) }
     var rootTopPx by remember { mutableFloatStateOf(0f) }
     var appBottomBarHeightPx by remember { mutableFloatStateOf(0f) }
-    var isTransitionDragging by remember { mutableStateOf(false) }
+    val isTransitionDragging = playback.transition.isDragging
     val pageStateHolder = LocalPageStateHolder.current
     val compactChrome = com.futo.platformplayer.compose.ui.screens.compactUi()
     val transitionVideo = selectedVideo ?: playback.video
@@ -2212,11 +2203,9 @@ private fun GrayjayScaffold(
         state = dragState,
         orientation = Orientation.Vertical,
         onDragStarted = {
-            isTransitionDragging = true
             playback.onTransitionDragStart()
         },
         onDragStopped = { velocity ->
-            isTransitionDragging = false
             val target = when {
                 velocity > 1_200f -> 1f
                 velocity < -1_200f -> 0f
@@ -2298,15 +2287,6 @@ private fun GrayjayScaffold(
                         val hasBack = selectedChannel != null ||
                             selectedPlaylist != null || nestedBackEnabled
                         Row {
-                            if (!hasBack && selected == GrayjayDestination.Home) {
-                                HelpButton()
-                                val setupDescription = stringResource(R.string.setup_reopen)
-                                IconButton(onClick = guidedSetup.open, modifier = Modifier.testTag("home-guided-setup")) {
-                                    com.futo.platformplayer.compose.onboarding.WizardMark(
-                                        Modifier.size(28.dp).semantics { contentDescription = setupDescription },
-                                    )
-                                }
-                            }
                             if (onToggleDrawer != null && !drawerVisible) {
                                 IconButton(onClick = onToggleDrawer) {
                                     Icon(
@@ -2348,6 +2328,15 @@ private fun GrayjayScaffold(
                                     )
                                 }
                             }
+                            HelpButton()
+                            if (!hasBack && selected == GrayjayDestination.Home) {
+                                val setupDescription = stringResource(R.string.setup_reopen)
+                                IconButton(onClick = guidedSetup.open, modifier = Modifier.testTag("home-guided-setup")) {
+                                    com.futo.platformplayer.compose.onboarding.WizardMark(
+                                        Modifier.size(28.dp).semantics { contentDescription = setupDescription },
+                                    )
+                                }
+                            }
                         }
                     },
                     actions = {
@@ -2367,8 +2356,6 @@ private fun GrayjayScaffold(
                             onClick = { activeJobsExpanded = !activeJobsExpanded },
                         )
                         ProfileMenuButton(onOpen = playback.onOpenProfiles)
-                        if (selected != GrayjayDestination.Home || selectedChannel != null ||
-                            selectedPlaylist != null || nestedBackEnabled) HelpButton()
                     },
                 )
                 ActiveJobsPanel(
@@ -2425,7 +2412,9 @@ private fun GrayjayScaffold(
                                     scaffoldTopInRoot = rootTopPx,
                                 )
                             },
-                            modifier = if (transitionActive) Modifier else transitionDragModifier,
+                            // Keep the initiating pointer node alive throughout the morph.
+                            // Removing it when details appear cancels the user's ongoing swipe.
+                            modifier = transitionDragModifier,
                         )
                     }
                     Box(
@@ -2672,6 +2661,9 @@ private fun GrayjayScaffold(
                         onNavigationMenuClick = onToggleDrawer ?: {},
                     )
                     GrayjayDestination.Library -> LibraryScreen(
+                        groupHistoryByPlaylist = playback.groupHistoryByPlaylist,
+                        onGroupHistoryByPlaylistChange = playback.onGroupHistoryByPlaylistChange,
+                        sources = sourcePresentation.sources,
                         historyMusicScan = playback.historyMusicScan,
                         onRequestHistoryMusicClassification = playback.onRequestHistoryMusicClassification,
                         videos = playback.libraryVideos,
@@ -2834,7 +2826,7 @@ private fun GrayjayScaffold(
                     .padding(
                         bottom = with(density) { searchMiniplayerBottomPx.toDp() },
                     )
-                    .then(if (transitionActive) Modifier else transitionDragModifier)
+                    .then(transitionDragModifier)
                     // Alpha alone does not remove a composable from hit testing. The hidden
                     // search mini-player must be below the expanded, scrollable details.
                     .zIndex(if (transitionActive) 0f else 2f),
@@ -2926,6 +2918,7 @@ private fun GrayjayScaffold(
                                                 contentDescription = stringResource(R.string.back),
                                             )
                                         }
+                                        HelpButton()
                                     }
                                 },
                                 actions = {
@@ -3186,6 +3179,9 @@ private fun GrayjayScaffold(
                         )
                 })
                     .then(transitionDragModifier)
+                    // The shared video surface is above the miniature's clickable card.
+                    // Forward taps on that area to the same expansion action as its title.
+                    .clickable(enabled = !transitionActive, onClick = playback.onExpand)
                     .zIndex(2f),
             )
         }

@@ -68,9 +68,9 @@ class SourceProfilesUiTest {
                 sourceAccentColor = state.profiles.first { it.id == state.activeProfileId }.sourceAccentColor) {
                 GrayjayApp(state, player, actions)
             } }
-            rule.onNodeWithTag("profile-menu").performTouchInput { swipeLeft() }
+            rule.onNodeWithTag("profile-menu").performTouchInput { swipeUp() }
             rule.runOnIdle { assertEquals("sp", state.activeProfileId) }
-            rule.onNodeWithTag("profile-menu").performTouchInput { swipeRight() }
+            rule.onNodeWithTag("profile-menu").performTouchInput { swipeDown() }
             rule.runOnIdle { assertEquals(listOf("sp", "yt"), changes) }
             rule.onNodeWithTag("profile-menu").performClick()
             rule.onNodeWithTag("profile-yt").assertIsDisplayed()

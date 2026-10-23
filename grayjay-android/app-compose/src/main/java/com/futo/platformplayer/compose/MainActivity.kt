@@ -470,6 +470,7 @@ class MainActivity : FragmentActivity() {
                     onStickyCaptionsChange = viewModel::setStickyCaptionsEnabled
                     onShowRecommendationsChange = viewModel::setShowRecommendations
                     onSearchHistoryChange = viewModel::setSearchHistoryEnabled
+                    onGroupHistoryByPlaylistChange = viewModel::setGroupHistoryByPlaylist
                     onCrashLoggingChange = { enabled ->
                         if (
                             enabled && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&

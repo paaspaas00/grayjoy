@@ -648,6 +648,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     )
     private var lastPluginUpdateCheckMs = pluginUpdatePreferences.getLong("last_check", 0L)
     private val historyWriteJobs = mutableMapOf<String, Job>()
+    private val historyPlaylistRuns = HistoryPlaylistRunTracker()
+    private var lastHistoryPlayback: RecordedHistoryPlayback? = null
     private var homeLoadGeneration = 0L
     private var homePagerSessionId = UUID.randomUUID().toString()
     private var playbackGeneration = 0L
@@ -743,6 +745,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
+            groupHistoryByPlaylist = preferences.groupHistoryByPlaylist,
             crashLoggingEnabled = CrashLogStore.isEnabled(application),
             keepScreenAwake = preferences.keepScreenAwake,
             pictureInPictureEnabled = preferences.pictureInPictureEnabled,
@@ -983,6 +986,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setPrivateSessionEnabled(enabled: Boolean) {
+        if (enabled != preferences.privateSessionEnabled) {
+            historyPlaylistRuns.reset()
+            lastHistoryPlayback = null
+        }
         if (enabled) com.futo.platformplayer.compose.voice.VoiceAccess.stopListening(getApplication())
         preferences.privateSessionEnabled = enabled
         _uiState.update { it.copy(privateSessionEnabled = enabled) }
@@ -1258,6 +1265,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     fun setSearchHistoryEnabled(enabled: Boolean) {
         preferences.searchHistoryEnabled = enabled
         _uiState.update { it.copy(searchHistoryEnabled = enabled) }
+    }
+
+    fun setGroupHistoryByPlaylist(enabled: Boolean) {
+        preferences.groupHistoryByPlaylist = enabled
+        _uiState.update { it.copy(groupHistoryByPlaylist = enabled) }
     }
 
     fun setCrashLoggingEnabled(enabled: Boolean) {
@@ -2382,6 +2394,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             stickyCaptionsEnabled = preferences.stickyCaptionsEnabled,
             showRecommendations = preferences.showRecommendations,
             searchHistoryEnabled = preferences.searchHistoryEnabled,
+            groupHistoryByPlaylist = preferences.groupHistoryByPlaylist,
             crashLoggingEnabled = CrashLogStore.isEnabled(getApplication()),
             keepScreenAwake = preferences.keepScreenAwake,
             pictureInPictureEnabled = preferences.pictureInPictureEnabled,
@@ -5355,9 +5368,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (videos.isNotEmpty()) {
             val ids = playlistPlaybackOrder(videos.map(VideoUiModel::id), shuffle = playlist.id in _uiState.value.shuffledPlaylistIds)
             activePlaylistId = null
+            _uiState.update { it.copy(playbackPlaylist = playlist) }
             startQueue(ids)
             rememberPlayedPlaylist(playlist)
-            _uiState.update { it.copy(playbackPlaylist = playlist) }
             publishExternalNavigation(ExternalNavigationKind.Video, ids.first())
         }
     }
@@ -5366,9 +5379,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (videos.any { it.id == videoId }) {
             val queueIds = playlistPlaybackOrder(videos.map(VideoUiModel::id), videoId, playlist.id in _uiState.value.shuffledPlaylistIds)
             activePlaylistId = null
+            _uiState.update { it.copy(playbackPlaylist = playlist) }
             startQueue(queueIds)
             rememberPlayedPlaylist(playlist)
-            _uiState.update { it.copy(playbackPlaylist = playlist) }
             publishExternalNavigation(ExternalNavigationKind.Video, queueIds.first())
         }
     }
@@ -7929,7 +7942,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             isWatchLater == saved.isWatchLater && isDownloaded == saved.isDownloaded &&
             watchProgress == saved.watchProgress && isLiked == saved.isLiked &&
             isAvailable == saved.isAvailable && scheduledStartAtMs == saved.scheduledStartAtMs &&
-            lastWatchedAt == saved.lastWatchedAt && playlistNames == saved.playlistNames &&
+            lastWatchedAt == saved.lastWatchedAt && historyPlaylistOrigin == saved.historyPlaylistOrigin && playlistNames == saved.playlistNames &&
             (isMusic ?: saved.isMusic) == isMusic
         ) return this
         return copy(
@@ -7940,6 +7953,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             isAvailable = saved.isAvailable,
             scheduledStartAtMs = saved.scheduledStartAtMs,
             lastWatchedAt = saved.lastWatchedAt,
+            historyPlaylistOrigin = saved.historyPlaylistOrigin,
             playlistNames = saved.playlistNames,
             isMusic = isMusic ?: saved.isMusic,
         )
@@ -8269,12 +8283,25 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun recordHistory(video: VideoUiModel) {
-        if (_uiState.value.privateSessionEnabled) return
+        if (_uiState.value.privateSessionEnabled) { historyPlaylistRuns.reset(); return }
         val repositoryAtScheduleTime = libraryRepository
         val profileAtScheduleTime = activeProfileId
+        val (watchedAt, origin) = historyPlaylistRuns.record(profileAtScheduleTime,
+            _uiState.value.playbackPlaylist, System.currentTimeMillis())
+        val recorded = video.copy(historyPlaylistOrigin = origin)
+        lastHistoryPlayback = RecordedHistoryPlayback(profileAtScheduleTime, video.id, watchedAt, origin)
         historyWriteJobs.remove(video.id)?.cancel()
         historyWriteJobs[video.id] = viewModelScope.launch(Dispatchers.IO) {
-            tryLibraryMutation { repositoryAtScheduleTime.recordHistory(video) } ?: return@launch
+            val writeJob = currentCoroutineContext()[Job]
+            val saved = synchronized(repositoryAtScheduleTime.transactionLock) {
+                // A cancelled write may already be waiting on an import's monitor. Check after
+                // acquiring it so that an old visit cannot overwrite a newer run of the same video.
+                if (writeJob?.isActive != true) false else tryLibraryMutation {
+                    repositoryAtScheduleTime.recordHistory(recorded, watchedAt = watchedAt)
+                    true
+                } ?: false
+            }
+            if (!saved) return@launch
             if (com.futo.platformplayer.compose.background.needsMusicClassification(video)) {
                 com.futo.platformplayer.compose.background.HistoryMusicClassifier
                     .schedule(getApplication(), profileAtScheduleTime)
@@ -8321,6 +8348,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 video.isLiked == stored.isLiked &&
                 video.watchProgress == stored.watchProgress &&
                 video.lastWatchedAt == stored.lastWatchedAt &&
+                video.historyPlaylistOrigin == stored.historyPlaylistOrigin &&
                 video.playlistNames == stored.playlistNames &&
                 (video.isMusic ?: stored.isMusic) == video.isMusic
             ) video else video.copy(
@@ -8329,6 +8357,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 isLiked = stored.isLiked,
                 watchProgress = stored.watchProgress,
                 lastWatchedAt = stored.lastWatchedAt,
+                historyPlaylistOrigin = stored.historyPlaylistOrigin,
                 playlistNames = stored.playlistNames,
                 isMusic = video.isMusic ?: stored.isMusic,
             )
@@ -8553,8 +8582,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (_uiState.value.privateSessionEnabled) return
         val (videoId, progress) = currentPlaybackProgress() ?: return
         val currentVideo = _uiState.value.nowPlaying.video?.takeIf { it.id == videoId }
+        val recorded = lastHistoryPlayback?.takeIf { it.videoId == videoId && it.profileId == activeProfileId }
         tryLibraryMutation {
-            if (currentVideo != null) libraryRepository.recordHistory(currentVideo, progress)
+            // Flush a possibly unfinished history write without inventing a later visit or origin.
+            if (currentVideo != null && recorded != null) libraryRepository.recordHistory(
+                currentVideo.copy(historyPlaylistOrigin = recorded.origin), progress, recorded.watchedAt)
             else libraryRepository.setWatchProgress(videoId, progress)
         }
     }

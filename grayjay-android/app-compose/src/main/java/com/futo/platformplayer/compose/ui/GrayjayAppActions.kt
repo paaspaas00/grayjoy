@@ -148,6 +148,7 @@ class GrayjayAppActions {
     var onStickyCaptionsChange: (Boolean) -> Unit = { _ -> }
     var onShowRecommendationsChange: (Boolean) -> Unit = { _ -> }
     var onSearchHistoryChange: (Boolean) -> Unit = { _ -> }
+    var onGroupHistoryByPlaylistChange: (Boolean) -> Unit = {}
     var onCrashLoggingChange: (Boolean) -> Unit = {}
     var onKeepScreenAwakeChange: (Boolean) -> Unit = { _ -> }
     var onPictureInPictureChange: (Boolean) -> Unit = {}

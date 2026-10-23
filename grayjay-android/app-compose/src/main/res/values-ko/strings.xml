@@ -648,4 +648,14 @@
     <string name="history_music_unknown_hint">YouTube 카테고리를 확인할 수 없는 동영상은 전체에 표시됩니다.</string>
     <string name="history_music_identify_more">다른 동영상 분류</string>
     <string name="history_music_identifying">분류 중 %1$d / %2$d</string>
+    <string name="group_history_by_playlist">재생목록별로 묶기</string>
+    <string name="go_to_playlist">재생목록으로 이동</string>
+    <string name="playlist_unavailable">재생목록을 사용할 수 없음</string>
+    <string name="history_playlist_unavailable_description">재생목록이 삭제되었거나 소스를 사용할 수 없습니다. 기록에 있는 동영상은 계속 재생할 수 있습니다.</string>
+    <string name="expand_history_playlist">이 재생목록의 동영상 표시</string>
+    <string name="collapse_history_playlist">이 재생목록의 동영상 숨기기</string>
+    <plurals name="history_playlist_video_count">
+        <item quantity="one">재생목록 %2$s의 동영상 %1$d개</item>
+        <item quantity="other">재생목록 %2$s의 동영상 %1$d개</item>
+    </plurals>
 </resources>

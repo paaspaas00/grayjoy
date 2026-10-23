@@ -37,6 +37,7 @@ data class VideoUiModel(
     val isWatchLater: Boolean = false,
     val isLiked: Boolean = false,
     val lastWatchedAt: Long = 0L,
+    val historyPlaylistOrigin: HistoryPlaylistOrigin? = null,
     val playlistNames: List<String> = emptyList(),
     val playbackUrl: String = "",
     val playbackMimeType: String = "",
@@ -73,6 +74,9 @@ data class VideoUiModel(
     /** True only when the active offline descriptor contains audio and no video track. */
     val playbackAudioOnly: Boolean = false,
 )
+
+/** Origin of the last recorded playback, not membership in a saved playlist. */
+data class HistoryPlaylistOrigin(val playlistId: String, val sourceId: String, val title: String, val runId: String)
 
 /** DRM sources such as Crunchyroll may be streamed but are never offered as offline downloads. */
 fun VideoUiModel.supportsOfflineDownload(): Boolean =
