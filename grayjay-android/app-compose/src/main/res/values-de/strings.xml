@@ -7,7 +7,7 @@
     <string name="reduced_playback_volume">Reduzierte Wiedergabelautstärke</string>
     <string name="reduced_playback_volume_value">%1$d%% der normalen Lautstärke</string>
     <string name="nav_home">Start</string>
-    <string name="nav_following">Nachfolgend</string>
+    <string name="nav_following">Abos</string>
     <string name="nav_subscriptions">Abonnements</string>
     <string name="nav_search">Suche</string>
     <string name="nav_library">Bibliothek</string>
@@ -42,7 +42,7 @@
     <string name="play">Abspielen</string>
     <string name="pause">Pause</string>
     <string name="follow">Folgen</string>
-    <string name="following">Nachfolgend</string>
+    <string name="following">Abonniert</string>
     <string name="videos">Videos</string>
     <string name="creators">Ersteller</string>
     <string name="playlists">Wiedergabelisten</string>

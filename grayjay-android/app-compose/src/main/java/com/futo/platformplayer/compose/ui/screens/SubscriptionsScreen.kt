@@ -1,5 +1,7 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.ui.sourceStringResource
+
 import com.futo.platformplayer.compose.ui.PageBackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -269,7 +271,7 @@ fun SubscriptionsScreen(
             ) {
                 item {
                     SectionHeading(
-                        title = stringResource(R.string.your_creators),
+                        title = sourceStringResource(R.string.your_creators),
                         action = stringResource(R.string.manage),
                         onAction = {
                             leaveVideoSelectionMode()
@@ -280,7 +282,7 @@ fun SubscriptionsScreen(
                 item {
                     if (followedChannels.isEmpty()) {
                         Text(
-                            stringResource(R.string.no_followed_creators),
+                            sourceStringResource(R.string.no_followed_creators),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
@@ -670,7 +672,7 @@ private fun ManageSubscriptionsPane(
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Text(
                     if (allFollowedChannels.isEmpty()) {
-                        stringResource(R.string.no_followed_creators)
+                        sourceStringResource(R.string.no_followed_creators)
                     } else {
                         stringResource(R.string.no_channels_match)
                     },

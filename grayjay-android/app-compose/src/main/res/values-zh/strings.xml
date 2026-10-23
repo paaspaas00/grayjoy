@@ -7,10 +7,10 @@
     <string name="reduced_playback_volume">降低播放音量</string>
     <string name="reduced_playback_volume_value">正常体积的 %1$d%%</string>
     <string name="nav_home">首页</string>
-    <string name="nav_following">下列的</string>
+    <string name="nav_following">已关注</string>
     <string name="nav_subscriptions">订阅</string>
     <string name="nav_search">搜索</string>
-    <string name="nav_library">图书馆</string>
+    <string name="nav_library">媒体库</string>
     <string name="nav_settings">设置</string>
     <string name="nav_sources">来源</string>
     <string name="now_playing">正在播放</string>
@@ -42,7 +42,7 @@
     <string name="play">播放</string>
     <string name="pause">暂停</string>
     <string name="follow">跟随</string>
-    <string name="following">下列的</string>
+    <string name="following">已关注</string>
     <string name="videos">视频</string>
     <string name="creators">创作者</string>
     <string name="playlists">播放列表</string>

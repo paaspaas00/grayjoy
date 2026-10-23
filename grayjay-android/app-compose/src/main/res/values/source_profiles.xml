@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_welcome_channels_body">Videos, music and your favourite channels, together in one app. Search, follow channels, save playlists and download content for offline playback. Let’s set it up together — no technical knowledge needed.</string>
+    <string name="setup_tour_following_channels">Follow a channel to find its new videos here. You can refresh the list, filter by channel and manage your subscriptions.</string>
+    <string name="channel_label">Channel</string>
+    <string name="channels_label">Channels</string>
+    <string name="your_channels">Your channels</string>
+    <string name="home_empty_channels">Follow channels to see their latest uploads here.</string>
+    <string name="no_followed_channels">You are not following any channels from the enabled sources.</string>
+    <string name="channel_load_failed">This channel could not be loaded.</string>
+    <string name="imported_channel">Imported channel</string>
+    <string name="unknown_channel">Unknown channel</string>
+    <string name="search_channels_hint">Search videos, channels, and playlists</string>
+    <string name="help_choose_channel_filter">Tap the “%1$s” tab below the search box to see matching channels. If there are no results, try a more specific name.</string>
+    <string name="help_open_channel_result">Tap the channel you want to follow in the results. Its page will open.</string>
+    <string name="profile_split_title">A profile for each source?</string>
+    <string name="profile_split_body">You can keep YouTube and Spotify separate, each with its own history, playlists and colour. The main profile will be hidden, not deleted. Existing content from eligible profiles will be copied to the matching source profile. YouTube and Spotify profiles cannot be deleted and each uses only its own source.</string>
+    <string name="profile_split_privacy">Private profiles and profiles protected by PIN or device authentication are excluded. Their data stays where it is. Existing logins from unprotected profiles are reused when available; the current profile takes priority.</string>
+    <string name="profile_split_yes">Yes, separate YouTube and Spotify</string>
+    <string name="profile_split_no">No, keep my current profiles</string>
+    <string name="profile_split_choose">Choose other source profiles</string>
+    <string name="profile_split_choose_body">YouTube and Spotify are included. You can also create dedicated profiles for the sources below. Existing source profiles are already selected.</string>
+    <string name="profile_split_offline">Completed downloads are reused without downloading the files again. The originals stay in their original profiles.</string>
+    <string name="profile_split_apply">Create profiles and organise my library</string>
+    <string name="profile_split_enabled">Separate source profiles are ready.</string>
+    <string name="profile_split_progress">Preparing profiles: %1$d/%2$d</string>
+    <string name="profile_split_busy">Finish or cancel the current imports and downloads before organising profiles.</string>
+    <string name="profile_split_failed">Profiles could not be prepared. Your original data has not been removed.</string>
+    <string name="profile_split_install_sources">Install the selected sources first from Prefs → Sources, then try again.</string>
+    <string name="profile_split_unlock_target">The destination profiles are protected. Open an unprotected profile before continuing.</string>
+    <string name="profile_split_scope_changed">An original profile was protected or removed during preparation. The pending copies have not been activated; your original data is safe.</string>
+    <string name="source_profile_locked">This profile is dedicated to one source. You can sign in or update it, but cannot remove it or add other sources here.</string>
+    <string name="setup_help_title">Help is always close by</string>
+    <string name="setup_help_body">On the Home screen, tap the question mark in a circle at the top left. “How do I…?” guides you through searching, playlists, downloads and following channels. You can reopen this setup using the wizard-hat icon next to it.</string>
+    <string name="help_profiles">Change source profile</string>
+    <string name="help_profiles_body">Switch between your separate source profiles. Each keeps its own library, login and colour.</string>
+    <string name="help_profiles_open">Tap the profile icon at the top right of Home to see the available profiles.</string>
+    <string name="help_profiles_choose">Choose the source profile you want. You can also swipe left or right on the profile icon in Home to cycle through profiles; protected profiles are skipped. To open a protected profile, select it here and unlock it.</string>
+    <plurals name="followed_channels">
+        <item quantity="one">%d followed channel</item>
+        <item quantity="other">%d followed channels</item>
+    </plurals>
+</resources>

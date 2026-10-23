@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_welcome_channels_body">Video, musica e i tuoi canali preferiti, insieme in una sola app. Cerca, segui i canali, salva playlist e scarica contenuti da ascoltare senza Internet. Configuriamolo insieme: non servono conoscenze tecniche.</string>
+    <string name="setup_tour_following_channels">Segui un canale per ritrovare qui i suoi nuovi video. Puoi aggiornare la lista, filtrare per canale e gestire le iscrizioni.</string>
+    <string name="channel_label">Canale</string>
+    <string name="channels_label">Canali</string>
+    <string name="your_channels">I tuoi canali</string>
+    <string name="home_empty_channels">Segui dei canali per vedere qui i loro ultimi video.</string>
+    <string name="no_followed_channels">Non segui ancora canali delle sorgenti abilitate.</string>
+    <string name="channel_load_failed">Impossibile caricare questo canale.</string>
+    <string name="imported_channel">Canale importato</string>
+    <string name="unknown_channel">Canale sconosciuto</string>
+    <string name="search_channels_hint">Cerca video, canali e playlist</string>
+    <string name="help_choose_channel_filter">Tocca la scheda «%1$s» sotto la barra di ricerca per vedere i canali corrispondenti. Se non ne trovi, prova un nome più preciso.</string>
+    <string name="help_open_channel_result">Tocca nei risultati il canale che vuoi seguire. Si aprirà la sua pagina.</string>
+    <string name="profile_split_title">Un profilo per ogni sorgente?</string>
+    <string name="profile_split_body">Puoi tenere separati YouTube e Spotify, ognuno con cronologia, playlist e colore propri. Il profilo principale sarà nascosto, non eliminato. I contenuti già presenti nei profili ammessi verranno copiati nel profilo della sorgente corrispondente. I profili YouTube e Spotify non si possono eliminare e usano soltanto la propria sorgente.</string>
+    <string name="profile_split_privacy">I profili privati e quelli protetti da PIN o blocco del dispositivo sono esclusi: i loro dati restano dove sono. Gli accessi già presenti nei profili non protetti vengono riutilizzati, dando precedenza al profilo attuale.</string>
+    <string name="profile_split_yes">Sì, separa YouTube e Spotify</string>
+    <string name="profile_split_no">No, mantieni i profili attuali</string>
+    <string name="profile_split_choose">Scegli gli altri profili</string>
+    <string name="profile_split_choose_body">YouTube e Spotify sono già inclusi. Puoi creare un profilo dedicato anche per le sorgenti qui sotto. I profili di sorgente già esistenti sono preselezionati.</string>
+    <string name="profile_split_offline">I download completi vengono riutilizzati senza scaricare di nuovo i file. Gli originali restano nei profili di provenienza.</string>
+    <string name="profile_split_apply">Crea i profili e organizza la libreria</string>
+    <string name="profile_split_enabled">I profili separati sono pronti.</string>
+    <string name="profile_split_progress">Preparazione dei profili: %1$d/%2$d</string>
+    <string name="profile_split_busy">Termina o annulla le importazioni e i download in corso prima di organizzare i profili.</string>
+    <string name="profile_split_failed">Non è stato possibile preparare i profili. I dati originali non sono stati rimossi.</string>
+    <string name="profile_split_install_sources">Installa prima le sorgenti selezionate da Prefs → Sorgenti, poi riprova.</string>
+    <string name="profile_split_unlock_target">I profili di destinazione sono protetti. Apri un profilo non protetto prima di continuare.</string>
+    <string name="profile_split_scope_changed">Un profilo di origine è stato protetto o rimosso durante la preparazione. Le copie in attesa non sono state attivate e i dati originali sono al sicuro.</string>
+    <string name="source_profile_locked">Questo profilo è dedicato a una sorgente. Puoi effettuare l’accesso o aggiornarla, ma non rimuoverla né aggiungere altre sorgenti qui.</string>
+    <string name="setup_help_title">L’aiuto è sempre a portata di mano</string>
+    <string name="setup_help_body">Nella Home, tocca il punto interrogativo dentro il cerchio in alto a sinistra. «Come faccio per…?» ti guida nella ricerca, nelle playlist, nei download e nel seguire i canali. Puoi riaprire questa configurazione dal cappello del mago lì accanto.</string>
+    <string name="help_profiles">Cambiare profilo di sorgente</string>
+    <string name="help_profiles_body">Passa da un profilo di sorgente all’altro. Ognuno mantiene la propria libreria, l’accesso e il colore.</string>
+    <string name="help_profiles_open">Tocca l’icona del profilo in alto a destra nella Home per vedere i profili disponibili.</string>
+    <string name="help_profiles_choose">Scegli il profilo della sorgente che vuoi usare. Puoi anche scorrere a sinistra o a destra sull’icona del profilo nella Home per cambiare rapidamente: i profili protetti vengono saltati. Per aprirne uno protetto, selezionalo qui e sbloccalo.</string>
+    <plurals name="followed_channels">
+        <item quantity="one">%d canale seguito</item>
+        <item quantity="other">%d canali seguiti</item>
+    </plurals>
+</resources>

@@ -83,6 +83,7 @@ class GrayjayAppActions {
     var onClearSourceCache: (String) -> Unit = { _ -> }
     var onRemoveSource: (String) -> Unit = { _ -> }
     var onLoginSource: (SourceUiModel) -> Unit = { _ -> }
+    var onRefreshSourceAccount: (String) -> Unit = {}
     var onLogoutSource: (String) -> Unit = { _ -> }
     var onImportYoutube: (String, YoutubeImportSelection) -> Unit = { _, _ -> }
     var onDismissYoutubeImport: () -> Unit = {}
@@ -122,6 +123,7 @@ class GrayjayAppActions {
     var onTrustUnverifiedSource: () -> Unit = {}
     var onRejectUnverifiedSource: () -> Unit = {}
     var onSwitchProfile: (String) -> Unit = { _ -> }
+    var onConfigureSourceProfiles: (Set<String>) -> Unit = {}
     var onCreateProfile: (String, String) -> Unit = { _, _ -> }
     var onVerifyProfilePin: (String, String) -> Boolean = { _, _ -> false }
     var onRenameProfile: (String, String) -> Unit = { _, _ -> }
@@ -167,7 +169,7 @@ class GrayjayAppActions {
     var onInstallUpdate: (ReleaseUpdateUiModel) -> Unit = {}
     var onCancelUpdateDownload: () -> Unit = {}
     var onHydrateVideoMetadata: (String) -> Unit = {}
-    var onHydrateChannelArtwork: (String) -> Unit = {}
+    var onHydrateChannelArtwork: (String, String?) -> Unit = { _, _ -> }
     var onBrainrotShortsChange: (Boolean) -> Unit = {}
     var onYoutubeAutoplayChange: (Boolean) -> Unit = {}
     var onRebuildContentCaches: () -> Unit = {}

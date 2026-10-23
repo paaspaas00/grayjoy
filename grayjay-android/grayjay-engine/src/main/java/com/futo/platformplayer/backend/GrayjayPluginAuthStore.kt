@@ -8,6 +8,7 @@ import java.io.IOException
 object GrayjayPluginAuthStore {
     private const val FILE_NAME = "grayjay-js-plugin-auth"
 
+    @Synchronized
     fun save(context: Context, profileId: String, pluginId: String, auth: SourceAuth) {
         val cookies = JSONObject().apply {
             auth.cookieMap.orEmpty().forEach { (domain, values) -> put(domain, JSONObject(values as Map<*, *>)) }
@@ -28,6 +29,7 @@ object GrayjayPluginAuthStore {
         if (!saved) throw IOException("Unable to save source authentication")
     }
 
+    @Synchronized
     fun load(context: Context, profileId: String, pluginId: String): SourceAuth? = runCatching {
         val preferences = context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
         val raw = preferences.getString(key(profileId, pluginId), null)
@@ -42,6 +44,48 @@ object GrayjayPluginAuthStore {
         )
     }.getOrNull()
 
+    /** Copy the entire session, including account metadata, without changing either login. */
+    @Synchronized
+    fun copyIfAbsent(context: Context, fromProfile: String, toProfile: String, pluginId: String): Boolean {
+        if (has(context, toProfile, pluginId)) return false
+        if (!has(context, fromProfile, pluginId)) return false
+        val raw = storedSession(context, fromProfile, pluginId) ?: return false
+        if (!context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE).edit()
+                .putString(key(toProfile, pluginId), raw).commit()) {
+            throw IOException("Unable to copy source authentication")
+        }
+        return true
+    }
+
+    @Synchronized
+    fun accountName(context: Context, profileId: String, pluginId: String): String? = runCatching {
+        JSONObject(storedSession(context, profileId, pluginId) ?: return null)
+            .optString("accountName").takeIf(String::isNotBlank)
+    }.getOrNull()
+
+    @Synchronized
+    fun accountNameCheckedAt(context: Context, profileId: String, pluginId: String): Long = runCatching {
+        JSONObject(storedSession(context, profileId, pluginId) ?: return 0L).optLong("accountNameCheckedAt")
+    }.getOrDefault(0L)
+
+    /** A late network response must never resurrect a signed-out or replaced account. */
+    @Synchronized
+    fun saveAccountName(context: Context, profileId: String, pluginId: String, expectedAuth: SourceAuth,
+        name: String, checkedAt: Long = System.currentTimeMillis()): Boolean {
+        if (name.isBlank() || load(context, profileId, pluginId) != expectedAuth) return false
+        val json = JSONObject(storedSession(context, profileId, pluginId) ?: return false)
+            .put("accountName", name.trim().take(320)).put("accountNameCheckedAt", checkedAt)
+        return context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE).edit()
+            .putString(key(profileId, pluginId), json.toString()).commit()
+    }
+
+    private fun storedSession(context: Context, profileId: String, pluginId: String): String? {
+        val prefs = context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(key(profileId, pluginId), null)
+            ?: if (profileId == "main") prefs.getString(pluginId, null) else null
+    }
+
+    @Synchronized
     fun clear(context: Context, profileId: String, pluginId: String) {
         context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
             .edit()
@@ -50,6 +94,7 @@ object GrayjayPluginAuthStore {
             .apply()
     }
 
+    @Synchronized
     fun clearProfile(context: Context, profileId: String) {
         val preferences = context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
         val prefix = "$profileId:"

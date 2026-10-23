@@ -10,6 +10,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.Lifecycle
@@ -47,6 +49,7 @@ internal fun RemoteBitmapImage(
     requestSize: IntSize? = null,
     artworkKind: ArtworkKind = if (circleCrop) ArtworkKind.Avatar else ArtworkKind.Thumbnail,
     showParentPlaceholderWhileLoading: Boolean = false,
+    onLoadFailure: () -> Unit = {},
 ) {
     val context = LocalContext.current.applicationContext
     val cache = remember(context) { ArtworkCache.get(context) }
@@ -63,6 +66,13 @@ internal fun RemoteBitmapImage(
         else MutableStateFlow<CachedArtwork?>(null)
     }
     val cachedFallback by fallbackFlow.collectAsStateWithLifecycle()
+    val reportFailure by rememberUpdatedState(onLoadFailure)
+    LaunchedEffect(url, cached, cachedFallback) {
+        if (web && cached != null && cached?.file == null &&
+            (fallbackUrl.isNullOrBlank() || (cachedFallback != null && cachedFallback?.file == null))) {
+            reportFailure()
+        }
+    }
     val artwork = cached?.takeIf { it.file != null } ?: cachedFallback
     val model: Any? = if (web) artwork?.file else url
     val measuredSize = remember { mutableStateOf(IntSize.Zero) }
@@ -78,7 +88,9 @@ internal fun RemoteBitmapImage(
                 if (active) bitmap.value = resource.asImageBitmap()
             }
             override fun onLoadCleared(placeholder: Drawable?) { bitmap.value = null }
-            override fun onLoadFailed(errorDrawable: Drawable?) { bitmap.value = null }
+            override fun onLoadFailed(errorDrawable: Drawable?) {
+                if (active) { bitmap.value = null; reportFailure() }
+            }
         }
         if (model != null && url.isNotBlank() && targetSize.width > 0 && targetSize.height > 0) {
             fun request(address: String) = manager.asBitmap()

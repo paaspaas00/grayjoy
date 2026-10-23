@@ -1,5 +1,9 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.ui.sourceCreatorFallback
+
+import com.futo.platformplayer.compose.onboarding.helpAnchor
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
@@ -24,10 +28,10 @@ internal fun CompactChannelHeader(channel: ChannelUiModel, following: Boolean, o
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ChannelAvatarImage(channel.name, channel.thumbnailUrl, modifier = Modifier.size(32.dp))
             Column(Modifier.weight(1f)) {
-                Text(channel.followerCount, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(sourceCreatorFallback(channel.followerCount), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(channel.source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            IconButton(onClick = onToggleFollow, modifier = Modifier.size(48.dp).testTag("channel-follow")) {
+            IconButton(onClick = onToggleFollow, modifier = Modifier.size(48.dp).testTag("channel-follow").helpAnchor("channel-follow")) {
                 Icon(if (following) Icons.Outlined.Check else Icons.Outlined.PersonAdd,
                     modifier = Modifier.size(20.dp), tint = if (following) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     contentDescription = stringResource(if (following) R.string.following else R.string.follow))
@@ -39,7 +43,7 @@ internal fun CompactChannelHeader(channel: ChannelUiModel, following: Boolean, o
     }
     if (showActions) CompactActionsSheet(
         title = channel.name,
-        description = "${channel.source} • ${channel.followerCount}\n\n${channel.description}".trim(),
+        description = "${channel.source} • ${sourceCreatorFallback(channel.followerCount)}\n\n${channel.description}".trim(),
         actions = actions,
         onDismiss = { showActions = false },
     )

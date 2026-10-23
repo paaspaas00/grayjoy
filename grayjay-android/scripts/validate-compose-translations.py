@@ -1,59 +1,64 @@
 #!/usr/bin/env python3
-"""Check locale completeness and Android format-argument parity."""
-
+"""Validate all Android resource files, locale coverage and printf-argument parity."""
 from __future__ import annotations
-
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
-RES = ROOT / "app-compose" / "src" / "main" / "res"
+RES = ROOT / "app-compose/src/main/res"
 LOCALES = ("ar", "de", "es", "fr", "it", "ja", "ko", "pt", "ru", "tr", "zh")
-FORMAT_RE = re.compile(r"%(?:\d+\$)?[a-zA-Z]")
+REQUIRED_PLURAL_FORMS = {
+    "ar": {"zero", "one", "two", "few", "many", "other"},
+    "ru": {"one", "few", "many", "other"},
+}
+FORMAT_RE = re.compile(r"%(?:\d+\$)?(?:\.\d+)?[a-zA-Z]")
 
+def load(directory):
+    resources = {}
+    for file in sorted((RES / directory).glob("*.xml")):
+        for node in ET.parse(file).getroot():
+            if node.tag not in ("string", "plurals", "string-array") or node.get("translatable") == "false":
+                continue
+            key = (node.tag, node.get("name"))
+            assert key not in resources, f"{file}: duplicate resource {key}"
+            resources[key] = node
+    return resources
 
-def load(locale_dir: str) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
-    root = ET.parse(RES / locale_dir / "strings.xml").getroot()
-    strings = {item.attrib["name"]: "".join(item.itertext()) for item in root.findall("string")}
-    plurals = {
-        item.attrib["name"]: {
-            value.attrib["quantity"]: "".join(value.itertext())
-            for value in item.findall("item")
-        }
-        for item in root.findall("plurals")
-    }
-    return strings, plurals
+def text(node):
+    return "".join(node.itertext())
 
+def check_format(source, translated, label):
+    assert text(translated).strip() or not text(source).strip(), f"{label}: empty translation"
+    assert sorted(FORMAT_RE.findall(text(source))) == sorted(FORMAT_RE.findall(text(translated))), (
+        f"{label}: format arguments differ")
+    assert "__GJ" not in text(translated), f"{label}: unresolved translation token"
 
-def formats(value: str) -> list[str]:
-    return sorted(FORMAT_RE.findall(value))
-
-
-def main() -> None:
-    base_strings, base_plurals = load("values")
+def main():
+    base = load("values")
     for locale in LOCALES:
-        strings, plurals = load(f"values-{locale}")
-        assert strings.keys() == base_strings.keys(), f"values-{locale}: incomplete string keys"
-        assert plurals.keys() == base_plurals.keys(), f"values-{locale}: incomplete plural keys"
-        for key, source in base_strings.items():
-            assert formats(strings[key]) == formats(source), (
-                f"values-{locale}/{key}: format arguments do not match"
-            )
-        for key, quantities in base_plurals.items():
-            assert plurals[key].keys() == quantities.keys(), (
-                f"values-{locale}/{key}: plural quantities do not match"
-            )
-            for quantity, source in quantities.items():
-                assert formats(plurals[key][quantity]) == formats(source), (
-                    f"values-{locale}/{key}[{quantity}]: format arguments do not match"
-                )
-    print(
-        f"Validated {len(LOCALES)} locales: "
-        f"{len(base_strings)} strings and {len(base_plurals)} plurals each."
-    )
-
+        translated = load(f"values-{locale}")
+        missing = base.keys() - translated.keys()
+        assert not missing, f"{locale}: missing {sorted(missing)}"
+        for key, node in base.items():
+            target = translated[key]
+            label = f"{locale}/{key[1]}"
+            if node.tag == "string":
+                check_format(node, target, label)
+            elif node.tag == "plurals":
+                source_forms = {c.get("quantity"): c for c in node}
+                target_forms = {c.get("quantity"): c for c in target}
+                assert "other" in target_forms, f"{label}: missing plural other"
+                required = REQUIRED_PLURAL_FORMS.get(locale, {"one", "other"})
+                assert required <= target_forms.keys(), (
+                    f"{label}: missing plural forms {sorted(required - target_forms.keys())}")
+                for quantity, value in target_forms.items():
+                    check_format(source_forms.get(quantity, source_forms["other"]), value, label + "/" + quantity)
+            else:
+                assert len(node) == len(target), f"{label}: array item count"
+                for i, (source, value) in enumerate(zip(node, target)):
+                    check_format(source, value, f"{label}/{i}")
+    print(f"Validated every XML resource in {len(LOCALES)} locales: {len(base)} translated resources each.")
 
 if __name__ == "__main__":
     main()

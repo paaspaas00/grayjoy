@@ -57,7 +57,12 @@ class GrayjoyDownloadService : DownloadService(
         getString(R.string.downloading_for_offline_use),
         downloads,
         notMetRequirements,
-    )
+    ).let { notification ->
+        // One stable, silent transfer notification, grouped under the aggregate job progress.
+        androidx.core.app.NotificationCompat.Builder(this, notification)
+            .setOnlyAlertOnce(true).setSilent(true).setGroup("grayjoy_background_jobs")
+            .setGroupAlertBehavior(androidx.core.app.NotificationCompat.GROUP_ALERT_SUMMARY).build()
+    }
 
     companion object {
         private const val NOTIFICATION_ID = 2042

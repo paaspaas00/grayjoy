@@ -1,5 +1,9 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.ui.sourceCreatorFallback
+
+import com.futo.platformplayer.compose.onboarding.helpAnchor
+
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -210,7 +214,7 @@ internal fun CompactVideoCard(
     val requestChannelArtwork = LocalChannelArtworkRequest.current
     LaunchedEffect(video.id, video.authorUrl, video.channelId, channelArtwork) {
         delay(700L)
-        requestChannelArtwork(video.id)
+        requestChannelArtwork(video.id, null)
     }
     val entranceModifier = staggeredVideoEntrance(
         index = index,
@@ -231,7 +235,7 @@ internal fun CompactVideoCard(
             .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
             .then(if (isCurrent) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, cardShape) else Modifier)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .testTag("video-card-${video.id}"),
+            .testTag("video-card-${video.id}").helpAnchor("video-card"),
     ) {
         Column {
             Row(
@@ -303,7 +307,7 @@ internal fun CompactVideoCard(
                                 },
                                 onLongClick = onLongClick,
                             )
-                            .testTag("video-channel-footer-${video.id}"),
+                            .testTag("video-channel-footer-${video.id}").helpAnchor("video-creator"),
                     ) {
                         Row(
                             modifier = Modifier.padding(
@@ -316,6 +320,7 @@ internal fun CompactVideoCard(
                             ChannelAvatarImage(
                                 name = video.creator,
                                 thumbnailUrl = channelArtwork,
+                                onLoadFailure = { requestChannelArtwork(video.id, channelArtwork) },
                                 requestHeaders = video.thumbnailRequestHeaders,
                                 modifier = Modifier.size(
                                     if (dense) 18.dp else if (compactCard) 20.dp else 24.dp,
@@ -593,7 +598,7 @@ internal fun ChannelRow(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("channel-${channel.id}"),
+            .testTag("channel-${channel.id}").helpAnchor("channel-result"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Row(
@@ -612,7 +617,7 @@ internal fun ChannelRow(
             ) {
                 Text(channel.name, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "${channel.source} • ${channel.followerCount}",
+                    "${channel.source} • ${sourceCreatorFallback(channel.followerCount)}",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -627,6 +632,7 @@ internal fun ChannelAvatarImage(
     thumbnailUrl: String,
     modifier: Modifier,
     requestHeaders: Map<String, String> = emptyMap(),
+    onLoadFailure: () -> Unit = {},
 ) {
     val performance = rememberDevicePerformanceProfile()
     val placeholderColor = MaterialTheme.colorScheme.tertiaryContainer.toArgb()
@@ -648,6 +654,7 @@ internal fun ChannelAvatarImage(
                 circleCrop = true, requestHeaders = requestHeaders,
                 modifier = Modifier.matchParentSize(),
                 showParentPlaceholderWhileLoading = true,
+                onLoadFailure = onLoadFailure,
             )
         }
     }
@@ -671,7 +678,7 @@ internal fun PlaylistRow(
                 onClick = onClick,
                 onLongClick = onLongClick,
             )
-            .testTag("playlist-${playlist.id}"),
+            .testTag("playlist-${playlist.id}").helpAnchor("playlist-row"),
         colors = CardDefaults.cardColors(
             containerColor = if (selected) {
                 MaterialTheme.colorScheme.secondaryContainer
@@ -742,7 +749,7 @@ internal fun playlistDisplayVideoCount(playlist: PlaylistUiModel): Int? = when {
 @Composable
 internal fun PlaylistShuffleButton(id: String, shuffled: Boolean, onChange: (Boolean) -> Unit) {
     androidx.compose.material3.IconToggleButton(checked = shuffled, onCheckedChange = onChange,
-        modifier = Modifier.testTag("shuffle-playlist-$id")) {
+        modifier = Modifier.testTag("shuffle-playlist-$id").helpAnchor("playlist-shuffle")) {
         Icon(Icons.Outlined.Shuffle, contentDescription = stringResource(R.string.shuffle_playlist),
             tint = if (shuffled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
     }

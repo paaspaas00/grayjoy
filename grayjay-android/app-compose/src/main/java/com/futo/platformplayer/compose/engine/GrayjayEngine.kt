@@ -373,6 +373,8 @@ interface GrayjayEngine {
     fun clearProfileData(profileId: String)
     fun reloadSourceAuthentication(sourceId: String)
     fun isSourceAuthenticated(sourceId: String): Boolean
+    fun sourceAccountName(sourceId: String): String? = null
+    suspend fun refreshSourceAccountName(sourceId: String): String? = null
     fun clearSourceAuthentication(sourceId: String)
     suspend fun installSource(configUrl: String): SourceUiModel
     suspend fun updateSources(): GrayjayPluginUpdateSummary
@@ -617,6 +619,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         .build().also { activeMediaSession = it }
     private val sourceCatalog = GrayjaySourceCatalog(appContext)
     private var pluginProfileId = "main"
+    private val youtubeAccountIdentity by lazy { com.futo.platformplayer.backend.YoutubeAccountIdentity(appContext) }
     private var pluginVideoTitleLanguageTag = "en-US"
     private val previouslyApprovedPluginIds = ConcurrentHashMap.newKeySet<String>()
     private val pluginBackendDelegate = lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -1043,6 +1046,19 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override fun clearSourceAuthentication(sourceId: String) {
         val endpoint = pluginEndpoints[sourceId] ?: return
         pluginBackend.clearAuthentication(sourceId, endpoint.pluginId)
+    }
+
+    override fun sourceAccountName(sourceId: String): String? {
+        val endpoint = pluginEndpoints[sourceId] ?: return null
+        return GrayjayPluginAuthStore.accountName(appContext, pluginProfileId, endpoint.pluginId)
+    }
+
+    override suspend fun refreshSourceAccountName(sourceId: String): String? {
+        if (sourceId != "youtube") return null
+        val endpoint = pluginEndpoints[sourceId] ?: return null
+        val profile = pluginProfileId
+        return youtubeAccountIdentity.refresh(profile, endpoint.pluginId)
+            .takeIf { profile == pluginProfileId }
     }
 
     override suspend fun installSource(configUrl: String): SourceUiModel {

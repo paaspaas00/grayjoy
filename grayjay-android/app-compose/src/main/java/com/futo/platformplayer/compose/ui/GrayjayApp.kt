@@ -1,5 +1,8 @@
 package com.futo.platformplayer.compose.ui
 
+import com.futo.platformplayer.compose.onboarding.*
+import androidx.compose.runtime.SideEffect
+
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
@@ -263,8 +266,10 @@ private data class PlaybackPresentation(
     val followingFeedTotal: Int,
     val followingFeedError: String?,
     val downloads: Map<String, DownloadUiModel>,
+    val downloadBatchProgress: com.futo.platformplayer.compose.downloads.DownloadBatchProgress,
     val downloadStorage: DownloadStorageUiState,
     val youtubeImport: YoutubeImportUiState,
+    val sourceProfileSetup: SourceProfileSetupUiState,
     val backgroundYoutubeImport: BackgroundYoutubeImportUiState,
     val databaseImport: DatabaseImportUiState,
     val libraryTransfer: LibraryTransferUiState,
@@ -479,6 +484,7 @@ private data class SourcePresentation(
     val onClearCache: (String) -> Unit,
     val onRemove: (String) -> Unit,
     val onLogin: (SourceUiModel) -> Unit,
+    val onRefreshAccount: (String) -> Unit,
     val onLogout: (String) -> Unit,
     val youtubeImport: YoutubeImportUiState,
     val backgroundYoutubeImport: BackgroundYoutubeImportUiState,
@@ -565,6 +571,29 @@ fun GrayjayApp(
     automaticPlayerRotationEnabled: Boolean = true,
     pictureInPictureMode: Boolean = false,
 ) {
+    val help = rememberHelpGuide()
+    CompositionLocalProvider(LocalHelpGuide provides help, LocalYoutubeOnly provides uiState.sources.isYoutubeOnly(),
+        LocalProfileNavigation provides ProfileNavigation(uiState.profiles, uiState.activeProfileId,
+            !uiState.isSwitchingProfile && !uiState.sourceProfileSetup.isRunning, actions.onSwitchProfile)) {
+        GrayjayAppContent(uiState, player, actions, uiLanguageTag, isDarkTheme, updateDownload,
+            deviceIsLandscape, automaticPlayerRotationEnabled, pictureInPictureMode)
+    }
+}
+
+@Composable
+private fun GrayjayAppContent(
+    uiState: GrayjayUiState,
+    player: Player,
+    actions: GrayjayAppActions,
+    uiLanguageTag: String,
+    isDarkTheme: Boolean,
+    updateDownload: UpdateDownloadUiModel?,
+    deviceIsLandscape: Boolean,
+    automaticPlayerRotationEnabled: Boolean,
+    pictureInPictureMode: Boolean,
+) {
+    val help = checkNotNull(LocalHelpGuide.current)
+    var navigatedHelpSession by rememberSaveable { mutableStateOf(0) }
     val context = LocalContext.current
     if (uiState.isSwitchingProfile) androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
         androidx.compose.material3.Surface(shape = MaterialTheme.shapes.large) {
@@ -580,7 +609,7 @@ fun GrayjayApp(
         ChannelArtworkIndex(listOfNotNull(uiState.channelDetail.channel) + uiState.channels)
     }
     val shareVideoLabel = stringResource(R.string.share_video)
-    val creatorLabel = stringResource(R.string.creator)
+    val creatorLabel = sourceStringResource(R.string.creator)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val backDispatcher = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
@@ -793,6 +822,18 @@ fun GrayjayApp(
         nestedBackDestinationName = null
         browseHistory = emptyList()
     }
+    LaunchedEffect(help.session) {
+        if (help.topic != null && navigatedHelpSession != help.session) {
+            navigatedHelpSession = help.session
+            transientUi.actionVideoId = null
+            transientUi.playlistPickerVideoIds = emptyList()
+            if (help.topic == HelpTopic.Profiles) onSelect(GrayjayDestination.Home)
+            else if (help.topic == HelpTopic.Random) {
+                onSelect(GrayjayDestination.Library)
+                libraryFilterName = LibraryFilter.Playlists.name
+            } else onSelect(GrayjayDestination.Search)
+        }
+    }
     fun currentBrowseRoute() = BrowseRoute(
         destinationName, selectedChannelId, selectedPlaylistId, libraryFilterName, selectedVideoId,
         nestedBackDestinationName,
@@ -812,6 +853,8 @@ fun GrayjayApp(
     }
     LaunchedEffect(uiState.activeProfileId) {
         if (navigationProfileId != uiState.activeProfileId) {
+            help.stop()
+            help.visible = false
             navigationProfileId = uiState.activeProfileId
             onSelect(GrayjayDestination.Home)
             visitedPlaylists.clear()
@@ -848,6 +891,7 @@ fun GrayjayApp(
         transientUi.actionVideoId = it.id
     }
     val onChannelClick: (ChannelUiModel) -> Unit = {
+        if (help.topic == HelpTopic.Follow) help.reached("channel-follow")
         if (selectedChannelId != it.id || selectedVideoId != null) rememberBrowseOrigin()
         visitedChannels[it.id] = it
         focusManager.clearFocus(force = true)
@@ -1037,8 +1081,10 @@ fun GrayjayApp(
         followingFeedTotal = uiState.followingFeedTotal,
         followingFeedError = uiState.followingFeedError,
         downloads = uiState.downloads,
+        downloadBatchProgress = uiState.downloadBatchProgress,
         downloadStorage = uiState.downloadStorage,
         youtubeImport = uiState.youtubeImport,
+        sourceProfileSetup = uiState.sourceProfileSetup,
         backgroundYoutubeImport = uiState.backgroundYoutubeImport,
         databaseImport = uiState.databaseImport,
         libraryTransfer = uiState.libraryTransfer,
@@ -1385,6 +1431,7 @@ fun GrayjayApp(
         onClearCache = actions.onClearSourceCache,
         onRemove = actions.onRemoveSource,
         onLogin = actions.onLoginSource,
+        onRefreshAccount = actions.onRefreshSourceAccount,
         onLogout = actions.onLogoutSource,
         youtubeImport = uiState.youtubeImport,
         backgroundYoutubeImport = uiState.backgroundYoutubeImport,
@@ -1804,6 +1851,27 @@ fun GrayjayApp(
             },
         )
     }
+    if (help.visible) HelpScreen(help, uiState.sourceProfilesEnabled,
+        uiState.profiles.firstOrNull { it.id == uiState.activeProfileId }?.sourceId.let { it.isNullOrBlank() || it == "youtube" })
+    if (!isFullscreen && !pictureInPictureMode && !uiState.isSwitchingProfile) {
+        val topic = help.topic
+        val finalStep = topic != null && help.step == topic.steps.lastIndex
+        val nextTarget = topic?.steps?.getOrNull(help.step + 1)?.target
+        val ready = finalStep || when {
+            topic == HelpTopic.Playlist && help.step == 1 -> transientUi.actionVideoId != null
+            topic == HelpTopic.Playlist && help.step == 2 -> transientUi.playlistPickerVideoIds.isNotEmpty()
+            topic in setOf(HelpTopic.Album, HelpTopic.Follow) && help.step == 0 ->
+                uiState.search.hasSearched && !uiState.search.isLoading
+            topic == HelpTopic.Random && help.step == 1 ->
+                selectedPlaylistId in uiState.shuffledPlaylistIds
+            nextTarget == "player-actions" || nextTarget == "toggle-download" -> selectedVideo != null
+            nextTarget == "channel-follow" -> selectedChannel != null
+            nextTarget == "playlist-shuffle" || nextTarget == "playlist-play-all" -> selectedPlaylist != null
+            else -> nextTarget != null && help.bounds(nextTarget) != null
+        }
+        SideEffect { help.ready = ready }
+        HelpBubble(help, ready)
+    }
 }
 
 internal fun usePortraitPlayerFullscreen(
@@ -2161,9 +2229,11 @@ private fun GrayjayScaffold(
     var activeJobsExpanded by rememberSaveable { mutableStateOf(false) }
     val activeJobs = rememberActiveJobItems(
         youtubeImport = playback.youtubeImport,
+        sourceProfileSetup = playback.sourceProfileSetup,
         backgroundYoutubeImport = playback.backgroundYoutubeImport,
         databaseImport = playback.databaseImport,
         downloads = playback.downloads,
+        downloadBatchProgress = playback.downloadBatchProgress,
         videos = playback.libraryVideos + videos,
         sourceOperationInProgress = playback.sourceOperationInProgress,
         sourceOperationMessage = playback.sourceOperationMessage,
@@ -2229,9 +2299,11 @@ private fun GrayjayScaffold(
                             selectedPlaylist != null || nestedBackEnabled
                         Row {
                             if (!hasBack && selected == GrayjayDestination.Home) {
+                                HelpButton()
+                                val setupDescription = stringResource(R.string.setup_reopen)
                                 IconButton(onClick = guidedSetup.open, modifier = Modifier.testTag("home-guided-setup")) {
                                     com.futo.platformplayer.compose.onboarding.WizardMark(
-                                        Modifier.size(28.dp).semantics { contentDescription = context.getString(R.string.setup_reopen) },
+                                        Modifier.size(28.dp).semantics { contentDescription = setupDescription },
                                     )
                                 }
                             }
@@ -2294,12 +2366,9 @@ private fun GrayjayScaffold(
                             storageWarning = playback.downloadStorage,
                             onClick = { activeJobsExpanded = !activeJobsExpanded },
                         )
-                        IconButton(onClick = playback.onOpenProfiles) {
-                            Icon(
-                                Icons.Outlined.AccountCircle,
-                                contentDescription = stringResource(R.string.open_profile),
-                            )
-                        }
+                        ProfileMenuButton(onOpen = playback.onOpenProfiles)
+                        if (selected != GrayjayDestination.Home || selectedChannel != null ||
+                            selectedPlaylist != null || nestedBackEnabled) HelpButton()
                     },
                 )
                 ActiveJobsPanel(
@@ -2715,6 +2784,7 @@ private fun GrayjayScaffold(
                         onClearSourceCache = sourcePresentation.onClearCache,
                         onRemoveSource = sourcePresentation.onRemove,
                         onLoginSource = sourcePresentation.onLogin,
+                        onRefreshSourceAccount = sourcePresentation.onRefreshAccount,
                         onLogoutSource = sourcePresentation.onLogout,
                         youtubeImport = sourcePresentation.youtubeImport,
                         backgroundYoutubeImport = sourcePresentation.backgroundYoutubeImport,
@@ -2859,7 +2929,8 @@ private fun GrayjayScaffold(
                                     }
                                 },
                                 actions = {
-                                    IconButton(
+                                    if (!selectedVideo?.sourceId.equals("spotify", ignoreCase = true) &&
+                                        !sourcePresentation.sources.isSpotifyOnly()) IconButton(
                                         onClick = playback.onOpenChromecast,
                                         modifier = Modifier.testTag("chromecast-button"),
                                     ) {

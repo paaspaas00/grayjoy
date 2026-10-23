@@ -1,5 +1,7 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.ui.sourcePluralStringResource
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -175,7 +177,7 @@ private fun ImportPreviewDialog(
                 )
                 if (preview.subscriptionCount > 0) ImportChoice(
                     stringResource(R.string.subscriptions),
-                    pluralStringResource(
+                    sourcePluralStringResource(
                         R.plurals.followed_creators,
                         preview.subscriptionCount,
                         preview.subscriptionCount,

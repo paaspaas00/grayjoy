@@ -1,5 +1,7 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.onboarding.helpAnchor
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -41,7 +43,7 @@ internal fun CompactPlaylistHeader(
 ) {
     var expanded by rememberSaveable(title) { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = onPlayAll, enabled = playEnabled, modifier = Modifier.weight(1f).testTag(playTag)) {
+        Button(onClick = onPlayAll, enabled = playEnabled, modifier = Modifier.weight(1f).testTag(playTag).helpAnchor("playlist-play-all")) {
             Icon(Icons.Filled.PlayArrow, contentDescription = null)
             Text(stringResource(R.string.play_all), modifier = Modifier.padding(start = 6.dp), maxLines = 1)
         }

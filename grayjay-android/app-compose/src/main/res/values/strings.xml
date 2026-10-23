@@ -1,4 +1,5 @@
 <resources>
+    <string name="download_batch_progress">Completed: %1$d/%2$d</string>
     <string name="results_page_expired">These results have expired. Refresh the list to continue.</string>
     <string name="profile_switching">Switching profile…</string>
     <string name="profile_operation_failed">Could not complete the profile operation. Please try again.</string>
@@ -628,7 +629,7 @@
     <string name="youtube_backend">YouTube backend</string>
     <string name="newpipe_backend">NewPipe</string>
     <string name="grayjay_plugin_backend">Grayjay plugin</string>
-    <string name="youtube_backend_fallback_notice">NewPipe could not complete %1$s. Using the Grayjay plugin backend.</string>
+    <string name="youtube_backend_fallback_notice">NewPipe could not complete the request. Using the Grayjay plugin backend.</string>
     <string name="subscription_fetch_mode">Subscription loading</string>
     <string name="subscription_fetch_fast">Fast · lightweight feeds</string>
     <string name="subscription_fetch_complete">Complete · full channel pages</string>

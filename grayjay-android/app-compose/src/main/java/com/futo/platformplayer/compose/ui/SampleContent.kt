@@ -169,6 +169,8 @@ data class SourceUiModel(
     val isAuthenticated: Boolean = false,
     val filterGroups: List<SourceFilterGroupUiModel> = emptyList(),
     val imageRequestHeaders: Map<String, String> = emptyMap(),
+    val isLocked: Boolean = false,
+    val accountName: String? = null,
 )
 
 data class SourceFilterGroupUiModel(

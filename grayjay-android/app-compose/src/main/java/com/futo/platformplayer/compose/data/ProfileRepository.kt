@@ -29,12 +29,46 @@ internal class ProfileRepository(context: Context) {
         }
     }
 
-    fun profiles(): List<ProfileUiModel> = readProfiles().map(::toUiModel)
+    fun profiles(): List<ProfileUiModel> = readProfiles().filterNot { it.hidden }.map(::toUiModel)
+    fun allProfiles(): List<ProfileUiModel> = readProfiles().map(::toUiModel)
+    fun boundSourceId(profileId: String): String? = readProfiles().firstOrNull { it.id == profileId }
+        ?.sourceId?.takeIf(String::isNotBlank)
+    fun sourceProfilesEnabled(): Boolean = runCatching {
+        preferences.getBoolean("source_profiles_enabled", false)
+    }.getOrDefault(false)
+
+    /** Staged profiles are never shown until all data copies have completed. */
+    fun stageSourceProfile(source: com.futo.platformplayer.compose.ui.SourceUiModel): ProfileUiModel = synchronized(catalogLock) {
+        ensureCatalogReadable()
+        val existing = readProfiles()
+        existing.firstOrNull { it.sourceId == source.id }?.let { return@synchronized toUiModel(it) }
+        val created = StoredProfile(UUID.randomUUID().toString(), source.name, ProfileProtection.None,
+            builtIn = source.id in setOf("youtube", "spotify"), sourceId = source.id, iconUrl = source.iconUrl,
+            accentColor = source.accentColor, hidden = true)
+        check(preferences.edit().putString(KEY_PROFILES, encodeProfiles(existing + created)).commit())
+        toUiModel(created)
+    }
+
+    fun activateSourceProfiles(profileIds: Set<String>) = synchronized(catalogLock) {
+        ensureCatalogReadable()
+        val current = readProfiles()
+        require(current.any { it.id in profileIds && it.sourceId == "youtube" })
+        require(current.any { it.id in profileIds && it.sourceId == "spotify" })
+        val updated = current.map { profile -> when {
+            profile.id == MAIN_ID && profile.protection == ProfileProtection.None -> profile.copy(hidden = true)
+            profile.id in profileIds -> profile.copy(hidden = false)
+            else -> profile
+        } }
+        check(preferences.edit().putString(KEY_PROFILES, encodeProfiles(updated))
+            .putBoolean("source_profiles_enabled", true).commit())
+    }
 
     fun activeProfileId(): String {
         val profiles = readProfiles()
         val requested = runCatching { preferences.getString(KEY_ACTIVE_PROFILE, MAIN_ID) }.getOrDefault(MAIN_ID)
-        return requested?.takeIf { id -> profiles.any { it.id == id } } ?: MAIN_ID
+        return requested?.takeIf { id -> profiles.any { it.id == id && !it.hidden } }
+            ?: profiles.firstOrNull { !it.hidden && it.sourceId == "youtube" }?.id
+            ?: MAIN_ID
     }
 
     fun requireAvailableProfile(profileId: String) = synchronized(catalogLock) {
@@ -128,7 +162,7 @@ internal class ProfileRepository(context: Context) {
         ensureCatalogReadable()
         // Recheck under the shared locks: a worker commit and a profile switch may have raced
         // with the confirmation dialog. The tombstone and catalog removal are one durable edit.
-        if (profileId == activeProfileId()) return false
+        if (profileId == activeProfileId() || readProfiles().firstOrNull { it.id == profileId }?.builtIn == true) return false
         val remaining = readProfiles().filterNot { it.id == profileId }
         check(preferences.edit()
             .putString(KEY_PROFILES, encodeProfiles(remaining))
@@ -146,6 +180,7 @@ internal class ProfileRepository(context: Context) {
             appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().apply()
         }
         AccountImportJournal(appContext, profileId).discardDeletedProfileJournal()
+        OfflineProfileLinks(appContext).clearProfile(profileId)
         }
         }
         return true
@@ -168,10 +203,14 @@ internal class ProfileRepository(context: Context) {
                         id = id,
                         name = json.optString("name", appContext.getString(R.string.profile_generic)),
                         protection = ProfileProtection.valueOf(json.getString("protection")),
-                        builtIn = id == MAIN_ID || id == PRIVATE_ID,
+                        builtIn = id == MAIN_ID || id == PRIVATE_ID || json.optString("sourceId") in setOf("youtube", "spotify"),
                         customName = json.optBoolean("customName"),
                         salt = json.optString("salt"),
                         pinHash = json.optString("pinHash"),
+                        sourceId = json.optString("sourceId"),
+                        iconUrl = json.optString("sourceIconUrl"),
+                        accentColor = json.optLong("sourceAccentColor"),
+                        hidden = json.optBoolean("hidden"),
                     ),
                 )
                 } catch (invalid: Exception) { error = invalid }
@@ -213,6 +252,10 @@ internal class ProfileRepository(context: Context) {
                         put("customName", profile.customName)
                         put("salt", profile.salt)
                         put("pinHash", profile.pinHash)
+                        put("sourceId", profile.sourceId)
+                        put("sourceIconUrl", profile.iconUrl)
+                        put("sourceAccentColor", profile.accentColor)
+                        put("hidden", profile.hidden)
                     },
                 )
             }
@@ -230,6 +273,9 @@ internal class ProfileRepository(context: Context) {
         },
         protection = profile.protection,
         isBuiltIn = profile.builtIn,
+        sourceId = profile.sourceId,
+        sourceIconUrl = profile.iconUrl,
+        sourceAccentColor = profile.accentColor,
     )
 
     private data class StoredProfile(
@@ -240,6 +286,10 @@ internal class ProfileRepository(context: Context) {
         val customName: Boolean = false,
         val salt: String = "",
         val pinHash: String = "",
+        val sourceId: String = "",
+        val iconUrl: String = "",
+        val accentColor: Long = 0L,
+        val hidden: Boolean = false,
     )
 
     private companion object {

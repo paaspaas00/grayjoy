@@ -14,13 +14,17 @@ internal fun activeJobsSnapshot(
 ): ActiveJobsSnapshot {
     if (state.backgroundJobsSuspended) return ActiveJobsSnapshot(0, 0, "")
     val downloads = state.downloads.values.filter { it.isActive }
-    val progress = downloads.mapTo(mutableListOf()) { it.progress ?: 0f }
+    val progress = mutableListOf<Float>()
+    if (downloads.isNotEmpty()) progress += state.downloadBatchProgress.takeIf { it.total > 0 }?.fraction
+        ?: downloads.map { it.progress?.takeIf(Float::isFinite) ?: 0f }.average().toFloat()
     val descriptions = mutableListOf<String>()
     if (downloads.isNotEmpty()) {
         descriptions += if (state.downloadStorage.downloadsPaused) {
             context.getString(R.string.download_paused_low_storage)
         } else {
-            context.resources.getQuantityString(R.plurals.active_downloads, downloads.size, downloads.size)
+            if (state.downloadBatchProgress.total > 0) context.getString(R.string.download_batch_progress,
+                state.downloadBatchProgress.completed, state.downloadBatchProgress.total)
+            else context.resources.getQuantityString(R.plurals.active_downloads, downloads.size, downloads.size)
         }
     }
     fun addJob(running: Boolean, description: String, fraction: Float = 0f) {
@@ -28,6 +32,10 @@ internal fun activeJobsSnapshot(
             progress += fraction
             descriptions += description
         }
+    }
+    with(state.sourceProfileSetup) {
+        addJob(isRunning, context.getString(R.string.profile_split_title),
+            if (total > 0) completed.toFloat() / total else 0f)
     }
     with(state.youtubeImport) {
         addJob(isRunning, context.getString(R.string.import_from_youtube),

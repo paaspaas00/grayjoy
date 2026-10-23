@@ -12,6 +12,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import com.futo.platformplayer.compose.LocalDevicePerformanceProfile
 import com.futo.platformplayer.compose.devicePerformanceProfile
@@ -51,12 +53,13 @@ fun GrayjayTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
     musicProfile: Boolean = false,
+    sourceAccentColor: Long? = null,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
-    val colors = remember(context, configuration, dynamicColor, darkTheme, musicProfile) {
-        when {
+    val colors = remember(context, configuration, dynamicColor, darkTheme, musicProfile, sourceAccentColor) {
+        val base = when {
             musicProfile && darkTheme -> DarkMusicColors
             musicProfile -> LightMusicColors
             dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && darkTheme ->
@@ -65,6 +68,24 @@ fun GrayjayTheme(
                 dynamicLightColorScheme(context)
             darkTheme -> DarkColors
             else -> LightColors
+        }
+        if (sourceAccentColor == null || musicProfile) base else {
+            val brand = Color(sourceAccentColor)
+            var primary = if (darkTheme) lerp(brand, Color.White, .52f) else brand
+            if (!darkTheme) repeat(12) {
+                if (1.05f / (primary.luminance() + .05f) < 4.5f) primary = lerp(primary, Color.Black, .08f)
+            }
+            val container = lerp(brand, if (darkTheme) Color.Black else Color.White, if (darkTheme) .6f else .85f)
+            base.copy(
+                primary = primary, onPrimary = if (darkTheme) Color.Black else Color.White,
+                primaryContainer = container, onPrimaryContainer = if (darkTheme) Color.White else Color.Black,
+                secondary = primary, onSecondary = if (darkTheme) Color.Black else Color.White,
+                secondaryContainer = container, onSecondaryContainer = if (darkTheme) Color.White else Color.Black,
+                background = lerp(base.background, brand, .025f),
+                surface = lerp(base.surface, brand, .025f),
+                surfaceContainer = lerp(base.surfaceContainer, brand, .055f),
+                surfaceContainerLow = lerp(base.surfaceContainerLow, brand, .025f),
+            )
         }
     }
     val performance = remember(context) { devicePerformanceProfile(context) }

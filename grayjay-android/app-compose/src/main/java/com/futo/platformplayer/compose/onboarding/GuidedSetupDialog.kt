@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -22,6 +23,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.*
 import com.futo.platformplayer.compose.ui.screens.supportsShortsFeedPlayer
+import com.futo.platformplayer.compose.ui.screens.YoutubeImportProgress
 import kotlinx.coroutines.launch
 
 @Composable
@@ -31,13 +33,21 @@ internal fun GuidedSetupDialog(
     onFinish: (Boolean) -> Unit,
     onExternalStep: (() -> Unit) -> Unit,
 ) {
-    var importYoutube by rememberSaveable { mutableStateOf(false) }
+    var importYoutube by rememberSaveable { mutableStateOf(state.youtubeImport.isRunning) }
     var importFiles by rememberSaveable { mutableStateOf(false) }
-    val steps = remember(importYoutube, importFiles) { guidedSetupSteps(importYoutube, importFiles) }
+    var splitProfiles by rememberSaveable { mutableStateOf(state.sourceProfilesEnabled) }
+    var extraProfiles by rememberSaveable { mutableStateOf(state.profiles.map { it.sourceId }
+        .filter { it.isNotBlank() && it !in setOf("youtube", "spotify") }) }
+    val steps = remember(importYoutube, importFiles, splitProfiles) { guidedSetupSteps(importYoutube, importFiles, splitProfiles) }
     val currentSteps by rememberUpdatedState(steps)
     val pager = rememberPagerState(initialPage.coerceIn(0, steps.lastIndex)) { currentSteps.size }
     val scope = rememberCoroutineScope()
-    var neverAgain by rememberSaveable { mutableStateOf(true) }
+    val importing = state.youtubeImport.isRunning
+    val busy = importing || state.sourceProfileSetup.isRunning
+    val requestedProfileSources = extraProfiles.toSet() + setOf("youtube", "spotify")
+    val profilesReady = state.sourceProfilesEnabled && state.profiles.map { it.sourceId }.containsAll(requestedProfileSources)
+    var confirmCancelImport by rememberSaveable { mutableStateOf(false) }
+    var tourSelection by rememberSaveable { mutableIntStateOf(0) }
     var showNoImportInfo by rememberSaveable { mutableStateOf(false) }
     var importSubscriptions by rememberSaveable { mutableStateOf(true) }
     var importHistory by rememberSaveable { mutableStateOf(true) }
@@ -47,11 +57,20 @@ internal fun GuidedSetupDialog(
     val config = LocalConfiguration.current
     val phone = supportsShortsFeedPlayer(config.screenWidthDp, config.screenHeightDp, config.smallestScreenWidthDp)
     fun next() {
+        if (busy) return
         scope.launch { pager.animateScrollToPage((pager.currentPage + 1).coerceAtMost(steps.lastIndex)) }
     }
     LaunchedEffect(pager.settledPage) { onPage(pager.settledPage) }
-    Dialog(onDismissRequest = { onFinish(neverAgain) },
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    LaunchedEffect(importing) {
+        if (importing) {
+            importYoutube = true
+            val target = guidedSetupSteps(true, importFiles, splitProfiles).indexOf(SetupStep.ImportDetails)
+            pager.scrollToPage(target)
+        }
+    }
+    Dialog(onDismissRequest = { if (!busy) onFinish(true) },
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
+            dismissOnBackPress = !busy, dismissOnClickOutside = !busy)) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
         Surface(Modifier.widthIn(max = 760.dp).fillMaxWidth().fillMaxHeight(), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize().testTag("guided-setup")) {
@@ -59,14 +78,15 @@ internal fun GuidedSetupDialog(
                     verticalAlignment = Alignment.CenterVertically) {
                     WizardMark(Modifier.size(32.dp))
                     Text(stringResource(R.string.setup_title), Modifier.weight(1f).padding(start = 10.dp), style = MaterialTheme.typography.titleMedium)
-                    IconButton(onClick = { onFinish(neverAgain) }) { Icon(Icons.Outlined.Close, stringResource(R.string.close)) }
+                    IconButton(onClick = { onFinish(true) }, enabled = !busy) { Icon(Icons.Outlined.Close, stringResource(R.string.close)) }
                 }
                 LinearProgressIndicator(progress = { (pager.currentPage + 1f) / steps.size },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp))
                 Text(stringResource(R.string.setup_step, pager.currentPage + 1, steps.size),
                     Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary)
-                HorizontalPager(pager, modifier = Modifier.weight(1f).fillMaxWidth(),
+                HorizontalPager(pager, modifier = Modifier.weight(1f).fillMaxWidth(), userScrollEnabled = !busy &&
+                    (steps.getOrNull(pager.currentPage) != SetupStep.ExtraSourceProfiles || profilesReady),
                     // Page count and key lookup must observe the same snapshot when an
                     // optional step is inserted/removed, including in-flight prefetches.
                     key = { currentSteps.getOrNull(it)?.name ?: "pending-step-$it" }) { page ->
@@ -76,11 +96,11 @@ internal fun GuidedSetupDialog(
                         Text(stringResource(step.title), style = MaterialTheme.typography.headlineMedium)
                         when (step) {
                             SetupStep.Welcome -> {
-                                SetupIllustration(SetupDemo.Welcome, page == pager.currentPage)
-                                Text(stringResource(R.string.setup_welcome_body), style = MaterialTheme.typography.bodyLarge)
+                                GrayjoyWelcomeLogo(active = page == pager.settledPage && !pager.isScrollInProgress)
+                                Text(stringResource(if (state.sources.isYoutubeOnly()) R.string.setup_welcome_channels_body else R.string.setup_welcome_body), style = MaterialTheme.typography.bodyLarge)
                                 Text(stringResource(R.string.setup_later), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            SetupStep.Tour -> SetupTour()
+                            SetupStep.Tour -> SetupTour(tourSelection, state.sources.isYoutubeOnly())
                             SetupStep.Theme -> {
                                 Text(stringResource(R.string.setup_theme_body), style = MaterialTheme.typography.bodyLarge)
                                 listOf(ThemeMode.System to R.string.automatic, ThemeMode.Light to R.string.use_light_theme, ThemeMode.Dark to R.string.use_dark_theme).forEach { (mode, label) ->
@@ -127,21 +147,24 @@ internal fun GuidedSetupDialog(
                                     modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.import_from_youtube)) }
                                 if (youtube?.isAuthenticated != true) {
                                     Text(stringResource(R.string.youtube_import_login_required))
-                                    OutlinedButton(onClick = { youtube?.let(actions.onLoginSource) }, enabled = youtube != null && !state.isSwitchingProfile,
+                                    OutlinedButton(onClick = { youtube?.let(actions.onLoginSource) }, enabled = youtube != null && !state.isSwitchingProfile && !importing,
                                         modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.setup_sign_in_youtube)) }
                                 }
                                 if (state.youtubeImport.isRunning) {
-                                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                                    Text(stringResource(R.string.setup_import_running, state.youtubeImport.completed))
+                                    YoutubeImportProgress(state.youtubeImport)
+                                    TextButton(onClick = { confirmCancelImport = true }, modifier = Modifier.testTag("setup-cancel-import")) {
+                                        Text(stringResource(R.string.cancel_import_action))
+                                    }
                                 }
                                 state.youtubeImport.resultMessage?.let { Text(it) }
                                 state.youtubeImport.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                                state.youtubeImport.warningMessage?.let { Text(stringResource(R.string.youtube_import_warnings, it)) }
                                 }
                                 if (importFiles) {
-                                OutlinedButton(onClick = { onExternalStep(actions.onChooseDatabaseImport) }, modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(onClick = { onExternalStep(actions.onChooseDatabaseImport) }, enabled = !importing && !state.isSwitchingProfile, modifier = Modifier.fillMaxWidth()) {
                                     Text(stringResource(R.string.import_grayjay_database))
                                 }
-                                OutlinedButton(onClick = { onExternalStep(actions.onChooseNewPipeImport) }, modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(onClick = { onExternalStep(actions.onChooseNewPipeImport) }, enabled = !importing && !state.isSwitchingProfile, modifier = Modifier.fillMaxWidth()) {
                                     Text(stringResource(R.string.import_newpipe_database))
                                 }
                                 }
@@ -169,6 +192,34 @@ internal fun GuidedSetupDialog(
                                 Text(stringResource(R.string.setup_autoplay_body), style = MaterialTheme.typography.bodyLarge)
                                 SetupToggle(stringResource(R.string.youtube_autoplay), state.youtubeAutoplayEnabled, actions.onYoutubeAutoplayChange)
                             }
+                            SetupStep.SourceProfiles -> {
+                                Text(stringResource(R.string.profile_split_body), style = MaterialTheme.typography.bodyLarge)
+                                Text(stringResource(R.string.profile_split_privacy), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (state.sourceProfilesEnabled) Text(stringResource(R.string.profile_split_enabled))
+                                else {
+                                    SetupChoice(stringResource(R.string.profile_split_yes), splitProfiles) { splitProfiles = true }
+                                    SetupChoice(stringResource(R.string.profile_split_no), !splitProfiles) { splitProfiles = false }
+                                }
+                            }
+                            SetupStep.ExtraSourceProfiles -> {
+                                Text(stringResource(R.string.profile_split_choose_body), style = MaterialTheme.typography.bodyLarge)
+                                val sourceCatalog = state.sourceProfileCatalog.ifEmpty { state.sources }
+                                val existing = state.profiles.map { it.sourceId }.toSet()
+                                sourceCatalog.filter { it.id !in setOf("youtube", "spotify") }.sortedWith(
+                                    compareBy<SourceUiModel> {
+                                        listOf("crunchyroll", "twitch", "nebula").indexOf(it.id).takeIf { n -> n >= 0 } ?: 3
+                                    }.thenBy { it.name.lowercase() }).forEach { source ->
+                                    SetupToggle(source.name, source.id in extraProfiles, { checked ->
+                                        extraProfiles = if (checked) extraProfiles + source.id else extraProfiles - source.id
+                                    }, enabled = !busy && source.id !in existing && source.availability != SourceAvailability.MissingPlugin)
+                                }
+                                Text(stringResource(R.string.profile_split_offline), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (profilesReady) Text(stringResource(R.string.profile_split_enabled), color = MaterialTheme.colorScheme.primary)
+                            }
+                            SetupStep.Help -> {
+                                Icon(Icons.Outlined.HelpOutline, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+                                Text(stringResource(R.string.setup_help_body), style = MaterialTheme.typography.bodyLarge)
+                            }
                             SetupStep.Done -> {
                                 SetupIllustration(SetupDemo.Welcome, page == pager.currentPage)
                                 Text(stringResource(R.string.setup_done_body), style = MaterialTheme.typography.bodyLarge)
@@ -177,17 +228,32 @@ internal fun GuidedSetupDialog(
                         }
                     }
                 }
+                if (steps.getOrNull(pager.currentPage) == SetupStep.Tour) {
+                    SetupTourNavigation(tourSelection) { tourSelection = it }
+                }
                 HorizontalDivider()
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    SetupToggle(stringResource(R.string.setup_never_again), neverAgain, { neverAgain = it })
+                    val createsProfiles = steps.getOrNull(pager.currentPage) == SetupStep.ExtraSourceProfiles && !profilesReady
+                    if (state.sourceProfileSetup.isRunning) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text(stringResource(R.string.profile_split_progress, state.sourceProfileSetup.completed, state.sourceProfileSetup.total),
+                            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
+                    }
+                    if (createsProfiles) state.sourceProfileSetup.error?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+                            maxLines = 4, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } },
-                            enabled = pager.currentPage > 0, modifier = Modifier.weight(1f).testTag("setup-back")) { Text(stringResource(R.string.back)) }
+                        OutlinedButton(onClick = { if (!busy) scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } },
+                            enabled = pager.currentPage > 0 && !busy, modifier = Modifier.weight(1f).testTag("setup-back")) { Text(stringResource(R.string.back)) }
                         Button(onClick = {
-                            if (pager.currentPage == steps.size - 1) onFinish(neverAgain)
+                            if (busy) return@Button
+                            if (createsProfiles) actions.onConfigureSourceProfiles(requestedProfileSources)
+                            else if (pager.currentPage == steps.size - 1) onFinish(true)
                             else next()
-                        }, enabled = !state.isSwitchingProfile, modifier = Modifier.weight(1f).testTag("setup-next")) {
-                            Text(stringResource(if (pager.currentPage == steps.size - 1) R.string.setup_finish else R.string.setup_next))
+                        }, enabled = !state.isSwitchingProfile && !busy,
+                            modifier = Modifier.weight(1f).testTag(if (createsProfiles) "setup-create-source-profiles" else "setup-next")) {
+                            Text(stringResource(if (createsProfiles) R.string.create else if (pager.currentPage == steps.size - 1) R.string.setup_finish else R.string.setup_next))
                         }
                     }
                 }
@@ -195,6 +261,16 @@ internal fun GuidedSetupDialog(
         }
         }
     }
+    if (confirmCancelImport) AlertDialog(
+        onDismissRequest = { confirmCancelImport = false },
+        title = { Text(stringResource(R.string.cancel_youtube_import_title)) },
+        text = { Text(stringResource(R.string.cancel_youtube_import_body)) },
+        confirmButton = { TextButton(onClick = {
+            confirmCancelImport = false
+            actions.onCancelYoutubeImportJobs()
+        }) { Text(stringResource(R.string.cancel_import_action)) } },
+        dismissButton = { TextButton(onClick = { confirmCancelImport = false }) { Text(stringResource(R.string.continue_import_action)) } },
+    )
     if (showNoImportInfo) AlertDialog(
         onDismissRequest = { showNoImportInfo = false },
         title = { Text(stringResource(R.string.setup_later_title)) },
@@ -237,13 +313,30 @@ private fun SetupChoice(label: String, selected: Boolean, choose: () -> Unit) {
 }
 
 @Composable
-private fun SetupTour() {
-    var selected by rememberSaveable { mutableIntStateOf(0) }
+private fun SetupTour(selected: Int, youtubeOnly: Boolean) {
     val tabs = listOf(R.string.nav_home, R.string.nav_following, R.string.nav_search, R.string.nav_library, R.string.nav_settings)
     val bodies = listOf(R.string.setup_tour_home, R.string.setup_tour_following, R.string.setup_tour_search, R.string.setup_tour_library, R.string.setup_tour_prefs)
     Text(stringResource(R.string.setup_tour_body), style = MaterialTheme.typography.bodyLarge)
-    tabs.forEachIndexed { index, label ->
-        SetupChoice(stringResource(label), index == selected) { selected = index }
-        if (selected == index) Text(stringResource(bodies[index]), Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodyLarge)
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(GrayjayDestination.entries[selected].icon, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+            Text(stringResource(tabs[selected]), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(if (selected == 1 && youtubeOnly) R.string.setup_tour_following_channels else bodies[selected]), style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.testTag("setup-tour-description"))
+        }
+    }
+}
+
+@Composable
+private fun SetupTourNavigation(selected: Int, onSelect: (Int) -> Unit) {
+    NavigationBar(windowInsets = WindowInsets(0, 0, 0, 0), tonalElevation = 0.dp,
+        modifier = Modifier.testTag("setup-tour-navigation")) {
+        GrayjayDestination.entries.filter { it.showInCompactNavigation }.forEachIndexed { index, tab ->
+            NavigationBarItem(selected = index == selected, onClick = { onSelect(index) },
+                icon = { Icon(tab.icon, null) },
+                label = { Text(stringResource(tab.navigationLabelRes), maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                modifier = Modifier.testTag("setup-tour-${tab.name.lowercase()}"))
+        }
     }
 }

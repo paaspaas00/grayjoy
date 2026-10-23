@@ -7,7 +7,7 @@
     <string name="reduced_playback_volume">Volume de lecture réduit</string>
     <string name="reduced_playback_volume_value">%1$d%% du volume normal</string>
     <string name="nav_home">Accueil</string>
-    <string name="nav_following">Suivant</string>
+    <string name="nav_following">Abonnements</string>
     <string name="nav_subscriptions">Abonnements</string>
     <string name="nav_search">Rechercher</string>
     <string name="nav_library">Bibliothèque</string>
@@ -42,7 +42,7 @@
     <string name="play">Lire</string>
     <string name="pause">Pause</string>
     <string name="follow">Suivre</string>
-    <string name="following">Suivant</string>
+    <string name="following">Abonné</string>
     <string name="videos">Vidéos</string>
     <string name="creators">Créateurs</string>
     <string name="playlists">Listes de lecture</string>

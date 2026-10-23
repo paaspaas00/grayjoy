@@ -51,6 +51,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -114,12 +115,16 @@ fun SourcesScreen(
     onCancelYoutubeImportJobs: () -> Unit,
     onYoutubeImportScheduleChange:
         (String, YoutubeImportInterval, YoutubeImportSelection) -> Unit,
+    onRefreshSourceAccount: (String) -> Unit = {},
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var selectedSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var youtubeImportSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedSource = sources.firstOrNull { it.id == selectedSourceId }
+    LaunchedEffect(selectedSourceId, selectedSource?.isAuthenticated) {
+        selectedSource?.takeIf { it.isAuthenticated }?.let { onRefreshSourceAccount(it.id) }
+    }
     val visibleSources = visibleSourcesForQuery(sources, query)
 
     LazyColumn(
@@ -166,7 +171,7 @@ fun SourcesScreen(
                     }
                     FilledTonalButton(
                         onClick = { showAddDialog = true },
-                        enabled = !isOperationInProgress,
+                        enabled = !isOperationInProgress && sources.none(SourceUiModel::isLocked),
                         modifier = Modifier
                             .widthIn(min = 132.dp)
                             .testTag("add-source"),
@@ -342,6 +347,7 @@ private fun SourceCard(
     }
     Card(
         onClick = onClick,
+        modifier = Modifier.testTag("source-options-${source.id}"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Row(
@@ -380,7 +386,7 @@ private fun SourceCard(
             Switch(
                 checked = source.isEnabled && canEnable,
                 onCheckedChange = onEnabledChange,
-                enabled = canEnable,
+                enabled = canEnable && !source.isLocked,
                 modifier = Modifier.testTag("source-${source.id}"),
             )
             Icon(
@@ -487,6 +493,15 @@ private fun SourceOptionsSheet(
                 )
                 Column(Modifier.weight(1f)) {
                     Text(source.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                    if (source.id == "youtube" && source.isAuthenticated) {
+                        Text(
+                            source.accountName?.let { stringResource(R.string.source_logged_in_as, it) }
+                                ?: stringResource(R.string.source_logged_in_identity_pending),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.testTag("source-account-name"),
+                        )
+                    }
                     Text(
                         source.description,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -497,7 +512,7 @@ private fun SourceOptionsSheet(
                 Switch(
                     checked = source.isEnabled,
                     onCheckedChange = onEnabledChange,
-                    enabled = source.availability != SourceAvailability.MissingPlugin && !isBusy,
+                    enabled = source.availability != SourceAvailability.MissingPlugin && !isBusy && !source.isLocked,
                 )
             }
             HorizontalDivider()
@@ -577,7 +592,8 @@ private fun SourceOptionsSheet(
                     },
                 )
             }
-            if (source.isCustom) {
+            if (source.isLocked) Text(stringResource(R.string.source_profile_locked), style = MaterialTheme.typography.bodySmall)
+            if (source.isCustom && !source.isLocked) {
                 SourceOption(
                     title = stringResource(R.string.remove_source),
                     body = stringResource(R.string.remove_source_description),
@@ -750,55 +766,8 @@ private fun YoutubeImportSheet(
                 }
             }
 
-            if (state.isRunning) {
-                val progressLabel = when (state.stage) {
-                    YoutubeImportStageUi.Connecting, null ->
-                        stringResource(R.string.youtube_import_connecting)
-                    YoutubeImportStageUi.Subscriptions ->
-                        stringResource(R.string.youtube_importing_subscriptions)
-                    YoutubeImportStageUi.History ->
-                        stringResource(R.string.youtube_importing_history)
-                    YoutubeImportStageUi.Playlists ->
-                        stringResource(R.string.youtube_importing_playlists)
-                }
-                val overallProgress = if (state.total != null) {
-                    stringResource(
-                        R.string.youtube_import_progress_count,
-                        progressLabel,
-                        state.completed,
-                        state.total,
-                    )
-                } else if (state.completed > 0) {
-                    stringResource(
-                        R.string.youtube_import_progress_open,
-                        progressLabel,
-                        state.completed,
-                    )
-                } else {
-                    progressLabel
-                }
-                Text(
-                    state.currentItemCompleted?.let { videoCount ->
-                        "$overallProgress · ${
-                            stringResource(
-                                R.string.youtube_import_playlist_video_count,
-                                videoCount,
-                            )
-                        }"
-                    } ?: overallProgress,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                if (state.total != null && state.total > 0) {
-                    LinearProgressIndicator(
-                        progress = {
-                            state.completed.toFloat().div(state.total.toFloat()).coerceIn(0f, 1f)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-            }
+            if (state.isRunning) YoutubeImportProgress(state)
+
 
             state.resultMessage?.let {
                 Text(it, style = MaterialTheme.typography.titleMedium)

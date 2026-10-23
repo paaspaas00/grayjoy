@@ -7,7 +7,7 @@
     <string name="reduced_playback_volume">Уменьшена громкость воспроизведения</string>
     <string name="reduced_playback_volume_value">%1$d%% от нормального объема</string>
     <string name="nav_home">Главная</string>
-    <string name="nav_following">Следующий</string>
+    <string name="nav_following">Подписки</string>
     <string name="nav_subscriptions">Подписки</string>
     <string name="nav_search">Поиск</string>
     <string name="nav_library">Библиотека</string>
@@ -42,7 +42,7 @@
     <string name="play">Воспроизвести</string>
     <string name="pause">Пауза</string>
     <string name="follow">Следовать</string>
-    <string name="following">Следующий</string>
+    <string name="following">Вы подписаны</string>
     <string name="videos">Видео</string>
     <string name="creators">Создатели</string>
     <string name="playlists">Плейлисты</string>
@@ -121,6 +121,8 @@
     <string name="search_hint">Поиск видео, авторов и плейлистов</string>
     <plurals name="searching_active_sources">
         <item quantity="one">Поиск активного источника %d</item>
+        <item quantity="few">Поиск активных источников %d</item>
+        <item quantity="many">Поиск активных источников %d</item>
         <item quantity="other">Поиск активных источников %d</item>
     </plurals>
     <string name="clear_search">Очистить поиск</string>
@@ -131,6 +133,8 @@
     <string name="searching">Идет поиск…</string>
     <plurals name="result_count">
         <item quantity="one">%d результат</item>
+        <item quantity="few">%d результаты</item>
+        <item quantity="many">%d результаты</item>
         <item quantity="other">%d результаты</item>
     </plurals>
     <string name="search_unavailable">Поиск недоступен</string>
@@ -143,6 +147,8 @@
     <string name="library_description">История, загрузки и плейлисты всегда будут организованы на вашем устройстве.</string>
     <plurals name="selected_count">
         <item quantity="one">%d выбрано</item>
+        <item quantity="few">%d выбрано</item>
+        <item quantity="many">%d выбрано</item>
         <item quantity="other">%d выбрано</item>
     </plurals>
     <string name="playlist">Плейлист</string>
@@ -150,18 +156,26 @@
     <string name="remove_from_history_body">Выбранные видео больше не будут отображаться в истории просмотра.</string>
     <plurals name="videos_queued">
         <item quantity="one">%d видео в очереди</item>
+        <item quantity="few">%d видео в очереди</item>
+        <item quantity="many">%d видео в очереди</item>
         <item quantity="other">%d видео в очереди</item>
     </plurals>
     <plurals name="local_collections">
         <item quantity="one">%d местная коллекция</item>
+        <item quantity="few">%d местные коллекции</item>
+        <item quantity="many">%d местные коллекции</item>
         <item quantity="other">%d местные коллекции</item>
     </plurals>
     <plurals name="videos_offline">
         <item quantity="one">Видео %d доступно офлайн</item>
+        <item quantity="few">%d видео доступны офлайн</item>
+        <item quantity="many">%d видео доступны офлайн</item>
         <item quantity="other">%d видео доступны офлайн</item>
     </plurals>
     <plurals name="watched_videos_on_device">
         <item quantity="one">%d посмотрел видео • приватно и на устройстве</item>
+        <item quantity="few">%d смотрел видео • лично и на устройстве</item>
+        <item quantity="many">%d смотрел видео • лично и на устройстве</item>
         <item quantity="other">%d смотрел видео • лично и на устройстве</item>
     </plurals>
     <string name="local_playlist">ЛОКАЛЬНЫЙ ПЛЕЙЛИСТ</string>
@@ -181,6 +195,8 @@
     <string name="downloads_export_failed">Не удалось экспортировать выбранные загрузки.</string>
     <plurals name="video_count">
         <item quantity="one">%d видео</item>
+        <item quantity="few">%d видео</item>
+        <item quantity="many">%d видео</item>
         <item quantity="other">%d видео</item>
     </plurals>
     <string name="new_playlist">Новый плейлист</string>
@@ -270,6 +286,8 @@
     <string name="add_watch_later">Добавить к просмотру позже</string>
     <plurals name="followers_count">
         <item quantity="one">%s подписчик</item>
+        <item quantity="few">%s подписчиков</item>
+        <item quantity="many">%s подписчиков</item>
         <item quantity="other">%s подписчиков</item>
     </plurals>
     <string name="about_video">Об этом видео</string>
@@ -277,10 +295,14 @@
     <string name="show_more">Показать больше</string>
     <plurals name="likes_count">
         <item quantity="one">%s лайк</item>
+        <item quantity="few">%s нравится</item>
+        <item quantity="many">%s нравится</item>
         <item quantity="other">%s нравится</item>
     </plurals>
     <plurals name="replies_count">
         <item quantity="one">%d ответ</item>
+        <item quantity="few">%d отвечает</item>
+        <item quantity="many">%d отвечает</item>
         <item quantity="other">%d отвечает</item>
     </plurals>
     <string name="profiles">Профили</string>
@@ -341,6 +363,8 @@
     <string name="manage_sources">Управление источниками</string>
     <plurals name="active_on_device">
         <item quantity="one">%d активен на этом устройстве</item>
+        <item quantity="few">%d активен на этом устройстве</item>
+        <item quantity="many">%d активен на этом устройстве</item>
         <item quantity="other">%d активен на этом устройстве</item>
     </plurals>
     <string name="settings_data">Данные</string>
@@ -351,10 +375,14 @@
     <string name="preferred_video_quality">Предпочтительное качество видео</string>
     <plurals name="active_sources">
         <item quantity="one">%d активный источник</item>
+        <item quantity="few">%d активные источники</item>
+        <item quantity="many">%d активные источники</item>
         <item quantity="other">%d активные источники</item>
     </plurals>
     <plurals name="installed_sources">
         <item quantity="one">%d установлен</item>
+        <item quantity="few">%d установлен</item>
+        <item quantity="many">%d установлен</item>
         <item quantity="other">%d установлен</item>
     </plurals>
     <string name="installing_source">Установка исходного кода…</string>
@@ -435,22 +463,32 @@
     <string name="newpipe_import_merge_notice">Импортированные данные NewPipe объединяются в текущий профиль. Существующие подписки, история и плейлисты не удаляются.</string>
     <plurals name="plugin_configurations">
         <item quantity="one">Конфигурация плагина %d</item>
+        <item quantity="few">%d конфигурации плагина</item>
+        <item quantity="many">%d конфигурации плагина</item>
         <item quantity="other">%d конфигурации плагина</item>
     </plurals>
     <plurals name="plugin_settings_records">
         <item quantity="one">%d запись настроек плагина</item>
+        <item quantity="few">%d записи настроек плагина</item>
+        <item quantity="many">%d записи настроек плагина</item>
         <item quantity="other">%d записи настроек плагина</item>
     </plurals>
     <plurals name="followed_creators">
         <item quantity="one">%d подписался на автора</item>
+        <item quantity="few">%d подписался на создателей</item>
+        <item quantity="many">%d подписался на создателей</item>
         <item quantity="other">%d подписался на создателей</item>
     </plurals>
     <plurals name="watched_videos">
         <item quantity="one">%d посмотрел видео</item>
+        <item quantity="few">%d посмотрел видео</item>
+        <item quantity="many">%d посмотрел видео</item>
         <item quantity="other">%d посмотрел видео</item>
     </plurals>
     <plurals name="playlist_count">
         <item quantity="one">Плейлист %d</item>
+        <item quantity="few">%d плейлисты</item>
+        <item quantity="many">%d плейлисты</item>
         <item quantity="other">%d плейлисты</item>
     </plurals>
     <string name="home_feed_refresh_failed">Не удалось обновить домашний канал.</string>
@@ -480,6 +518,8 @@
     <string name="newpipe_import_failed">Экспорт NewPipe не удалось импортировать.</string>
     <plurals name="source_warnings">
         <item quantity="one">Предупреждение источника %d</item>
+        <item quantity="few">Предупреждения источника %d</item>
+        <item quantity="many">Предупреждения источника %d</item>
         <item quantity="other">Предупреждения источника %d</item>
     </plurals>
     <string name="source_warning">Источник %1$s: %2$s</string>

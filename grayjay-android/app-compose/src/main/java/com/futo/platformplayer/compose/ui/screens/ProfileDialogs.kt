@@ -10,6 +10,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.Color
+import com.futo.platformplayer.compose.onboarding.HelpGuideWindow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -42,6 +48,7 @@ import androidx.fragment.app.FragmentActivity
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.ProfileProtection
 import com.futo.platformplayer.compose.ui.ProfileUiModel
+import com.futo.platformplayer.compose.ui.ProfileSourceIcon
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -171,7 +178,8 @@ fun ProfileSwitcherDialogs(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.profiles)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                HelpGuideWindow("profile-picker")
                 profiles.forEach { profile ->
                     ListItem(
                         modifier = Modifier
@@ -209,7 +217,8 @@ fun ProfileSwitcherDialogs(
                             )
                         },
                         leadingContent = {
-                            Icon(
+                            if (profile.sourceId.isNotBlank()) ProfileSourceIcon(profile, Modifier.size(32.dp))
+                            else Icon(
                                 if (profile.protection == ProfileProtection.None) {
                                     Icons.Outlined.Person
                                 } else {

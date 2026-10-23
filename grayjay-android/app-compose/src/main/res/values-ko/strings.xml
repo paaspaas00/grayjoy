@@ -7,10 +7,10 @@
     <string name="reduced_playback_volume">재생 볼륨 감소</string>
     <string name="reduced_playback_volume_value">정상 볼륨의 %1$d%%</string>
     <string name="nav_home">홈</string>
-    <string name="nav_following">수행원</string>
+    <string name="nav_following">구독</string>
     <string name="nav_subscriptions">구독</string>
     <string name="nav_search">검색</string>
-    <string name="nav_library">도서관</string>
+    <string name="nav_library">보관함</string>
     <string name="nav_settings">설정</string>
     <string name="nav_sources">소스</string>
     <string name="now_playing">지금 재생 중</string>
@@ -42,7 +42,7 @@
     <string name="play">재생</string>
     <string name="pause">일시정지</string>
     <string name="follow">따르다</string>
-    <string name="following">수행원</string>
+    <string name="following">구독 중</string>
     <string name="videos">비디오</string>
     <string name="creators">크리에이터</string>
     <string name="playlists">재생 목록</string>

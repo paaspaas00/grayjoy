@@ -100,6 +100,7 @@ import com.futo.platformplayer.compose.ui.SearchUiState
 import com.futo.platformplayer.compose.ui.SearchContentType
 import com.futo.platformplayer.compose.ui.SourceAvailability
 import com.futo.platformplayer.compose.ui.SourceUiModel
+import com.futo.platformplayer.compose.ui.SourceProfileSetupUiState
 import com.futo.platformplayer.compose.ui.SourceTrustRequestUiModel
 import com.futo.platformplayer.compose.ui.SponsorBlockSkipNoticeUiModel
 import com.futo.platformplayer.compose.ui.ThemeMode
@@ -467,16 +468,17 @@ internal fun VideoUiModel.asAudioDownloadDescriptor(
 
 class GrayjayViewModel(application: Application) : AndroidViewModel(application) {
     private fun text(@StringRes id: Int, vararg args: Any): String =
-        getApplication<Application>().getString(id, *args)
+        getApplication<Application>().getString(com.futo.platformplayer.compose.ui.sourceTerminologyResource(id, enabledSourceIds == setOf("youtube")), *args)
 
     private fun quantityText(@PluralsRes id: Int, quantity: Int, vararg args: Any): String =
-        getApplication<Application>().resources.getQuantityString(id, quantity, *args)
+        getApplication<Application>().resources.getQuantityString(com.futo.platformplayer.compose.ui.sourceTerminologyResource(id, enabledSourceIds == setOf("youtube")), quantity, *args)
 
     private val contentRepository: ContentRepository = LocalContentRepository()
     private val crashPauseHook: () -> Unit = { pauseJobsForTermination() }
     private var jobsNeedRestoration = false
     private val content = contentRepository.snapshot()
     private val profileRepository = ProfileRepository(application)
+    private var sourceProfileJob: Job? = null
     private var activeProfileId = profileRepository.activeProfileId()
     private var preferences = GrayjayPreferences(application, activeProfileId)
     private var playlistPlaybackPreferences = com.futo.platformplayer.compose.data.PlaylistPlaybackPreferences(application, activeProfileId)
@@ -486,7 +488,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var channelArtworkStore = com.futo.platformplayer.compose.data.ChannelArtworkStore(application, activeProfileId)
     private val channelArtworkChecks = mutableMapOf<String, Long>()
     private val channelArtworkJobs = mutableMapOf<String, Job>()
+    private val channelArtworkRepairs = mutableMapOf<String, Long>()
     private val channelArtworkSemaphore = Semaphore(2)
+    private val downloadBatchProgressStore = com.futo.platformplayer.compose.downloads.DownloadBatchProgressStore(application)
     private var sourceRepository: SourceRepository =
         SharedPreferencesSourceRepository(application, activeProfileId)
     private val engine: GrayjayEngine = AndroidGrayjayEngine(application)
@@ -703,10 +707,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             playlists = emptyList(),
             shuffledPlaylistIds = playlistPlaybackPreferences.shuffledIds(),
             recentPlaylists = playlistPlaybackPreferences.recent(),
-            sources = engineSources.map {
+            sources = engineSources.filter { profileRepository.boundSourceId(activeProfileId).let { bound -> bound == null || it.id == bound } }.map {
                 it.copy(
                     isEnabled = it.id in enabledSourceIds,
                     isAuthenticated = engine.isSourceAuthenticated(it.id),
+                    accountName = engine.sourceAccountName(it.id),
+                    isLocked = profileRepository.boundSourceId(activeProfileId) != null,
                 )
             },
             sourceFilterSelections = sourceFilterSelections.snapshot(),
@@ -744,6 +750,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             otherAudioDuckingEnabled = preferences.otherAudioDuckingEnabled,
             otherAudioDuckVolumePercent = preferences.otherAudioDuckVolumePercent,
             profiles = profileRepository.profiles(),
+            sourceProfilesEnabled = profileRepository.sourceProfilesEnabled(),
+            sourceProfileCatalog = engineSources,
             activeProfileId = activeProfileId,
             followedCreatorIds = followedCreatorIds,
             youtubeImportSchedule = YoutubeImportScheduler.scheduleFor(
@@ -767,6 +775,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         libraryLoadJob = viewModelScope.launch(Dispatchers.IO) {
             val snapshot = initialLibraryRepository.snapshot()
             val savedArtwork = channelArtworkStore.load()
+            val profileSources = loadSourceProfileCatalog()
             withContext(Dispatchers.Main.immediate) {
                 if (
                     initialProfileId == activeProfileId &&
@@ -778,7 +787,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     }
                     snapshot.videos.forEach(::registerRemoteChannel)
                     applyLibrarySnapshot(snapshot)
-                    _uiState.update { it.copy(channels = visibleKnownChannels()) }
+                    _uiState.update { it.copy(channels = visibleKnownChannels(), sourceProfileCatalog = profileSources) }
                 }
             }
         }
@@ -786,7 +795,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             engine.backendNotices.collect { notice ->
                 Toast.makeText(
                     getApplication(),
-                    text(R.string.youtube_backend_fallback_notice, notice.operation),
+                    text(R.string.youtube_backend_fallback_notice),
                     Toast.LENGTH_LONG,
                 ).show()
             }
@@ -2097,8 +2106,91 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun loadSourceProfileCatalog(): List<SourceUiModel> {
+        val app = getApplication<Application>()
+        return (baseEngineSources + profileRepository.allProfiles().filter {
+            it.id != "private" && it.protection == com.futo.platformplayer.compose.ui.ProfileProtection.None
+        }.flatMap { SharedPreferencesSourceRepository(app, it.id).loadCustomSources() }).distinctBy { it.id }
+    }
+
+    fun configureSourceProfiles(extraSourceIds: Set<String>) {
+        if (sourceProfileJob?.isActive == true || profileSwitchJob?.isActive == true) return
+        val snapshot = _uiState.value
+        if (snapshot.youtubeImport.isRunning || snapshot.backgroundYoutubeImport.isRunning ||
+            snapshot.databaseImport.isBusy || snapshot.sourceOperationInProgress || downloadStore.downloads.value.any { it.isActive }) {
+            _uiState.update { it.copy(sourceProfileSetup = SourceProfileSetupUiState(error = text(R.string.profile_split_busy))) }
+            return
+        }
+        _uiState.update { it.copy(sourceProfileSetup = SourceProfileSetupUiState(isRunning = true), backgroundJobsSuspended = false) }
+        sourceProfileJob = viewModelScope.launch {
+            val origin = activeProfileId
+            var preparedIds = emptySet<String>()
+            suspend fun restoreOriginIfUnpublished() {
+                val published = preparedIds.isNotEmpty() && profileRepository.profiles().map { it.id }.containsAll(preparedIds)
+                if (!published && activeProfileId != origin) withContext(kotlinx.coroutines.NonCancellable) {
+                    runCatching { switchProfileInternal(origin) }.onFailure {
+                        Log.e("SourceProfiles", "Could not restore the original profile after interrupted setup", it)
+                    }
+                }
+            }
+            try {
+                libraryLoadJob?.join()
+                historyWriteJobs.values.toList().forEach { it.join() }
+                persistCurrentPlaybackProgress()
+                watchProgressWriteJob?.join()
+                downloadStore.awaitInitialized(15_000L)
+                check(downloadStore.isInitialized()) { text(R.string.profile_split_failed) }
+                val selectedIds = extraSourceIds + setOf("youtube", "spotify")
+                val sources = _uiState.value.sourceProfileCatalog.ifEmpty { engineSources }.filter { it.id in selectedIds }
+                check(sources.size == selectedIds.size && sources.none { it.availability == SourceAvailability.MissingPlugin }) {
+                    text(R.string.profile_split_install_sources)
+                }
+                val targets = com.futo.platformplayer.compose.data.SourceProfileSplit(getApplication()).prepare(
+                    sources, snapshot,
+                    onProgress = { completed, total -> _uiState.update { it.copy(
+                        sourceProfileSetup = SourceProfileSetupUiState(true, completed, total)) } },
+                    shareOffline = { copies ->
+                        val links = com.futo.platformplayer.compose.data.OfflineProfileLinks(getApplication())
+                        copies.forEach { copy ->
+                            val ready = downloadStore.snapshotsFor(copy.sourceProfileId).values
+                                .filter { it.isComplete && it.videoId in copy.videoIds }.associate { it.videoId to
+                                    it.completedMediaTypes.ifEmpty { setOf(it.mediaType) } }
+                            links.add(copy.targetProfileId, copy.sourceProfileId, ready.keys, ready)
+                        }
+                    },
+                )
+                val accessibleTargets = profileRepository.allProfiles().filter {
+                    it.id in targets.values && it.protection == com.futo.platformplayer.compose.ui.ProfileProtection.None
+                }
+                preparedIds = targets.values.toSet()
+                val next = accessibleTargets.firstOrNull { it.sourceId == "youtube" } ?: accessibleTargets.firstOrNull()
+                    ?: error(text(R.string.profile_split_unlock_target))
+                _uiState.update { it.copy(isSwitchingProfile = true) }
+                switchProfileInternal(next.id)
+                withContext(Dispatchers.IO) { profileRepository.activateSourceProfiles(targets.values.toSet()) }
+                _uiState.update { it.copy(profiles = profileRepository.profiles(), sourceProfilesEnabled = true,
+                    sourceProfileSetup = SourceProfileSetupUiState(), isSwitchingProfile = false) }
+            } catch (cancelled: CancellationException) {
+                restoreOriginIfUnpublished()
+                throw cancelled
+            }
+            catch (error: Exception) {
+                restoreOriginIfUnpublished()
+                Log.e("SourceProfiles", "Could not prepare source profiles", error)
+                _uiState.update { it.copy(sourceProfileSetup = SourceProfileSetupUiState(
+                    error = error.localizedMessage ?: text(R.string.profile_split_failed))) }
+            } finally {
+                _uiState.update { it.copy(isSwitchingProfile = false,
+                    sourceProfileSetup = it.sourceProfileSetup.copy(isRunning = false)) }
+                val pendingUrl = pendingProfileExternalUrl
+                pendingProfileExternalUrl = null
+                if (currentCoroutineContext().isActive && pendingUrl != null) openExternalUrl(pendingUrl)
+            }
+        }
+    }
+
     fun switchProfile(profileId: String) {
-        if (profileId == activeProfileId || profileSwitchJob?.isActive == true) return
+        if (profileId == activeProfileId || profileSwitchJob?.isActive == true || sourceProfileJob?.isActive == true) return
         _uiState.update { it.copy(isSwitchingProfile = true) }
         profileSwitchJob = viewModelScope.launch {
             try { tryProfileMutation { switchProfileInternal(profileId) } }
@@ -2114,6 +2206,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private suspend fun switchProfileInternal(profileId: String) {
         if (profileId == activeProfileId) return
         profileRepository.requireAvailableProfile(profileId)
+        sourceAccountJob?.cancel()
+        sourceAccountRequest++
         val application = getApplication<Application>()
         val nextPreferences = GrayjayPreferences(application, profileId)
         val nextPlaylistPreferences = com.futo.platformplayer.compose.data.PlaylistPlaybackPreferences(application, profileId)
@@ -2129,6 +2223,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val nextEnabledSources = nextSourceRepository.loadEnabledSourceIds(nextSources)
             .filterTo(mutableSetOf()) { id -> nextSources.any { it.id == id && it.availability != SourceAvailability.MissingPlugin } }
         val nextFollowedCreators = nextPreferences.initializeFollowedCreators(content.channels.map(ChannelUiModel::id).toSet())
+        val nextProfileSourceCatalog = withContext(Dispatchers.IO) { loadSourceProfileCatalog() }
         searchRequests.next()
         searchPlaylistJob?.cancel()
         com.futo.platformplayer.compose.voice.VoiceAccess.stopListening(getApplication())
@@ -2215,6 +2310,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         channelArtworkJobs.values.toList().forEach(Job::cancel)
         channelArtworkJobs.clear()
         channelArtworkChecks.clear()
+        channelArtworkRepairs.clear()
         channelArtworkStore = nextArtworkStore
         sourceRepository = nextSourceRepository
         engineSources = nextSources.also(engine::registerSources)
@@ -2248,10 +2344,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             libraryVideos = allVideos,
             channels = visibleKnownChannels(),
             playlists = loadedLibrary.playlists,
-            sources = engineSources.map {
+            sources = engineSources.filter { profileRepository.boundSourceId(activeProfileId).let { bound -> bound == null || it.id == bound } }.map {
                 it.copy(
                     isEnabled = it.id in enabledSourceIds,
                     isAuthenticated = engine.isSourceAuthenticated(it.id),
+                    accountName = engine.sourceAccountName(it.id),
+                    isLocked = profileRepository.boundSourceId(activeProfileId) != null,
                 )
             },
             sourceFilterSelections = sourceFilterSelections.snapshot(),
@@ -2291,6 +2389,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             otherAudioDuckingEnabled = preferences.otherAudioDuckingEnabled,
             otherAudioDuckVolumePercent = preferences.otherAudioDuckVolumePercent,
             profiles = profileRepository.profiles(),
+            sourceProfilesEnabled = profileRepository.sourceProfilesEnabled(),
+            sourceProfileCatalog = nextProfileSourceCatalog,
+            sourceProfileSetup = _uiState.value.sourceProfileSetup,
+            isSwitchingProfile = true,
             activeProfileId = activeProfileId,
             followedCreatorIds = followedCreatorIds,
             youtubeImportSchedule = YoutubeImportScheduler.scheduleFor(
@@ -2417,7 +2519,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun openExternalUrl(url: String) {
-        if (_uiState.value.isSwitchingProfile) {
+        if (_uiState.value.isSwitchingProfile || _uiState.value.sourceProfileSetup.isRunning) {
             pendingProfileExternalUrl = url
             return
         }
@@ -2714,13 +2816,44 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private var sourceAccountJob: Job? = null
+    private var sourceAccountRequest = 0L
+    private val sourceAccountAttempts = mutableMapOf<Pair<String, String>, Long>()
+
+    fun refreshSourceAccount(sourceId: String) {
+        if (sourceId != "youtube" || _uiState.value.isSwitchingProfile ||
+            !_uiState.value.sources.any { it.id == sourceId && it.isAuthenticated }) return
+        val profile = activeProfileId
+        val key = profile to sourceId
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (sourceAccountAttempts[key]?.let { now - it < 60_000L } == true) return
+        sourceAccountAttempts[key] = now
+        sourceAccountJob?.cancel()
+        val request = ++sourceAccountRequest
+        sourceAccountJob = viewModelScope.launch {
+            val name = try { engine.refreshSourceAccountName(sourceId) }
+                catch (cancel: CancellationException) { throw cancel }
+                catch (_: Exception) { null }
+            if (profile != activeProfileId || request != sourceAccountRequest || name.isNullOrBlank()) return@launch
+            _uiState.update { state ->
+                if (state.activeProfileId != profile) state else state.copy(sources = state.sources.map {
+                    if (it.id == sourceId && it.isAuthenticated) it.copy(accountName = name) else it
+                })
+            }
+        }
+    }
+
     fun reloadSourceAuthentication(sourceId: String) {
+        sourceAccountJob?.cancel()
+        sourceAccountRequest++
+        sourceAccountAttempts.remove(activeProfileId to sourceId)
         clearNavigationContentCaches()
         engine.reloadSourceAuthentication(sourceId)
         _uiState.update { state ->
             state.copy(
                 sources = state.sources.map {
-                    if (it.id == sourceId) it.copy(isAuthenticated = engine.isSourceAuthenticated(sourceId)) else it
+                    if (it.id == sourceId) it.copy(isAuthenticated = engine.isSourceAuthenticated(sourceId),
+                        accountName = engine.sourceAccountName(sourceId)) else it
                 },
                 sourceOperationMessage = text(
                     R.string.signed_in_to_source,
@@ -2728,18 +2861,22 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 ),
             )
         }
+        refreshSourceAccount(sourceId)
         _uiState.value.nowPlaying.video
             ?.takeIf { it.sourceId == sourceId }
             ?.let { openVideo(it.id) }
     }
 
     fun clearSourceAuthentication(sourceId: String) {
+        sourceAccountJob?.cancel()
+        sourceAccountRequest++
+        sourceAccountAttempts.remove(activeProfileId to sourceId)
         clearNavigationContentCaches()
         engine.clearSourceAuthentication(sourceId)
         _uiState.update { state ->
             state.copy(
                 sources = state.sources.map {
-                    if (it.id == sourceId) it.copy(isAuthenticated = false) else it
+                    if (it.id == sourceId) it.copy(isAuthenticated = false, accountName = null) else it
                 },
                 sourceOperationMessage = text(R.string.signed_out),
             )
@@ -5739,7 +5876,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             syncDownloadState()
             return
         }
+        val sharedOnly = downloadStore.isSharedDownload(activeProfileId, videoId, mediaType)
         downloadStore.remove(activeProfileId, videoId, mediaType)
+        if (sharedOnly) {
+            syncDownloadState()
+            return
+        }
         currentDownload?.let { download ->
             _uiState.update { state ->
                 state.copy(
@@ -6620,6 +6762,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setSourceEnabled(sourceId: String, enabled: Boolean) {
+        if (profileRepository.boundSourceId(activeProfileId) != null) return
         val source = _uiState.value.sources.firstOrNull { it.id == sourceId } ?: return
         if (source.availability == SourceAvailability.MissingPlugin) return
 
@@ -6655,6 +6798,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun installSource(configUrl: String) {
+        val bound = profileRepository.boundSourceId(activeProfileId)
+        if (bound != null && _uiState.value.sources.none { it.id == bound && it.pluginConfigUrl == configUrl }) {
+            _uiState.update { it.copy(sourceOperationMessage = text(R.string.source_profile_locked)) }
+            return
+        }
         if (_uiState.value.sourceOperationInProgress) return
         _uiState.update {
             it.copy(
@@ -6768,6 +6916,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 channelArtworkJobs.values.toList().forEach(Job::cancel)
                 channelArtworkJobs.clear()
                 channelArtworkChecks.clear()
+                channelArtworkRepairs.clear()
                 channelJob?.cancel(); channelPagingJob?.cancel(); channelSearchJob?.cancel(); channelSearchPagingJob?.cancel()
                 com.bumptech.glide.Glide.get(getApplication<Application>()).clearMemory()
                 withContext(Dispatchers.IO) {
@@ -6791,13 +6940,15 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun cacheChannelArtwork(channel: ChannelUiModel) {
+        // Empty extraction is not a successful refresh: allow the bounded retry to run again.
+        if (channel.thumbnailUrl.isBlank()) return
         val now = System.currentTimeMillis()
         channelArtworkChecks["${channel.sourceId}|${channel.id}"] = now
         val store = channelArtworkStore
         viewModelScope.launch(Dispatchers.IO) { store.save(channel, now) }
     }
 
-    fun hydrateChannelArtwork(videoId: String) {
+    fun hydrateChannelArtwork(videoId: String, failedUrl: String? = null) {
         if (!appIsForeground || _uiState.value.rebuildingCaches) return
         val video = findVideo(videoId) ?: return
         val channel = channelForVideo(video)
@@ -6807,12 +6958,18 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
         val key = "${channel.sourceId}|${channel.id}"
         val now = System.currentTimeMillis()
+        val repairing = !failedUrl.isNullOrBlank()
+        if (repairing) {
+            val previousRepair = channelArtworkRepairs[key]
+            if (previousRepair != null && now - previousRepair in 0 until java.util.concurrent.TimeUnit.MINUTES.toMillis(15)) return
+        }
         val last = channelArtworkChecks[key] ?: 0L
-        if (last == 0L && (channel.thumbnailUrl.isNotBlank() || video.authorThumbnailUrl.isNotBlank())) {
+        if (!repairing && last == 0L && (channel.thumbnailUrl.isNotBlank() || video.authorThumbnailUrl.isNotBlank())) {
             cacheChannelArtwork(channel.copy(thumbnailUrl = channel.thumbnailUrl.ifBlank { video.authorThumbnailUrl }))
             return
         }
-        if (now - last in 0 until java.util.concurrent.TimeUnit.DAYS.toMillis(7) || channelArtworkJobs[key]?.isActive == true) return
+        if ((!repairing && now - last in 0 until java.util.concurrent.TimeUnit.DAYS.toMillis(7)) || channelArtworkJobs[key]?.isActive == true) return
+        if (repairing) channelArtworkRepairs[key] = now
         val profile = activeProfileId
         channelArtworkChecks[key] = now - java.util.concurrent.TimeUnit.DAYS.toMillis(7) + java.util.concurrent.TimeUnit.MINUTES.toMillis(15)
         viewModelScope.launchTracked(channelArtworkJobs, key) {
@@ -6836,6 +6993,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun removeSource(sourceId: String) {
+        if (profileRepository.boundSourceId(activeProfileId) == sourceId) return
         val source = _uiState.value.sources.firstOrNull { it.id == sourceId } ?: return
         if (!source.isCustom) return
         if (_uiState.value.playback.currentVideoId?.let(::findVideo)?.sourceId == sourceId) {
@@ -7282,6 +7440,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun pauseJobsOnMain() {
+        sourceProfileJob?.cancel()
         requestHistoryMusicClassification(emptyList())
         mediaExportJobs.cancelAndClearJobs()
         jobsNeedRestoration = true
@@ -7310,6 +7469,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         installed: SourceUiModel,
         announce: Boolean,
     ): SourceUiModel {
+        val bound = profileRepository.boundSourceId(activeProfileId)
+        require(bound == null || installed.id == bound || _uiState.value.sources.any {
+            it.id == bound && it.engineId == installed.engineId
+        }) { text(R.string.source_profile_locked) }
         clearNavigationContentCaches()
         val current = _uiState.value.sources.firstOrNull {
             it.id == installed.id || it.engineId == installed.engineId
@@ -7318,11 +7481,15 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             id = current?.id ?: installed.id,
             isCustom = current?.isCustom ?: installed.isCustom,
             isEnabled = true,
+            isLocked = bound != null,
+            isAuthenticated = engine.isSourceAuthenticated(current?.id ?: installed.id),
+            accountName = engine.sourceAccountName(current?.id ?: installed.id),
         )
         if (source.isCustom) sourceRepository.saveCustomSource(source)
         sourceRepository.setEnabled(source.id, true)
         enabledSourceIds += source.id
         engine.registerSources(listOf(source))
+        engineSources = (engineSources.filterNot { it.id == source.id } + source)
         val previousSelections = sourceFilterSelections[source.id].orEmpty()
         sourceFilterSelections[source.id] = source.filterGroups.associateTo(mutableMapOf()) { group ->
             val retained = previousSelections[group.id]
@@ -7337,6 +7504,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     .plus(source)
                     .sortedBy { it.name.lowercase() },
                 sourceFilterSelections = sourceFilterSelections.snapshot(),
+                sourceProfileCatalog = (state.sourceProfileCatalog.filterNot { it.id == source.id } + source),
                 sourceOperationInProgress = false,
                 sourceTrustRequest = null,
                 sourceOperationMessage = if (announce) {
@@ -8010,6 +8178,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             .mapTo(mutableSetOf()) {
                 PlaylistDownloadBatchUiModel(it.playlistId, it.mediaType)
             }
+        val batchProgress = if (downloadStore.isInitialized()) {
+            downloadBatchProgressStore.update(activeProfileId, visibleDownloads.values, downloadQueue.all(activeProfileId))
+        } else _uiState.value.downloadBatchProgress
         _uiState.update { state ->
             val remoteDownloadTypes = if (state.remotePlaylistDetail.isLoadingAll) {
                 state.remotePlaylistDetail.activeDownloadMediaTypes
@@ -8022,6 +8193,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }
             if (
                 state.downloads == visibleDownloads &&
+                state.downloadBatchProgress == batchProgress &&
                 state.activePlaylistDownloads == activePlaylistDownloads &&
                 state.automaticPlaylistDownloads == automaticPlaylistDownloads &&
                 state.remotePlaylistDetail.activeDownloadMediaTypes == remoteDownloadTypes
@@ -8030,6 +8202,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } else {
                 state.copy(
                     downloads = visibleDownloads,
+                    downloadBatchProgress = batchProgress,
                     activePlaylistDownloads = activePlaylistDownloads,
                     automaticPlaylistDownloads = automaticPlaylistDownloads,
                     remotePlaylistDetail = state.remotePlaylistDetail.copy(
@@ -8274,7 +8447,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun registerRemoteChannel(video: VideoUiModel) {
-        registerRemoteChannel(channelForVideo(video))
+        val channel = channelForVideo(video)
+        // Feed/history snapshots can be older than the independently refreshed channel cache.
+        registerRemoteChannel(channel.copy(thumbnailUrl =
+            remoteChannels[channel.id]?.thumbnailUrl?.takeIf(String::isNotBlank) ?: channel.thumbnailUrl))
     }
 
     private fun registerRemoteChannel(channel: ChannelUiModel): ChannelUiModel {
@@ -8317,8 +8493,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun visibleKnownChannels(): List<ChannelUiModel> =
-        (content.channels + remoteChannels.values)
-            .distinctBy(ChannelUiModel::id)
+        com.futo.platformplayer.compose.ui.mergeKnownChannelArtwork(content.channels, remoteChannels.values)
             .filter { it.sourceId in enabledSourceIds }
 
     private fun persistCurrentPlaybackProgress() {

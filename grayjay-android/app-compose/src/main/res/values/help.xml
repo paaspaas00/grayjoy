@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="help_step">Step %1$d/%2$d</string>
+    <string name="help_title">How do I…?</string>
+    <string name="help_intro">Choose what you want to do. We will guide you through the real screens, one step at a time. You can close or collapse the tip at any point.</string>
+    <string name="help_show">Show guide</string>
+    <string name="help_collapse">Collapse explanation</string>
+    <string name="help_expand">Show explanation</string>
+    <string name="help_end">Exit guide</string>
+    <string name="help_finish">Got it</string>
+    <string name="help_wait">Complete this step on the screen, then tap Next. Use the arrow to collapse this tip if needed.</string>
+    <string name="help_playlist">Create my own playlist</string>
+    <string name="help_playlist_body">Start with a video or song, choose a name and create your collection. You can add more items later.</string>
+    <string name="help_music">Find music</string>
+    <string name="help_music_body">Search for a song or artist in your enabled sources and choose what to play.</string>
+    <string name="help_random">Play music in random order</string>
+    <string name="help_random_body">Shuffle a local playlist. You need at least one playlist; if you do not have one yet, use the playlist creation guide first.</string>
+    <string name="help_album">Find an artist’s album</string>
+    <string name="help_album_body">Albums are often available as playlists. Learn how to search for them and open their tracks; results depend on the enabled sources.</string>
+    <string name="help_download">Download a video or song</string>
+    <string name="help_download_body">Save content to watch or listen without a connection. Choose audio only or video, when the source supports downloads.</string>
+    <string name="help_follow">Follow a YouTube channel</string>
+    <string name="help_follow_body">Follow a channel in Grayjoy to find its new videos in Home and Following. This is local to the app and does not itself change your YouTube account.</string>
+    <string name="help_find_first">Search for the first video or song to add. Type in the search box and press Search on the keyboard. You can choose any result.</string>
+    <string name="help_hold_video">Touch and hold the video you want to add. Its action menu opens; then tap Next here.</string>
+    <string name="help_add_playlist">In the video menu, tap Add to playlist. Then tap Next to create your own.</string>
+    <string name="help_name_playlist">Tap New playlist if shown, enter a name and press Create. The video will be added. Find it in Library → Playlists, and repeat Add to playlist to add more songs.</string>
+    <string name="help_find_music">Enter a song title or artist and press Search on the keyboard. If there are no results, check your connection. To enable a platform, open Prefs → Sources.</string>
+    <string name="help_play_result">Tap the result you want to hear to open the player. If you are on another results tab, choose Videos.</string>
+    <string name="help_music_playing">Control the music from the player. Pause it or drag the player down to keep browsing while listening. Return to Search to choose something else.</string>
+    <string name="help_choose_playlist">Open the playlist you want to hear. If the list is empty, exit this guide and use Create my own playlist first.</string>
+    <string name="help_shuffle_playlist">Enable the crossed-arrows button. When highlighted, the playlist plays in random order. Then tap Next.</string>
+    <string name="help_start_playlist">Tap Play all to shuffle the playlist. Turn off the crossed arrows when you prefer the usual order.</string>
+    <string name="help_find_album">Enter the artist and album name (or add the word album), then press Search on the keyboard.</string>
+    <string name="help_album_filter">Tap Playlists in the results and wait for them to load. If there are no albums, try a more specific title or a source that supports them.</string>
+    <string name="help_open_album">Tap the album or playlist you want to see its tracks.</string>
+    <string name="help_start_album">Here are the album tracks. Tap Play all or choose a track to start with.</string>
+    <string name="help_find_download">Search for the content you want to save and press Search on the keyboard. Downloading requires a connection and free device storage.</string>
+    <string name="help_download_button">Tap Download below the player. Scroll the row of buttons if it is out of view. Some sources do not support downloads.</string>
+    <string name="help_download_format">Choose Audio for just the song, or Video, then confirm with Download. Follow progress in Active jobs and find the file in Library → Downloads. If it is already downloaded, do not press Remove.</string>
+    <string name="help_find_channel">Search for the channel name or one of its videos and press Search on the keyboard. You can enable YouTube in Prefs → Sources.</string>
+    <string name="help_open_channel">Tap the channel name and picture below a YouTube result to open the creator’s page.</string>
+    <string name="help_follow_button">Tap Follow. If it already says Following, you already follow this channel in Grayjoy. Find new videos in Home → Subscriptions and in Following.</string>
+</resources>

@@ -1,6 +1,12 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.onboarding.helpAnchor
+import com.futo.platformplayer.compose.onboarding.HelpGuideWindow
+import com.futo.platformplayer.compose.onboarding.LocalHelpGuide
+
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -105,11 +111,14 @@ internal fun VideoActionsSheet(
     onPlayFromHere: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(
+        sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+            skipPartiallyExpanded = LocalHelpGuide.current?.topic != null),
         onDismissRequest = onDismiss,
         contentWindowInsets = { grayjoySheetInsets() },
     ) {
+        HelpGuideWindow("video-action-playlist")
         Column(
-            modifier = Modifier.padding(bottom = 24.dp),
+            modifier = Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Column(
@@ -345,7 +354,7 @@ private fun VideoAction(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .testTag(tag),
+            .testTag(tag).helpAnchor(tag),
     )
 }
 
@@ -368,13 +377,15 @@ internal fun PlaylistPickerDialog(
             Text(stringResource(if (creatingNew) R.string.new_playlist else R.string.add_to_playlist))
         },
         text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            HelpGuideWindow("playlist-editor")
             if (creatingNew) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it.take(80) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("new-playlist-name"),
+                        .testTag("new-playlist-name").helpAnchor("playlist-editor"),
                     singleLine = true,
                     label = { Text(stringResource(R.string.playlist_name)) },
                     isError = duplicateTitle,
@@ -429,6 +440,7 @@ internal fun PlaylistPickerDialog(
                     }
                 }
             }
+            }
         },
         confirmButton = {
             if (creatingNew) {
@@ -441,7 +453,7 @@ internal fun PlaylistPickerDialog(
                     modifier = Modifier.testTag("create-playlist"),
                 ) { Text(stringResource(R.string.create)) }
             } else {
-                TextButton(onClick = { creatingNew = true }) { Text(stringResource(R.string.new_playlist)) }
+                TextButton(onClick = { creatingNew = true }, modifier = Modifier.helpAnchor("playlist-editor")) { Text(stringResource(R.string.new_playlist)) }
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },

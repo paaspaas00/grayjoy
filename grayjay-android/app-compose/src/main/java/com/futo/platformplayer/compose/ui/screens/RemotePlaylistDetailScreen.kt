@@ -1,5 +1,7 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.onboarding.helpAnchor
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -250,7 +252,7 @@ fun RemotePlaylistDetailScreen(
                         Button(
                             onClick = onPlayAll,
                             enabled = detail.videos.isNotEmpty() && !detail.isLoadingAll,
-                            modifier = Modifier.testTag("remote-playlist-play-all"),
+                            modifier = Modifier.testTag("remote-playlist-play-all").helpAnchor("playlist-play-all"),
                         ) {
                             if (detail.isLoadingAll) {
                                 CircularProgressIndicator(

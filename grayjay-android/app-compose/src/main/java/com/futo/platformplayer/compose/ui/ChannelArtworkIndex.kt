@@ -32,7 +32,7 @@ internal class ChannelArtworkIndex(channels: List<ChannelUiModel>) {
             ).also { videoResults[videoKey] = it }
     }
     companion object {
-        private fun key(source: String, reference: String): String {
+        internal fun key(source: String, reference: String): String {
             val value = reference.trim().trimEnd('/')
             val uri = runCatching { java.net.URI(value) }.getOrNull()
             val segments = uri?.path.orEmpty().split('/').filter(String::isNotEmpty)
@@ -50,4 +50,4 @@ internal class ChannelArtworkIndex(channels: List<ChannelUiModel>) {
 }
 
 internal val LocalChannelArtworkIndex = compositionLocalOf { ChannelArtworkIndex(emptyList()) }
-internal val LocalChannelArtworkRequest = compositionLocalOf<(String) -> Unit> { {} }
+internal val LocalChannelArtworkRequest = compositionLocalOf<(String, String?) -> Unit> { { _, _ -> } }

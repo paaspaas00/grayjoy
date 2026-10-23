@@ -1,5 +1,11 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.onboarding.helpAnchor
+import com.futo.platformplayer.compose.onboarding.HelpButton
+import com.futo.platformplayer.compose.onboarding.LocalHelpGuide
+import com.futo.platformplayer.compose.onboarding.HelpTopic
+import com.futo.platformplayer.compose.ui.sourceStringResource
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -91,6 +97,14 @@ fun SearchScreen(
     val compactLayout = compactUi()
     val suggestions = remember(search.suggestions) { uniqueSearchSuggestions(search.suggestions) }
     var typeName by rememberSaveable { mutableStateOf(SearchContentType.Videos.name) }
+    val help = LocalHelpGuide.current
+    var appliedGuideSession by rememberSaveable { mutableStateOf(-1) }
+    LaunchedEffect(help?.session) {
+        if (help?.topic != null && appliedGuideSession != help.session) {
+            appliedGuideSession = help.session
+            typeName = SearchContentType.Videos.name
+        }
+    }
     var selectedSourceIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var previousActiveSourceIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var sourcesInitialized by rememberSaveable { mutableStateOf(false) }
@@ -137,6 +151,12 @@ fun SearchScreen(
         SearchContentType.Videos -> resultVideos.size
     }
     val showingResults = search.isLoading || search.hasSearched || search.errorMessage != null
+    LaunchedEffect(help?.session, search.hasSearched, search.isLoading, type, resultChannels) {
+        if (help?.topic == HelpTopic.Follow && search.hasSearched && !search.isLoading) {
+            if (type == SearchContentType.Creators && resultChannels.isNotEmpty()) help.reached("channel-result")
+            else if (help.step == 0) help.reached("search-filter-creators")
+        }
+    }
     val playableResultIds = remember(resultVideos) {
         val now = System.currentTimeMillis()
         resultVideos.filter { it.isAvailable && it.scheduledStartAtMs <= now }.map(VideoUiModel::id).distinct()
@@ -232,10 +252,10 @@ fun SearchScreen(
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(focusRequester)
-                    .testTag("search-field"),
+                    .testTag("search-field").helpAnchor("search-field"),
                 singleLine = true,
                 shape = SearchFieldShape,
-                placeholder = { Text(stringResource(R.string.search_hint)) },
+                placeholder = { Text(sourceStringResource(R.string.search_hint)) },
                 supportingText = {
                     Text(
                         pluralStringResource(
@@ -264,12 +284,13 @@ fun SearchScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { submit(search.query) }),
             )
+            HelpButton()
             }
         }
 
         item {
             Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                modifier = Modifier.horizontalScroll(rememberScrollState()).helpAnchor("search-type-tabs"),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 SearchContentType.entries.forEach { filter ->
@@ -281,8 +302,8 @@ fun SearchScreen(
                                 onSubmit(search.query, filter, selectedSources)
                             }
                         },
-                        modifier = Modifier.testTag("search-filter-${filter.name.lowercase()}"),
-                        label = { Text(stringResource(filter.labelRes)) },
+                        modifier = Modifier.testTag("search-filter-${filter.name.lowercase()}").helpAnchor("search-filter-${filter.name.lowercase()}"),
+                        label = { Text(sourceStringResource(filter.labelRes)) },
                     )
                 }
                 FilterChip(

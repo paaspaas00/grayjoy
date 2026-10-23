@@ -55,6 +55,9 @@ data class GrayjayUiState(
     val otherAudioDuckVolumePercent: Int = 35,
     val profiles: List<ProfileUiModel> = emptyList(),
     val activeProfileId: String = "main",
+    val sourceProfilesEnabled: Boolean = false,
+    val sourceProfileCatalog: List<SourceUiModel> = emptyList(),
+    val sourceProfileSetup: SourceProfileSetupUiState = SourceProfileSetupUiState(),
     val followedCreatorIds: Set<String> = emptySet(),
     val sourceOperationInProgress: Boolean = false,
     val sourceOperationMessage: String? = null,
@@ -66,6 +69,8 @@ data class GrayjayUiState(
     val libraryTransfer: LibraryTransferUiState = LibraryTransferUiState(),
     val mediaExports: List<MediaExportUiState> = emptyList(),
     val downloads: Map<String, DownloadUiModel> = emptyMap(),
+    val downloadBatchProgress: com.futo.platformplayer.compose.downloads.DownloadBatchProgress =
+        com.futo.platformplayer.compose.downloads.DownloadBatchProgress(),
     val downloadStorage: DownloadStorageUiState = DownloadStorageUiState(),
     val backgroundJobsSuspended: Boolean = false,
     val activePlaylistDownloads: Set<PlaylistDownloadBatchUiModel> = emptySet(),
@@ -356,6 +361,16 @@ data class ProfileUiModel(
     val name: String,
     val protection: ProfileProtection,
     val isBuiltIn: Boolean = false,
+    val sourceId: String = "",
+    val sourceIconUrl: String = "",
+    val sourceAccentColor: Long = 0L,
+)
+
+data class SourceProfileSetupUiState(
+    val isRunning: Boolean = false,
+    val completed: Int = 0,
+    val total: Int = 0,
+    val error: String? = null,
 )
 
 enum class ProfileProtection { None, DeviceCredential, Pin }

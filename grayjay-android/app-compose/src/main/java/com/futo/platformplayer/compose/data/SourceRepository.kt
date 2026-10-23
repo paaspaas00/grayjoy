@@ -22,12 +22,14 @@ internal class SharedPreferencesSourceRepository(
     context: Context,
     profileId: String = "main",
 ) : SourceRepository {
+    private val lockedSource = ProfileRepository(context).boundSourceId(profileId)
     private val preferences = context.getSharedPreferences(
         if (profileId == "main") FILE_NAME else "${FILE_NAME}_$profileId",
         Context.MODE_PRIVATE,
     )
 
     override fun loadEnabledSourceIds(sources: List<SourceUiModel>): Set<String> {
+        lockedSource?.let { return setOf(it) }
         if (!preferences.contains(KEY_ENABLED_SOURCE_IDS)) {
             preferences.edit().putStringSet(
                 KEY_ENABLED_SOURCE_IDS,
@@ -37,7 +39,12 @@ internal class SharedPreferencesSourceRepository(
         return preferences.getStringSet(KEY_ENABLED_SOURCE_IDS, emptySet()).orEmpty().toSet()
     }
 
+    /** Read the old profile's affinity without initializing or changing its preferences. */
+    internal fun storedEnabledSourceIds(): Set<String>? = if (!preferences.contains(KEY_ENABLED_SOURCE_IDS)) null
+        else preferences.getStringSet(KEY_ENABLED_SOURCE_IDS, emptySet()).orEmpty().toSet()
+
     override fun setEnabled(sourceId: String, enabled: Boolean) {
+        if (lockedSource != null && (sourceId != lockedSource || !enabled)) return
         val updated = preferences
             .getStringSet(KEY_ENABLED_SOURCE_IDS, emptySet())
             .orEmpty()
@@ -76,6 +83,7 @@ internal class SharedPreferencesSourceRepository(
     }.getOrDefault(emptyList())
 
     override fun saveCustomSource(source: SourceUiModel) {
+        if (lockedSource != null && source.id != lockedSource) return
         val sources = loadCustomSources()
             .filterNot { it.id == source.id || it.engineId == source.engineId }
             .plus(source.copy(isCustom = true))
@@ -83,6 +91,7 @@ internal class SharedPreferencesSourceRepository(
     }
 
     override fun removeCustomSource(sourceId: String) {
+        if (lockedSource == sourceId) return
         writeCustomSources(loadCustomSources().filterNot { it.id == sourceId })
         setEnabled(sourceId, false)
     }

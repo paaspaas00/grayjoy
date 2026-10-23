@@ -164,5 +164,8 @@ internal fun buildActiveJobsNotification(
     .setProgress(100, progress.coerceIn(0, 100), false)
     .setCategory(NotificationCompat.CATEGORY_PROGRESS)
     .setOnlyAlertOnce(true)
+    .setSilent(true)
+    .setGroup("grayjoy_background_jobs")
+    .setGroupSummary(true)
     .setOngoing(true)
     .build()

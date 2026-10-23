@@ -14,7 +14,7 @@
     <string name="setup_never_again">Non mostrare più questa guida all’avvio</string>
     <string name="setup_later_title">Puoi farlo anche dopo</string>
     <string name="setup_tour_title">Orientiamoci insieme</string>
-    <string name="setup_tour_body">Tocca una sezione qui sotto per scoprire a cosa serve. Nell’app trovi le stesse sezioni nella barra in basso, o a lato sul tablet.</string>
+    <string name="setup_tour_body">Prova i pulsanti della barra qui sotto: scoprirai cosa puoi fare in ogni sezione, senza uscire dalla guida. Nell’app ritroverai la stessa barra in basso, o a lato sul tablet.</string>
     <string name="setup_tour_home">La Home raccoglie video dei canali seguiti, Shorts e consigli. Tocca un video per riprodurlo. Trascina il player verso il basso per continuare ad ascoltare mentre navighi.</string>
     <string name="setup_tour_following">Segui un canale per ritrovare qui i suoi nuovi video. Puoi aggiornare la lista, filtrare per creator e gestire le iscrizioni.</string>
     <string name="setup_tour_search">Scrivi un titolo, un artista o un argomento. Le sorgenti abilitate forniscono i risultati. Tieni premuto un video per vedere altre azioni.</string>

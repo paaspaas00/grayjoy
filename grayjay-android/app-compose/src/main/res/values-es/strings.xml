@@ -7,7 +7,7 @@
     <string name="reduced_playback_volume">Volumen de reproducción reducido</string>
     <string name="reduced_playback_volume_value">%1$d%% del volumen normal</string>
     <string name="nav_home">Inicio</string>
-    <string name="nav_following">Siguiente</string>
+    <string name="nav_following">Seguidos</string>
     <string name="nav_subscriptions">Suscripciones</string>
     <string name="nav_search">Buscar</string>
     <string name="nav_library">Biblioteca</string>
@@ -42,7 +42,7 @@
     <string name="play">Reproducir</string>
     <string name="pause">Pausa</string>
     <string name="follow">Seguir</string>
-    <string name="following">Siguiente</string>
+    <string name="following">Siguiendo</string>
     <string name="videos">Vídeos</string>
     <string name="creators">Creadores</string>
     <string name="playlists">Listas de reproducción</string>

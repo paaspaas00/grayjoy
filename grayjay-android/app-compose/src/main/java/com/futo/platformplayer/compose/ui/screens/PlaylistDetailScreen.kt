@@ -1,5 +1,7 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.onboarding.helpAnchor
+
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -304,7 +306,7 @@ fun PlaylistDetailScreen(
                             Button(
                                 onClick = onPlayAll,
                                 enabled = playlist.videoIds.isNotEmpty(),
-                                modifier = Modifier.testTag("playlist-play-all"),
+                                modifier = Modifier.testTag("playlist-play-all").helpAnchor("playlist-play-all"),
                             ) {
                                 Icon(Icons.Filled.PlayArrow, contentDescription = null)
                                 Text(stringResource(R.string.play_all))

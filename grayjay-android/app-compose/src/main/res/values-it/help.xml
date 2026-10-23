@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="help_step">Passaggio %1$d/%2$d</string>
+    <string name="help_title">Come faccio per…?</string>
+    <string name="help_intro">Scegli cosa vuoi fare. Ti accompagniamo sulle schermate dell’app, un passaggio alla volta. Puoi chiudere o ridurre il fumetto quando vuoi.</string>
+    <string name="help_show">Mostra guida</string>
+    <string name="help_collapse">Riduci spiegazione</string>
+    <string name="help_expand">Mostra spiegazione</string>
+    <string name="help_end">Esci dalla guida</string>
+    <string name="help_finish">Ho capito</string>
+    <string name="help_wait">Esegui il passaggio nella schermata, poi tocca Avanti. Se serve, riduci il fumetto con la freccia.</string>
+    <string name="help_playlist">Creare una playlist mia</string>
+    <string name="help_playlist_body">Parti da un video o una canzone, scegli un nome e crea la tua raccolta. Potrai aggiungere altri contenuti in seguito.</string>
+    <string name="help_music">Cercare musica</string>
+    <string name="help_music_body">Cerca un brano o un artista nelle sorgenti abilitate e scegli cosa ascoltare.</string>
+    <string name="help_random">Riprodurre musica casuale</string>
+    <string name="help_random_body">Ascolta una tua playlist in ordine casuale. Serve almeno una playlist: se non ne hai, segui prima la guida per crearne una.</string>
+    <string name="help_album">Cercare un album di un cantante</string>
+    <string name="help_album_body">Gli album sono spesso disponibili come playlist. Ti mostriamo come cercarli e aprire l’elenco dei brani; i risultati dipendono dalle sorgenti abilitate.</string>
+    <string name="help_download">Scaricare un video o una canzone</string>
+    <string name="help_download_body">Salva un contenuto per ascoltarlo o guardarlo senza connessione. Puoi scegliere solo l’audio oppure anche il video, quando la sorgente lo consente.</string>
+    <string name="help_follow">Iscrivermi a un canale YouTube</string>
+    <string name="help_follow_body">Segui il canale in Grayjoy per ritrovare i nuovi video in Home e Seguiti. È un’iscrizione locale all’app: non modifica da sola il tuo account YouTube.</string>
+    <string name="help_find_first">Cerca il primo video o brano da aggiungere: scrivi nella barra e premi Cerca sulla tastiera. Puoi scegliere qualsiasi risultato.</string>
+    <string name="help_hold_video">Tieni premuto il video che vuoi aggiungere. Si apre il menu delle azioni; poi tocca Avanti qui.</string>
+    <string name="help_add_playlist">Nel menu del video, tocca «Aggiungi alla playlist». Poi tocca Avanti per creare la tua.</string>
+    <string name="help_name_playlist">Tocca «Nuova playlist» se compare, scrivi il nome e premi Crea. Il video verrà aggiunto. Ritrovi la playlist in Raccolta → Playlist; ripeti «Aggiungi alla playlist» per inserire altri brani.</string>
+    <string name="help_find_music">Scrivi il titolo di una canzone o il nome di un artista e premi Cerca sulla tastiera. Se non trovi risultati, controlla la connessione. Per abilitare una piattaforma, apri Prefs → Sorgenti.</string>
+    <string name="help_play_result">Tocca il risultato che vuoi ascoltare: si apre il player. Se sei in un’altra scheda dei risultati, scegli Video.</string>
+    <string name="help_music_playing">La musica ora si controlla dal player: puoi mettere in pausa o trascinarlo verso il basso per continuare a navigare. Per scegliere altro, torna a Cerca.</string>
+    <string name="help_choose_playlist">Apri la playlist che vuoi ascoltare. Se l’elenco è vuoto, esci da questa guida e segui «Creare una playlist mia».</string>
+    <string name="help_shuffle_playlist">Attiva il pulsante con le frecce incrociate: quando è evidenziato, la playlist verrà riprodotta in ordine casuale. Poi tocca Avanti.</string>
+    <string name="help_start_playlist">Tocca «Riproduci tutto» per ascoltare la playlist in ordine casuale. Puoi disattivare le frecce incrociate quando preferisci l’ordine normale.</string>
+    <string name="help_find_album">Scrivi il nome dell’artista e dell’album (oppure aggiungi la parola «album»), poi premi Cerca sulla tastiera.</string>
+    <string name="help_album_filter">Tocca la scheda Playlist nei risultati e aspetta il caricamento. Se non ci sono album, prova un titolo più preciso o una sorgente che li supporti.</string>
+    <string name="help_open_album">Tocca l’album o la playlist che cercavi per vedere i brani che contiene.</string>
+    <string name="help_start_album">Qui trovi i brani dell’album. Tocca «Riproduci tutto» oppure scegli un brano da cui iniziare.</string>
+    <string name="help_find_download">Cerca il contenuto che vuoi salvare e premi Cerca sulla tastiera. Per scaricarlo serve una connessione e spazio libero sul dispositivo.</string>
+    <string name="help_download_button">Sotto il player, tocca «Scarica». Se non lo vedi, scorri la fila dei pulsanti. Alcune sorgenti non consentono il download.</string>
+    <string name="help_download_format">Scegli Audio per la sola canzone, oppure Video, poi conferma con Scarica. Segui il progresso nei Job attivi e ritrova il file in Raccolta → Download. Se è già scaricato, non premere Rimuovi.</string>
+    <string name="help_find_channel">Cerca il nome del canale o un suo video e premi Cerca sulla tastiera. Puoi abilitare YouTube in Prefs → Sorgenti.</string>
+    <string name="help_open_channel">Tocca il riquadro con nome e immagine del canale sotto un risultato YouTube. Si aprirà la pagina del creator.</string>
+    <string name="help_follow_button">Tocca «Segui». Se leggi già «Seguito», sei già iscritto in Grayjoy. I nuovi video saranno disponibili in Home → Iscrizioni e nella sezione Seguiti.</string>
+</resources>

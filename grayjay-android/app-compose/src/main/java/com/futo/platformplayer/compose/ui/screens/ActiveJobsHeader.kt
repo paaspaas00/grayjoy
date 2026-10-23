@@ -86,6 +86,10 @@ internal fun rememberActiveJobItems(
     downloadStorage: DownloadStorageUiState = DownloadStorageUiState(),
     mediaExports: List<com.futo.platformplayer.compose.ui.MediaExportUiState> = emptyList(),
     historyMusic: com.futo.platformplayer.compose.ui.HistoryMusicScanUiState = com.futo.platformplayer.compose.ui.HistoryMusicScanUiState(),
+    downloadBatchProgress: com.futo.platformplayer.compose.downloads.DownloadBatchProgress =
+        com.futo.platformplayer.compose.downloads.DownloadBatchProgress(),
+    sourceProfileSetup: com.futo.platformplayer.compose.ui.SourceProfileSetupUiState =
+        com.futo.platformplayer.compose.ui.SourceProfileSetupUiState(),
 ): List<ActiveJobItem> {
     val activeDownloads = remember(downloads) { downloads.values.filter(DownloadUiModel::isActive) }
     val activeDownloadProgress = activeDownloads
@@ -107,6 +111,12 @@ internal fun rememberActiveJobItems(
         )
     }
     return buildList {
+        if (sourceProfileSetup.isRunning) add(ActiveJobItem(
+            id = "source-profile-setup", title = stringResource(R.string.profile_split_title),
+            detail = stringResource(R.string.profile_split_progress, sourceProfileSetup.completed, sourceProfileSetup.total),
+            progress = sourceProfileSetup.total.takeIf { it > 0 }?.let { sourceProfileSetup.completed.toFloat() / it },
+            icon = Icons.Outlined.Sync,
+        ))
         if (historyMusic.isRunning) add(ActiveJobItem(
             id = "history-music",
             title = stringResource(R.string.history_music_background_job),
@@ -153,8 +163,9 @@ internal fun rememberActiveJobItems(
             ActiveJobItem(
                 id = "downloads",
                 title = stringResource(R.string.downloads),
-                detail = downloadDetail,
-                progress = activeDownloadProgress,
+                detail = if (downloadBatchProgress.total > 0) stringResource(R.string.download_batch_progress,
+                    downloadBatchProgress.completed, downloadBatchProgress.total) + " · " + downloadDetail else downloadDetail,
+                progress = downloadBatchProgress.takeIf { it.total > 0 }?.fraction ?: activeDownloadProgress,
                 icon = Icons.Outlined.Download,
                 cancellable = true,
                 warning = downloadStorage.isWarning,
@@ -396,10 +407,14 @@ internal fun ActiveJobsPanel(
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             job.progress?.let { progress ->
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 LinearProgressIndicator(
                                     progress = { progress.coerceIn(0f, 1f) },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.weight(1f),
                                 )
+                                Text(stringResource(R.string.percent_complete, (progress.coerceIn(0f, 1f) * 100).toInt()),
+                                    style = MaterialTheme.typography.labelSmall)
+                                }
                             } ?: LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         }
                         if (job.cancellable) {
@@ -480,7 +495,7 @@ internal fun ActiveJobsPanel(
 }
 
 @Composable
-private fun YoutubeImportUiState.progressLabel(): String = importProgressLabel(
+internal fun YoutubeImportUiState.progressLabel(): String = importProgressLabel(
     stage = stage,
     completed = completed,
     total = total,
@@ -522,7 +537,7 @@ private fun importProgressLabel(
     } ?: progress
 }
 
-private fun YoutubeImportUiState.progressFraction(): Float? = total?.takeIf { it > 0 }
+internal fun YoutubeImportUiState.progressFraction(): Float? = total?.takeIf { it > 0 }
     ?.let { (completed.toFloat() / it).coerceIn(0f, 1f) }
 
 private fun BackgroundYoutubeImportUiState.progressFraction(): Float? =

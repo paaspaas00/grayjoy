@@ -7,7 +7,7 @@
     <string name="reduced_playback_volume">انخفاض حجم التشغيل</string>
     <string name="reduced_playback_volume_value">%1$d%% من الحجم الطبيعي</string>
     <string name="nav_home">الرئيسية</string>
-    <string name="nav_following">التالي</string>
+    <string name="nav_following">المتابَعة</string>
     <string name="nav_subscriptions">الاشتراكات</string>
     <string name="nav_search">بحث</string>
     <string name="nav_library">مكتبة</string>
@@ -42,7 +42,7 @@
     <string name="play">تشغيل</string>
     <string name="pause">إيقاف مؤقت</string>
     <string name="follow">يتبع</string>
-    <string name="following">التالي</string>
+    <string name="following">متابَع</string>
     <string name="videos">فيديوهات</string>
     <string name="creators">المنشئين</string>
     <string name="playlists">قوائم التشغيل</string>
@@ -121,6 +121,10 @@
     <string name="search_hint">ابحث في مقاطع الفيديو ومنشئي المحتوى وقوائم التشغيل</string>
     <plurals name="searching_active_sources">
         <item quantity="one">البحث عن المصدر النشط %d</item>
+        <item quantity="zero">البحث عن المصادر النشطة %d</item>
+        <item quantity="two">البحث عن المصادر النشطة %d</item>
+        <item quantity="few">البحث عن المصادر النشطة %d</item>
+        <item quantity="many">البحث عن المصادر النشطة %d</item>
         <item quantity="other">البحث عن المصادر النشطة %d</item>
     </plurals>
     <string name="clear_search">مسح البحث</string>
@@ -131,6 +135,10 @@
     <string name="searching">البحث…</string>
     <plurals name="result_count">
         <item quantity="one">%d النتيجة</item>
+        <item quantity="zero">%d النتائج</item>
+        <item quantity="two">%d النتائج</item>
+        <item quantity="few">%d النتائج</item>
+        <item quantity="many">%d النتائج</item>
         <item quantity="other">%d النتائج</item>
     </plurals>
     <string name="search_unavailable">البحث غير متاح</string>
@@ -143,6 +151,10 @@
     <string name="library_description">يظل السجل والتنزيلات وقوائم التشغيل منظمة على جهازك.</string>
     <plurals name="selected_count">
         <item quantity="one">تم تحديد %d</item>
+        <item quantity="zero">تم تحديد %d</item>
+        <item quantity="two">تم تحديد %d</item>
+        <item quantity="few">تم تحديد %d</item>
+        <item quantity="many">تم تحديد %d</item>
         <item quantity="other">تم تحديد %d</item>
     </plurals>
     <string name="playlist">قائمة التشغيل</string>
@@ -150,18 +162,34 @@
     <string name="remove_from_history_body">لن تظهر مقاطع الفيديو المحددة في سجل المشاهدة بعد الآن.</string>
     <plurals name="videos_queued">
         <item quantity="one">%d الفيديو في قائمة الانتظار</item>
+        <item quantity="zero">تم وضع مقاطع الفيديو %d في قائمة الانتظار</item>
+        <item quantity="two">تم وضع مقاطع الفيديو %d في قائمة الانتظار</item>
+        <item quantity="few">تم وضع مقاطع الفيديو %d في قائمة الانتظار</item>
+        <item quantity="many">تم وضع مقاطع الفيديو %d في قائمة الانتظار</item>
         <item quantity="other">تم وضع مقاطع الفيديو %d في قائمة الانتظار</item>
     </plurals>
     <plurals name="local_collections">
         <item quantity="one">%d المجموعة المحلية</item>
+        <item quantity="zero">%d المجموعات المحلية</item>
+        <item quantity="two">%d المجموعات المحلية</item>
+        <item quantity="few">%d المجموعات المحلية</item>
+        <item quantity="many">%d المجموعات المحلية</item>
         <item quantity="other">%d المجموعات المحلية</item>
     </plurals>
     <plurals name="videos_offline">
         <item quantity="one">%d الفيديو متاح بلا إنترنت</item>
+        <item quantity="zero">%d مقاطع الفيديو متاحة بلا إنترنت</item>
+        <item quantity="two">%d مقاطع الفيديو متاحة بلا إنترنت</item>
+        <item quantity="few">%d مقاطع الفيديو متاحة بلا إنترنت</item>
+        <item quantity="many">%d مقاطع الفيديو متاحة بلا إنترنت</item>
         <item quantity="other">%d مقاطع الفيديو متاحة بلا إنترنت</item>
     </plurals>
     <plurals name="watched_videos_on_device">
         <item quantity="one">%d شاهد الفيديو • خاص وعلى الجهاز</item>
+        <item quantity="zero">%d شاهد مقاطع فيديو • خاصة وعلى الجهاز</item>
+        <item quantity="two">%d شاهد مقاطع فيديو • خاصة وعلى الجهاز</item>
+        <item quantity="few">%d شاهد مقاطع فيديو • خاصة وعلى الجهاز</item>
+        <item quantity="many">%d شاهد مقاطع فيديو • خاصة وعلى الجهاز</item>
         <item quantity="other">%d شاهد مقاطع فيديو • خاصة وعلى الجهاز</item>
     </plurals>
     <string name="local_playlist">قائمة التشغيل المحلية</string>
@@ -181,6 +209,10 @@
     <string name="downloads_export_failed">تعذر تصدير التنزيلات المحددة.</string>
     <plurals name="video_count">
         <item quantity="one">%d فيديو</item>
+        <item quantity="zero">%d مقاطع فيديو</item>
+        <item quantity="two">%d مقاطع فيديو</item>
+        <item quantity="few">%d مقاطع فيديو</item>
+        <item quantity="many">%d مقاطع فيديو</item>
         <item quantity="other">%d مقاطع فيديو</item>
     </plurals>
     <string name="new_playlist">قائمة تشغيل جديدة</string>
@@ -270,6 +302,10 @@
     <string name="add_watch_later">أضف إلى المشاهدة لاحقًا</string>
     <plurals name="followers_count">
         <item quantity="one">%s متابع</item>
+        <item quantity="zero">%s متابعون</item>
+        <item quantity="two">%s متابعون</item>
+        <item quantity="few">%s متابعون</item>
+        <item quantity="many">%s متابعون</item>
         <item quantity="other">%s متابعون</item>
     </plurals>
     <string name="about_video">حول هذا الفيديو</string>
@@ -277,10 +313,18 @@
     <string name="show_more">عرض المزيد</string>
     <plurals name="likes_count">
         <item quantity="one">%s إعجاب</item>
+        <item quantity="zero">%s إعجابات</item>
+        <item quantity="two">%s إعجابات</item>
+        <item quantity="few">%s إعجابات</item>
+        <item quantity="many">%s إعجابات</item>
         <item quantity="other">%s إعجابات</item>
     </plurals>
     <plurals name="replies_count">
         <item quantity="one">%d الرد</item>
+        <item quantity="zero">%d الردود</item>
+        <item quantity="two">%d الردود</item>
+        <item quantity="few">%d الردود</item>
+        <item quantity="many">%d الردود</item>
         <item quantity="other">%d الردود</item>
     </plurals>
     <string name="profiles">الملفات الشخصية</string>
@@ -341,6 +385,10 @@
     <string name="manage_sources">إدارة المصادر</string>
     <plurals name="active_on_device">
         <item quantity="one">%d نشط على هذا الجهاز</item>
+        <item quantity="zero">%d نشط على هذا الجهاز</item>
+        <item quantity="two">%d نشط على هذا الجهاز</item>
+        <item quantity="few">%d نشط على هذا الجهاز</item>
+        <item quantity="many">%d نشط على هذا الجهاز</item>
         <item quantity="other">%d نشط على هذا الجهاز</item>
     </plurals>
     <string name="settings_data">بيانات</string>
@@ -351,10 +399,18 @@
     <string name="preferred_video_quality">جودة الفيديو المفضلة</string>
     <plurals name="active_sources">
         <item quantity="one">%d المصدر النشط</item>
+        <item quantity="zero">%d المصادر النشطة</item>
+        <item quantity="two">%d المصادر النشطة</item>
+        <item quantity="few">%d المصادر النشطة</item>
+        <item quantity="many">%d المصادر النشطة</item>
         <item quantity="other">%d المصادر النشطة</item>
     </plurals>
     <plurals name="installed_sources">
         <item quantity="one">تم تثبيت %d</item>
+        <item quantity="zero">تم تثبيت %d</item>
+        <item quantity="two">تم تثبيت %d</item>
+        <item quantity="few">تم تثبيت %d</item>
+        <item quantity="many">تم تثبيت %d</item>
         <item quantity="other">تم تثبيت %d</item>
     </plurals>
     <string name="installing_source">جارٍ تثبيت المصدر…</string>
@@ -435,22 +491,42 @@
     <string name="newpipe_import_merge_notice">يتم دمج بيانات NewPipe المستوردة في ملف التعريف الحالي. لا يتم حذف الاشتراكات والمحفوظات وقوائم التشغيل الموجودة.</string>
     <plurals name="plugin_configurations">
         <item quantity="one">%d تكوين البرنامج المساعد</item>
+        <item quantity="zero">%d تكوينات البرنامج المساعد</item>
+        <item quantity="two">%d تكوينات البرنامج المساعد</item>
+        <item quantity="few">%d تكوينات البرنامج المساعد</item>
+        <item quantity="many">%d تكوينات البرنامج المساعد</item>
         <item quantity="other">%d تكوينات البرنامج المساعد</item>
     </plurals>
     <plurals name="plugin_settings_records">
         <item quantity="one">%d سجل إعدادات البرنامج المساعد</item>
+        <item quantity="zero">%d سجلات إعدادات البرنامج المساعد</item>
+        <item quantity="two">%d سجلات إعدادات البرنامج المساعد</item>
+        <item quantity="few">%d سجلات إعدادات البرنامج المساعد</item>
+        <item quantity="many">%d سجلات إعدادات البرنامج المساعد</item>
         <item quantity="other">%d سجلات إعدادات البرنامج المساعد</item>
     </plurals>
     <plurals name="followed_creators">
         <item quantity="one">%d تمت متابعة منشئ المحتوى</item>
+        <item quantity="zero">%d تابع المبدعين</item>
+        <item quantity="two">%d تابع المبدعين</item>
+        <item quantity="few">%d تابع المبدعين</item>
+        <item quantity="many">%d تابع المبدعين</item>
         <item quantity="other">%d تابع المبدعين</item>
     </plurals>
     <plurals name="watched_videos">
         <item quantity="one">%d شاهد الفيديو</item>
+        <item quantity="zero">%d شاهد مقاطع الفيديو</item>
+        <item quantity="two">%d شاهد مقاطع الفيديو</item>
+        <item quantity="few">%d شاهد مقاطع الفيديو</item>
+        <item quantity="many">%d شاهد مقاطع الفيديو</item>
         <item quantity="other">%d شاهد مقاطع الفيديو</item>
     </plurals>
     <plurals name="playlist_count">
         <item quantity="one">%d قائمة التشغيل</item>
+        <item quantity="zero">%d قوائم التشغيل</item>
+        <item quantity="two">%d قوائم التشغيل</item>
+        <item quantity="few">%d قوائم التشغيل</item>
+        <item quantity="many">%d قوائم التشغيل</item>
         <item quantity="other">%d قوائم التشغيل</item>
     </plurals>
     <string name="home_feed_refresh_failed">لا يمكن تحديث موجز المنزل.</string>
@@ -480,6 +556,10 @@
     <string name="newpipe_import_failed">لا يمكن استيراد تصدير NewPipe.</string>
     <plurals name="source_warnings">
         <item quantity="one">%d تحذير المصدر</item>
+        <item quantity="zero">%d تحذيرات المصدر</item>
+        <item quantity="two">%d تحذيرات المصدر</item>
+        <item quantity="few">%d تحذيرات المصدر</item>
+        <item quantity="many">%d تحذيرات المصدر</item>
         <item quantity="other">%d تحذيرات المصدر</item>
     </plurals>
     <string name="source_warning">المصدر %1$s: %2$s</string>

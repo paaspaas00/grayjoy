@@ -1,5 +1,9 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.ui.sourceCreatorFallback
+
+import com.futo.platformplayer.compose.onboarding.helpAnchor
+
 import android.content.Intent
 import com.futo.platformplayer.compose.ui.PageBackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -344,7 +348,7 @@ fun ChannelDetailScreen(
                             ChannelAvatarImage(displayedChannel.name, displayedChannel.thumbnailUrl, modifier = Modifier.size(40.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(displayedChannel.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text("${displayedChannel.source} • ${displayedChannel.followerCount}", style = MaterialTheme.typography.bodySmall,
+                                Text("${displayedChannel.source} • ${sourceCreatorFallback(displayedChannel.followerCount)}", style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             if (displayedChannel.description.isNotBlank()) IconButton(onClick = { descriptionExpanded = !descriptionExpanded }) {
@@ -367,7 +371,7 @@ fun ChannelDetailScreen(
                         },
                     )
                     Text(
-                        "${displayedChannel.source} • ${displayedChannel.followerCount}",
+                        "${displayedChannel.source} • ${sourceCreatorFallback(displayedChannel.followerCount)}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyLarge,
                     )
@@ -419,7 +423,7 @@ fun ChannelDetailScreen(
                     ) {
                         Button(
                             onClick = { onFollowingChange(!isFollowing) },
-                            modifier = Modifier.testTag("channel-follow"),
+                            modifier = Modifier.testTag("channel-follow").helpAnchor("channel-follow"),
                         ) {
                             Text(stringResource(if (isFollowing) R.string.following else R.string.follow))
                         }

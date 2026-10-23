@@ -368,6 +368,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         Context.MODE_PRIVATE,
     )
     private val completedRecords = loadCompletedRecords()
+    private val profileLinks by lazy { com.futo.platformplayer.compose.data.OfflineProfileLinks(appContext) }
     private val initialized = CompletableDeferred<Unit>()
     private val databaseProvider = StandaloneDatabaseProvider(appContext)
     private val downloaderExecutor: ExecutorService = Executors.newFixedThreadPool(3)
@@ -811,9 +812,11 @@ class GrayjoyDownloadStore private constructor(context: Context) {
             return
         }
         val recordKeys = completedRecords.keys.filter { key ->
+            // Shared grants never authorize deletion of the original profile's files.
             key.profileId == profileId && key.videoId == videoId &&
                 (mediaType == null || key.mediaType == mediaType)
         }
+        profileLinks.remove(profileId, videoId, mediaType)
         if (recordKeys.isNotEmpty()) {
             recordKeys.forEach(completedRecords::remove)
             saveCompletedRecords()
@@ -837,9 +840,24 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         publishDownloads()
     }
 
-    fun snapshotsFor(profileId: String): Map<String, DownloadUiModel> = downloads.value
-        .filter { it.profileId == profileId }
-        .associateBy(DownloadUiModel::videoId)
+    @Synchronized
+    fun snapshotsFor(profileId: String): Map<String, DownloadUiModel> {
+        val own = downloads.value.filter { it.profileId == profileId }.associateByTo(mutableMapOf(), DownloadUiModel::videoId)
+        val links = profileLinks.owners(profileId)
+        if (links.isEmpty()) return own
+        links.keys.forEach { videoId ->
+            val shared = completedOwners(profileId, videoId).filterValues { it != profileId }.mapNotNull { (type, owner) ->
+                val key = DownloadGroupKey(owner, videoId, type)
+                val record = completedRecords[key] ?: return@mapNotNull null
+                val parts = record.requestIds.mapNotNull { id ->
+                    downloadsById[id]?.let { d -> metadataFor(d.request)?.let { it to d } }
+                }
+                if (parts.isEmpty()) null else aggregate(key, parts).copy(profileId = profileId)
+            }
+            if (shared.isNotEmpty()) own[videoId] = combineMediaTypes(listOfNotNull(own[videoId]) + shared)
+        }
+        return own
+    }
 
     /**
      * Requests that depend on a plugin transport cannot resume after process recreation until the
@@ -872,9 +890,10 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         mediaType: DownloadMediaType? = null,
     ): VideoUiModel? {
         reconcileCompletedCatalog()
+        val owners = completedOwners(profileId, video.id)
         val completedRequestIds = completedRecords.values
             .filter { record ->
-                record.key.profileId == profileId && record.key.videoId == video.id &&
+                record.key.profileId == owners[record.key.mediaType] && record.key.videoId == video.id &&
                     (mediaType == null || record.key.mediaType == mediaType)
             }
             .flatMapTo(mutableSetOf(), CompletedDownloadRecord::requestIds)
@@ -882,7 +901,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         val parts = downloadsById.values.mapNotNull { download ->
             if (download.request.id !in completedRequestIds) return@mapNotNull null
             val metadata = metadataFor(download.request)
-                ?.takeIf { it.profileId == profileId && it.videoId == video.id }
+                ?.takeIf { it.profileId == owners[it.mediaType] && it.videoId == video.id }
                 ?: return@mapNotNull null
             OfflinePlaybackPart(
                 mediaType = metadata.mediaType,
@@ -904,12 +923,13 @@ class GrayjoyDownloadStore private constructor(context: Context) {
     @Synchronized
     fun playbackDescriptorsFor(profileId: String, videos: List<VideoUiModel>): List<VideoUiModel> {
         reconcileCompletedCatalog()
-        val requestVideos = completedRecords.values.asSequence().filter { it.key.profileId == profileId }
+        val owners = videos.associate { it.id to completedOwners(profileId, it.id) }
+        val requestVideos = completedRecords.values.asSequence().filter { it.key.profileId == owners[it.key.videoId]?.get(it.key.mediaType) }
             .flatMap { record -> record.requestIds.asSequence().map { it to record.key.videoId } }
             .groupBy({ it.first }, { it.second })
         val parts = downloadsById.values.mapNotNull { download ->
             if (download.request.id !in requestVideos) return@mapNotNull null
-            val metadata = metadataFor(download.request)?.takeIf { it.profileId == profileId } ?: return@mapNotNull null
+            val metadata = metadataFor(download.request)?.takeIf { it.profileId == owners[it.videoId]?.get(it.mediaType) } ?: return@mapNotNull null
             if (metadata.videoId !in requestVideos.getValue(download.request.id)) return@mapNotNull null
             metadata.videoId to OfflinePlaybackPart(
                 mediaType = metadata.mediaType, name = metadata.part, expectedPartCount = metadata.partCount,
@@ -925,12 +945,20 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         profileId: String,
         videoId: String,
         mediaType: DownloadMediaType? = null,
-    ): Boolean =
-        downloadsById.values.any { download ->
+    ): Boolean {
+        if (completedOwners(profileId, videoId).keys.any { mediaType == null || it == mediaType }) return true
+        return downloadsById.values.any { download ->
             metadataFor(download.request)?.let { metadata ->
                 metadata.profileId == profileId && metadata.videoId == videoId &&
                     (mediaType == null || metadata.mediaType == mediaType)
             } == true
+        }
+    }
+
+    @Synchronized
+    fun isSharedDownload(profileId: String, videoId: String, type: DownloadMediaType): Boolean =
+        completedOwners(profileId, videoId)[type]?.let { it != profileId } == true && downloadsById.values.none { item ->
+            metadataFor(item.request)?.let { it.profileId == profileId && it.videoId == videoId && it.mediaType == type } == true
         }
 
     @Synchronized
@@ -954,14 +982,21 @@ class GrayjoyDownloadStore private constructor(context: Context) {
     @Synchronized
     fun completedMediaTypes(profileId: String, videoId: String): Set<DownloadMediaType> {
         reconcileCompletedCatalog()
-        return completedRecords.keys
-            .filterTo(mutableSetOf()) { key ->
-                key.profileId == profileId && key.videoId == videoId
-            }
-            .mapTo(mutableSetOf(), DownloadGroupKey::mediaType)
+        return completedOwners(profileId, videoId).keys
     }
 
     fun isInitialized(): Boolean = initialized.isCompleted
+
+    private fun completedOwners(profile: String, videoId: String): Map<DownloadMediaType, String> {
+        val linked = profileLinks.owners(profile)[videoId]
+        val allowed = if (linked == null) emptySet() else profileLinks.allowedTypes(profile, videoId)
+        return buildMap {
+            DownloadMediaType.entries.forEach { type ->
+                if (DownloadGroupKey(profile, videoId, type) in completedRecords) put(type, profile)
+                else if (linked != null && type in allowed && DownloadGroupKey(linked, videoId, type) in completedRecords) put(type, linked)
+            }
+        }
+    }
 
     /**
      * The Media3 index is loaded asynchronously. Without this short gate, tapping a downloaded

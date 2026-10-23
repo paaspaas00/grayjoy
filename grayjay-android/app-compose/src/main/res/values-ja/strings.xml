@@ -7,10 +7,10 @@
     <string name="reduced_playback_volume">再生音量を下げた</string>
     <string name="reduced_playback_volume_value">通常の音量の %1$d%%</string>
     <string name="nav_home">ホーム</string>
-    <string name="nav_following">続く</string>
+    <string name="nav_following">フォロー中</string>
     <string name="nav_subscriptions">登録</string>
     <string name="nav_search">検索</string>
-    <string name="nav_library">図書館</string>
+    <string name="nav_library">ライブラリ</string>
     <string name="nav_settings">設定</string>
     <string name="nav_sources">ソース</string>
     <string name="now_playing">プレイ中</string>
@@ -42,7 +42,7 @@
     <string name="play">再生</string>
     <string name="pause">一時停止</string>
     <string name="follow">フォローする</string>
-    <string name="following">続く</string>
+    <string name="following">フォロー中</string>
     <string name="videos">動画</string>
     <string name="creators">クリエイター</string>
     <string name="playlists">プレイリスト</string>

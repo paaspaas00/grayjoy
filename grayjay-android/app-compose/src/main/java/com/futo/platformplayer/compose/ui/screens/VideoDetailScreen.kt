@@ -1,5 +1,12 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.ui.sourceCreatorFallback
+
+import com.futo.platformplayer.compose.ui.sourceStringResource
+
+import com.futo.platformplayer.compose.onboarding.helpAnchor
+import com.futo.platformplayer.compose.onboarding.HelpGuideWindow
+
 import android.content.Context
 import android.content.Intent
 import android.view.LayoutInflater
@@ -362,7 +369,7 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
     }
     var showCreatorSheet by rememberSaveable(video.id) { mutableStateOf(false) }
     var showFullQueue by rememberSaveable(video.id) { mutableStateOf(false) }
-    val creatorLabel = stringResource(R.string.creator)
+    val creatorLabel = sourceStringResource(R.string.creator)
     val followerCountLabel = video.authorSubscriberCount?.let { count ->
         pluralStringResource(
             R.plurals.followers_count,
@@ -2713,7 +2720,7 @@ private fun VideoActions(
     var showDownloadOptions by rememberSaveable(video.id) { mutableStateOf(false) }
     Row(
         modifier = Modifier
-            .horizontalScroll(rememberScrollState())
+            .horizontalScroll(rememberScrollState()).helpAnchor("player-actions")
             .padding(horizontal = horizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -2832,6 +2839,7 @@ private fun DownloadOptionsSheet(
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            HelpGuideWindow("download-format-audio")
             Text(stringResource(R.string.download_options), style = MaterialTheme.typography.headlineSmall)
             Text(
                 stringResource(R.string.choose_download_format),
@@ -2851,7 +2859,7 @@ private fun DownloadOptionsSheet(
                     onClick = { mediaTypeName = DownloadMediaType.Audio.name },
                     label = { Text(stringResource(R.string.audio_only)) },
                     leadingIcon = { Icon(Icons.Outlined.MusicNote, contentDescription = null) },
-                    modifier = Modifier.testTag("download-format-audio"),
+                    modifier = Modifier.testTag("download-format-audio").helpAnchor("download-format-audio"),
                 )
             }
 
@@ -3041,7 +3049,7 @@ private fun DownloadProgressChip(
         ),
         onClick = onClick,
         progress = progress,
-        modifier = Modifier.testTag("toggle-download"),
+        modifier = Modifier.testTag("toggle-download").helpAnchor("toggle-download"),
     )
 }
 
@@ -3239,7 +3247,7 @@ private fun CreatorInfoSheet(
                 textAlign = TextAlign.Center,
             )
             Text(
-                "${channel.source} • ${channel.followerCount}",
+                "${channel.source} • ${sourceCreatorFallback(channel.followerCount)}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )

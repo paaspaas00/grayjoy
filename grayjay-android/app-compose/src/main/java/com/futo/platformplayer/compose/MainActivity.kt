@@ -411,6 +411,7 @@ class MainActivity : FragmentActivity() {
                         )
                     }
                     onLogoutSource = viewModel::clearSourceAuthentication
+                    onRefreshSourceAccount = viewModel::refreshSourceAccount
                     onImportYoutube = viewModel::importYoutubeAccount
                     onDismissYoutubeImport = viewModel::dismissYoutubeImport
                     onYoutubeImportScheduleChange = viewModel::setYoutubeImportSchedule
@@ -444,6 +445,7 @@ class MainActivity : FragmentActivity() {
                     onTrustUnverifiedSource = viewModel::trustUnverifiedSource
                     onRejectUnverifiedSource = viewModel::rejectUnverifiedSource
                     onSwitchProfile = viewModel::switchProfile
+                    onConfigureSourceProfiles = viewModel::configureSourceProfiles
                     onCreateProfile = viewModel::createProfile
                     onVerifyProfilePin = viewModel::verifyProfilePin
                     onRenameProfile = viewModel::renameProfile
@@ -525,6 +527,8 @@ class MainActivity : FragmentActivity() {
                 darkTheme = darkTheme,
                 dynamicColor = uiState.dynamicColorsEnabled,
                 musicProfile = uiState.sources.isSpotifyOnly(),
+                sourceAccentColor = uiState.profiles.firstOrNull { it.id == uiState.activeProfileId && it.sourceId.isNotBlank() }
+                    ?.sourceAccentColor?.takeIf { it != 0L },
             ) {
                 androidx.compose.runtime.CompositionLocalProvider(
                     com.futo.platformplayer.compose.ui.LocalManualSponsorSkip provides

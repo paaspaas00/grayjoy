@@ -14,8 +14,14 @@ internal enum class SetupStep(val title: Int, val tag: String) {
     HoldSpeed(R.string.hold_to_speed, "hold-speed"),
     SponsorBlock(R.string.sponsorblock, "sponsorblock"),
     Autoplay(R.string.youtube_autoplay, "autoplay"),
+    SourceProfiles(R.string.profile_split_title, "source-profiles"),
+    ExtraSourceProfiles(R.string.profile_split_choose, "extra-source-profiles"),
+    Help(R.string.setup_help_title, "help"),
     Done(R.string.setup_ready, "done"),
 }
 
-internal fun guidedSetupSteps(importYoutube: Boolean, importFiles: Boolean): List<SetupStep> =
-    SetupStep.entries.filter { it != SetupStep.ImportDetails || importYoutube || importFiles }
+internal fun guidedSetupSteps(importYoutube: Boolean, importFiles: Boolean, splitProfiles: Boolean = false): List<SetupStep> =
+    SetupStep.entries.filter {
+        (it != SetupStep.ImportDetails || importYoutube || importFiles) &&
+            (it != SetupStep.ExtraSourceProfiles || splitProfiles)
+    }

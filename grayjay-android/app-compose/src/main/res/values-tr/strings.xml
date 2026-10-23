@@ -7,7 +7,7 @@
     <string name="reduced_playback_volume">Azaltılmış oynatma ses seviyesi</string>
     <string name="reduced_playback_volume_value">%1$dnormal hacmin %%\'si</string>
     <string name="nav_home">Ana Sayfa</string>
-    <string name="nav_following">Takip etme</string>
+    <string name="nav_following">Takip edilenler</string>
     <string name="nav_subscriptions">Abonelikler</string>
     <string name="nav_search">Ara</string>
     <string name="nav_library">Kütüphane</string>
@@ -42,7 +42,7 @@
     <string name="play">Oynat</string>
     <string name="pause">Duraklat</string>
     <string name="follow">Takip etmek</string>
-    <string name="following">Takip etme</string>
+    <string name="following">Takip ediliyor</string>
     <string name="videos">Videolar</string>
     <string name="creators">Üreticiler</string>
     <string name="playlists">Oynatma Listeleri</string>

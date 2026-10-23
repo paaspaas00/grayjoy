@@ -14,7 +14,7 @@
     <string name="setup_never_again">Do not show this guide on startup again</string>
     <string name="setup_later_title">You can do this later</string>
     <string name="setup_tour_title">Find your way around</string>
-    <string name="setup_tour_body">Tap a section below to discover what it does. In the app, the same sections are in the bottom bar (or at the side on tablets).</string>
+    <string name="setup_tour_body">Try the buttons in the bar below to discover each section, without leaving this guide. In the app, you will find the same bar at the bottom, or at the side on tablets.</string>
     <string name="setup_tour_home">Home collects videos from your subscriptions, Shorts and recommendations. Tap a video to play it. Swipe the player down to keep listening while browsing.</string>
     <string name="setup_tour_following">Follow a channel to find its uploads here. You can refresh, filter by creator and manage your subscriptions.</string>
     <string name="setup_tour_search">Type a title, artist or topic. Enabled sources supply the results. Hold a video to see more actions.</string>

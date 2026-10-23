@@ -1,5 +1,7 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.ui.sourceStringResource
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -477,7 +479,7 @@ fun HomeScreen(
                         item {
                             Text(
                                 when (feed) {
-                                    HomeFeedType.Subscriptions -> stringResource(
+                                    HomeFeedType.Subscriptions -> sourceStringResource(
                                         if (pageHome.subscriptionsTotal > 0) R.string.home_empty_feed
                                         else R.string.home_empty_subscriptions,
                                     )
