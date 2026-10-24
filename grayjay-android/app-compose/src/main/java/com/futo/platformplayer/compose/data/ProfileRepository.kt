@@ -275,7 +275,8 @@ internal class ProfileRepository(context: Context) {
         isBuiltIn = profile.builtIn,
         sourceId = profile.sourceId,
         sourceIconUrl = profile.iconUrl,
-        sourceAccentColor = profile.accentColor,
+        sourceAccentColor = if (profile.sourceId.equals("youtube", ignoreCase = true))
+            YOUTUBE_SOURCE_ACCENT else profile.accentColor,
     )
 
     private data class StoredProfile(

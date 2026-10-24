@@ -568,7 +568,7 @@
     <string name="mini_player_audio">Audio</string>
     <string name="link_not_supported_by_sources">Nessuna sorgente attiva può aprire questo link.</string>
     <string name="update_available">Aggiornamento di Grayjoy disponibile</string>
-    <string name="update_available_description">La versione %1$s è disponibile su GitHub.</string>
+    <string name="update_available_description">È disponibile la nuova versione %1$s.</string>
     <string name="open_release_page">Apri la pagina della release</string>
     <string name="version_information">Versione %1$s • build %2$d</string>
     <string name="enqueue">Accoda</string>
@@ -724,7 +724,7 @@
     <string name="sponsorblock_category_preview">Anteprima o riepilogo</string>
     <string name="sponsorblock_category_music_offtopic">Parte non musicale</string>
     <string name="sponsorblock_category_filler">Riempitivo</string>
-    <string name="channel_settings">Impostazioni canale</string>
+    <string name="channel_settings">Impostazioni del canale</string>
     <string name="video_sponsorblock_settings">SponsorBlock per questo video</string>
     <string name="sponsorblock_skip_notices">Mostra i messaggi dei segmenti saltati</string>
     <string name="sponsorblock_skip_notices_description">Indica brevemente il tipo di segmento che è stato saltato.</string>
@@ -849,4 +849,9 @@
     <string name="skip_crash_report_action">Salta</string>
     <string name="job_finished_notice">Job terminato: %1$s</string>
     <string name="update_download_job_title">Download aggiornamento</string>
+    <string name="experimental_features">Funzioni sperimentali</string>
+    <string name="audio_normalization">Normalizza audio a −23 LUFS</string>
+    <string name="audio_normalization_description">Adatta gradualmente la sonorità durante la riproduzione, con protezione dai picchi. Se disattivata, il DSP è escluso. Non si applica al casting.</string>
+    <string name="grayjoy_repository">Repository di Grayjoy</string>
+    <string name="repository_open_failed">Nessuna app disponibile per aprire questo link.</string>
 </resources>

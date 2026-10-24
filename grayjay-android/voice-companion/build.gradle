@@ -43,8 +43,8 @@ android {
         applicationId 'com.futo.platformplayer.voice'
         minSdk 28
         targetSdk 36
-        versionCode 4200
-        versionName '4.2.0'
+        versionCode 4300
+        versionName '4.3.0'
         manifestPlaceholders = [grayjoyPackage: 'com.futo.platformplayer.compose', voiceLabel: 'Grayjoy Voice']
         buildConfigField 'String', 'GRAYJOY_PACKAGE', '"com.futo.platformplayer.compose"'
         ndk { abiFilters 'arm64-v8a', 'x86_64' }

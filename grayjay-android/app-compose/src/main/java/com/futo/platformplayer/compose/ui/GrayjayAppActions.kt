@@ -132,6 +132,7 @@ class GrayjayAppActions {
     var onDefaultPlaybackSpeedChange: (Float) -> Unit = { _ -> }
     var onPerChannelPlaybackSpeedChange: (Boolean) -> Unit = { _ -> }
     var onHoldToSpeedChange: (Boolean) -> Unit = {}
+    var onAudioNormalizationChange: (Boolean) -> Unit = {}
     var onSponsorBlockEnabledChange: (Boolean) -> Unit = {}
     var onSponsorBlockAutomaticSkipChange: (Boolean) -> Unit = {}
     var onSponsorBlockSkipNoticesEnabledChange: (Boolean) -> Unit = {}

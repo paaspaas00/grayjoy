@@ -19,6 +19,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,11 +29,15 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -48,7 +53,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Check
@@ -96,6 +100,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -118,11 +123,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -136,6 +141,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -143,10 +149,14 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.DialogWindowProvider
@@ -171,9 +181,11 @@ import com.futo.platformplayer.compose.ui.SponsorBlockSkipNoticeUiModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private enum class DetailSection { UpNext, Comments }
 private enum class PlayerSettingsPage { Main, Quality, Speed, ChannelSpeed, SponsorBlock, AudioLanguage, Subtitles }
+private val LocalCompactPlayerSettings = androidx.compose.runtime.staticCompositionLocalOf { false }
 
 @Composable
 @androidx.compose.runtime.NonRestartableComposable
@@ -864,6 +876,12 @@ internal fun PlayerSurface(
     onResumeFromHistory: () -> Unit = {},
 ) {
     var isTimelineSeeking by remember(video.id) { mutableStateOf(false) }
+    var surfaceHeightPx by remember(isFullscreen) { mutableIntStateOf(0) }
+    var surfaceOrigin by remember(isFullscreen) { mutableStateOf(Offset.Zero) }
+    var settingsButtonBounds by remember(isFullscreen) { mutableStateOf<Rect?>(null) }
+    val seekTouchTargetHeight = if (isFullscreen && surfaceHeightPx > 0) {
+        with(LocalDensity.current) { (surfaceHeightPx / 5f).toDp().coerceAtLeast(48.dp) }
+    } else 48.dp
     var speedHolding by remember(video.id, isFullscreen) { mutableStateOf(false) }
     var controlsVisible by remember(video.id, isFullscreen) { mutableStateOf(true) }
     var isPointerDown by remember(video.id, isFullscreen) { mutableStateOf(false) }
@@ -880,11 +898,11 @@ internal fun PlayerSurface(
     }
     val isPlaylistPlayback = playback.queueVideoIds.size > 1
     val previousAvailable = canGoPrevious || player.currentPosition > 5_000L
-    val showControls = !controlsLocked &&
+    val showControls = !controlsLocked && !speedHolding &&
         (controlsVisible || playback.errorMessage != null)
     val controlsVisibilityAlpha = animateFloatAsState(
         targetValue = if (showControls) 1f else 0f,
-        animationSpec = tween(durationMillis = 180),
+        animationSpec = tween(durationMillis = 90),
         label = "player-controls-visibility",
     )
     val controlsAreDrawn by remember {
@@ -928,6 +946,10 @@ internal fun PlayerSurface(
 
     Box(
         modifier = modifier
+            .then(if (isFullscreen) Modifier.onGloballyPositioned {
+                surfaceHeightPx = it.size.height
+                surfaceOrigin = it.positionInRoot()
+            } else Modifier)
             .background(Color.Black)
             // Seek previews and animated controls must never draw over the Now Playing header.
             .clipToBounds()
@@ -1021,7 +1043,13 @@ internal fun PlayerSurface(
                 .fillMaxSize()
                 .pointerInput(video.id, controlsLocked, holdToSpeedEnabled) {
                     detectTapGestures(
-                        onTap = { controlsVisible = !controlsVisible },
+                        onPress = {
+                            // Both directions respond on press, without the double-tap timeout.
+                            val previouslyVisible = controlsVisible
+                            controlsVisible = !previouslyVisible
+                            if (!tryAwaitRelease()) controlsVisible = previouslyVisible
+                        },
+                        onTap = {},
                         onLongPress = {
                             if (
                                 holdToSpeedEnabled && !controlsLocked &&
@@ -1120,6 +1148,13 @@ internal fun PlayerSurface(
                 }
                 PlayerTopActionButtons(
                     isFullscreen = isFullscreen,
+                    hideSettingsActions = isFullscreen && showSettings,
+                    onLockControls = {
+                        controlsLocked = true
+                        controlsVisible = true
+                        showSettings = false
+                    },
+                    onSettingsBoundsChanged = { settingsButtonBounds = it },
                     onSettings = {
                         settingsPageName = PlayerSettingsPage.Main.name
                         showSettings = true
@@ -1138,7 +1173,7 @@ internal fun PlayerSurface(
                     .offset(y = if (isFullscreen) (-26).dp else (-24).dp),
                 horizontalArrangement = Arrangement.spacedBy(
                     if (isPlaylistPlayback) {
-                        if (isFullscreen) 48.dp else 34.dp
+                        if (isFullscreen) 44.dp else 30.dp
                     } else {
                         0.dp
                     },
@@ -1160,21 +1195,22 @@ internal fun PlayerSurface(
                     }
                 }
                 if (isLoading) {
-                    Spacer(Modifier.size(if (isFullscreen) 88.dp else 78.dp))
+                    Spacer(Modifier.size(if (isFullscreen) 96.dp else 86.dp))
                 } else {
                     Surface(
-                        modifier = Modifier.size(if (isFullscreen) 88.dp else 78.dp),
+                        modifier = Modifier.size(if (isFullscreen) 96.dp else 86.dp)
+                            .testTag("player-play-pause"),
                         onClick = onTogglePlayback,
                         shape = CircleShape,
                         color = Color.Black.copy(alpha = 0.62f),
                         contentColor = Color.White,
                     ) {
-                        Icon(
-                            imageVector = if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = stringResource(
+                        MorphingPlayPauseIcon(
+                            isPlaying = playback.isPlaying,
+                            description = stringResource(
                                 if (playback.isPlaying) R.string.pause else R.string.play,
                             ),
-                            modifier = Modifier.padding(if (isFullscreen) 22.dp else 19.dp),
+                            modifier = Modifier.padding(if (isFullscreen) 22.dp else 20.dp),
                         )
                     }
                 }
@@ -1195,6 +1231,7 @@ internal fun PlayerSurface(
             }
 
             PlayerTimelineRow(
+                seekTouchTargetHeight = seekTouchTargetHeight,
                 video = video,
                 player = player,
                 remotePositionMs = playback.positionMs.takeIf { playback.isCasting },
@@ -1224,8 +1261,12 @@ internal fun PlayerSurface(
         if (controlsLocked && controlsVisible) {
             Surface(
                 modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(16.dp),
+                    .align(if (isFullscreen) Alignment.BottomStart else Alignment.CenterStart)
+                    .then(if (isFullscreen) Modifier
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Bottom))
+                        .padding(start = 16.dp, bottom = 64.dp)
+                    else Modifier.padding(16.dp))
+                    .testTag("player-unlock"),
                 onClick = {
                     controlsLocked = false
                     controlsVisible = true
@@ -1284,15 +1325,16 @@ internal fun PlayerSurface(
                 contentColor = Color.White,
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("2×", style = MaterialTheme.typography.labelLarge)
+                    Text("2×", style = MaterialTheme.typography.titleMedium, fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold)
                     Icon(
                         Icons.Outlined.FastForward,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
@@ -1349,10 +1391,10 @@ internal fun PlayerSurface(
                     .testTag("sponsorblock-manual-skip"),
             ) { Text(stringResource(R.string.sponsorblock_skip_now)) }
         }
-    }
-
-    if (showSettings) {
+    if (showSettings || isFullscreen) {
         PlayerSettingsSheet(
+            visible = showSettings,
+            anchorBounds = settingsButtonBounds?.translate(-surfaceOrigin),
             page = com.futo.platformplayer.compose.ui.restoredEnumValue(settingsPageName, PlayerSettingsPage.Main),
             video = video,
             playback = playback,
@@ -1404,6 +1446,7 @@ internal fun PlayerSurface(
             },
         )
     }
+    }
 }
 
 @androidx.annotation.StringRes
@@ -1430,12 +1473,30 @@ private fun PlayerTopActionButtons(
     isFullscreen: Boolean,
     onSettings: () -> Unit,
     onFullscreen: () -> Unit,
+    onLockControls: () -> Unit,
+    hideSettingsActions: Boolean,
+    onSettingsBoundsChanged: (Rect) -> Unit = {},
 ) {
-    Row(modifier = Modifier.padding(end = if (isFullscreen) 18.dp else 0.dp)) {
+    Row(modifier = Modifier.padding(end = if (isFullscreen) 34.dp else 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (isFullscreen) 16.dp else 0.dp)) {
+        Row(
+            modifier = Modifier.offset(y = if (isFullscreen) 8.dp else 0.dp)
+                .onGloballyPositioned { onSettingsBoundsChanged(it.boundsInRoot()) }
+                .graphicsLayer { alpha = if (hideSettingsActions) 0f else 1f }
+                .then(if (hideSettingsActions) Modifier.clearAndSetSemantics {} else Modifier),
+            horizontalArrangement = Arrangement.spacedBy(if (isFullscreen) 16.dp else 0.dp),
+        ) {
+        if (isFullscreen) IconButton(
+            onClick = onLockControls, enabled = !hideSettingsActions,
+            modifier = Modifier.size(56.dp).testTag("player-lock"),
+        ) {
+            Icon(Icons.Outlined.Lock, contentDescription = stringResource(R.string.lock_controls),
+                tint = Color.White, modifier = Modifier.size(28.dp))
+        }
         IconButton(
             onClick = onSettings,
+            enabled = !hideSettingsActions,
             modifier = Modifier
-                .offset(y = if (isFullscreen) 8.dp else 0.dp)
                 .size(if (isFullscreen) 56.dp else 48.dp)
                 .testTag("player-settings"),
         ) {
@@ -1445,6 +1506,7 @@ private fun PlayerTopActionButtons(
                 tint = Color.White,
                 modifier = Modifier.size(if (isFullscreen) 30.dp else 24.dp),
             )
+        }
         }
         IconButton(
             onClick = onFullscreen,
@@ -1470,6 +1532,7 @@ private fun PlayerTopActionButtons(
  * Updating the root player surface twice a second used to recreate every overlay, brush and
  * control object, producing a large GC about every ten seconds while video was playing.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PlayerTimelineRow(
     video: VideoUiModel,
@@ -1484,7 +1547,19 @@ internal fun PlayerTimelineRow(
     onSeekingChanged: (Boolean) -> Unit,
     onStoryboardLoadFailure: () -> Unit = {},
     modifier: Modifier = Modifier,
+    seekTouchTargetHeight: androidx.compose.ui.unit.Dp = 48.dp,
 ) {
+    val touchHeight = if (isFullscreen) seekTouchTargetHeight.coerceAtLeast(48.dp) else 48.dp
+    // Grow the input area upwards; retain the existing visible track, thumb and label baseline.
+    val visualOffset = (touchHeight - 48.dp) / 2
+    val sliderInteraction = remember { MutableInteractionSource() }
+    val seekEnabled = !video.isLive && durationMs > 0L
+    val sliderColors = SliderDefaults.colors(
+        activeTrackColor = Color.Transparent,
+        inactiveTrackColor = Color.Transparent,
+        disabledActiveTrackColor = Color.Transparent,
+        disabledInactiveTrackColor = Color.Transparent,
+    )
     var playerPositionMs by remember(video.id) {
         mutableLongStateOf(player.currentPosition.coerceAtLeast(0L))
     }
@@ -1494,8 +1569,6 @@ internal fun PlayerTimelineRow(
     var seekProgress by rememberSaveable(video.id) { mutableFloatStateOf(0f) }
     var isSeeking by remember(video.id) { mutableStateOf(false) }
     var pendingSeekPositionMs by remember(video.id) { mutableStateOf<Long?>(null) }
-    var seekTooltipWidthPx by remember(video.id, isFullscreen) { mutableStateOf(0) }
-    var seekTooltipHeightPx by remember(video.id, isFullscreen) { mutableStateOf(0) }
     var storyboardUnavailable by remember(video.id, video.storyboard) { mutableStateOf(false) }
 
     LaunchedEffect(player, video.id, remotePositionMs != null) {
@@ -1561,9 +1634,10 @@ internal fun PlayerTimelineRow(
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier
                 .widthIn(min = if (isFullscreen) 58.dp else 46.dp)
+                .offset(y = visualOffset)
                 .testTag("playback-elapsed"),
         )
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .padding(horizontal = 6.dp),
@@ -1583,52 +1657,9 @@ internal fun PlayerTimelineRow(
                     targetWidthPx = with(density) { storyboardWidth.roundToPx() },
                 )
             }
-            Canvas(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .height(4.dp)
-                    .testTag("player-buffered-track"),
-            ) {
-                val y = size.height / 2f
-                val strokeWidth = size.height.coerceAtLeast(1f)
-                drawLine(
-                    color = Color.White.copy(alpha = 0.22f),
-                    start = androidx.compose.ui.geometry.Offset(0f, y),
-                    end = androidx.compose.ui.geometry.Offset(size.width, y),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Round,
-                )
-                drawLine(
-                    color = Color.White.copy(alpha = 0.52f),
-                    start = androidx.compose.ui.geometry.Offset(0f, y),
-                    end = androidx.compose.ui.geometry.Offset(size.width * bufferedProgress, y),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Round,
-                )
-                drawLine(
-                    color = progressColor,
-                    start = androidx.compose.ui.geometry.Offset(0f, y),
-                    end = androidx.compose.ui.geometry.Offset(size.width * displayedProgress, y),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Round,
-                )
-                if (durationMs > 0L) sponsorBlockSegments.forEach { segment ->
-                    val start = (segment.startMs.toFloat() / durationMs).coerceIn(0f, 1f)
-                    val end = (segment.endMs.toFloat() / durationMs).coerceIn(start, 1f)
-                    drawLine(
-                        color = Color(0xFF8FE388),
-                        start = androidx.compose.ui.geometry.Offset(size.width * start, y),
-                        end = androidx.compose.ui.geometry.Offset(size.width * end, y),
-                        strokeWidth = strokeWidth,
-                        cap = StrokeCap.Butt,
-                    )
-                }
-            }
             Slider(
                 value = displayedProgress,
-                enabled = !video.isLive && durationMs > 0L,
+                enabled = seekEnabled,
                 onValueChange = {
                     if (!isSeeking) {
                         isSeeking = true
@@ -1644,38 +1675,38 @@ internal fun PlayerTimelineRow(
                     isSeeking = false
                     onSeekingChanged(false)
                 },
-                colors = SliderDefaults.colors(
-                    activeTrackColor = Color.Transparent,
-                    inactiveTrackColor = Color.Transparent,
-                    disabledActiveTrackColor = Color.Transparent,
-                    disabledInactiveTrackColor = Color.Transparent,
-                ),
-                modifier = Modifier.fillMaxWidth(),
+                colors = sliderColors,
+                interactionSource = sliderInteraction,
+                thumb = {
+                    Box(
+                        Modifier.size(width = PlayerSeekHandleWidth, height = touchHeight)
+                            .padding(bottom = (48.dp - PlayerSeekHandleHeight) / 2),
+                        contentAlignment = Alignment.BottomCenter,
+                    ) {
+                        Box(Modifier.size(PlayerSeekHandleWidth, PlayerSeekHandleHeight)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(PlayerSeekHandleWidth / 2))
+                            .background(if (seekEnabled) progressColor else Color.White.copy(alpha = 0.38f))
+                            .testTag("player-seek-handle"))
+                    }
+                },
+                track = { sliderState ->
+                    PlayerSeekTrack(
+                        progress = sliderState.value,
+                        bufferedProgress = bufferedProgress,
+                        durationMs = durationMs,
+                        segments = sponsorBlockSegments,
+                        progressColor = progressColor,
+                        modifier = Modifier.offset(y = visualOffset),
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().height(touchHeight).testTag("player-seek-touch-area"),
             )
             if (isSeeking) {
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .zIndex(2f)
-                        .offset {
-                            val horizontalInset = 10.dp.roundToPx()
-                            val trackWidth = (constraints.maxWidth - horizontalInset * 2)
-                                .coerceAtLeast(0)
-                            val thumbCenter = horizontalInset +
-                                (trackWidth * displayedProgress.coerceIn(0f, 1f)).toInt()
-                            val left = (thumbCenter - seekTooltipWidthPx / 2)
-                                .coerceIn(
-                                    0,
-                                    (constraints.maxWidth - seekTooltipWidthPx).coerceAtLeast(0),
-                                )
-                            val top = -(seekTooltipHeightPx + 6.dp.roundToPx())
-                            IntOffset(left, top)
-                        }
-                        .ignoreParentMeasurement()
-                        .onGloballyPositioned {
-                            seekTooltipWidthPx = it.size.width
-                            seekTooltipHeightPx = it.size.height
-                        }
+                        .playerSeekPreviewPlacement(displayedProgress, touchHeight)
                         .testTag("player-seek-preview"),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -1734,17 +1765,29 @@ internal fun PlayerTimelineRow(
             color = Color.White,
             textAlign = TextAlign.End,
             style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.widthIn(min = if (isFullscreen) 58.dp else 46.dp),
+            modifier = Modifier.widthIn(min = if (isFullscreen) 58.dp else 46.dp).offset(y = visualOffset),
         )
     }
 }
 
-private fun Modifier.ignoreParentMeasurement(): Modifier = layout { measurable, constraints ->
+internal fun Modifier.playerSeekPreviewPlacement(progress: Float, touchHeight: Dp): Modifier = layout { measurable, constraints ->
     val placeable = measurable.measure(
         constraints.copy(minWidth = 0, minHeight = 0),
     )
-    layout(width = 0, height = 0) {
-        placeable.placeRelative(0, 0)
+    val width = constraints.maxWidth
+    val horizontalInset = PlayerSeekHandleWidth.roundToPx() / 2
+    val trackWidth = (width - horizontalInset * 2).coerceAtLeast(0)
+    val fraction = progress.coerceIn(0f, 1f).let {
+        if (layoutDirection == LayoutDirection.Rtl) 1f - it else it
+    }
+    val thumbCenter = horizontalInset + (trackWidth * fraction).roundToInt()
+    val left = (thumbCenter - placeable.width / 2)
+        .coerceIn(0, (width - placeable.width).coerceAtLeast(0))
+    val top = (touchHeight - 48.dp).roundToPx() - placeable.height - 6.dp.roundToPx()
+    // Measure and position together: the first frame must not use a zero/previous preview size.
+    // The overlay occupies no height, and uses physical coordinates to avoid mirroring twice.
+    layout(width = width, height = 0) {
+        placeable.place(left, top)
     }
 }
 
@@ -1909,6 +1952,8 @@ private fun viridis(value: Float): Color {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlayerSettingsSheet(
+    visible: Boolean,
+    anchorBounds: Rect?,
     page: PlayerSettingsPage,
     video: VideoUiModel,
     playback: PlaybackUiState,
@@ -1968,19 +2013,20 @@ private fun PlayerSettingsSheet(
         else -> stringResource(R.string.not_available)
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        contentWindowInsets = { grayjoySheetInsets() },
-    ) {
-        PlayerSettingsSheetSystemBars(
-            isFullscreen = isFullscreen,
-            isPortraitFullscreen = isPortraitFullscreen,
-        )
+    val content: @Composable () -> Unit = {
+        androidx.compose.runtime.CompositionLocalProvider(LocalCompactPlayerSettings provides isFullscreen) {
         AnimatedContent(
             targetState = page,
+            contentAlignment = Alignment.TopEnd,
             transitionSpec = {
+                if (isFullscreen) {
+                    val forward = targetState != PlayerSettingsPage.Main
+                    (fadeIn(tween(130, delayMillis = 20)) + slideInHorizontally(tween(180)) {
+                        if (forward) it / 8 else -it / 8
+                    }).togetherWith(fadeOut(tween(90)) + slideOutHorizontally(tween(160)) {
+                        if (forward) -it / 10 else it / 10
+                    }).using(SizeTransform(clip = true) { _, _ -> tween(180) })
+                } else {
                 val forward = targetState.ordinal > initialState.ordinal
                 (fadeIn(tween(180)) + slideInHorizontally { width ->
                     if (forward) width / 7 else -width / 7
@@ -1989,15 +2035,16 @@ private fun PlayerSettingsSheet(
                         if (forward) -width / 9 else width / 9
                     },
                 )
+                }
             },
             label = "player-settings-page",
         ) { animatedPage ->
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 28.dp),
+                    .padding(bottom = if (isFullscreen) 8.dp else 28.dp),
             ) {
+            if (!isFullscreen || animatedPage != PlayerSettingsPage.Main) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2005,7 +2052,7 @@ private fun PlayerSettingsSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (animatedPage != PlayerSettingsPage.Main) {
-                    IconButton(onClick = { onPageChange(PlayerSettingsPage.Main) }) {
+                    IconButton(onClick = { onPageChange(PlayerSettingsPage.Main) }, modifier = Modifier.testTag("player-settings-back")) {
                         Icon(
                             Icons.Outlined.ChevronLeft,
                             contentDescription = stringResource(R.string.back_to_player_settings),
@@ -2024,10 +2071,14 @@ private fun PlayerSettingsSheet(
                         PlayerSettingsPage.AudioLanguage -> stringResource(R.string.audio_language)
                         PlayerSettingsPage.Subtitles -> stringResource(R.string.subtitles)
                     },
-                    style = MaterialTheme.typography.titleLarge,
+                    style = if (isFullscreen) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
             }
-
+            if (isFullscreen) androidx.compose.material3.HorizontalDivider()
+            }
+            Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState())
+                .testTag("player-settings-options-${animatedPage.name.lowercase()}")) {
             when (animatedPage) {
                 PlayerSettingsPage.Main -> {
                     PlayerSettingRow(
@@ -2082,7 +2133,7 @@ private fun PlayerSettingsSheet(
                         testTag = "player-settings-subtitles",
                         onClick = { onPageChange(PlayerSettingsPage.Subtitles) },
                     )
-                    PlayerSettingRow(
+                    if (!isFullscreen) PlayerSettingRow(
                         icon = Icons.Outlined.Lock,
                         title = stringResource(R.string.lock_controls),
                         testTag = "player-settings-lock",
@@ -2115,7 +2166,7 @@ private fun PlayerSettingsSheet(
                     }
                     PlayerSheetOptions(
                         options = qualityOptions,
-                        horizontal = isFullscreen,
+                        horizontal = false,
                     )
                 }
 
@@ -2273,6 +2324,26 @@ private fun PlayerSettingsSheet(
                 }
             }
             }
+            }
+        }
+        }
+    }
+    if (isFullscreen) {
+        FullscreenPlayerSettingsMenu(
+            visible = visible, anchorBounds = anchorBounds,
+            onDismiss = onDismiss,
+            onBack = { if (page == PlayerSettingsPage.Main) onDismiss() else onPageChange(PlayerSettingsPage.Main) },
+            content = content,
+        )
+    } else if (visible) {
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            contentWindowInsets = { grayjoySheetInsets() },
+        ) {
+            PlayerSettingsSheetSystemBars(isFullscreen = false, isPortraitFullscreen = isPortraitFullscreen)
+            content()
         }
     }
 }
@@ -2377,24 +2448,29 @@ private fun PlayerSettingRow(
     showChevron: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val compact = LocalCompactPlayerSettings.current
     val contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled, onClick = onClick)
             .testTag(testTag)
-            .padding(horizontal = 24.dp, vertical = 18.dp),
+            .heightIn(min = if (compact) 56.dp else 48.dp)
+            .padding(horizontal = if (compact) 16.dp else 24.dp, vertical = if (compact) 12.dp else 18.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 14.dp else 20.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(30.dp))
-        Text(title, color = contentColor, style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.weight(1f))
+        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(if (compact) 24.dp else 30.dp))
+        Text(title, Modifier.weight(1f), color = contentColor,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
         value?.let {
             Text(
                 it,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f),
-                style = MaterialTheme.typography.titleMedium,
+                style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
+                modifier = Modifier.widthIn(max = if (compact) 120.dp else 180.dp),
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
         if (showChevron) {
@@ -2410,22 +2486,27 @@ private fun PlayerSelectionRow(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val compact = LocalCompactPlayerSettings.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .heightIn(min = if (compact) 56.dp else 48.dp)
+            .padding(horizontal = if (compact) 18.dp else 24.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        RadioButton(selected = selected, onClick = onClick)
+        if (compact) Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+            if (selected) Icon(Icons.Outlined.Check, contentDescription = stringResource(R.string.selected), tint = MaterialTheme.colorScheme.primary)
+        } else RadioButton(selected = selected, onClick = onClick)
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(title, style = if (compact) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleMedium)
             detail?.let {
-                Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium)
             }
         }
-        if (selected) {
+        if (selected && !compact) {
             Icon(Icons.Outlined.Check, contentDescription = stringResource(R.string.selected))
         }
     }

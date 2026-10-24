@@ -17,6 +17,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -103,6 +104,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -110,6 +112,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
@@ -183,6 +186,7 @@ internal const val RELEASE_UPDATE_CHECK_ENABLED = true
 private val LocalPageStateHolder = staticCompositionLocalOf<SaveableStateHolder> {
     error("Page state holder was not provided")
 }
+private val LocalLibraryEntryGeneration = staticCompositionLocalOf { 0L }
 
 internal fun hasNowPlayingDownload(download: DownloadUiModel?): Boolean {
     if (download == null) return false
@@ -641,6 +645,7 @@ private fun GrayjayAppContent(
     val pageStateHolder = rememberBoundedPageStateHolder(protectedKeys = protectedPageKeys)
     var searchAutoFocusRequested by rememberSaveable { mutableStateOf(false) }
     var libraryFilterName by rememberSaveable { mutableStateOf(LibraryFilter.History.name) }
+    var libraryEntryGeneration by rememberSaveable { mutableStateOf(0L) }
     var pendingPageSlideDirection by rememberSaveable { mutableStateOf(0) }
     var pageSlideRequest by rememberSaveable { mutableStateOf(0L) }
     var pendingDownloadFocusId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -806,6 +811,7 @@ private fun GrayjayAppContent(
             .mapNotNull(availableVideosById::get)
     }
     val onSelect: (GrayjayDestination) -> Unit = {
+        if (it == GrayjayDestination.Library) libraryEntryGeneration++
         if (it == GrayjayDestination.Home && selected == GrayjayDestination.Home &&
             selectedVideoId == null && selectedChannelId == null && selectedPlaylistId == null) {
             actions.onHomeFeedSelected(HomeFeedType.Subscriptions)
@@ -1629,6 +1635,7 @@ private fun GrayjayAppContent(
         Box(Modifier.fillMaxSize().background(Color.Black))
     } else CompositionLocalProvider(
         LocalPageStateHolder provides pageStateHolder,
+        LocalLibraryEntryGeneration provides libraryEntryGeneration,
         LocalVideoCreatorClick provides onVideoCreatorClick,
         LocalChannelArtworkIndex provides channelArtworkIndex,
         LocalChannelArtworkRequest provides actions.onHydrateChannelArtwork,
@@ -1636,6 +1643,7 @@ private fun GrayjayAppContent(
         com.futo.platformplayer.compose.ui.screens.LocalExtraPreferences provides com.futo.platformplayer.compose.ui.screens.ExtraPreferences(
             uiState.brainrotShortsEnabled, actions.onBrainrotShortsChange, uiState.rebuildingCaches, actions.onRebuildContentCaches,
             uiState.youtubeAutoplayEnabled, actions.onYoutubeAutoplayChange,
+            uiState.audioNormalizationEnabled, actions.onAudioNormalizationChange,
         ),
     ) {
         val navigationVideos = remember(uiState.videos, uiState.subscriptionVideos) {
@@ -2161,10 +2169,10 @@ private fun GrayjayScaffold(
     val density = LocalDensity.current
     var expandedPlayerBounds by remember { mutableStateOf<Rect?>(null) }
     var miniPlayerBounds by remember { mutableStateOf<Rect?>(null) }
+    var miniPlayerSlotBottomPx by remember { mutableStateOf<Float?>(null) }
     var rootHeightPx by remember { mutableFloatStateOf(0f) }
     var rootLeftPx by remember { mutableFloatStateOf(0f) }
     var rootTopPx by remember { mutableFloatStateOf(0f) }
-    var appBottomBarHeightPx by remember { mutableFloatStateOf(0f) }
     val isTransitionDragging = playback.transition.isDragging
     val pageStateHolder = LocalPageStateHolder.current
     val compactChrome = com.futo.platformplayer.compose.ui.screens.compactUi()
@@ -2173,18 +2181,24 @@ private fun GrayjayScaffold(
     val isRootSearch = selected == GrayjayDestination.Search &&
         selectedChannel == null && selectedPlaylist == null && !nestedBackEnabled
     var channelSearchMode by rememberSaveable(selectedChannel?.id) { mutableStateOf(false) }
-    val imeBottomPx = WindowInsets.ime.getBottom(density)
-    val navigationBottomPx = WindowInsets.navigationBars.getBottom(density)
-    val bottomNavigationFallbackPx = with(density) { 80.dp.roundToPx() }
-    val searchMiniplayerBottomPx = searchMiniplayerBottomInsetPx(
-        imeBottomPx = imeBottomPx,
-        navigationBottomPx = navigationBottomPx,
-        appBottomBarHeightPx = if (bottomNavigationProvidesInset) {
-            appBottomBarHeightPx.roundToInt().coerceAtLeast(bottomNavigationFallbackPx)
-        } else {
-            0
-        },
-    )
+    val dismissProgress = remember { Animatable(0f) }
+    val dismissScope = rememberCoroutineScope()
+    var dismissJob by remember { mutableStateOf<Job?>(null) }
+    val latestPlayback by rememberUpdatedState(playback)
+    LaunchedEffect(playback.video?.id) {
+        dismissJob?.cancel()
+        dismissJob = null
+        dismissProgress.snapTo(0f)
+    }
+    val dismissMiniplayer: () -> Unit = {
+        if (dismissJob?.isActive != true) {
+            val closingVideoId = playback.video?.id
+            dismissJob = dismissScope.launch {
+                dismissProgress.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
+                if (latestPlayback.video?.id == closingVideoId) latestPlayback.onClose()
+            }
+        }
+    }
     val predictiveBackTransform = Modifier.graphicsLayer {
         val progress = playback.navigationBackProgress.floatValue.coerceIn(0f, 1f)
         transformOrigin = TransformOrigin(if (playback.navigationBackFromRight) 1f else 0f, 0.5f)
@@ -2205,6 +2219,7 @@ private fun GrayjayScaffold(
     }
     val transitionDragModifier = Modifier.draggable(
         state = dragState,
+        enabled = dismissJob?.isActive != true,
         orientation = Orientation.Vertical,
         onDragStarted = {
             playback.onTransitionDragStart()
@@ -2250,10 +2265,12 @@ private fun GrayjayScaffold(
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             topBar = {
-                AnimatedVisibility(visible = !isRootSearch && !channelSearchMode,
+                Column(Modifier.statusBarsPadding()) {
+                if (!isRootSearch) AnimatedVisibility(visible = !channelSearchMode,
                     enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 Column {
                 CenterAlignedTopAppBar(
+                    windowInsets = WindowInsets(0, 0, 0, 0),
                     expandedHeight = if (compactChrome) 56.dp else 64.dp,
                     modifier = predictiveBackTransform.testTag("browse-top-bar").then(
                         if (transitionActive) Modifier.clearAndSetSemantics { }
@@ -2373,24 +2390,18 @@ private fun GrayjayScaffold(
                 )
                 }
                 }
+                }
             },
             bottomBar = {
-                Column(
-                    Modifier
-                        .then(
-                            if (
-                                scaffoldBottomBarNeedsNavigationBarPadding(
-                                    bottomNavigationProvidesInset =
-                                        bottomNavigationProvidesInset,
-                                )
-                            ) {
-                                Modifier.navigationBarsPadding()
-                            } else {
-                                Modifier
-                            },
-                        ),
-                ) {
-                    if (!isRootSearch) playback.video?.let { video ->
+                KeyboardAwarePlayerBar(
+                    onMiniatureBottomChanged = { miniPlayerSlotBottomPx = it - rootTopPx },
+                    navigation = {
+                        Box(if (bottomNavigationProvidesInset) Modifier else Modifier.navigationBarsPadding()) {
+                            bottomBar()
+                        }
+                    },
+                    miniature = {
+                    playback.video?.let { video ->
                         MiniPlayer(
                             video = video,
                             isPlaying = playback.isPlaying,
@@ -2401,11 +2412,11 @@ private fun GrayjayScaffold(
                             },
                             player = playback.player.takeUnless { playback.state.isCasting },
                             canSkip = playback.queueSize > 1,
-                            chromeAlpha = if (transitionActive) 0f else 1f,
+                            chromeAlpha = if (transitionActive) 0f else 1f - dismissProgress.value,
                             onExpand = playback.onExpand,
                             onTogglePlayback = playback.onToggle,
                             onSkipToNext = playback.onNext,
-                            onClose = playback.onClose,
+                            onClose = dismissMiniplayer,
                             onVideoBoundsChanged = { measuredBounds ->
                                 miniPlayerBounds = playerBoundsInsideScaffold(
                                     boundsInRoot = measuredBounds,
@@ -2415,17 +2426,13 @@ private fun GrayjayScaffold(
                             },
                             // Keep the initiating pointer node alive throughout the morph.
                             // Removing it when details appear cancels the user's ongoing swipe.
-                            modifier = transitionDragModifier,
+                            modifier = Modifier.offset {
+                                IntOffset(0, (24.dp.toPx() * dismissProgress.value).roundToInt())
+                            }.then(transitionDragModifier),
                         )
                     }
-                    Box(
-                        Modifier.onGloballyPositioned { coordinates ->
-                            appBottomBarHeightPx = coordinates.size.height.toFloat()
-                        },
-                    ) {
-                        bottomBar()
-                    }
-                }
+                    },
+                )
             },
         ) { contentPadding ->
             Box(
@@ -2664,6 +2671,7 @@ private fun GrayjayScaffold(
                         onNavigationMenuClick = onToggleDrawer ?: {},
                     )
                     GrayjayDestination.Library -> LibraryScreen(
+                        historyEntryGeneration = LocalLibraryEntryGeneration.current,
                         groupHistoryByPlaylist = playback.groupHistoryByPlaylist,
                         onGroupHistoryByPlaylistChange = playback.onGroupHistoryByPlaylistChange,
                         sources = sourcePresentation.sources,
@@ -2797,43 +2805,6 @@ private fun GrayjayScaffold(
                 }
                 }
             }
-        }
-
-        if (isRootSearch) playback.video?.let { video ->
-            MiniPlayer(
-                video = video,
-                isPlaying = playback.isPlaying,
-                progress = if (playback.state.durationMs > 0) {
-                    playback.state.positionMs.toFloat() / playback.state.durationMs
-                } else {
-                    0f
-                },
-                player = playback.player.takeUnless { playback.state.isCasting },
-                canSkip = playback.queueSize > 1,
-                chromeAlpha = if (transitionActive) 0f else 1f,
-                onExpand = playback.onExpand,
-                onTogglePlayback = playback.onToggle,
-                onSkipToNext = playback.onNext,
-                onClose = playback.onClose,
-                onVideoBoundsChanged = { measuredBounds ->
-                    miniPlayerBounds = playerBoundsInsideScaffold(
-                        boundsInRoot = measuredBounds,
-                        scaffoldLeftInRoot = rootLeftPx,
-                        scaffoldTopInRoot = rootTopPx,
-                    )
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    // This inset belongs outside every pointer-input modifier: the
-                    // navigation bar/IME beneath it must not become part of the drag target.
-                    .padding(
-                        bottom = with(density) { searchMiniplayerBottomPx.toDp() },
-                    )
-                    .then(transitionDragModifier)
-                    // Alpha alone does not remove a composable from hit testing. The hidden
-                    // search mini-player must be below the expanded, scrollable details.
-                    .zIndex(if (transitionActive) 0f else 2f),
-            )
         }
 
         if (transitionVideo != null && (transitionActive || expandedPlayerBounds != null)) {
@@ -3183,9 +3154,47 @@ private fun GrayjayScaffold(
                     .then(transitionDragModifier)
                     // The shared video surface is above the miniature's clickable card.
                     // Forward taps on that area to the same expansion action as its title.
-                    .clickable(enabled = !transitionActive, onClick = playback.onExpand)
+                    .clickable(enabled = !transitionActive && dismissJob?.isActive != true, onClick = playback.onExpand)
+                    .graphicsLayer { alpha = 1f - dismissProgress.value }
+                    .drawWithContent {
+                        // The shared video sits above Scaffold, unlike its miniature chrome.
+                        // Keep its dismiss animation inside the same fixed slot so it passes
+                        // behind navigation instead of painting over the bar's buttons.
+                        if (transitionActive) drawContent() else clipRect(
+                            bottom = ((miniPlayerSlotBottomPx ?: end.bottom) - end.top)
+                                .coerceIn(0f, size.height),
+                        ) { this@drawWithContent.drawContent() }
+                    }
                     .zIndex(2f),
             )
+        }
+    }
+}
+
+@Composable
+private fun KeyboardAwarePlayerBar(
+    onMiniatureBottomChanged: (Float) -> Unit,
+    navigation: @Composable () -> Unit,
+    miniature: @Composable () -> Unit,
+) {
+    val ime = WindowInsets.ime
+    val navigationBars = WindowInsets.navigationBars
+    Layout(content = {
+        Box(Modifier.fillMaxWidth().clipToBounds().onGloballyPositioned {
+            onMiniatureBottomChanged(it.positionInRoot().y + it.size.height)
+        }) { miniature() }
+        Box(Modifier.fillMaxWidth()) { navigation() }
+    }) { measurables, constraints ->
+        val loose = constraints.copy(minHeight = 0)
+        val mini = measurables[0].measure(loose)
+        val nav = measurables[1].measure(loose)
+        // Read animated IME insets during measurement, avoiding whole-screen recomposition.
+        // The inset is a sibling of the miniature, never part of its touch target.
+        val lowerSpace = searchMiniplayerBottomInsetPx(ime.getBottom(this), navigationBars.getBottom(this), nav.height)
+        val height = (mini.height + lowerSpace).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(constraints.maxWidth, height) {
+            mini.placeRelative(0, 0)
+            nav.placeRelative(0, height - nav.height)
         }
     }
 }

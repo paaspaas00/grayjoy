@@ -526,7 +526,7 @@
     <string name="mini_player_audio">Audio</string>
     <string name="link_not_supported_by_sources">Aucune des sources actives ne peut ouvrir ce lien.</string>
     <string name="update_available">Mise à jour Grayjoy disponible</string>
-    <string name="update_available_description">La version %1$s est disponible sur GitHub.</string>
+    <string name="update_available_description">La nouvelle version %1$s est disponible.</string>
     <string name="open_release_page">Ouvrir la page de version</string>
     <string name="version_information">Version %1$s • build %2$d</string>
     <string name="enqueue">Ajouter à la file d\'attente</string>
@@ -674,4 +674,9 @@
     <string name="skip_crash_report_action">Ignorer</string>
     <string name="job_finished_notice">Tâche terminée : %1$s</string>
     <string name="update_download_job_title">Téléchargement de la mise à jour</string>
+    <string name="experimental_features">Fonctions expérimentales</string>
+    <string name="audio_normalization">Normaliser le son à −23 LUFS</string>
+    <string name="audio_normalization_description">Adapte progressivement le niveau sonore pendant la lecture, avec protection contre les crêtes. Le DSP est contourné si désactivé. Ne concerne pas la diffusion Cast.</string>
+    <string name="grayjoy_repository">Dépôt Grayjoy</string>
+    <string name="repository_open_failed">Aucune application disponible pour ouvrir ce lien.</string>
 </resources>

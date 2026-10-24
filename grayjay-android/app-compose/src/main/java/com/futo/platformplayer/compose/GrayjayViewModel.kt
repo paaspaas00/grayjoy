@@ -724,6 +724,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             defaultPlaybackSpeed = preferences.defaultPlaybackSpeed,
             perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
             holdToSpeedEnabled = preferences.holdToSpeedEnabled,
+            audioNormalizationEnabled = preferences.audioNormalizationEnabled,
             brainrotShortsEnabled = preferences.brainrotShortsEnabled,
             youtubeAutoplayEnabled = preferences.youtubeAutoplayEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
@@ -771,6 +772,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         com.futo.platformplayer.compose.jobs.RunningJobs.register(crashPauseHook)
         engine.player.addListener(sponsorSeekListener)
         engine.setProfile(activeProfileId)
+        engine.setAudioNormalizationEnabled(preferences.audioNormalizationEnabled)
         configureVideoTitleLanguage()
         configureYoutubeBackend()
         val initialLibraryRepository = libraryRepository
@@ -1102,6 +1104,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         preferences.holdToSpeedEnabled = enabled
         _uiState.update { it.copy(holdToSpeedEnabled = preferences.holdToSpeedEnabled) }
         if (!enabled) endSpeedHold()
+    }
+
+    fun setAudioNormalizationEnabled(enabled: Boolean) {
+        preferences.audioNormalizationEnabled = enabled
+        _uiState.update { it.copy(audioNormalizationEnabled = enabled) }
+        engine.setAudioNormalizationEnabled(enabled)
     }
 
     fun setPreferredVideoQuality(height: Int) {
@@ -1491,7 +1499,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         remoteVideos[video.id] = video
         pendingPcHandoffSeek = video.id to playback.positionMs
         publishExternalNavigation(ExternalNavigationKind.Video, video.id)
-        openVideoInternal(video.id, publishNavigationWhenResolved = false)
+        openVideoInternal(video.id)
         return true
     }
 
@@ -2321,6 +2329,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         activeProfileId = profileId
         jobsNeedRestoration = false
         preferences = nextPreferences
+        engine.setAudioNormalizationEnabled(preferences.audioNormalizationEnabled)
         playlistPlaybackPreferences = nextPlaylistPreferences
         configureVideoTitleLanguage()
         configureYoutubeBackend()
@@ -2380,6 +2389,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             defaultPlaybackSpeed = preferences.defaultPlaybackSpeed,
             perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
             holdToSpeedEnabled = preferences.holdToSpeedEnabled,
+            audioNormalizationEnabled = preferences.audioNormalizationEnabled,
             brainrotShortsEnabled = preferences.brainrotShortsEnabled,
             youtubeAutoplayEnabled = preferences.youtubeAutoplayEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
@@ -2577,7 +2587,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         if (profileAtStart != activeProfileId) return@launch
                         openVideoInternal(
                             seedVideo.id,
-                            publishNavigationWhenResolved = false,
                             publishNavigationWhenStarted = true,
                         )
                     }
@@ -3230,10 +3239,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun openVideo(videoId: String) = openVideoInternal(
-        videoId = videoId,
-        publishNavigationWhenResolved = true,
-    )
+    // In-app navigation is owned by the initiating tap. Resolving a source must not undo
+    // a later minimize, back gesture or tab change while the request is still loading.
+    fun openVideo(videoId: String) = openVideoInternal(videoId)
 
     /** Called only by the mounted phone-only Brainrot pager; empty means the session ended. */
     fun updateShortsPrefetchWindow(videoIds: List<String>) {
@@ -3257,7 +3265,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private fun openVideoInternal(
         videoId: String,
-        publishNavigationWhenResolved: Boolean,
         publishNavigationWhenStarted: Boolean = false,
     ) {
         val video = findVideo(videoId) ?: return
@@ -3343,9 +3350,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
                 scheduleResumePromptDismiss(resolved.id, resumePositionFraction)
-                if (publishNavigationWhenResolved) {
-                    publishExternalNavigation(ExternalNavigationKind.Video, resolved.id)
-                }
                 openLocallyOrCast(
                     video = resolved,
                     playWhenReady = resolved.playbackFromDownload || resolved.contentUrl.isNotBlank(),
@@ -4091,7 +4095,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 verifyVoiceSession()
                 remoteVideos[video.id] = video
                 registerRemoteChannel(video)
-                openVideoInternal(video.id, publishNavigationWhenResolved = false, publishNavigationWhenStarted = true)
+                openVideoInternal(video.id, publishNavigationWhenStarted = true)
             }
             when (name) {
                 "play_artist", "play_same_artist" -> {
@@ -4315,7 +4319,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     verifyVoiceSession()
                     remoteVideos[video.id] = video
                     registerRemoteChannel(video)
-                    openVideoInternal(video.id, publishNavigationWhenResolved = false, publishNavigationWhenStarted = true)
+                    openVideoInternal(video.id, publishNavigationWhenStarted = true)
                     if (!video.playbackFromDownload) downloadAudio(video.id, null)
                     result.put("ok", true).put("title", video.title).put("videoId", video.id)
                 }
@@ -8608,6 +8612,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun applyPlaybackPreferences() {
+        engine.setAudioNormalizationEnabled(preferences.audioNormalizationEnabled)
         applyPlaybackSpeed(_uiState.value.nowPlaying.video)
         engine.setOtherAudioDucking(
             preferences.otherAudioDuckingEnabled,

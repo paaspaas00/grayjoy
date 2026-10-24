@@ -22,6 +22,49 @@ class MiniplayerQueueRegressionTest {
     @Test fun historyEnqueueKeepsTapAndSwipeWorkingBeforeQueuedSourcesAreReady() = checkQueue(false)
     @Test fun audioOnlyHistoryEnqueueKeepsTapAndSwipeWorkingBeforeQueuedSourcesAreReady() = checkQueue(true)
 
+    @Test fun loadingVideoStaysMinimizedWhenItsPlaybackAndExtrasArrive() = checkLoadingCompletion(false)
+    @Test fun loadingVideoDoesNotReopenAfterNavigatingToAnotherTab() = checkLoadingCompletion(true)
+
+    private fun checkLoadingCompletion(changeTab: Boolean) {
+        val previous = VideoUiModel("previous", "Previous video", "Creator", "", "3:00")
+        val opening = VideoUiModel("opening", "Still loading", "Creator", "", "3:00")
+        val state = mutableStateOf(GrayjayUiState(videos = listOf(previous, opening),
+            home = HomeUiState(videos = listOf(opening)),
+            playback = PlaybackUiState(currentVideoId = previous.id, queueVideoIds = listOf(previous.id)),
+            nowPlaying = NowPlayingUiState(video = previous)))
+        val actions = GrayjayAppActions().apply {
+            onOpenVideo = { id ->
+                assertEquals(opening.id, id)
+                // Keep the previous player item alive while the new source is resolving.
+                state.value = state.value.copy(nowPlaying = NowPlayingUiState(
+                    video = opening, isLoadingPlayback = true, isLoadingExtras = true))
+            }
+        }
+        rule.runOnUiThread { player = ExoPlayer.Builder(rule.activity).build() }
+        rule.setContent { GrayjayTheme(dynamicColor = false) { GrayjayApp(state.value, player, actions) } }
+        rule.onNodeWithTag("video-card-${opening.id}").performClick()
+        rule.onNodeWithTag("now-playing-close").assertIsDisplayed()
+        rule.onNodeWithTag("media-player").performTouchInput { swipe(center, center + Offset(0f, 1300f), 700) }
+        rule.onNodeWithTag("mini-player").assertIsDisplayed()
+        if (changeTab) rule.onNodeWithTag("nav-search").performClick()
+        rule.runOnIdle {
+            val resolved = opening.copy(title = "Resolved title")
+            state.value = state.value.copy(
+                playback = PlaybackUiState(currentVideoId = resolved.id, queueVideoIds = listOf(resolved.id), isPlaying = true),
+                nowPlaying = state.value.nowPlaying.copy(video = resolved, isLoadingPlayback = false))
+        }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.onNodeWithTag("mini-player").assertIsDisplayed()
+        rule.onNodeWithTag("now-playing-close").assertDoesNotExist()
+        if (changeTab) rule.onNodeWithTag("search-field").assertIsDisplayed()
+        rule.runOnIdle { state.value = state.value.copy(nowPlaying = state.value.nowPlaying.copy(isLoadingExtras = false)) }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.onNodeWithTag("mini-player").assertIsDisplayed()
+        rule.onNodeWithTag("now-playing-close").assertDoesNotExist()
+        rule.onNodeWithTag("mini-player").performTouchInput { click(Offset(width * .4f, height * .5f)) }
+        rule.onNodeWithTag("now-playing-close").assertIsDisplayed()
+    }
+
     private fun checkQueue(audioOnly: Boolean) {
         val videos = (0..3).map { index -> VideoUiModel("queue-fixture-$index", "Video $index", "Creator", "", "3:00",
             lastWatchedAt = 10_000L - index, playbackAudioOnly = index == 0 && audioOnly) }

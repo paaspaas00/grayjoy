@@ -133,7 +133,7 @@ internal class GrayjaySourceCatalog(private val context: Context) {
         )
 
         private val sourceColors = mapOf(
-            "youtube" to 0xFFE53935,
+            "youtube" to com.futo.platformplayer.compose.data.YOUTUBE_SOURCE_ACCENT,
             "odysee" to 0xFF2F7CF6,
             "peertube" to 0xFFF1680D,
             "rumble" to 0xFF74CC1D,

@@ -606,7 +606,7 @@
     <string name="mini_player_audio">الصوت</string>
     <string name="link_not_supported_by_sources">لا يمكن لأي من المصادر النشطة فتح هذا الرابط.</string>
     <string name="update_available">تحديث Grayjoy متاح</string>
-    <string name="update_available_description">الإصدار %1$s متاح على GitHub.</string>
+    <string name="update_available_description">الإصدار الجديد %1$s متاح.</string>
     <string name="open_release_page">فتح صفحة الإصدار</string>
     <string name="version_information">الإصدار %1$s • الإصدار %2$d</string>
     <string name="enqueue">إضافة إلى قائمة الانتظار</string>
@@ -758,4 +758,9 @@
     <string name="skip_crash_report_action">تجاوز</string>
     <string name="job_finished_notice">انتهت المهمة: %1$s</string>
     <string name="update_download_job_title">تنزيل التحديث</string>
+    <string name="experimental_features">ميزات تجريبية</string>
+    <string name="audio_normalization">تطبيع الصوت إلى −23 LUFS</string>
+    <string name="audio_normalization_description">يضبط جهارة الصوت تدريجيًا أثناء التشغيل مع الحماية من الذروات. يتم تجاوز DSP عند التعطيل. لا ينطبق على البث عبر Cast.</string>
+    <string name="grayjoy_repository">مستودع Grayjoy</string>
+    <string name="repository_open_failed">لا يوجد تطبيق لفتح هذا الرابط.</string>
 </resources>

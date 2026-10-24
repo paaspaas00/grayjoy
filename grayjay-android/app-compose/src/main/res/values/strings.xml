@@ -570,7 +570,7 @@
     <string name="mini_player_audio">Audio</string>
     <string name="link_not_supported_by_sources">None of the active sources can open this link.</string>
     <string name="update_available">Grayjoy update available</string>
-    <string name="update_available_description">Version %1$s is available on GitHub.</string>
+    <string name="update_available_description">New version %1$s is available.</string>
     <string name="open_release_page">Open release page</string>
     <string name="version_information">Version %1$s • build %2$d</string>
     <string name="enqueue">Add to queue</string>
@@ -849,4 +849,9 @@
     <string name="skip_crash_report_action">Skip</string>
     <string name="job_finished_notice">Job finished: %1$s</string>
     <string name="update_download_job_title">Update download</string>
+    <string name="experimental_features">Experimental features</string>
+    <string name="audio_normalization">Normalize audio to −23 LUFS</string>
+    <string name="audio_normalization_description">Adjusts loudness gradually during playback, with peak protection. DSP is bypassed when off. Does not apply to casting.</string>
+    <string name="grayjoy_repository">Grayjoy repository</string>
+    <string name="repository_open_failed">No app is available to open this link.</string>
 </resources>

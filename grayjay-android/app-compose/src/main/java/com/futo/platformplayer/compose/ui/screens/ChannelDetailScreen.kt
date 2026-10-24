@@ -8,6 +8,9 @@ import android.content.Intent
 import com.futo.platformplayer.compose.ui.PageBackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,6 +32,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
@@ -50,6 +55,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -63,9 +75,11 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -82,6 +96,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -93,7 +108,6 @@ import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
 import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
-import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -133,7 +147,6 @@ fun ChannelDetailScreen(
     var showSortSheet by rememberSaveable(channel.id, detail.selectedTab) { mutableStateOf(false) }
     var descriptionExpanded by rememberSaveable(channel.id) { mutableStateOf(false) }
     var descriptionOverflows by remember(channel.id) { mutableStateOf(false) }
-    var searchFocused by remember(channel.id, detail.selectedTab) { mutableStateOf(false) }
     var searchMode by rememberSaveable(channel.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var sortModeName by rememberSaveable(channel.id, detail.selectedTab) {
@@ -151,13 +164,12 @@ fun ChannelDetailScreen(
     val sortMode = runCatching { ChannelSortMode.valueOf(sortModeName) }
         .getOrDefault(ChannelSortMode.UploadDate)
     val listState = rememberContentListState()
-    LaunchedEffect(searchFocused, channel.id, detail.selectedTab) {
-        if (searchFocused && !detail.selectedTab.isPlaylistTab) {
+    fun onSearchFocusChanged(focused: Boolean) {
+        if (focused && !detail.selectedTab.isPlaylistTab) {
             searchMode = true
-            // Let the IME begin its inset animation, then keep the tabs and search controls at
-            // the top while the large channel summary scrolls out of the available viewport.
-            delay(120L)
-            listState.animateScrollToItem(CHANNEL_SEARCH_FOCUSED_SCROLL_INDEX)
+            // Pin before the IME starts. A delayed animated scroll exposes the old field bounds
+            // to Android's bring-into-view request and can pan the entire window offscreen.
+            listState.requestScrollToItem(CHANNEL_SEARCH_FOCUSED_SCROLL_INDEX)
         }
     }
     RequestNextPageEffect(
@@ -181,13 +193,23 @@ fun ChannelDetailScreen(
         focusManager.clearFocus(force = true)
         scope.launch { listState.animateScrollToItem(0) }
     }
-    PageBackHandler(enabled = searchMode && !selectionMode) { revealChannel() }
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    PageBackHandler(enabled = searchMode && !selectionMode && isPageVisible) {
+        if (imeVisible) {
+            keyboardController?.hide()
+            focusManager.clearFocus(force = true)
+        } else revealChannel()
+    }
     var sawKeyboard by remember(channel.id) { mutableStateOf(false) }
     LaunchedEffect(searchMode, imeVisible, isPageVisible) {
         if (!isPageVisible) { sawKeyboard = false; return@LaunchedEffect }
         if (searchMode && imeVisible) sawKeyboard = true
-        else if (searchMode && sawKeyboard && !imeVisible) revealChannel()
+        else if (searchMode && sawKeyboard && !imeVisible) {
+            // Dismissing the IME is not navigation. Keep the pinned results and scroll position;
+            // a later Back or a downward gesture on the search header reveals the channel.
+            focusManager.clearFocus(force = true)
+            sawKeyboard = false
+        }
         if (!searchMode) sawKeyboard = false
     }
     LaunchedEffect(searchMode) { onSearchModeChange(searchMode) }
@@ -253,13 +275,13 @@ fun ChannelDetailScreen(
             value = query,
             onValueChange = onSearchQueryChange,
             count = if (query.isBlank()) currentVideos.size else visibleVideos.size,
-            modifier = modifier.onFocusChanged { searchFocused = it.isFocused }.testTag("channel-video-search"),
+            modifier = modifier.onFocusChanged { onSearchFocusChanged(it.isFocused) }.testTag("channel-video-search"),
         ) else OutlinedTextField(
             value = query,
             shape = SearchFieldShape,
             onValueChange = onSearchQueryChange,
             modifier = modifier
-                .onFocusChanged { state -> searchFocused = state.isFocused }
+                .onFocusChanged { state -> onSearchFocusChanged(state.isFocused) }
                 .testTag("channel-video-search"),
             singleLine = true,
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
@@ -347,11 +369,16 @@ fun ChannelDetailScreen(
             if (compactLayout) 4.dp else if (performance.compactContent) 8.dp else 16.dp,
         ),
     ) {
-        item {
+        item(key = "channel-summary") {
+            // Short/empty result lists cannot scroll a full summary out of the viewport.
+            // Search mode therefore removes it while keeping the controls' item/key stable.
+            if (!searchMode) {
             if (compactLayout) CompactChannelHeader(
                 channel = displayedChannel,
                 following = isFollowing,
                 onToggleFollow = { onFollowingChange(!isFollowing) },
+                onSettings = if (perChannelPlaybackSpeedEnabled || displayedChannel.sourceId.equals("youtube", true))
+                    ({ showSettingsSheet = true }) else null,
                 actions = buildList {
                     add(PlaylistMenuAction(stringResource(R.string.share), Icons.Outlined.Share, tag = "channel-share", onClick = {
                         context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
@@ -360,10 +387,6 @@ fun ChannelDetailScreen(
                             putExtra(Intent.EXTRA_TEXT, displayedChannel.id)
                         }, shareLabel))
                     }))
-                    if (perChannelPlaybackSpeedEnabled || displayedChannel.sourceId.equals("youtube", true)) add(PlaylistMenuAction(
-                        stringResource(R.string.channel_settings), Icons.Outlined.Settings,
-                        tag = "channel-settings", onClick = { showSettingsSheet = true },
-                    ))
                     displayedChannel.links.entries.take(6).forEach { (label, url) ->
                         add(PlaylistMenuAction(label.ifBlank { stringResource(R.string.link) }, Icons.Outlined.Link,
                             tag = "channel-link-$url", onClick = { runCatching { uriHandler.openUri(url) } }))
@@ -383,24 +406,16 @@ fun ChannelDetailScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    if (compactLayout) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ChannelAvatarImage(displayedChannel.name, displayedChannel.thumbnailUrl, modifier = Modifier.size(40.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(displayedChannel.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text("${displayedChannel.source} • ${sourceCreatorFallback(displayedChannel.followerCount)}", style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            if (displayedChannel.description.isNotBlank()) IconButton(onClick = { descriptionExpanded = !descriptionExpanded }) {
-                                Icon(Icons.Outlined.Info, contentDescription = stringResource(if (descriptionExpanded) R.string.show_less else R.string.show_more))
-                            }
-                        }
-                    } else {
+                    Box(Modifier.fillMaxWidth()) {
                     ChannelAvatarImage(
                         name = displayedChannel.name,
                         thumbnailUrl = displayedChannel.thumbnailUrl,
-                        modifier = Modifier.size(if (performance.compactContent) 72.dp else 96.dp),
+                        modifier = Modifier.align(Alignment.Center).size(if (performance.compactContent) 72.dp else 96.dp),
                     )
+                    if (perChannelPlaybackSpeedEnabled || displayedChannel.sourceId.equals("youtube", true)) {
+                        ChannelSettingsButton(onClick = { showSettingsSheet = true }, modifier = Modifier.align(Alignment.TopEnd))
+                    }
+                    }
                     Text(
                         displayedChannel.name,
                         textAlign = TextAlign.Center,
@@ -415,7 +430,6 @@ fun ChannelDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyLarge,
                     )
-                    }
                     if (displayedChannel.description.isNotBlank() && (!compactLayout || descriptionExpanded)) {
                         Text(
                             displayedChannel.description,
@@ -458,12 +472,12 @@ fun ChannelDetailScreen(
                         }
                     }
                     Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Button(
                             onClick = { onFollowingChange(!isFollowing) },
-                            modifier = Modifier.testTag("channel-follow").helpAnchor("channel-follow"),
+                            modifier = Modifier.weight(1f).testTag("channel-follow").helpAnchor("channel-follow"),
                         ) {
                             Text(stringResource(if (isFollowing) R.string.following else R.string.follow))
                         }
@@ -481,19 +495,10 @@ fun ChannelDetailScreen(
                                     ),
                                 )
                             },
-                            modifier = Modifier.testTag("channel-share"),
+                            modifier = Modifier.weight(1f).testTag("channel-share"),
                         ) {
                             Icon(Icons.Outlined.Share, contentDescription = if (compactLayout) stringResource(R.string.share) else null)
                             if (!compactLayout) Text(stringResource(R.string.share))
-                        }
-                        if (perChannelPlaybackSpeedEnabled || displayedChannel.sourceId.equals("youtube", true)) {
-                            Button(
-                                onClick = { showSettingsSheet = true },
-                                modifier = Modifier.testTag("channel-settings"),
-                            ) {
-                                Icon(Icons.Outlined.Settings, contentDescription = if (compactLayout) stringResource(R.string.channel_settings) else null)
-                                if (!compactLayout) Text(stringResource(R.string.channel_settings))
-                            }
                         }
                     }
                 }
@@ -501,6 +506,7 @@ fun ChannelDetailScreen(
             }
         }
 
+        }
         stickyHeader(key = "channel-search-header") {
             Column(
                 modifier = Modifier
@@ -685,16 +691,7 @@ fun ChannelDetailScreen(
                 if (perChannelPlaybackSpeedEnabled) {
                     Text(stringResource(R.string.channel_playback_speed), style = MaterialTheme.typography.titleMedium)
                     Text(stringResource(R.string.channel_playback_speed_description), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = channelPlaybackSpeed == null,
-                            onClick = { onPlaybackSpeedChange(null) },
-                            label = { Text(stringResource(R.string.app_default_speed, formatChannelSpeed(defaultPlaybackSpeed))) },
-                        )
-                        playbackSpeedChoices.forEach { speed ->
-                            FilterChip(selected = channelPlaybackSpeed == speed, onClick = { onPlaybackSpeedChange(speed) }, label = { Text(formatChannelSpeed(speed)) })
-                        }
-                    }
+                    ChannelSpeedPreference(channelPlaybackSpeed, defaultPlaybackSpeed, onPlaybackSpeedChange)
                 }
                 if (displayedChannel.sourceId.equals("youtube", true)) {
                     Text(stringResource(R.string.sponsorblock), style = MaterialTheme.typography.titleMedium)
@@ -795,6 +792,94 @@ private class ChannelSearchRevealBounds {
 
 private val playbackSpeedChoices =
     listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ChannelSettingsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val label = stringResource(R.string.channel_settings)
+    Box(modifier) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(label) } },
+        state = rememberTooltipState(),
+    ) {
+        IconButton(onClick = onClick, modifier = Modifier.testTag("channel-settings")) {
+            Icon(Icons.Outlined.Settings, contentDescription = label)
+        }
+    }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChannelSpeedPreference(value: Float?, defaultSpeed: Float, onChange: (Float?) -> Unit) {
+    var showDialog by rememberSaveable { mutableStateOf(false) }
+    val defaultLabel = stringResource(R.string.app_default_speed, formatChannelSpeed(defaultSpeed))
+    Surface(
+        onClick = { showDialog = true },
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = Modifier.fillMaxWidth().testTag("channel-speed-picker"),
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(value?.let(::formatChannelSpeed) ?: defaultLabel, Modifier.weight(1f))
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
+        }
+    }
+    if (showDialog) {
+        var pendingSpeed by rememberSaveable { mutableStateOf(value) }
+        val scroll = rememberScrollState()
+        val density = LocalDensity.current
+        var listHeight by remember { mutableIntStateOf(0) }
+        LaunchedEffect(listHeight) {
+            if (listHeight > 0) {
+                val index = if (pendingSpeed == null) 0 else playbackSpeedChoices.indexOf(pendingSpeed) + 1
+                val center = with(density) { (56.dp * index + 28.dp).roundToPx() }
+                scroll.scrollTo((center - listHeight / 2).coerceAtLeast(0))
+            }
+        }
+        BasicAlertDialog(onDismissRequest = { showDialog = false }) {
+            Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth().testTag("channel-speed-dialog")) {
+                Column {
+                    Text(stringResource(R.string.channel_playback_speed),
+                        Modifier.padding(24.dp), style = MaterialTheme.typography.headlineSmall)
+                    HorizontalDivider()
+                    Column(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 320.dp)
+                        .onSizeChanged { listHeight = it.height }.verticalScroll(scroll).selectableGroup()) {
+                        (listOf<Float?>(null) + playbackSpeedChoices).forEach { speed ->
+                            Row(
+                                Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                                    .selectable(selected = pendingSpeed == speed, role = Role.RadioButton,
+                                        onClick = { pendingSpeed = speed })
+                                    .padding(horizontal = 24.dp, vertical = 8.dp)
+                                    .testTag(if (speed == null) "channel-speed-default" else "channel-speed-$speed"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            ) {
+                                RadioButton(selected = pendingSpeed == speed, onClick = null)
+                                Text(speed?.let(::formatChannelSpeed) ?: defaultLabel,
+                                    style = MaterialTheme.typography.bodyLarge)
+                            }
+                        }
+                    }
+                    HorizontalDivider()
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { showDialog = false }, modifier = Modifier.testTag("channel-speed-cancel")) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                        TextButton(onClick = { onChange(pendingSpeed); showDialog = false },
+                            modifier = Modifier.testTag("channel-speed-confirm")) {
+                            Text(stringResource(R.string.ok))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 private fun formatChannelSpeed(speed: Float): String =
     if (speed % 1f == 0f) "${speed.toInt()}x" else "${speed}x"

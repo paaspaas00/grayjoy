@@ -204,7 +204,7 @@ internal val previewSources = listOf(
         id = "youtube",
         name = "YouTube",
         description = "Videos, channels, playlists, and live streams",
-        accentColor = 0xFFE53935,
+        accentColor = com.futo.platformplayer.compose.data.YOUTUBE_SOURCE_ACCENT,
         isEnabled = true,
     ),
     SourceUiModel(

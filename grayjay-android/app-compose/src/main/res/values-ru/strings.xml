@@ -566,7 +566,7 @@
     <string name="mini_player_audio">Аудио</string>
     <string name="link_not_supported_by_sources">Ни один из активных источников не может открыть эту ссылку.</string>
     <string name="update_available">Доступно обновление Grayjoy</string>
-    <string name="update_available_description">Версия %1$s доступна на GitHub.</string>
+    <string name="update_available_description">Доступна новая версия %1$s.</string>
     <string name="open_release_page">Открыть страницу релиза</string>
     <string name="version_information">Версия %1$s • сборка %2$d</string>
     <string name="enqueue">Добавить в очередь</string>
@@ -716,4 +716,9 @@
     <string name="skip_crash_report_action">Пропустить</string>
     <string name="job_finished_notice">Задача завершена: %1$s</string>
     <string name="update_download_job_title">Загрузка обновления</string>
+    <string name="experimental_features">Экспериментальные функции</string>
+    <string name="audio_normalization">Нормализовать звук до −23 LUFS</string>
+    <string name="audio_normalization_description">Плавно регулирует громкость при воспроизведении, ограничивая пики. При отключении DSP не используется. Не применяется к трансляции Cast.</string>
+    <string name="grayjoy_repository">Репозиторий Grayjoy</string>
+    <string name="repository_open_failed">Нет приложения для открытия этой ссылки.</string>
 </resources>

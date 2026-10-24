@@ -23,6 +23,7 @@ data class GrayjayUiState(
     val defaultPlaybackSpeed: Float = 1f,
     val perChannelPlaybackSpeedEnabled: Boolean = true,
     val holdToSpeedEnabled: Boolean = false,
+    val audioNormalizationEnabled: Boolean = false,
     val brainrotShortsEnabled: Boolean = false,
     val youtubeAutoplayEnabled: Boolean = false,
     val youtubeAutoplay: YoutubeAutoplayUiState? = null,

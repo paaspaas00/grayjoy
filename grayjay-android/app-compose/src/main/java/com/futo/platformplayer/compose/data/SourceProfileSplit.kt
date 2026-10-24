@@ -133,8 +133,10 @@ internal class SourceProfileSplit(context: Context) {
     companion object { private val mutex = Mutex() }
 }
 
+internal const val YOUTUBE_SOURCE_ACCENT = 0xFF8F0000L
+
 internal fun sourceProfileAccent(source: SourceUiModel): Long = when (source.id.lowercase()) {
-    "youtube" -> 0xFFE53935L
+    "youtube" -> YOUTUBE_SOURCE_ACCENT
     "spotify" -> 0xFF1DB954L
     "crunchyroll" -> 0xFFF47521L
     "twitch" -> 0xFF9146FFL

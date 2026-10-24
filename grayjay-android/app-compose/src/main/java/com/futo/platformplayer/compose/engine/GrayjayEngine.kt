@@ -458,6 +458,7 @@ interface GrayjayEngine {
     fun seekBy(deltaMs: Long)
     fun seekToFraction(fraction: Float)
     fun setPlaybackSpeed(speed: Float)
+    fun setAudioNormalizationEnabled(enabled: Boolean) = Unit
     fun setOtherAudioDucking(enabled: Boolean, volumePercent: Int)
     fun setVoiceListeningVolume(owner: String, percent: Int?)
     fun setVideoQuality(height: Int?)
@@ -482,6 +483,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         latestAudioSpectrum = spectrum
         _playback.value = _playback.value.copy(audioSpectrum = spectrum)
     }
+    private val loudnessProcessor = com.futo.platformplayer.compose.playback.LoudnessNormalizationAudioProcessor()
+    private var normalizationVideoId: String? = null
     private val renderersFactory = object : DefaultRenderersFactory(appContext) {
         override fun buildTextRenderers(
             context: Context,
@@ -510,11 +513,23 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             context: Context,
             enableFloatOutput: Boolean,
             enableAudioOutputPlaybackParameters: Boolean,
-        ): AudioSink = DefaultAudioSink.Builder(context)
-            .setEnableFloatOutput(enableFloatOutput)
+        ): AudioSink = object : androidx.media3.exoplayer.audio.ForwardingAudioSink(DefaultAudioSink.Builder(context)
+            // Custom processors are not applied on Media3's float-output shortcut.
+            .setEnableFloatOutput(false)
             .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParameters)
-            .setAudioProcessors(arrayOf(TeeAudioProcessor(audioSpectrumAnalyzer)))
-            .build()
+            .setAudioProcessors(arrayOf(loudnessProcessor, TeeAudioProcessor(audioSpectrumAnalyzer)))
+            .build()) {
+            override fun getFormatSupport(format: androidx.media3.common.Format): Int =
+                if (loudnessProcessor.enabled && format.sampleMimeType != MimeTypes.AUDIO_RAW)
+                    AudioSink.SINK_FORMAT_UNSUPPORTED else super.getFormatSupport(format)
+
+            override fun supportsFormat(format: androidx.media3.common.Format): Boolean =
+                getFormatSupport(format) != AudioSink.SINK_FORMAT_UNSUPPORTED
+
+            override fun getFormatOffloadSupport(format: androidx.media3.common.Format): androidx.media3.exoplayer.audio.AudioOffloadSupport =
+                if (loudnessProcessor.enabled) androidx.media3.exoplayer.audio.AudioOffloadSupport.DEFAULT_UNSUPPORTED
+                else super.getFormatOffloadSupport(format)
+        }
     }
     private val exoPlayer = ExoPlayer.Builder(appContext, renderersFactory)
         .setLoadControl(createPlaybackLoadControl(Runtime.getRuntime().maxMemory()))
@@ -733,6 +748,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    if (normalizationVideoId != mediaItem?.mediaId) {
+                        normalizationVideoId = mediaItem?.mediaId
+                        loudnessProcessor.resetMeasurement()
+                    }
                     if (youtubeFallbackVideoId != null && mediaItem?.mediaId != youtubeFallbackVideoId) {
                         // A queued track change supersedes recovery for the previous item. Even
                         // if the user returns to it before resolution finishes, that old result
@@ -2719,6 +2738,22 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     override fun setOtherAudioDucking(enabled: Boolean, volumePercent: Int) {
         otherAudioDuckingController.configure(enabled, volumePercent)
+    }
+
+    override fun setAudioNormalizationEnabled(enabled: Boolean) {
+        if (loudnessProcessor.enabled == enabled) return
+        loudnessProcessor.enabled = enabled
+        // A processor's active chain is chosen when the decoder configures the sink, not on
+        // every buffer. Reprepare the same queue/position so disabling truly removes the DSP.
+        if (exoPlayer.playbackState == Player.STATE_READY || exoPlayer.playbackState == Player.STATE_BUFFERING) {
+            val index = exoPlayer.currentMediaItemIndex
+            val position = exoPlayer.currentPosition.coerceAtLeast(0L)
+            val playWhenReady = exoPlayer.playWhenReady
+            exoPlayer.stop()
+            exoPlayer.seekTo(index, position)
+            exoPlayer.prepare()
+            exoPlayer.playWhenReady = playWhenReady
+        }
     }
 
     override fun setVoiceListeningVolume(owner: String, percent: Int?) {

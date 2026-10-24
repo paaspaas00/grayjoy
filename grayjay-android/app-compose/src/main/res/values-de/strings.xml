@@ -526,7 +526,7 @@
     <string name="mini_player_audio">Audio</string>
     <string name="link_not_supported_by_sources">Keine der aktiven Quellen kann diesen Link öffnen.</string>
     <string name="update_available">Grayjoy-Update verfügbar</string>
-    <string name="update_available_description">Version %1$s ist auf GitHub verfügbar.</string>
+    <string name="update_available_description">Die neue Version %1$s ist verfügbar.</string>
     <string name="open_release_page">Release-Seite öffnen</string>
     <string name="version_information">Version %1$s • Build %2$d</string>
     <string name="enqueue">Zur Warteschlange hinzufügen</string>
@@ -674,4 +674,9 @@
     <string name="skip_crash_report_action">Überspringen</string>
     <string name="job_finished_notice">Aufgabe beendet: %1$s</string>
     <string name="update_download_job_title">Update-Download</string>
+    <string name="experimental_features">Experimentelle Funktionen</string>
+    <string name="audio_normalization">Audio auf −23 LUFS normalisieren</string>
+    <string name="audio_normalization_description">Passt die Lautheit während der Wiedergabe schrittweise an, mit Spitzenschutz. Bei Deaktivierung wird DSP umgangen. Gilt nicht für Casting.</string>
+    <string name="grayjoy_repository">Grayjoy-Repository</string>
+    <string name="repository_open_failed">Keine App zum Öffnen dieses Links verfügbar.</string>
 </resources>

@@ -32,7 +32,13 @@ class OctoberUxRegressionTest {
         rule.activity.deleteSharedPreferences(preferenceName + "grayjoy_advanced_options")
     }
     private fun startPlayer(): ExoPlayer {
-        rule.runOnUiThread { rule.activity.enableEdgeToEdge(); player = ExoPlayer.Builder(rule.activity).build() }
+        rule.runOnUiThread {
+            rule.activity.enableEdgeToEdge()
+            rule.activity.window.setSoftInputMode(if (android.os.Build.VERSION.SDK_INT >= 30)
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                else android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            player = ExoPlayer.Builder(rule.activity).build()
+        }
         return player!!
     }
 
@@ -53,7 +59,28 @@ class OctoberUxRegressionTest {
         rule.onNodeWithTag("channel-video-search").performClick()
         rule.waitUntil(5_000) { rule.onAllNodesWithTag("browse-top-bar").fetchSemanticsNodes().isEmpty() }
         rule.onNodeWithTag("channel-tab-videos").assertIsDisplayed()
+        val statusTop = androidx.core.view.ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
+            ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars())?.top ?: 0
+        assertTrue("Channel tabs overlap the status bar", rule.onNodeWithTag("channel-tab-videos").fetchSemanticsNode().boundsInRoot.top >= statusTop)
         capture("channel-search-pinned")
+        rule.onNodeWithTag("channel-video-search").performTextInput("Video")
+        rule.waitUntil(5_000) {
+            androidx.core.view.ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
+                ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
+        }
+        rule.runOnUiThread {
+            androidx.core.view.WindowCompat.getInsetsController(rule.activity.window, rule.activity.window.decorView)
+                .hide(androidx.core.view.WindowInsetsCompat.Type.ime())
+        }
+        rule.waitUntil(5_000) {
+            androidx.core.view.ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
+                ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == false
+        }
+        rule.onNodeWithTag("browse-top-bar").assertDoesNotExist()
+        rule.onNodeWithTag("channel-video-search").assertTextContains("Video")
+        rule.onNodeWithTag("channel-tab-videos").assertIsDisplayed()
+        rule.onNodeWithTag("channel-follow").assertDoesNotExist()
+        capture("channel-keyboard-dismiss-keeps-search")
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         rule.waitUntil(5_000) { rule.onAllNodesWithTag("browse-top-bar").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag("channel-detail-channel").assertIsDisplayed()

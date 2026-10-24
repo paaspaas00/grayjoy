@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.TextButton
@@ -59,6 +61,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.BuildConfig
@@ -588,7 +591,7 @@ fun SettingsScreen(
         }
         if (searchQuery.isBlank() || "guided-setup" in matching) item(key = "guided-setup") {
             LinkSetting(stringResource(R.string.setup_title), stringResource(R.string.setup_reopen),
-                Icons.Outlined.Language, guidedSetup.open, "open-guided-setup")
+                ImageVector.vectorResource(R.drawable.ic_wizard), guidedSetup.open, "open-guided-setup")
         }
         if (advancedUnlocked && (searchQuery.isBlank() || "advanced-preferences" in matching)) item(key = "advanced-preferences") {
             LinkSetting(stringResource(R.string.advanced_settings), stringResource(R.string.advanced_settings_description), Icons.Outlined.BugReport,
@@ -598,23 +601,19 @@ fun SettingsScreen(
             LinkSetting(stringResource(R.string.voice_control), stringResource(R.string.voice_control_description),
                 Icons.Outlined.MusicNote, { showVoiceControl = true }, "voice-control-settings")
         }
+        settingsGroup("settings-experimental", R.string.experimental_features, groupSpacing,
+            matches = { searchQuery.isBlank() || it in matching }) {
+            setting("audio-normalization", "toggle") {
+                ToggleSetting(stringResource(R.string.audio_normalization),
+                    stringResource(R.string.audio_normalization_description), Icons.Outlined.MusicNote,
+                    extras.audioNormalizationEnabled, extras.onAudioNormalizationChange, "audio-normalization")
+            }
+        }
         if (searchQuery.isBlank()) item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp)
-                    .clickable {
-                        if (!advancedUnlocked) {
-                            val left = advancedUnlockTaps.tap(android.os.SystemClock.elapsedRealtime())
-                            if (left == 0) {
-                                com.futo.platformplayer.compose.diagnostics.AdvancedOptions.unlock(context)
-                                advancedUnlocked = true
-                                android.widget.Toast.makeText(context, R.string.advanced_options_unlocked, android.widget.Toast.LENGTH_SHORT).show()
-                            } else if (left <= 3) android.widget.Toast.makeText(context,
-                                resources.getString(R.string.advanced_options_taps_left, left), android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    .testTag("version-information"),
+                    .padding(vertical = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -622,15 +621,38 @@ fun SettingsScreen(
                     stringResource(R.string.app_name),
                     style = MaterialTheme.typography.labelLarge,
                 )
-                Text(
-                    stringResource(
-                        R.string.version_information,
-                        BuildConfig.VERSION_NAME,
-                        BuildConfig.VERSION_CODE,
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                TextButton(
+                    modifier = Modifier.testTag("repository-link"),
+                    onClick = {
+                        try {
+                            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                Uri.parse("https://github.com/paaspaas00/grayjoy")))
+                        } catch (_: android.content.ActivityNotFoundException) {
+                            android.widget.Toast.makeText(context, R.string.repository_open_failed,
+                                android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    },
+                ) {
+                    Icon(Icons.Outlined.Code, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text(stringResource(R.string.grayjoy_repository), Modifier.padding(start = 8.dp))
+                }
+                Box(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable {
+                    if (!advancedUnlocked) {
+                        val left = advancedUnlockTaps.tap(android.os.SystemClock.elapsedRealtime())
+                        if (left == 0) {
+                            com.futo.platformplayer.compose.diagnostics.AdvancedOptions.unlock(context)
+                            advancedUnlocked = true
+                            android.widget.Toast.makeText(context, R.string.advanced_options_unlocked, android.widget.Toast.LENGTH_SHORT).show()
+                        } else if (left <= 3) android.widget.Toast.makeText(context,
+                            resources.getString(R.string.advanced_options_taps_left, left), android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }.testTag("version-information"), contentAlignment = Alignment.Center) {
+                    Text(
+                        stringResource(R.string.version_information, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
     }
@@ -976,7 +998,7 @@ private fun LinkSetting(
             .clickable(onClick = onClick),
         title = title,
         description = description,
-        leading = { Icon(icon, contentDescription = null) },
+        leading = { Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp)) },
         trailing = {
             Icon(
                 Icons.Outlined.ChevronRight,

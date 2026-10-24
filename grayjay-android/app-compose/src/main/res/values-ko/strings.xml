@@ -526,7 +526,7 @@
     <string name="mini_player_audio">오디오</string>
     <string name="link_not_supported_by_sources">활성 소스 중 어느 것도 이 링크를 열 수 없습니다.</string>
     <string name="update_available">Grayjoy 업데이트 가능</string>
-    <string name="update_available_description">버전 %1$s은 GitHub에서 사용할 수 있습니다.</string>
+    <string name="update_available_description">새 버전 %1$s을 사용할 수 있습니다.</string>
     <string name="open_release_page">릴리스 페이지 열기</string>
     <string name="version_information">버전 %1$s • 빌드 %2$d</string>
     <string name="enqueue">대기열에 추가</string>
@@ -674,4 +674,9 @@
     <string name="skip_crash_report_action">건너뛰기</string>
     <string name="job_finished_notice">작업 종료: %1$s</string>
     <string name="update_download_job_title">업데이트 다운로드</string>
+    <string name="experimental_features">실험적 기능</string>
+    <string name="audio_normalization">오디오를 −23 LUFS로 정규화</string>
+    <string name="audio_normalization_description">재생 중 음량을 점진적으로 조절하고 피크를 보호합니다. 꺼져 있으면 DSP를 사용하지 않습니다. 캐스팅에는 적용되지 않습니다.</string>
+    <string name="grayjoy_repository">Grayjoy 저장소</string>
+    <string name="repository_open_failed">이 링크를 열 수 있는 앱이 없습니다.</string>
 </resources>

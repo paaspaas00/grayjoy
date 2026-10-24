@@ -22,7 +22,7 @@ import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 
 @Composable
-internal fun CompactChannelHeader(channel: ChannelUiModel, following: Boolean, onToggleFollow: () -> Unit, actions: List<PlaylistMenuAction>) {
+internal fun CompactChannelHeader(channel: ChannelUiModel, following: Boolean, onToggleFollow: () -> Unit, actions: List<PlaylistMenuAction>, onSettings: (() -> Unit)? = null) {
     var showActions by rememberSaveable(channel.id) { mutableStateOf(false) }
     Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -36,6 +36,7 @@ internal fun CompactChannelHeader(channel: ChannelUiModel, following: Boolean, o
                     modifier = Modifier.size(20.dp), tint = if (following) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     contentDescription = stringResource(if (following) R.string.following else R.string.follow))
             }
+            if (onSettings != null) ChannelSettingsButton(onClick = onSettings)
             IconButton(onClick = { showActions = true }, modifier = Modifier.testTag("channel-more-actions")) {
                 Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.details))
             }

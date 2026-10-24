@@ -206,6 +206,7 @@ internal fun LibraryScreen(
     historyMusicScan: HistoryMusicScanUiState = HistoryMusicScanUiState(),
     onRequestHistoryMusicClassification: (List<String>) -> Unit = {},
     groupHistoryByPlaylist: Boolean = false,
+    historyEntryGeneration: Long = 0L,
     onGroupHistoryByPlaylistChange: (Boolean) -> Unit = {},
     sources: List<SourceUiModel> = emptyList(),
 ) {
@@ -218,7 +219,9 @@ internal fun LibraryScreen(
     var playlistQuery by rememberSaveable { mutableStateOf("") }
     var historyQuery by rememberSaveable { mutableStateOf("") }
     var historyMusicFilter by rememberSaveable { mutableStateOf(HistoryMusicFilter.All) }
-    var expandedHistoryGroups by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var expandedHistoryGroups by androidx.compose.runtime.key(historyEntryGeneration) {
+        rememberSaveable { mutableStateOf(emptyList<String>()) }
+    }
     var unavailableHistoryPlaylist by remember { mutableStateOf(false) }
     if (unavailableHistoryPlaylist) AlertDialog(
         onDismissRequest = { unavailableHistoryPlaylist = false },

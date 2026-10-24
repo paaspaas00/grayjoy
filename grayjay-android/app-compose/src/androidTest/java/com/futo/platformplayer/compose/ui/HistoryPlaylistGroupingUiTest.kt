@@ -89,6 +89,16 @@ class HistoryPlaylistGroupingUiTest {
         screenshot("history-groups-expanded-dark")
         rule.runOnIdle { dark = false }
         screenshot("history-groups-expanded-light")
+        rule.onNodeWithTag("nav-search").performClick()
+        rule.onNodeWithTag("nav-library").performClick()
+        rule.onNodeWithTag(group).assertIsDisplayed()
+        rule.onNodeWithTag("video-card-grouped-0").assertDoesNotExist()
+        rule.onNodeWithTag("toggle-$group").performClick()
+        rule.onNodeWithTag("video-card-grouped-0").assertIsDisplayed()
+        // Reselecting the active navbar destination also starts with closed folders.
+        rule.onNodeWithTag("nav-library").performClick()
+        rule.onNodeWithTag("video-card-grouped-0").assertDoesNotExist()
+        rule.onNodeWithTag("toggle-$group").performClick()
         rule.onNodeWithTag("toggle-$group").performClick()
         rule.onNodeWithTag("video-card-grouped-0").assertDoesNotExist()
         rule.onNodeWithTag(group).performTouchInput { longClick() }

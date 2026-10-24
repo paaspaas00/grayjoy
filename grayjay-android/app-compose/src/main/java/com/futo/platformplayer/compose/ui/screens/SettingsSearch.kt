@@ -14,6 +14,7 @@ internal fun settingsTextMatches(text: String, query: String): Boolean {
 }
 
 internal val settingsSearchResources = mapOf(
+    "audio-normalization" to listOf(R.string.experimental_features, R.string.audio_normalization, R.string.audio_normalization_description),
     "app-language" to listOf(R.string.system_default_language, R.string.app_language, R.string.app_language_description),
     "theme-mode" to listOf(R.string.settings_appearance, R.string.automatic, R.string.use_light_theme, R.string.use_dark_theme),
     "toggle-dynamic-colors" to listOf(R.string.use_wallpaper_colors, R.string.material_you_dynamic_color),

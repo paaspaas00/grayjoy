@@ -10,6 +10,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 
 /** Navigation replaces the outgoing composition immediately, retaining only the incoming layer. */
 @Composable
@@ -36,6 +37,7 @@ internal fun QuickPageTransition(
             )
         }
         Box(modifier.graphicsLayer {
+            transformOrigin = TransformOrigin(0.5f, 0f)
             // Read animation state during drawing, not composition or measurement.
             alpha = if (slideDirection == 0) progress.value else 0.78f + 0.22f * progress.value
             translationX = size.width * slideDirection * (1f - progress.value)

@@ -106,6 +106,11 @@ class MainActivity : FragmentActivity() {
         )
         acceptPendingLaunchActions(launchActionsForCreation(savedInstanceState) { intent.launchActions() })
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Compose places content using animated IME insets. Prevent ViewRoot from also
+            // panning the entire window when the focused channel header changes position.
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+        }
         // UI state collection stops at onStop. Job notifications must keep following progress
         // while the screen is locked or another app is in front, and disappear on completion.
         lifecycleScope.launch {
@@ -437,6 +442,7 @@ class MainActivity : FragmentActivity() {
                     onDefaultPlaybackSpeedChange = viewModel::setDefaultPlaybackSpeed
                     onPerChannelPlaybackSpeedChange = viewModel::setPerChannelPlaybackSpeedEnabled
                     onHoldToSpeedChange = viewModel::setHoldToSpeedEnabled
+                    onAudioNormalizationChange = viewModel::setAudioNormalizationEnabled
                     onSponsorBlockEnabledChange = viewModel::setSponsorBlockEnabled
                     onSponsorBlockAutomaticSkipChange = viewModel::setSponsorBlockAutomaticSkip
                     onSponsorBlockSkipNoticesEnabledChange = viewModel::setSponsorBlockSkipNoticesEnabled
