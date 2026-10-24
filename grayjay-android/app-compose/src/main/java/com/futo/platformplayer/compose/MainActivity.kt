@@ -223,23 +223,6 @@ class MainActivity : FragmentActivity() {
             val activeJobCount = activeJobsSnapshot(
                 this@MainActivity, uiState, updateDownloadState,
             ).count
-            var pendingDownloadCompletionKeys by remember(uiState.activeProfileId) {
-                mutableStateOf(emptySet<DownloadCompletionKey>())
-            }
-            LaunchedEffect(uiState.activeProfileId, uiState.downloads) {
-                val transition = updateDownloadCompletionBatch(
-                    pending = pendingDownloadCompletionKeys,
-                    downloads = uiState.downloads.values,
-                )
-                pendingDownloadCompletionKeys = transition.pending
-                if (transition.showCompletionToast) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        R.string.all_downloads_completed,
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-            }
             LaunchedEffect(
                 uiState.nowPlaying.video?.id,
                 activeJobCount,
@@ -648,7 +631,7 @@ class MainActivity : FragmentActivity() {
             setPictureInPictureParams(params)
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) enterPictureInPictureMode(params) else true
         }.getOrElse {
-            android.util.Log.w("MainActivity", "Picture-in-picture could not be started.", it)
+            com.futo.platformplayer.compose.diagnostics.DiagnosticLog.w("MainActivity", "Picture-in-picture could not be started.", it)
             false
         }
     }
@@ -727,6 +710,7 @@ class MainActivity : FragmentActivity() {
                 if (generation != updateDownloadGeneration) return@launch
                 pendingUpdateApk = apk
                 updateDownloadState = null
+                com.futo.platformplayer.compose.jobs.notifyJobFinished(this@MainActivity, R.string.update_download_job_title)
                 installPendingUpdateIfAllowed()
             } catch (_: CancellationException) {
                 if (generation == updateDownloadGeneration) updateDownloadState = null

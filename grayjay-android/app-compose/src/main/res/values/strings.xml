@@ -671,7 +671,7 @@
     <string name="update_download_progress">%1$s of %2$s</string>
     <string name="update_downloaded_amount">%1$s downloaded</string>
     <string name="save_crash_logs">Save crash logs</string>
-    <string name="save_crash_logs_description">Keep up to 10 local diagnostic files and copy each new crash log to Downloads/Grayjoy. Nothing is uploaded.</string>
+    <string name="save_crash_logs_description">Keep the latest 1,000 technical events and up to 10 crash logs locally. Exception messages and content identifiers are excluded from shared reports. New crash logs are also copied to Downloads/Grayjoy. Nothing is uploaded.</string>
     <string name="open_navigation_menu">Open navigation menu</string>
     <string name="close_navigation_menu">Close navigation menu</string>
     <string name="comment_replies">Replies</string>
@@ -833,4 +833,20 @@
         <item quantity="one">%1$d video from playlist %2$s</item>
         <item quantity="other">%1$d videos from playlist %2$s</item>
     </plurals>
+    <string name="guided_setup_action">Guided setup</string>
+    <string name="advanced_options_unlocked">Advanced options enabled</string>
+    <string name="advanced_options_taps_left">%1$d more taps to enable advanced options</string>
+    <string name="show_backend_change_notices">Show playback backend changes</string>
+    <string name="backend_changed_notice">Playback backend: %1$s → %2$s</string>
+    <string name="catalog_audio_not_found">No suitable audio match was found. The track may be unavailable on the playback source; you can retry later.</string>
+    <string name="share_diagnostics">Share diagnostic logs (ZIP)</string>
+    <string name="diagnostics_share_failed">Unable to prepare or share the diagnostic report.</string>
+    <string name="previous_crash_title">Did Grayjoy stop unexpectedly?</string>
+    <string name="previous_crash_body">It looks like Grayjoy crashed last time. Sharing a report helps us find the cause and improve stability. The ZIP is filtered to contain technical information, without account details, cookies, URLs or content titles. You can inspect it before sharing. Nothing is sent automatically.</string>
+    <string name="previous_crash_logging_off">Diagnostic logging was disabled, so the report contains only limited technical information. You can enable logging in preferences for future issues.</string>
+    <string name="skip_crash_report_title">Skip the report?</string>
+    <string name="skip_crash_report_body">Reporting an issue helps improve Grayjoy for everyone. You can also share the logs later from preferences.</string>
+    <string name="skip_crash_report_action">Skip</string>
+    <string name="job_finished_notice">Job finished: %1$s</string>
+    <string name="update_download_job_title">Update download</string>
 </resources>

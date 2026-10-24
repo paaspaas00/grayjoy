@@ -23,6 +23,7 @@ internal fun GuidedSetupHost(
 ) {
     val context = LocalContext.current
     val preferences = remember { GuidedSetupPreferences(context) }
+    val pendingCrash by com.futo.platformplayer.compose.diagnostics.CrashLogStore.pendingCrash.collectAsState()
     var visible by rememberSaveable { mutableStateOf(allowStartupDialogs && preferences.showOnStartup) }
     var page by rememberSaveable { mutableIntStateOf(0) }
     var session by rememberSaveable { mutableIntStateOf(0) }
@@ -51,7 +52,7 @@ internal fun GuidedSetupHost(
         setSponsorAutomatic = actions.onSponsorBlockAutomaticSkipChange,
     )) {
         content()
-        if (visible) key(session) {
+        if (visible && pendingCrash == null) key(session) {
             GuidedSetupDialog(
                 state, actions, page, { page = it },
                 onFinish = { neverAgain ->

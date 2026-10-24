@@ -658,4 +658,20 @@
         <item quantity="one">%1$d Video aus der Playlist %2$s</item>
         <item quantity="other">%1$d Videos aus der Playlist %2$s</item>
     </plurals>
+    <string name="guided_setup_action">Einrichtungsassistent</string>
+    <string name="advanced_options_unlocked">Erweiterte Optionen aktiviert</string>
+    <string name="advanced_options_taps_left">Noch %1$d Mal tippen, um erweiterte Optionen zu aktivieren</string>
+    <string name="show_backend_change_notices">Wechsel des Wiedergabe-Backends anzeigen</string>
+    <string name="backend_changed_notice">Wiedergabe-Backend: %1$s → %2$s</string>
+    <string name="catalog_audio_not_found">Keine passende Audioquelle gefunden. Der Titel ist möglicherweise nicht verfügbar. Versuche es später erneut.</string>
+    <string name="share_diagnostics">Diagnoseprotokolle teilen (ZIP)</string>
+    <string name="diagnostics_share_failed">Der Diagnosebericht konnte nicht erstellt oder geteilt werden.</string>
+    <string name="previous_crash_title">Wurde Grayjoy unerwartet beendet?</string>
+    <string name="previous_crash_body">Grayjoy scheint zuletzt abgestürzt zu sein. Ein Bericht hilft uns, die Ursache zu finden und die Stabilität zu verbessern. Das ZIP enthält gefilterte technische Angaben ohne Kontodaten, Cookies, URLs oder Inhaltstitel. Du kannst es vor dem Teilen prüfen. Nichts wird automatisch gesendet.</string>
+    <string name="previous_crash_logging_off">Die Diagnose war deaktiviert. Der Bericht enthält daher nur wenige technische Angaben. Du kannst die Protokollierung für zukünftige Probleme in den Einstellungen aktivieren.</string>
+    <string name="skip_crash_report_title">Bericht überspringen?</string>
+    <string name="skip_crash_report_body">Fehlermeldungen helfen, Grayjoy für alle zu verbessern. Du kannst die Protokolle auch später in den Einstellungen teilen.</string>
+    <string name="skip_crash_report_action">Überspringen</string>
+    <string name="job_finished_notice">Aufgabe beendet: %1$s</string>
+    <string name="update_download_job_title">Update-Download</string>
 </resources>

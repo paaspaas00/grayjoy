@@ -6,7 +6,7 @@
     <string name="setup_reopen">Öffnen Sie den Leitfaden: Lernen Sie Grayjoy und ändern Sie Ihre Auswahl jederzeit.</string>
     <string name="setup_welcome">Willkommen bei Grayjoy</string>
     <string name="setup_welcome_body">Videos, Musik und Ihre Lieblings-Creator, vereint in einer App. Suchen Sie nach Kanälen, folgen Sie ihnen, speichern Sie Wiedergabelisten und laden Sie Inhalte für die Offline-Wiedergabe herunter. Lassen Sie uns die Dinge gemeinsam einrichten: Hier sind keine technischen Kenntnisse erforderlich.</string>
-    <string name="setup_later">Jede Auswahl kann später in den Einstellungen geändert werden. Der Zauberer oben links auf der Startseite öffnet diesen Leitfaden immer wieder. Durch das Überspringen werden Ihre Daten nicht gelöscht.</string>
+    <string name="setup_later">Du kannst deine Auswahl später in den Einstellungen ändern. Öffne die Anleitung über Home → ? → Einrichtungsassistent. Das Überspringen eines Schritts löscht keine Daten.</string>
     <string name="setup_step">Schritt %1$d von %2$d</string>
     <string name="setup_next">Als nächstes</string>
     <string name="setup_skip">Überspringen</string>
@@ -64,7 +64,7 @@
     <string name="setup_sponsor_animation">Demonstration: Der Abspielkopf überspringt ein grün gesponsertes Segment.</string>
     <string name="setup_autoplay_body">Am Ende eines YouTube-Videos kann Grayjoy das nächste vorschlagen und abspielen. Sie sehen den Titel, einen 10-Sekunden-Countdown und eine Schaltfläche „Abbrechen“, ebenfalls im Vollbildmodus. Diese temporäre Warteschlange wird nicht in Ihren Playlists gespeichert. Ihre eigenen Playlists behalten ihre gewohnte Reihenfolge.</string>
     <string name="setup_ready">Du bist bereit!</string>
-    <string name="setup_done_body">Ihre Auswahl wird für das aktuelle Profil gespeichert, sobald Sie sie getroffen haben. Versuchen Sie, nach einem Video zu suchen oder Ihre Bibliothek zu öffnen. Denken Sie daran: Sie können jederzeit mit dem Zauberer in Home zu diesem Leitfaden zurückkehren.</string>
+    <string name="setup_done_body">Deine Auswahl wird im aktuellen Profil gespeichert. Probiere eine Suche aus oder öffne deine Sammlung. Die Anleitung findest du unter Home → ? → Einrichtungsassistent.</string>
     <string name="youtube_open_menu_title">Öffnen Sie das YouTube-Menü</string>
     <string name="youtube_open_menu_instruction">Tippen Sie oben links auf der Seite auf das Menü ☰, wie durch den Pfeil angezeigt. Wählen Sie dann das Konto/den Kanal aus, den Sie zum Abschließen der Anmeldung verwenden möchten.</string>
     <string name="setup_import_choice_title">Möchten Sie Ihre Daten importieren?</string>
@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s von %2$s</string>
     <string name="update_downloaded_amount">%1$s heruntergeladen</string>
     <string name="save_crash_logs">Absturzprotokolle speichern</string>
-    <string name="save_crash_logs_description">Behalten Sie bis zu 10 lokale Diagnosedateien und kopieren Sie jedes neue Absturzprotokoll nach Downloads/Grayjoy. Es wird nichts hochgeladen.</string>
+    <string name="save_crash_logs_description">Speichert die letzten 1.000 technischen Ereignisse und bis zu 10 Absturzprotokolle lokal. Geteilte Berichte enthalten keine Ausnahmemeldungen oder Inhaltskennungen. Neue Absturzprotokolle werden auch nach Downloads/Grayjoy kopiert. Kein automatischer Upload.</string>
     <string name="open_navigation_menu">Navigationsmenü öffnen</string>
     <string name="close_navigation_menu">Navigationsmenü schließen</string>
     <string name="comment_replies">Antworten</string>
@@ -296,11 +296,11 @@
     <string name="profile_split_scope_changed">Ein Originalprofil wurde während der Vorbereitung geschützt oder entfernt. Die ausstehenden Kopien wurden nicht aktiviert; Ihre Originaldaten sind sicher.</string>
     <string name="source_profile_locked">Dieses Profil ist einer Quelle gewidmet. Sie können sich anmelden oder aktualisieren, aber Sie können es hier nicht entfernen oder andere Quellen hinzufügen.</string>
     <string name="setup_help_title">Hilfe ist immer in Ihrer Nähe</string>
-    <string name="setup_help_body">Tippen Sie auf dem Startbildschirm oben links auf das Fragezeichen im Kreis. „Wie kann ich…?“ führt Sie durch die Suche, Playlists, Downloads und das Verfolgen von Kanälen. Sie können dieses Setup erneut öffnen, indem Sie das Assistentenhut-Symbol daneben verwenden.</string>
+    <string name="setup_help_body">Tippe auf Home oben links auf das Fragezeichen für interaktive Hilfe. Über Einrichtungsassistent auf dieser Seite öffnest du die Einrichtung erneut.</string>
     <string name="help_profiles">Quellprofil ändern</string>
     <string name="help_profiles_body">Wechseln Sie zwischen Ihren separaten Quellprofilen. Jeder behält seine eigene Bibliothek, sein eigenes Login und seine eigene Farbe.</string>
     <string name="help_profiles_open">Tippen Sie oben rechts auf der Startseite auf das Profilsymbol, um die verfügbaren Profile anzuzeigen.</string>
-    <string name="help_profiles_choose">Wählen Sie das gewünschte Quellprofil. Sie können auch auf der Startseite über das Profilsymbol nach links oder rechts wischen, um durch die Profile zu blättern. Geschützte Profile werden übersprungen. Um ein geschütztes Profil zu öffnen, wählen Sie es hier aus und entsperren Sie es.</string>
+    <string name="help_profiles_choose">Wähle ein Quellenprofil. Wische auf dem Profilsymbol in Home nach oben oder unten, um schnell zu wechseln; geschützte Profile werden übersprungen. Wähle und entsperre ein geschütztes Profil hier.</string>
     <plurals name="followed_channels">
         <item quantity="one">%d folgte dem Kanal</item>
         <item quantity="other">%d folgte den Kanälen</item>

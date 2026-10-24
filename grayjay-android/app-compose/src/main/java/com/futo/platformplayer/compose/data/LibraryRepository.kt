@@ -199,7 +199,7 @@ internal class SharedPreferencesLibraryRepository(
             .onFailure {
                 // Reads remain available even if the filesystem also refuses quarantine. Every
                 // mutation checks the journal separately and then fails closed until safe.
-                android.util.Log.e("LibraryRepository", "Interrupted import recovery failed", it)
+                com.futo.platformplayer.compose.diagnostics.DiagnosticLog.e("LibraryRepository", "Interrupted import recovery failed", it)
             }.getOrDefault(false)
         if (recovered) {
             cachedVideos = null

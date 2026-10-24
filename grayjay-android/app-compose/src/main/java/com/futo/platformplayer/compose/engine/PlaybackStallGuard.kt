@@ -1,7 +1,11 @@
 package com.futo.platformplayer.compose.engine
 
+internal fun primaryPlaybackRecovered(wasBuffering: Boolean, ready: Boolean, hasError: Boolean,
+    previousBuffer: Long, currentBuffer: Long): Boolean = ready && !hasError &&
+    (wasBuffering || (currentBuffer > previousBuffer && currentBuffer - previousBuffer >= 1_000L))
+
 /** Loading bytes is progress too: do not replace a source which is actively filling its buffer. */
-internal class PlaybackStallGuard(private val timeoutMs: Long = 12_000L) {
+internal class PlaybackStallGuard(private val timeoutMs: Long = 4_000L) {
     private var id: String? = null
     private var position = 0L
     private var buffered = 0L

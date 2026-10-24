@@ -19,6 +19,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONObject
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.system.exitProcess
 
 internal object CrashLogStore {
@@ -30,6 +39,40 @@ internal object CrashLogStore {
     private val installed = AtomicBoolean(false)
     private val collectingExits = AtomicBoolean(false)
     private val diagnosticsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private data class EventWrite(val record: String? = null, val flushed: CompletableDeferred<Unit>? = null)
+    private val eventQueue = Channel<EventWrite>(256)
+    private val droppedEvents = java.util.concurrent.atomic.AtomicInteger()
+    @Volatile private var enabled = false
+    @Volatile private var eventRing: DiagnosticEventRing? = null
+    private var eventDirectory: File? = null
+    private val pending = MutableStateFlow<String?>(null)
+    val pendingCrash = pending.asStateFlow()
+    private var previousLaunchAt = 0L
+
+    fun recordEvent(component: String, level: String, error: Throwable? = null) {
+        if (!enabled) return
+        runCatching {
+            val event = JSONObject().put("time", Instant.now().toString())
+                .put("component", component.filter { it.isLetterOrDigit() || it in "._-" }.take(80))
+                .put("level", level.take(16))
+            if (error != null) event.put("trace", technicalStackTrace(error, 6000))
+            if (eventQueue.trySend(EventWrite(record = event.toString())).isFailure) droppedEvents.incrementAndGet()
+        }
+    }
+
+    private fun markCrash(context: Context, id: String) {
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
+            .putString("pending_crash", id.take(160)).commit()
+    }
+
+    fun acknowledgeCrash(context: Context, id: String) {
+        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        val saved = runCatching { preferences.getString("pending_crash", null) }.getOrNull()
+        if (saved == id || saved == null) {
+            preferences.edit().remove("pending_crash").putLong("acknowledged_crash_at", System.currentTimeMillis()).apply()
+            pending.value = null
+        }
+    }
     @Volatile
     private var beforeCrashHook: (() -> Unit)? = null
 
@@ -42,6 +85,7 @@ internal object CrashLogStore {
     }
 
     fun setEnabled(context: Context, enabled: Boolean) {
+        this.enabled = enabled
         context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_ENABLED, enabled)
@@ -52,11 +96,27 @@ internal object CrashLogStore {
     fun install(context: Context) {
         val appContext = context.applicationContext
         if (!installed.compareAndSet(false, true)) return
+        enabled = isEnabled(appContext)
+        val preferences = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        previousLaunchAt = runCatching { preferences.getLong("last_launch", 0L) }.getOrDefault(0L)
+        preferences.edit().putLong("last_launch", System.currentTimeMillis()).apply()
+        pending.value = runCatching { preferences.getString("pending_crash", null) }.getOrNull()?.takeIf { it.isNotBlank() }
+        eventDirectory = File(appContext.filesDir, "$DIRECTORY/events")
+        eventRing = DiagnosticEventRing(eventDirectory!!)
+        diagnosticsScope.launch {
+            for (event in eventQueue) {
+                if (enabled && event.record != null) runCatching { eventRing?.append(event.record) }
+                    .onFailure { droppedEvents.incrementAndGet() }
+                event.flushed?.complete(Unit)
+            }
+        }
+        recordEvent("Application", "start")
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             // Keep the diagnostic before invoking application code, which may itself be blocked
             // on the lock involved in the crash. Restart recovery already holds managed jobs.
             runCatching {
+                markCrash(appContext, "${System.currentTimeMillis()}:${throwable.javaClass.name}")
                 if (isEnabled(appContext)) writeCrash(appContext, thread, throwable)
             }
             beforeCrashHook?.let { hook -> runCatching { runCrashHookWithDeadline(hook) } }
@@ -84,13 +144,13 @@ internal object CrashLogStore {
         // MediaStore normalizes text/plain files to .txt on several Android builds. Use that
         // extension up front so the public name exactly matches the internal diagnostic record.
         val destination = File.createTempFile("grayjoy-crash-$formattedTimestamp-", ".txt", directory)
-        val stack = boundedStackTrace(throwable, MAX_STACK_CHARS)
+        val stack = technicalStackTrace(throwable)
         val contents = buildString {
             appendLine("Timestamp: ${Instant.ofEpochMilli(timestamp)}")
             appendLine("Version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
-            appendLine("Thread: ${thread.name}")
+            appendLine("Thread: ${if (thread === android.os.Looper.getMainLooper().thread) "main" else "background"}")
             appendLine()
             append(stack)
         }
@@ -161,6 +221,13 @@ internal object CrashLogStore {
                 }
             }
             output.writeText(contents)
+            if (shouldPromptForHistoricalCrash(record.reason, record.timestamp, previousLaunchAt,
+                    runCatching { preferences.getLong("acknowledged_crash_at", 0L) }.getOrDefault(0L)) &&
+                pending.value == null) {
+                val id = "${record.timestamp}:exit-${record.reason}"
+                markCrash(context, id)
+                pending.value = id
+            }
             runCatching { writePublicCrashLog(context, output.name, contents) }
             trimPrivateLogs(directory)
             seen += key
@@ -169,6 +236,47 @@ internal object CrashLogStore {
             seen.retainAll(currentKeys)
             preferences.edit().putStringSet("recorded_process_exits", seen.toSet()).apply()
         }
+    }
+
+    suspend fun createShareArchive(context: Context): File = withContext(Dispatchers.IO) {
+        withTimeoutOrNull(2_000L) {
+            val flushed = CompletableDeferred<Unit>()
+            eventQueue.send(EventWrite(flushed = flushed)); flushed.await()
+        }
+        val outputDirectory = File(context.cacheDir, "diagnostic-exports").apply { mkdirs() }
+        val name = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss-SSS", Locale.ROOT).format(Date())
+        val output = File.createTempFile("Grayjoy-diagnostics-$name-", ".zip", outputDirectory)
+        try {
+            ZipOutputStream(output.outputStream().buffered()).use { zip ->
+                fun entry(name: String, text: String) {
+                    zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray(Charsets.UTF_8)); zip.closeEntry()
+                }
+                entry("report.txt", "Grayjoy ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\nAndroid API ${Build.VERSION.SDK_INT}\nVariant: ${BuildConfig.BUILD_TYPE}\n" +
+                    "Diagnostics enabled: ${isEnabled(context)}\nDropped events during overload: ${droppedEvents.get()}\n" +
+                    "Last failure type: ${pending.value?.substringAfter(':')?.filter { it.isLetterOrDigit() || it in "._-" }.orEmpty()}\n" +
+                    "Exception messages, account data, URLs and content titles are excluded.\n")
+                val logs = File(context.filesDir, DIRECTORY).listFiles { file -> file.isFile && file.name.endsWith(".txt") }
+                    .orEmpty().sortedByDescending(File::lastModified).take(MAX_LOG_FILES)
+                logs.forEachIndexed { index, file ->
+                    val safe = file.bufferedReader().use { sanitizeLegacyDiagnostic(it.readDiagnosticText(MAX_STACK_CHARS)) }
+                    entry("crash-${index + 1}.txt", safe)
+                }
+                zip.putNextEntry(ZipEntry("events.jsonl"))
+                val requestedEvents = File(context.filesDir, "$DIRECTORY/events")
+                val ring = if (requestedEvents == eventDirectory) eventRing else DiagnosticEventRing(requestedEvents)
+                ring?.forEachRecord { line -> runCatching {
+                    val json = JSONObject(line)
+                    JSONObject().put("time", json.optString("time").filter { it in "0123456789TZ:.-+" }.take(40))
+                        .put("component", json.optString("component").filter { it.isLetterOrDigit() || it in "._-" }.take(80))
+                        .put("level", json.optString("level").filter(Char::isLetter).take(16))
+                        .put("trace", sanitizeLegacyDiagnostic(json.optString("trace"))).toString()
+                }.getOrNull()?.let { zip.write((it + "\n").toByteArray(Charsets.UTF_8)) } }
+                zip.closeEntry()
+            }
+            outputDirectory.listFiles { file -> file.isFile && file != output && file.lastModified() < System.currentTimeMillis() - 86_400_000L }
+                .orEmpty().forEach(File::delete)
+            output
+        } catch (error: Throwable) { output.delete(); throw error }
     }
 
     private fun writePublicCrashLog(context: Context, fileName: String, contents: String) {

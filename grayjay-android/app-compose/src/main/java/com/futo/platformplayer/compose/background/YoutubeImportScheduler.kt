@@ -227,6 +227,7 @@ class YoutubeAccountImportWorker(
                 result = imported,
                 repairSyntheticHistoryDates = selection.history,
             )
+            com.futo.platformplayer.compose.jobs.notifyJobFinished(applicationContext, R.string.automatic_youtube_import)
             Result.success()
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
@@ -242,15 +243,12 @@ class YoutubeAccountImportWorker(
     private fun createForegroundInfo(): ForegroundInfo {
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    applicationContext.getString(R.string.background_jobs),
-                    NotificationManager.IMPORTANCE_LOW,
-                ),
-            )
+            com.futo.platformplayer.compose.notifications.ensureNonBadgingChannel(applicationContext,
+                CHANNEL_ID, "grayjoy_background_jobs", applicationContext.getString(R.string.background_jobs))
         }
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+            .setVisibility(com.futo.platformplayer.compose.notifications.migratedNotificationVisibility(
+                applicationContext, CHANNEL_ID, "grayjoy_background_jobs", NotificationCompat.VISIBILITY_PRIVATE))
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(applicationContext.getString(R.string.import_from_youtube))
             .setContentText(applicationContext.getString(R.string.youtube_import_background_running))
@@ -276,7 +274,7 @@ class YoutubeAccountImportWorker(
         const val KEY_HISTORY = "history"
         const val KEY_PLAYLISTS = "playlists"
         const val KEY_LIKED = "liked"
-        private const val CHANNEL_ID = "grayjoy_background_jobs"
+        private const val CHANNEL_ID = "grayjoy_background_jobs_no_badge"
         private const val NOTIFICATION_ID = 22041
     }
 }

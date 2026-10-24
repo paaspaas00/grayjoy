@@ -6,7 +6,7 @@
     <string name="setup_reopen">Open the guide: learn Grayjoy and change your choices at any time.</string>
     <string name="setup_welcome">Welcome to Grayjoy</string>
     <string name="setup_welcome_body">Videos, music and your favourite creators, together in one app. Search, follow channels, save playlists and download content for offline playback. Let’s set things up together: nothing here requires technical knowledge.</string>
-    <string name="setup_later">Every choice can be changed later in Prefs. The magician at the top left of Home always reopens this guide. Skipping does not delete your data.</string>
+    <string name="setup_later">You can change your choices later in preferences. Reopen this guide from Home → ? → Guided setup. Skipping a step does not delete your data.</string>
     <string name="setup_step">Step %1$d of %2$d</string>
     <string name="setup_next">Next</string>
     <string name="setup_skip">Skip</string>
@@ -64,7 +64,7 @@
     <string name="setup_sponsor_animation">Demonstration: the playhead skips a green sponsored segment.</string>
     <string name="setup_autoplay_body">At the end of a YouTube video, Grayjoy can suggest and play the next one. You will see its title, a 10-second countdown and a Cancel button, also in fullscreen. This temporary queue is not saved among your playlists. Your own playlists keep their usual order.</string>
     <string name="setup_ready">You’re ready!</string>
-    <string name="setup_done_body">Your choices are saved as you make them, for the current profile. Try searching for a video or opening your library. Remember: you can always return to this guide using the magician in Home.</string>
+    <string name="setup_done_body">Your choices are saved in the current profile as you make them. Try a search or open your library. Reopen this guide from Home → ? → Guided setup.</string>
     <string name="youtube_open_menu_title">Open the YouTube menu</string>
     <string name="youtube_open_menu_instruction">Tap the ☰ menu at the top left of the page, as shown by the arrow. Then choose the account/channel you want to use to complete sign-in.</string>
     <string name="setup_import_choice_title">Would you like to import your data?</string>

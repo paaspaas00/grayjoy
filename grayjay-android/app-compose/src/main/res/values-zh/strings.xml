@@ -658,4 +658,20 @@
         <item quantity="one">播放列表“%2$s”中的 %1$d 个视频</item>
         <item quantity="other">播放列表“%2$s”中的 %1$d 个视频</item>
     </plurals>
+    <string name="guided_setup_action">设置向导</string>
+    <string name="advanced_options_unlocked">已启用高级选项</string>
+    <string name="advanced_options_taps_left">再点按 %1$d 次即可启用高级选项</string>
+    <string name="show_backend_change_notices">显示播放引擎切换提示</string>
+    <string name="backend_changed_notice">播放引擎：%1$s → %2$s</string>
+    <string name="catalog_audio_not_found">未找到合适的音频来源。此曲目可能不可用，请稍后重试。</string>
+    <string name="share_diagnostics">分享诊断日志（ZIP）</string>
+    <string name="diagnostics_share_failed">无法生成或分享诊断报告。</string>
+    <string name="previous_crash_title">Grayjoy 意外退出了吗？</string>
+    <string name="previous_crash_body">Grayjoy 上次似乎发生了崩溃。分享报告有助于查明原因并改善稳定性。ZIP 仅包含经过筛选的技术信息，不包含账号信息、Cookie、网址或内容标题。你可以在分享前检查文件，不会自动发送任何数据。</string>
+    <string name="previous_crash_logging_off">此前未启用诊断记录，因此报告仅包含有限的技术信息。你可以在偏好设置中启用，以便排查后续问题。</string>
+    <string name="skip_crash_report_title">跳过报告？</string>
+    <string name="skip_crash_report_body">反馈问题有助于为所有人改进 Grayjoy。你也可以稍后从偏好设置分享日志。</string>
+    <string name="skip_crash_report_action">跳过</string>
+    <string name="job_finished_notice">任务结束：%1$s</string>
+    <string name="update_download_job_title">更新下载</string>
 </resources>

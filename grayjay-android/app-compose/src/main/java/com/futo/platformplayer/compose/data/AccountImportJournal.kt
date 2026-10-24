@@ -100,7 +100,7 @@ internal class AccountImportJournal(context: Context, profileId: String) {
             // Once normal edits resume, this snapshot must never be automatically replayed over
             // them. Preserve the bytes for recovery, but retire the automatic rollback durably.
             finishQuarantineOrBlock(error)
-            android.util.Log.e("AccountImportJournal", "Import recovery snapshot quarantined", error)
+            com.futo.platformplayer.compose.diagnostics.DiagnosticLog.e("AccountImportJournal", "Import recovery snapshot quarantined", error)
             false
         } catch (error: Exception) {
             // A valid snapshot must remain retryable when storage is full/unavailable or an

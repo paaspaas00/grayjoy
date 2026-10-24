@@ -41,7 +41,7 @@ class VoiceBridgeService : Service() {
         if (server == null) {
             val socket = try { ServerSocket(0, 2, InetAddress.getByName("127.0.0.1")) }
             catch (error: Exception) {
-                android.util.Log.w("VoiceBridge", "Could not open the voice command socket.", error)
+                com.futo.platformplayer.compose.diagnostics.DiagnosticLog.w("VoiceBridge", "Could not open the voice command socket.", error)
                 stopSelf()
                 return null
             }
@@ -126,7 +126,7 @@ class VoiceBridgeService : Service() {
             if (touchedVolume) withContext(NonCancellable + Dispatchers.Main.immediate) {
                 try { (application as GrayjoyApplication).playbackViewModel.releaseVoiceVolume(owner) }
                 catch (error: Exception) {
-                    android.util.Log.w("VoiceBridge", "Could not release a closed voice session's volume lease.", error)
+                    com.futo.platformplayer.compose.diagnostics.DiagnosticLog.w("VoiceBridge", "Could not release a closed voice session's volume lease.", error)
                 }
             }
         }

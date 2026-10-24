@@ -241,7 +241,6 @@ fun SearchScreen(
                     )
                 }
             }
-            HelpButton()
             OutlinedTextField(
                 value = queryFieldValue,
                 onValueChange = { value ->

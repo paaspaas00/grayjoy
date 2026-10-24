@@ -3,7 +3,7 @@ package com.futo.platformplayer.compose
 import android.app.Application
 import android.content.Context
 import android.net.Uri
-import android.util.Log
+import com.futo.platformplayer.compose.diagnostics.DiagnosticLog as Log
 import android.widget.Toast
 import android.provider.OpenableColumns
 import java.net.URI
@@ -796,12 +796,19 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
         viewModelScope.launch {
             engine.backendNotices.collect { notice ->
+                if (notice.toBackend == null || !com.futo.platformplayer.compose.diagnostics.AdvancedOptions.showBackendChanges(getApplication())) return@collect
                 Toast.makeText(
                     getApplication(),
-                    text(R.string.youtube_backend_fallback_notice),
-                    Toast.LENGTH_LONG,
+                    getApplication<Application>().getString(R.string.backend_changed_notice, notice.fromBackend.orEmpty(), notice.toBackend),
+                    Toast.LENGTH_SHORT,
                 ).show()
             }
+        }
+        viewModelScope.launch {
+            val completions = com.futo.platformplayer.compose.jobs.JobCompletionTracker()
+            uiState.collect { state -> completions.observe(state).forEach {
+                com.futo.platformplayer.compose.jobs.notifyJobFinished(getApplication(), it)
+            } }
         }
         chromecastManager.onMediaEnded = {
             viewModelScope.launch(Dispatchers.Main.immediate) { skipToNext() }
@@ -6941,6 +6948,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 if (profile != activeProfileId) return@launch
                 _uiState.update { it.copy(channelDetail = ChannelDetailUiState(), remotePlaylistDetail = RemotePlaylistDetailUiState()) }
                 invalidateBackendDependentContent()
+                com.futo.platformplayer.compose.jobs.notifyJobFinished(getApplication(), R.string.rebuild_content_caches)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

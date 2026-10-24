@@ -6,7 +6,7 @@
     <string name="setup_reopen">가이드를 열어서 Grayjoy을 배우고 언제든지 선택 사항을 변경하세요.</string>
     <string name="setup_welcome">Grayjoy에 오신 것을 환영합니다</string>
     <string name="setup_welcome_body">비디오, 음악, 좋아하는 크리에이터를 하나의 앱에 모두 담으세요. 오프라인 재생을 위해 검색하고, 채널을 팔로우하고, 재생 목록을 저장하고, 콘텐츠를 다운로드하세요. 함께 설정해 ​​봅시다. 여기에는 기술적 지식이 필요하지 않습니다.</string>
-    <string name="setup_later">모든 선택은 나중에 설정에서 변경할 수 있습니다. 홈 왼쪽 상단의 마술사는 항상 이 가이드를 다시 엽니다. 건너뛰어도 데이터는 삭제되지 않습니다.</string>
+    <string name="setup_later">선택은 나중에 환경설정에서 변경할 수 있습니다. Home → ? → 설정 안내에서 다시 여세요. 단계를 건너뛰어도 데이터가 삭제되지 않습니다.</string>
     <string name="setup_step">%2$d의 %1$d 단계</string>
     <string name="setup_next">다음</string>
     <string name="setup_skip">건너뛰기</string>
@@ -64,7 +64,7 @@
     <string name="setup_sponsor_animation">데모: 플레이헤드가 녹색 후원 세그먼트를 건너뜁니다.</string>
     <string name="setup_autoplay_body">YouTube 동영상이 끝나면 Grayjoy은(는) 다음 동영상을 제안하고 재생할 수 있습니다. 제목, 10초 카운트다운, 취소 버튼도 전체 화면으로 표시됩니다. 이 임시 대기열은 재생 목록에 저장되지 않습니다. 나만의 재생목록은 일반적인 순서를 유지합니다.</string>
     <string name="setup_ready">준비됐어요!</string>
-    <string name="setup_done_body">현재 프로필에 대해 선택 사항이 저장됩니다. 비디오를 검색하거나 라이브러리를 열어보세요. 기억하세요: 언제든지 홈의 마술사를 사용하여 이 가이드로 돌아올 수 있습니다.</string>
+    <string name="setup_done_body">선택은 현재 프로필에 저장됩니다. 검색하거나 라이브러리를 열어 보세요. Home → ? → 설정 안내에서 다시 열 수 있습니다.</string>
     <string name="youtube_open_menu_title">YouTube 메뉴 열기</string>
     <string name="youtube_open_menu_instruction">화살표로 표시된 대로 페이지 왼쪽 상단의 ☰ 메뉴를 탭하세요. 그런 다음 로그인을 완료하는 데 사용할 계정/채널을 선택하세요.</string>
     <string name="setup_import_choice_title">데이터를 가져오시겠습니까?</string>
@@ -160,7 +160,7 @@
     <string name="update_download_progress">%2$s 중 %1$s</string>
     <string name="update_downloaded_amount">%1$s 다운로드됨</string>
     <string name="save_crash_logs">충돌 로그 저장</string>
-    <string name="save_crash_logs_description">최대 10개의 로컬 진단 파일을 보관하고 각각의 새로운 충돌 로그를 Downloads/Grayjoy에 복사합니다. 아무것도 업로드되지 않았습니다.</string>
+    <string name="save_crash_logs_description">최근 기술 이벤트 1,000개와 최대 10개의 비정상 종료 로그를 기기에 저장합니다. 공유 보고서에는 예외 메시지와 콘텐츠 식별자가 포함되지 않습니다. 새 로그는 Downloads/Grayjoy에도 복사됩니다. 자동 업로드되지 않습니다.</string>
     <string name="open_navigation_menu">탐색 메뉴 열기</string>
     <string name="close_navigation_menu">탐색 메뉴 닫기</string>
     <string name="comment_replies">답글</string>
@@ -296,11 +296,11 @@
     <string name="profile_split_scope_changed">원본 프로필이 준비 중에 보호되거나 제거되었습니다. 보류 중인 복사본이 활성화되지 않았습니다. 원본 데이터는 안전합니다.</string>
     <string name="source_profile_locked">이 프로필은 하나의 소스 전용입니다. 로그인하거나 업데이트할 수 있지만 여기서 제거하거나 다른 소스를 추가할 수는 없습니다.</string>
     <string name="setup_help_title">도움은 언제나 가까이에 있습니다</string>
-    <string name="setup_help_body">홈 화면에서 왼쪽 상단의 원 안에 있는 물음표를 탭하세요. “어떻게 하면…?” 검색, 재생 목록, 다운로드 및 채널 팔로우를 안내합니다. 옆에 있는 마법사 모자 아이콘을 사용하여 이 설정을 다시 열 수 있습니다.</string>
+    <string name="setup_help_body">Home 왼쪽 위의 물음표를 탭하면 대화형 도움말이 열립니다. 그 페이지의 설정 안내 버튼으로 초기 설정을 다시 열 수 있습니다.</string>
     <string name="help_profiles">소스 프로필 변경</string>
     <string name="help_profiles_body">별도의 소스 프로필 간에 전환하세요. 각각은 자체 라이브러리, 로그인 및 색상을 유지합니다.</string>
     <string name="help_profiles_open">사용 가능한 프로필을 보려면 홈 오른쪽 상단에 있는 프로필 아이콘을 탭하세요.</string>
-    <string name="help_profiles_choose">원하는 소스 프로필을 선택하세요. 홈의 프로필 아이콘을 왼쪽이나 오른쪽으로 스와이프하여 프로필을 순환할 수도 있습니다. 보호된 프로필은 건너뜁니다. 보호된 프로필을 열려면 여기에서 프로필을 선택하고 잠금을 해제하세요.</string>
+    <string name="help_profiles_choose">소스 프로필을 선택하세요. Home의 프로필 아이콘을 위아래로 스와이프하면 빠르게 전환됩니다. 보호된 프로필은 건너뜁니다. 보호된 프로필은 여기에서 선택하고 잠금을 해제하세요.</string>
     <plurals name="followed_channels">
         <item quantity="one">%d 팔로우 채널</item>
         <item quantity="other">%d 팔로우 채널</item>

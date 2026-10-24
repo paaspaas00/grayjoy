@@ -17,6 +17,10 @@ internal fun spotifyYoutubeSearchQuery(video: VideoUiModel): String =
         .filter(String::isNotBlank)
         .joinToString(" ")
 
+internal fun spotifyYoutubeSearchQueries(video: VideoUiModel): List<String> = listOf(
+    spotifyYoutubeSearchQuery(video), listOf(video.creator, video.title).filter(String::isNotBlank).joinToString(" "),
+).distinct()
+
 internal fun selectSpotifyYoutubeCandidate(
     spotify: VideoUiModel,
     candidates: List<VideoUiModel>,
@@ -29,6 +33,9 @@ internal fun spotifyYoutubeMatchScore(spotify: VideoUiModel, youtube: VideoUiMod
     val candidateTitle = normalizedWords(youtube.title)
     val candidateCreator = normalizedWords(youtube.creator)
     val searchable = candidateTitle + candidateCreator
+    if (!youtube.isAvailable || wantedTitle.isEmpty()) return Int.MIN_VALUE
+    if (wantedTitle.count(searchable::contains).toFloat() / wantedTitle.size < .6f) return Int.MIN_VALUE
+    if (wantedArtist.isNotEmpty() && wantedArtist.none(searchable::contains)) return Int.MIN_VALUE
     var score = 0
 
     if (wantedTitle.isNotEmpty()) {

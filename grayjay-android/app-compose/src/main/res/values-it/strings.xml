@@ -671,7 +671,7 @@
     <string name="update_download_progress">%1$s di %2$s</string>
     <string name="update_downloaded_amount">%1$s scaricati</string>
     <string name="save_crash_logs">Salva log dei crash</string>
-    <string name="save_crash_logs_description">Conserva fino a 10 file diagnostici locali e copia ogni nuovo crashlog in Download/Grayjoy. Non viene caricato nulla.</string>
+    <string name="save_crash_logs_description">Conserva gli ultimi 1.000 eventi tecnici e fino a 10 crashlog locali. I rapporti condivisi escludono messaggi delle eccezioni e identificativi dei contenuti. I nuovi crashlog sono copiati anche in Download/Grayjoy. Non viene caricato nulla.</string>
     <string name="open_navigation_menu">Apri menu di navigazione</string>
     <string name="close_navigation_menu">Chiudi menu di navigazione</string>
     <string name="comment_replies">Risposte</string>
@@ -833,4 +833,20 @@
         <item quantity="one">%1$d video dalla playlist %2$s</item>
         <item quantity="other">%1$d video dalla playlist %2$s</item>
     </plurals>
+    <string name="guided_setup_action">Configurazione guidata</string>
+    <string name="advanced_options_unlocked">Opzioni avanzate abilitate</string>
+    <string name="advanced_options_taps_left">Ancora %1$d tocchi per abilitare le opzioni avanzate</string>
+    <string name="show_backend_change_notices">Mostra i cambi di backend durante la riproduzione</string>
+    <string name="backend_changed_notice">Backend di riproduzione: %1$s → %2$s</string>
+    <string name="catalog_audio_not_found">Non è stata trovata una corrispondenza audio affidabile. Il brano potrebbe non essere disponibile sulla sorgente di riproduzione; puoi riprovare più tardi.</string>
+    <string name="share_diagnostics">Condividi i log diagnostici (ZIP)</string>
+    <string name="diagnostics_share_failed">Impossibile preparare o condividere il rapporto diagnostico.</string>
+    <string name="previous_crash_title">Grayjoy si è chiusa inaspettatamente?</string>
+    <string name="previous_crash_body">Sembra che Grayjoy sia crashata l’ultima volta. Condividere un rapporto ci aiuta a trovare la causa e migliorare la stabilità. Lo ZIP viene filtrato per includere informazioni tecniche, senza dati degli account, cookie, URL o titoli dei contenuti. Puoi controllarlo prima di condividerlo. Non viene inviato nulla automaticamente.</string>
+    <string name="previous_crash_logging_off">La registrazione diagnostica era disabilitata: il rapporto contiene solo informazioni tecniche limitate. Puoi attivarla nelle preferenze per i problemi futuri.</string>
+    <string name="skip_crash_report_title">Saltare la segnalazione?</string>
+    <string name="skip_crash_report_body">Segnalare un problema aiuta a migliorare Grayjoy per tutti. Puoi condividere i log anche in seguito dalle preferenze.</string>
+    <string name="skip_crash_report_action">Salta</string>
+    <string name="job_finished_notice">Job terminato: %1$s</string>
+    <string name="update_download_job_title">Download aggiornamento</string>
 </resources>

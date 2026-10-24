@@ -52,6 +52,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -108,6 +120,8 @@ fun ChannelDetailScreen(
     sponsorBlockGlobalRule: SponsorBlockRule = SponsorBlockRule(),
     sponsorBlockOverride: SponsorBlockRule? = null,
     onSponsorBlockOverrideChange: (SponsorBlockRule?) -> Unit = {},
+    onSearchModeChange: (Boolean) -> Unit = {},
+    isPageVisible: Boolean = true,
 ) {
     val performance = rememberDevicePerformanceProfile()
     val compactLayout = compactUi()
@@ -120,6 +134,8 @@ fun ChannelDetailScreen(
     var descriptionExpanded by rememberSaveable(channel.id) { mutableStateOf(false) }
     var descriptionOverflows by remember(channel.id) { mutableStateOf(false) }
     var searchFocused by remember(channel.id, detail.selectedTab) { mutableStateOf(false) }
+    var searchMode by rememberSaveable(channel.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     var sortModeName by rememberSaveable(channel.id, detail.selectedTab) {
         mutableStateOf(
             if (detail.selectedTab.isPlaylistTab) {
@@ -137,6 +153,7 @@ fun ChannelDetailScreen(
     val listState = rememberContentListState()
     LaunchedEffect(searchFocused, channel.id, detail.selectedTab) {
         if (searchFocused && !detail.selectedTab.isPlaylistTab) {
+            searchMode = true
             // Let the IME begin its inset animation, then keep the tabs and search controls at
             // the top while the large channel summary scrolls out of the available viewport.
             delay(120L)
@@ -158,22 +175,40 @@ fun ChannelDetailScreen(
     val shareLabel = stringResource(R.string.share)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    PageBackHandler(enabled = searchFocused) {
+    fun revealChannel() {
+        searchMode = false
         keyboardController?.hide()
         focusManager.clearFocus(force = true)
+        scope.launch { listState.animateScrollToItem(0) }
     }
-    val searchHeaderScrollConnection = remember(focusManager, keyboardController) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (
-                    source == NestedScrollSource.UserInput &&
-                    available.y > 0f &&
-                    searchFocused
-                ) {
-                    keyboardController?.hide()
-                    focusManager.clearFocus(force = true)
+    PageBackHandler(enabled = searchMode && !selectionMode) { revealChannel() }
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    var sawKeyboard by remember(channel.id) { mutableStateOf(false) }
+    LaunchedEffect(searchMode, imeVisible, isPageVisible) {
+        if (!isPageVisible) { sawKeyboard = false; return@LaunchedEffect }
+        if (searchMode && imeVisible) sawKeyboard = true
+        else if (searchMode && sawKeyboard && !imeVisible) revealChannel()
+        if (!searchMode) sawKeyboard = false
+    }
+    LaunchedEffect(searchMode) { onSearchModeChange(searchMode) }
+    DisposableEffect(channel.id) { onDispose { onSearchModeChange(false) } }
+    LaunchedEffect(detail.selectedTab) { if (detail.selectedTab.isPlaylistTab && searchMode) revealChannel() }
+    val revealBounds = remember(channel.id) { ChannelSearchRevealBounds() }
+    val revealHeaderModifier = Modifier.pointerInput(searchMode) {
+        if (!searchMode) return@pointerInput
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            if (down.position.y + revealBounds.listTop > maxOf(revealBounds.controlsBottom, revealBounds.headingBottom)) return@awaitEachGesture
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                val distance = change.position - down.position
+                if (distance.y > viewConfiguration.touchSlop && distance.y > kotlin.math.abs(distance.x)) {
+                    change.consume()
+                    revealChannel()
+                    break
                 }
-                return Offset.Zero
             }
         }
     }
@@ -299,10 +334,15 @@ fun ChannelDetailScreen(
         state = listState,
         modifier = Modifier
             .weight(1f)
-            .nestedScroll(searchHeaderScrollConnection)
+            .then(revealHeaderModifier)
+            .onGloballyPositioned { revealBounds.listTop = it.boundsInRoot().top }
             .testTag("channel-detail-${channel.id}"),
-        contentPadding = if (compactLayout) androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-            else androidx.compose.foundation.layout.PaddingValues(if (performance.compactContent) 8.dp else 16.dp),
+        contentPadding = if (compactLayout) androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = if (searchMode) 0.dp else 4.dp)
+            else androidx.compose.foundation.layout.PaddingValues(
+                start = if (performance.compactContent) 8.dp else 16.dp,
+                end = if (performance.compactContent) 8.dp else 16.dp,
+                top = if (searchMode) 0.dp else if (performance.compactContent) 8.dp else 16.dp,
+                bottom = if (performance.compactContent) 8.dp else 16.dp),
         verticalArrangement = Arrangement.spacedBy(
             if (compactLayout) 4.dp else if (performance.compactContent) 8.dp else 16.dp,
         ),
@@ -465,8 +505,10 @@ fun ChannelDetailScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onGloballyPositioned { revealBounds.controlsBottom = it.boundsInRoot().bottom }
+                    .testTag("channel-search-header")
                     .background(MaterialTheme.colorScheme.background)
-                    .padding(vertical = if (compactLayout) 0.dp else if (performance.compactContent) 4.dp else 8.dp),
+                    .padding(vertical = if (compactLayout || searchMode) 0.dp else if (performance.compactContent) 4.dp else 8.dp),
                 verticalArrangement = Arrangement.spacedBy(if (compactLayout) 4.dp else 8.dp),
             ) {
                 if (compactLayout) {
@@ -546,10 +588,11 @@ fun ChannelDetailScreen(
             } else {
                 visibleVideos.size
             }
-            SectionHeading(
+            Box(Modifier.onGloballyPositioned { revealBounds.headingBottom = it.boundsInRoot().bottom }
+                .testTag("channel-result-heading")) { SectionHeading(
                 if (query.isNotBlank()) stringResource(R.string.results_with_count, count)
                 else "${stringResource(detail.selectedTab.labelRes)} ($count)",
-            )
+            ) }
         }
 
         if (detail.isLoading || (detail.isSearching && visibleVideos.isEmpty())) {
@@ -743,6 +786,12 @@ fun ChannelDetailScreen(
 }
 
 private const val CHANNEL_SEARCH_FOCUSED_SCROLL_INDEX = 1
+
+private class ChannelSearchRevealBounds {
+    var listTop = 0f
+    var controlsBottom = 0f
+    var headingBottom = 0f
+}
 
 private val playbackSpeedChoices =
     listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)

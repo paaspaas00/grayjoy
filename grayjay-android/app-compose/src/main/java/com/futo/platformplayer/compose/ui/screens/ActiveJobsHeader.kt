@@ -90,8 +90,9 @@ internal fun rememberActiveJobItems(
         com.futo.platformplayer.compose.downloads.DownloadBatchProgress(),
     sourceProfileSetup: com.futo.platformplayer.compose.ui.SourceProfileSetupUiState =
         com.futo.platformplayer.compose.ui.SourceProfileSetupUiState(),
+    rebuildingCaches: Boolean = false,
 ): List<ActiveJobItem> {
-    val activeDownloads = remember(downloads) { downloads.values.filter(DownloadUiModel::isActive) }
+    val activeDownloads = remember(downloads) { downloads.values.filter { it.isActive && it.status != com.futo.platformplayer.compose.ui.DownloadStatus.Paused } }
     val activeDownloadProgress = activeDownloads
         .map { it.progress ?: 0f }
         .takeIf { it.isNotEmpty() }
@@ -111,6 +112,8 @@ internal fun rememberActiveJobItems(
         )
     }
     return buildList {
+        if (rebuildingCaches) add(ActiveJobItem("cache-rebuild", stringResource(R.string.rebuild_content_caches),
+            stringResource(R.string.please_wait), null, Icons.Outlined.Sync))
         if (sourceProfileSetup.isRunning) add(ActiveJobItem(
             id = "source-profile-setup", title = stringResource(R.string.profile_split_title),
             detail = stringResource(R.string.profile_split_progress, sourceProfileSetup.completed, sourceProfileSetup.total),
@@ -224,6 +227,7 @@ internal fun ActiveJobsButton(
     onClick: () -> Unit,
 ) {
     val knownProgress = jobs.mapNotNull(ActiveJobItem::progress)
+    if (jobs.isEmpty()) return
     Box(contentAlignment = Alignment.Center) {
         IconButton(
             onClick = onClick,
@@ -232,11 +236,7 @@ internal fun ActiveJobsButton(
             Icon(
                 Icons.Outlined.WorkHistory,
                 contentDescription = stringResource(R.string.background_jobs),
-                tint = when {
-                    storageWarning.isWarning -> MaterialTheme.colorScheme.error
-                    expanded -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.onSurface
-                },
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         if (jobs.isNotEmpty()) {
@@ -244,12 +244,14 @@ internal fun ActiveJobsButton(
                 CircularProgressIndicator(
                     modifier = Modifier.size(42.dp),
                     strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 CircularProgressIndicator(
                     progress = { knownProgress.average().toFloat().coerceIn(0f, 1f) },
                     modifier = Modifier.size(42.dp),
                     strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

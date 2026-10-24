@@ -13,7 +13,7 @@ internal fun activeJobsSnapshot(
     update: UpdateDownloadUiModel?,
 ): ActiveJobsSnapshot {
     if (state.backgroundJobsSuspended) return ActiveJobsSnapshot(0, 0, "")
-    val downloads = state.downloads.values.filter { it.isActive }
+    val downloads = state.downloads.values.filter { it.isActive && it.status != com.futo.platformplayer.compose.ui.DownloadStatus.Paused }
     val progress = mutableListOf<Float>()
     if (downloads.isNotEmpty()) progress += state.downloadBatchProgress.takeIf { it.total > 0 }?.fraction
         ?: downloads.map { it.progress?.takeIf(Float::isFinite) ?: 0f }.average().toFloat()
@@ -47,6 +47,9 @@ internal fun activeJobsSnapshot(
     }
     addJob(state.databaseImport.isBusy, context.getString(R.string.importing_data))
     addJob(state.sourceOperationInProgress, context.getString(R.string.source_operation))
+    addJob(state.rebuildingCaches, context.getString(R.string.rebuild_content_caches))
+    addJob(state.historyMusicScan.isRunning, context.getString(R.string.history_music_background_job),
+        state.historyMusicScan.total.takeIf { it > 0 }?.let { state.historyMusicScan.completed.toFloat() / it } ?: 0f)
     addJob(state.libraryTransfer.isRunning, state.libraryTransfer.title)
     state.mediaExports.forEach {
         addJob(true, context.getString(R.string.export_downloaded_media) + " · " + it.currentTitle, it.progress)

@@ -31,11 +31,11 @@
     <string name="profile_split_scope_changed">An original profile was protected or removed during preparation. The pending copies have not been activated; your original data is safe.</string>
     <string name="source_profile_locked">This profile is dedicated to one source. You can sign in or update it, but cannot remove it or add other sources here.</string>
     <string name="setup_help_title">Help is always close by</string>
-    <string name="setup_help_body">On the Home screen, tap the question mark in a circle at the top left. “How do I…?” guides you through searching, playlists, downloads and following channels. You can reopen this setup using the wizard-hat icon next to it.</string>
+    <string name="setup_help_body">On Home, tap the question mark at the top left for interactive help. The Guided setup button on that page reopens the setup guide.</string>
     <string name="help_profiles">Change source profile</string>
     <string name="help_profiles_body">Switch between your separate source profiles. Each keeps its own library, login and colour.</string>
     <string name="help_profiles_open">Tap the profile icon at the top right of Home to see the available profiles.</string>
-    <string name="help_profiles_choose">Choose the source profile you want. You can also swipe left or right on the profile icon in Home to cycle through profiles; protected profiles are skipped. To open a protected profile, select it here and unlock it.</string>
+    <string name="help_profiles_choose">Choose a source profile. Swipe up or down on the profile icon in Home to switch quickly; protected profiles are skipped. Select and unlock a protected profile here.</string>
     <plurals name="followed_channels">
         <item quantity="one">%d followed channel</item>
         <item quantity="other">%d followed channels</item>

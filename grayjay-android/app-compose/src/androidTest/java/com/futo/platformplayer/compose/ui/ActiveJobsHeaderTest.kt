@@ -164,7 +164,7 @@ class ActiveJobsHeaderTest {
     }
 
     @Test
-    fun lowStorageWarningIsVisibleInButtonAndPanel() {
+    fun lowStorageWarningRemainsInPanelButAnIdleButtonIsHidden() {
         val storage = DownloadStorageUiState(
             availableBytes = 128L * 1024L * 1024L,
             requiredFreeBytes = 512L * 1024L * 1024L,
@@ -192,9 +192,7 @@ class ActiveJobsHeaderTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription(
-            composeRule.activity.getString(R.string.storage_almost_full),
-        ).assertIsDisplayed()
+        composeRule.onNodeWithTag("active-jobs-toggle").assertDoesNotExist()
         composeRule.onNodeWithTag("active-jobs-storage-warning").assertIsDisplayed()
         composeRule.onNodeWithText(
             composeRule.activity.getString(R.string.storage_almost_full),

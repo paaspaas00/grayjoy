@@ -6,7 +6,7 @@
     <string name="setup_reopen">ガイドを開いて、Grayjoy を学び、いつでも選択を変更してください。</string>
     <string name="setup_welcome">Grayjoy へようこそ</string>
     <string name="setup_welcome_body">ビデオ、音楽、お気に入りのクリエイターを 1 つのアプリにまとめます。検索、チャンネルのフォロー、プレイリストの保存、オフライン再生用のコンテンツのダウンロードを行います。一緒に設定してみましょう。ここでは技術的な知識は必要ありません。</string>
-    <string name="setup_later">すべての選択は後から設定で変更できます。ホームの左上にいる魔術師は、常にこのガイドを再度開きます。スキップしてもデータは削除されません。</string>
+    <string name="setup_later">選択は後で設定から変更できます。Home → ? → 初期設定ガイドで再度開けます。手順をスキップしてもデータは削除されません。</string>
     <string name="setup_step">ステップ %1$d/%2$d</string>
     <string name="setup_next">次へ</string>
     <string name="setup_skip">スキップ</string>
@@ -64,7 +64,7 @@
     <string name="setup_sponsor_animation">デモ: 再生ヘッドは緑色のスポンサー付きセグメントをスキップします。</string>
     <string name="setup_autoplay_body">YouTube ビデオの最後に、Grayjoy は次のビデオを提案して再生できます。タイトル、10 秒のカウントダウン、キャンセル ボタンが全画面表示でも表示されます。この一時キューはプレイリストには保存されません。自分のプレイリストは通常​​の順序を維持します。</string>
     <string name="setup_ready">準備は完了です!</string>
-    <string name="setup_done_body">選択内容は、現在のプロファイルに対して保存されます。ビデオを検索するか、ライブラリを開いてみてください。覚えておいてください: ホームのマジシャンを使用していつでもこのガイドに戻ることができます。</string>
+    <string name="setup_done_body">選択は現在のプロファイルに保存されます。検索やライブラリを試してみてください。Home → ? → 初期設定ガイドで再度開けます。</string>
     <string name="youtube_open_menu_title">YouTube メニューを開く</string>
     <string name="youtube_open_menu_instruction">矢印で示されているように、ページの左上にある ☰ メニューをタップします。次に、サインインを完了するために使用するアカウント/チャネルを選択します。</string>
     <string name="setup_import_choice_title">データをインポートしますか?</string>
@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s/%2$s</string>
     <string name="update_downloaded_amount">%1$s ダウンロードされました</string>
     <string name="save_crash_logs">クラッシュログを保存する</string>
-    <string name="save_crash_logs_description">最大 10 個のローカル診断ファイルを保持し、新しいクラッシュ ログをそれぞれ Downloads/Grayjoy にコピーします。何もアップロードされていません。</string>
+    <string name="save_crash_logs_description">最新1,000件の技術イベントと最大10件のクラッシュログを端末に保存します。共有レポートには例外メッセージやコンテンツIDを含めません。新しいログはDownloads/Grayjoyにもコピーされます。自動送信は行いません。</string>
     <string name="open_navigation_menu">ナビゲーションメニューを開く</string>
     <string name="close_navigation_menu">ナビゲーションメニューを閉じる</string>
     <string name="comment_replies">返信</string>
@@ -296,11 +296,11 @@
     <string name="profile_split_scope_changed">元のプロファイルは、準備中に保護または削除されました。保留中のコピーはアクティブ化されていません。元のデータは安全です。</string>
     <string name="source_profile_locked">このプロファイルは 1 つのソース専用です。サインインまたは更新することはできますが、ここで削除したり、他のソースを追加したりすることはできません。</string>
     <string name="setup_help_title">助けはいつも近くにあります</string>
-    <string name="setup_help_body">ホーム画面で、左上の円の中にある疑問符をタップします。 「どうやって…？」検索、プレイリスト、ダウンロード、チャンネルのフォローをガイドします。横にあるウィザードハットのアイコンを使用して、このセットアップを再度開くことができます。</string>
+    <string name="setup_help_body">Homeの左上の疑問符をタップすると操作ガイドが開きます。そのページの初期設定ガイドボタンから初期設定を開き直せます。</string>
     <string name="help_profiles">ソースプロファイルを変更する</string>
     <string name="help_profiles_body">個別のソース プロファイルを切り替えます。それぞれが独自のライブラリ、ログイン、色を保持します。</string>
     <string name="help_profiles_open">ホームの右上にあるプロフィール アイコンをタップすると、利用可能なプロフィールが表示されます。</string>
-    <string name="help_profiles_choose">必要なソース プロファイルを選択します。ホームのプロフィール アイコンを左または右にスワイプして、プロフィールを切り替えることもできます。保護されたプロファイルはスキップされます。保護されたプロファイルを開くには、ここでプロファイルを選択し、ロックを解除します。</string>
+    <string name="help_profiles_choose">ソースのプロファイルを選択します。Homeのプロファイルアイコンを上下にスワイプすると切り替わります。保護されたプロファイルはスキップされます。ここで選択してロックを解除してください。</string>
     <plurals name="followed_channels">
         <item quantity="one">%d チャンネルをフォローしました</item>
         <item quantity="other">%d がフォローしたチャンネル</item>

@@ -742,4 +742,20 @@
         <item quantity="many">%1$d فيديو من قائمة التشغيل %2$s</item>
         <item quantity="other">%1$d فيديو من قائمة التشغيل %2$s</item>
     </plurals>
+    <string name="guided_setup_action">الإعداد الموجّه</string>
+    <string name="advanced_options_unlocked">تم تفعيل الخيارات المتقدمة</string>
+    <string name="advanced_options_taps_left">انقر %1$d مرات إضافية لتفعيل الخيارات المتقدمة</string>
+    <string name="show_backend_change_notices">إظهار تغييرات محرك التشغيل</string>
+    <string name="backend_changed_notice">محرك التشغيل: %1$s → %2$s</string>
+    <string name="catalog_audio_not_found">لم يُعثر على مصدر صوت مناسب. قد يكون المقطع غير متاح. حاول لاحقًا.</string>
+    <string name="share_diagnostics">مشاركة سجلات التشخيص (ZIP)</string>
+    <string name="diagnostics_share_failed">تعذّر تجهيز تقرير التشخيص أو مشاركته.</string>
+    <string name="previous_crash_title">هل أُغلق Grayjoy بشكل غير متوقع؟</string>
+    <string name="previous_crash_body">يبدو أن Grayjoy تعطّل في المرة السابقة. تساعد مشاركة التقرير على معرفة السبب وتحسين الاستقرار. يتضمن ZIP معلومات تقنية مصفّاة دون بيانات الحسابات أو ملفات الارتباط أو الروابط أو عناوين المحتوى. يمكنك فحصه قبل المشاركة. لا يُرسل شيء تلقائيًا.</string>
+    <string name="previous_crash_logging_off">كان تسجيل التشخيص معطّلًا، لذا يحتوي التقرير على معلومات تقنية محدودة. يمكنك تفعيله من التفضيلات للمشكلات المستقبلية.</string>
+    <string name="skip_crash_report_title">تجاوز التقرير؟</string>
+    <string name="skip_crash_report_body">يساعد الإبلاغ عن المشكلات على تحسين Grayjoy للجميع. يمكنك أيضًا مشاركة السجلات لاحقًا من التفضيلات.</string>
+    <string name="skip_crash_report_action">تجاوز</string>
+    <string name="job_finished_notice">انتهت المهمة: %1$s</string>
+    <string name="update_download_job_title">تنزيل التحديث</string>
 </resources>

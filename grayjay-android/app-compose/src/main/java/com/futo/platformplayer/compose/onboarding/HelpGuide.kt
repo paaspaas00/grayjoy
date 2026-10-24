@@ -179,6 +179,7 @@ internal fun HelpButton(
 @Composable
 internal fun HelpScreen(guide: HelpGuideState, sourceProfilesEnabled: Boolean = false, canUseYoutube: Boolean = true) {
     var expanded by rememberSaveable { mutableStateOf<String?>(null) }
+    val setup = LocalGuidedSetup.current
     Dialog(onDismissRequest = { guide.visible = false }, properties =
         DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
@@ -192,6 +193,14 @@ internal fun HelpScreen(guide: HelpGuideState, sourceProfilesEnabled: Boolean = 
                     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.testTag("help-topics")) {
                         item { Text(stringResource(R.string.help_intro), style = MaterialTheme.typography.bodyLarge) }
+                        item {
+                            FilledTonalButton(onClick = { guide.visible = false; guide.stop(); setup.open() },
+                                modifier = Modifier.fillMaxWidth().testTag("help-guided-setup")) {
+                                WizardMark(Modifier.size(24.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Text(stringResource(R.string.guided_setup_action))
+                            }
+                        }
                         items(HelpTopic.entries.filter { (it != HelpTopic.Profiles || sourceProfilesEnabled) &&
                             (it != HelpTopic.Follow || canUseYoutube) }, key = { it.name }) { topic ->
                             val open = expanded == topic.name

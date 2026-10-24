@@ -658,4 +658,20 @@
         <item quantity="one">%1$d vídeo de la playlist %2$s</item>
         <item quantity="other">%1$d vídeos de la playlist %2$s</item>
     </plurals>
+    <string name="guided_setup_action">Configuración guiada</string>
+    <string name="advanced_options_unlocked">Opciones avanzadas activadas</string>
+    <string name="advanced_options_taps_left">Toca %1$d veces más para activar las opciones avanzadas</string>
+    <string name="show_backend_change_notices">Mostrar cambios del motor de reproducción</string>
+    <string name="backend_changed_notice">Motor de reproducción: %1$s → %2$s</string>
+    <string name="catalog_audio_not_found">No se encontró una fuente de audio adecuada. Puede que la canción no esté disponible. Inténtalo más tarde.</string>
+    <string name="share_diagnostics">Compartir registros de diagnóstico (ZIP)</string>
+    <string name="diagnostics_share_failed">No se pudo preparar o compartir el informe de diagnóstico.</string>
+    <string name="previous_crash_title">¿Grayjoy se cerró inesperadamente?</string>
+    <string name="previous_crash_body">Parece que Grayjoy falló la última vez. Compartir un informe nos ayuda a encontrar la causa y mejorar la estabilidad. El ZIP contiene información técnica filtrada, sin datos de cuentas, cookies, URL ni títulos. Puedes revisarlo antes de compartirlo. No se envía nada automáticamente.</string>
+    <string name="previous_crash_logging_off">El registro de diagnóstico estaba desactivado, por lo que el informe contiene información técnica limitada. Puedes activarlo en preferencias para problemas futuros.</string>
+    <string name="skip_crash_report_title">¿Omitir el informe?</string>
+    <string name="skip_crash_report_body">Informar de un problema ayuda a mejorar Grayjoy para todos. También puedes compartir los registros más tarde desde preferencias.</string>
+    <string name="skip_crash_report_action">Omitir</string>
+    <string name="job_finished_notice">Tarea finalizada: %1$s</string>
+    <string name="update_download_job_title">Descarga de actualización</string>
 </resources>

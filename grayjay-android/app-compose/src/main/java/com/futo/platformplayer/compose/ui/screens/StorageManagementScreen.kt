@@ -127,7 +127,6 @@ internal fun StorageManagementScreen(
                                     contentDescription = stringResource(R.string.close),
                                 )
                             }
-                            com.futo.platformplayer.compose.onboarding.HelpButton(beforeOpen = onDismiss)
                             }
                         },
                         actions = {

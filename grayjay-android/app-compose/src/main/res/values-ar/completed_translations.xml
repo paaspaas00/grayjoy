@@ -6,7 +6,7 @@
     <string name="setup_reopen">افتح الدليل: تعلم Grayjoy وقم بتغيير اختياراتك في أي وقت.</string>
     <string name="setup_welcome">مرحبا بكم في Grayjoy</string>
     <string name="setup_welcome_body">مقاطع الفيديو والموسيقى والمبدعين المفضلين لديك، معًا في تطبيق واحد. ابحث عن القنوات وتابعها واحفظ قوائم التشغيل وقم بتنزيل المحتوى للتشغيل في وضع عدم الاتصال. دعونا نجهز الأمور معًا: لا شيء هنا يتطلب معرفة تقنية.</string>
-    <string name="setup_later">يمكن تغيير كل خيار لاحقًا في التفضيلات. يقوم الساحر الموجود أعلى يسار الصفحة الرئيسية دائمًا بإعادة فتح هذا الدليل. التخطي لا يؤدي إلى حذف بياناتك.</string>
+    <string name="setup_later">يمكنك تغيير اختياراتك لاحقًا في التفضيلات. افتح الدليل من Home → ? → الإعداد الموجّه. تجاوز خطوة لا يحذف بياناتك.</string>
     <string name="setup_step">الخطوة %1$d من %2$d</string>
     <string name="setup_next">التالي</string>
     <string name="setup_skip">تخطي</string>
@@ -64,7 +64,7 @@
     <string name="setup_sponsor_animation">العرض التوضيحي: يتخطى رأس التشغيل الجزء المدعوم باللون الأخضر.</string>
     <string name="setup_autoplay_body">في نهاية مقطع فيديو YouTube، يستطيع Grayjoy اقتراح الفيديو التالي وتشغيله. سترى عنوانها، وعدًا تنازليًا مدته 10 ثوانٍ، وزر إلغاء، أيضًا في وضع ملء الشاشة. لا يتم حفظ قائمة الانتظار المؤقتة هذه بين قوائم التشغيل الخاصة بك. تحافظ قوائم التشغيل الخاصة بك على ترتيبها المعتاد.</string>
     <string name="setup_ready">أنت جاهز!</string>
-    <string name="setup_done_body">يتم حفظ اختياراتك أثناء قيامك بها، لملف التعريف الحالي. حاول البحث عن مقطع فيديو أو فتح مكتبتك. تذكر: يمكنك دائمًا العودة إلى هذا الدليل باستخدام الساحر الموجود في الصفحة الرئيسية.</string>
+    <string name="setup_done_body">تُحفظ اختياراتك في الملف الشخصي الحالي. جرّب البحث أو افتح مكتبتك. أعد فتح الدليل من Home → ? → الإعداد الموجّه.</string>
     <string name="youtube_open_menu_title">افتح القائمة YouTube</string>
     <string name="youtube_open_menu_instruction">اضغط على القائمة ☰ الموجودة أعلى يسار الصفحة، كما هو موضح بالسهم. ثم اختر الحساب/القناة التي تريد استخدامها لإكمال تسجيل الدخول.</string>
     <string name="setup_import_choice_title">هل ترغب في استيراد بياناتك؟</string>
@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s من %2$s</string>
     <string name="update_downloaded_amount">تم تنزيل %1$s</string>
     <string name="save_crash_logs">حفظ سجلات الأعطال</string>
-    <string name="save_crash_logs_description">احتفظ بما يصل إلى 10 ملفات تشخيصية محلية وانسخ كل سجل أعطال جديد إلى Downloads/Grayjoy. لم يتم تحميل أي شيء.</string>
+    <string name="save_crash_logs_description">يحتفظ بآخر 1,000 حدث تقني وما يصل إلى 10 سجلات أعطال محلية. تُستبعد رسائل الاستثناءات ومعرّفات المحتوى من التقارير المشتركة. تُنسخ السجلات الجديدة أيضًا إلى Downloads/Grayjoy. لا يُرفع شيء تلقائيًا.</string>
     <string name="open_navigation_menu">فتح قائمة التنقل</string>
     <string name="close_navigation_menu">إغلاق قائمة التنقل</string>
     <string name="comment_replies">الردود</string>
@@ -308,11 +308,11 @@
     <string name="profile_split_scope_changed">تمت حماية ملف التعريف الأصلي أو إزالته أثناء الإعداد. لم يتم تفعيل النسخ المعلقة؛ بياناتك الأصلية آمنة.</string>
     <string name="source_profile_locked">هذا الملف الشخصي مخصص لمصدر واحد. يمكنك تسجيل الدخول أو تحديثه، ولكن لا يمكنك إزالته أو إضافة مصادر أخرى هنا.</string>
     <string name="setup_help_title">المساعدة دائما قريبة</string>
-    <string name="setup_help_body">على الشاشة الرئيسية، اضغط على علامة الاستفهام الموجودة في دائرة بأعلى اليسار. \"كيف لي...؟\" يرشدك خلال البحث وقوائم التشغيل والتنزيلات ومتابعة القنوات. يمكنك إعادة فتح هذا الإعداد باستخدام أيقونة قبعة المعالج المجاورة له.</string>
+    <string name="setup_help_body">في Home، انقر علامة الاستفهام أعلى اليسار للمساعدة التفاعلية. يفتح زر الإعداد الموجّه في تلك الصفحة دليل الإعداد مجددًا.</string>
     <string name="help_profiles">تغيير ملف تعريف المصدر</string>
     <string name="help_profiles_body">قم بالتبديل بين ملفات تعريف المصدر المنفصلة. يحتفظ كل منها بمكتبته الخاصة وتسجيل الدخول واللون.</string>
     <string name="help_profiles_open">اضغط على أيقونة الملف الشخصي في الجزء العلوي الأيسر من الصفحة الرئيسية لرؤية الملفات الشخصية المتاحة.</string>
-    <string name="help_profiles_choose">اختر ملف التعريف المصدر الذي تريده. يمكنك أيضًا التمرير إلى اليسار أو اليمين على أيقونة الملف الشخصي في الصفحة الرئيسية للتنقل بين الملفات الشخصية؛ يتم تخطي الملفات الشخصية المحمية. لفتح ملف تعريف محمي، حدده هنا وقم بفتحه.</string>
+    <string name="help_profiles_choose">اختر ملف المصدر. اسحب لأعلى أو لأسفل على أيقونة الملف في Home للتبديل السريع؛ تُتجاوز الملفات المحمية. اختر ملفًا محميًا وافتح قفله هنا.</string>
     <plurals name="followed_channels">
         <item quantity="one">%d قناة تمت متابعتها</item>
         <item quantity="zero">%d القنوات المتابعه</item>

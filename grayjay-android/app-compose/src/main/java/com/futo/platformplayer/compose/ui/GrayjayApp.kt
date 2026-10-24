@@ -9,6 +9,8 @@ import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -1863,6 +1865,7 @@ private fun GrayjayAppContent(
         SideEffect { help.ready = ready }
         HelpBubble(help, ready)
     }
+    com.futo.platformplayer.compose.diagnostics.PreviousCrashPrompt()
 }
 
 internal fun usePortraitPlayerFullscreen(
@@ -2169,6 +2172,7 @@ private fun GrayjayScaffold(
     val transitionActive = transitionVideo != null && selectedVideo != null
     val isRootSearch = selected == GrayjayDestination.Search &&
         selectedChannel == null && selectedPlaylist == null && !nestedBackEnabled
+    var channelSearchMode by rememberSaveable(selectedChannel?.id) { mutableStateOf(false) }
     val imeBottomPx = WindowInsets.ime.getBottom(density)
     val navigationBottomPx = WindowInsets.navigationBars.getBottom(density)
     val bottomNavigationFallbackPx = with(density) { 80.dp.roundToPx() }
@@ -2217,6 +2221,7 @@ private fun GrayjayScaffold(
     )
     var activeJobsExpanded by rememberSaveable { mutableStateOf(false) }
     val activeJobs = rememberActiveJobItems(
+        rebuildingCaches = com.futo.platformplayer.compose.ui.screens.LocalExtraPreferences.current.rebuildingCaches,
         youtubeImport = playback.youtubeImport,
         sourceProfileSetup = playback.sourceProfileSetup,
         backgroundYoutubeImport = playback.backgroundYoutubeImport,
@@ -2232,6 +2237,7 @@ private fun GrayjayScaffold(
         historyMusic = playback.historyMusicScan,
         downloadStorage = playback.downloadStorage,
     )
+    LaunchedEffect(activeJobs.isEmpty()) { if (activeJobs.isEmpty()) activeJobsExpanded = false }
 
     Box(
         modifier.onGloballyPositioned { coordinates ->
@@ -2244,11 +2250,12 @@ private fun GrayjayScaffold(
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             topBar = {
-                if (!isRootSearch) {
+                AnimatedVisibility(visible = !isRootSearch && !channelSearchMode,
+                    enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 Column {
                 CenterAlignedTopAppBar(
                     expandedHeight = if (compactChrome) 56.dp else 64.dp,
-                    modifier = predictiveBackTransform.then(
+                    modifier = predictiveBackTransform.testTag("browse-top-bar").then(
                         if (transitionActive) Modifier.clearAndSetSemantics { }
                         else Modifier,
                     ),
@@ -2328,14 +2335,8 @@ private fun GrayjayScaffold(
                                     )
                                 }
                             }
-                            HelpButton()
-                            if (!hasBack && selected == GrayjayDestination.Home) {
-                                val setupDescription = stringResource(R.string.setup_reopen)
-                                IconButton(onClick = guidedSetup.open, modifier = Modifier.testTag("home-guided-setup")) {
-                                    com.futo.platformplayer.compose.onboarding.WizardMark(
-                                        Modifier.size(28.dp).semantics { contentDescription = setupDescription },
-                                    )
-                                }
+                            if (!hasBack && selected == GrayjayDestination.Home && !transitionActive) {
+                                HelpButton()
                             }
                         }
                     },
@@ -2478,6 +2479,8 @@ private fun GrayjayScaffold(
                     ?: selected
                 if (animatedChannel != null) {
                 ChannelDetailScreen(
+                    onSearchModeChange = { channelSearchMode = it },
+                    isPageVisible = !transitionActive,
                     onAddSelectionToPlaylist = playback.onAddSelectionToPlaylist,
                     onPlaySelection = playback.onPlayQueue,
                     shuffledPlaylistIds = playback.shuffledPlaylistIds,
@@ -2918,7 +2921,6 @@ private fun GrayjayScaffold(
                                                 contentDescription = stringResource(R.string.back),
                                             )
                                         }
-                                        HelpButton()
                                     }
                                 },
                                 actions = {

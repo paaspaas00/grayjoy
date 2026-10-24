@@ -6,7 +6,7 @@
     <string name="setup_reopen">打开指南：学习Grayjoy并随时更改您的选择。</string>
     <string name="setup_welcome">欢迎来到Grayjoy</string>
     <string name="setup_welcome_body">视频、音乐和您最喜欢的创作者都集中在一个应用程序中。搜索、关注频道、保存播放列表以及下载内容以供离线播放。让我们一起设置：这里不需要任何技术知识。</string>
-    <string name="setup_later">每个选择都可以稍后在首选项中更改。主页左上角的魔术师总是重新打开本指南。跳过不会删除您的数据。</string>
+    <string name="setup_later">你可以稍后在偏好设置中更改选择。通过 Home → ? → 设置向导重新打开本指南。跳过步骤不会删除数据。</string>
     <string name="setup_step">%2$d 的步骤 %1$d</string>
     <string name="setup_next">下一步</string>
     <string name="setup_skip">跳过</string>
@@ -64,7 +64,7 @@
     <string name="setup_sponsor_animation">演示：播放头跳过绿色赞助片段。</string>
     <string name="setup_autoplay_body">在 YouTube 视频结束时，Grayjoy 可以建议并播放下一个视频。您还将在全屏中看到其标题、10 秒倒计时和“取消”按钮。此临时队列不会保存在您的播放列表中。您自己的播放列表保持通常的顺序。</string>
     <string name="setup_ready">你准备好了！</string>
-    <string name="setup_done_body">您所做的选择将在当前配置文件中保存。尝试搜索视频或打开您的媒体库。请记住：您可以随时使用主页中的魔术师返回到本指南。</string>
+    <string name="setup_done_body">你的选择会保存到当前配置中。试试搜索或打开媒体库。可通过 Home → ? → 设置向导重新打开指南。</string>
     <string name="youtube_open_menu_title">打开 YouTube 菜单</string>
     <string name="youtube_open_menu_instruction">点击页面左上角的 ☰ 菜单，如箭头所示。然后选择您要用来完成登录的帐户/渠道。</string>
     <string name="setup_import_choice_title">您想导入您的数据吗？</string>
@@ -160,7 +160,7 @@
     <string name="update_download_progress">%2$s 的 %1$s</string>
     <string name="update_downloaded_amount">%1$s 下载</string>
     <string name="save_crash_logs">保存崩溃日志</string>
-    <string name="save_crash_logs_description">最多保留 10 个本地诊断文件，并将每个新的崩溃日志复制到 Downloads/Grayjoy。没有上传任何内容。</string>
+    <string name="save_crash_logs_description">在本地保留最近 1,000 条技术事件和最多 10 份崩溃日志。分享报告不包含异常消息或内容标识符。新日志也会复制到 Downloads/Grayjoy。不会自动上传。</string>
     <string name="open_navigation_menu">打开导航菜单</string>
     <string name="close_navigation_menu">关闭导航菜单</string>
     <string name="comment_replies">回复</string>
@@ -296,11 +296,11 @@
     <string name="profile_split_scope_changed">原始配置文件在准备过程中被保护或删除。待处理的副本尚未激活；您的原始数据是安全的。</string>
     <string name="source_profile_locked">此配置文件专用于一个来源。您可以登录或更新它，但无法在此处删除它或添加其他来源。</string>
     <string name="setup_help_title">帮助总是在附近</string>
-    <string name="setup_help_body">在主屏幕上，点击左上角圆圈中的问号。 “我该如何……？”引导您进行搜索、播放列表、下载和关注频道。您可以使用旁边的向导帽图标重新打开此设置。</string>
+    <string name="setup_help_body">在 Home 点按左上角的问号可打开交互式帮助。该页面中的设置向导按钮可重新打开初始设置。</string>
     <string name="help_profiles">更改源配置文件</string>
     <string name="help_profiles_body">在单独的源配置文件之间切换。每个都有自己的库、登录名和颜色。</string>
     <string name="help_profiles_open">点击主页右上角的个人资料图标即可查看可用的个人资料。</string>
-    <string name="help_profiles_choose">选择您想要的源配置文件。您还可以在主页中的个人资料图标上向左或向右滑动以循环浏览个人资料；受保护的配置文件将被跳过。要打开受保护的配置文件，请在此处选择它并解锁。</string>
+    <string name="help_profiles_choose">选择来源配置。在 Home 的配置图标上向上或向下滑动可快速切换，受保护的配置会被跳过。请在这里选择并解锁受保护的配置。</string>
     <plurals name="followed_channels">
         <item quantity="one">%d 关注的频道</item>
         <item quantity="other">%d 关注的频道</item>

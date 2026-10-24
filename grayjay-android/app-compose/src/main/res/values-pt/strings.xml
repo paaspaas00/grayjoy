@@ -658,4 +658,20 @@
         <item quantity="one">%1$d vídeo da playlist %2$s</item>
         <item quantity="other">%1$d vídeos da playlist %2$s</item>
     </plurals>
+    <string name="guided_setup_action">Configuração guiada</string>
+    <string name="advanced_options_unlocked">Opções avançadas ativadas</string>
+    <string name="advanced_options_taps_left">Mais %1$d toques para ativar as opções avançadas</string>
+    <string name="show_backend_change_notices">Mostrar mudanças do motor de reprodução</string>
+    <string name="backend_changed_notice">Motor de reprodução: %1$s → %2$s</string>
+    <string name="catalog_audio_not_found">Não foi encontrada uma fonte de áudio adequada. A faixa pode estar indisponível. Tente novamente mais tarde.</string>
+    <string name="share_diagnostics">Partilhar registos de diagnóstico (ZIP)</string>
+    <string name="diagnostics_share_failed">Não foi possível preparar ou partilhar o relatório de diagnóstico.</string>
+    <string name="previous_crash_title">O Grayjoy fechou inesperadamente?</string>
+    <string name="previous_crash_body">Parece que o Grayjoy falhou da última vez. Partilhar um relatório ajuda a encontrar a causa e melhorar a estabilidade. O ZIP contém dados técnicos filtrados, sem dados de contas, cookies, URLs ou títulos. Pode verificá-lo antes de partilhar. Nada é enviado automaticamente.</string>
+    <string name="previous_crash_logging_off">O registo de diagnóstico estava desativado. O relatório contém apenas informações técnicas limitadas. Pode ativar o registo nas preferências para problemas futuros.</string>
+    <string name="skip_crash_report_title">Ignorar o relatório?</string>
+    <string name="skip_crash_report_body">Comunicar um problema ajuda a melhorar o Grayjoy para todos. Também pode partilhar os registos mais tarde nas preferências.</string>
+    <string name="skip_crash_report_action">Ignorar</string>
+    <string name="job_finished_notice">Tarefa terminada: %1$s</string>
+    <string name="update_download_job_title">Transferência da atualização</string>
 </resources>

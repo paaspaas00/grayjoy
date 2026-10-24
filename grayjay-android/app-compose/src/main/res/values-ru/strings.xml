@@ -700,4 +700,20 @@
         <item quantity="many">%1$d видео из плейлиста %2$s</item>
         <item quantity="other">%1$d видео из плейлиста %2$s</item>
     </plurals>
+    <string name="guided_setup_action">Мастер настройки</string>
+    <string name="advanced_options_unlocked">Расширенные настройки включены</string>
+    <string name="advanced_options_taps_left">Нажмите ещё %1$d раз, чтобы включить расширенные настройки</string>
+    <string name="show_backend_change_notices">Показывать смену движка воспроизведения</string>
+    <string name="backend_changed_notice">Движок воспроизведения: %1$s → %2$s</string>
+    <string name="catalog_audio_not_found">Подходящий источник аудио не найден. Возможно, трек недоступен. Повторите попытку позже.</string>
+    <string name="share_diagnostics">Поделиться журналами диагностики (ZIP)</string>
+    <string name="diagnostics_share_failed">Не удалось подготовить или отправить диагностический отчёт.</string>
+    <string name="previous_crash_title">Grayjoy неожиданно закрылся?</string>
+    <string name="previous_crash_body">Похоже, в прошлый раз Grayjoy завершился со сбоем. Отчёт поможет найти причину и повысить стабильность. ZIP содержит отфильтрованные технические данные без сведений об аккаунтах, cookie, URL и названий контента. Перед отправкой архив можно проверить. Ничего не отправляется автоматически.</string>
+    <string name="previous_crash_logging_off">Запись диагностики была выключена, поэтому отчёт содержит ограниченные технические данные. Её можно включить в настройках для будущих проблем.</string>
+    <string name="skip_crash_report_title">Пропустить отчёт?</string>
+    <string name="skip_crash_report_body">Сообщения об ошибках помогают улучшать Grayjoy для всех. Журналы можно отправить позже из настроек.</string>
+    <string name="skip_crash_report_action">Пропустить</string>
+    <string name="job_finished_notice">Задача завершена: %1$s</string>
+    <string name="update_download_job_title">Загрузка обновления</string>
 </resources>

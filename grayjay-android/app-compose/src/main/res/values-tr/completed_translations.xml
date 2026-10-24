@@ -6,7 +6,7 @@
     <string name="setup_reopen">Kılavuzu açın: Grayjoy öğrenin ve seçimlerinizi istediğiniz zaman değiştirin.</string>
     <string name="setup_welcome">Grayjoy\'a hoş geldiniz</string>
     <string name="setup_welcome_body">Videolar, müzik ve favori içerik oluşturucularınız tek bir uygulamada bir arada. Çevrimdışı oynatma için kanalları arayın, takip edin, oynatma listelerini kaydedin ve içerik indirin. Gelin işleri birlikte ayarlayalım: Burada hiçbir şey teknik bilgi gerektirmez.</string>
-    <string name="setup_later">Her seçim daha sonra Tercihler\'de değiştirilebilir. Ana Sayfanın sol üst köşesindeki sihirbaz bu kılavuzu her zaman yeniden açar. Atlamak verilerinizi silmez.</string>
+    <string name="setup_later">Seçimlerinizi daha sonra tercihlerden değiştirebilirsiniz. Rehberi Home → ? → Kurulum sihirbazı yoluyla açın. Bir adımı atlamak verilerinizi silmez.</string>
     <string name="setup_step">%2$d Adımı %1$d</string>
     <string name="setup_next">Sonraki</string>
     <string name="setup_skip">Atla</string>
@@ -64,7 +64,7 @@
     <string name="setup_sponsor_animation">Gösterim: Oynatma kafası yeşil sponsorlu bir bölümü atlıyor.</string>
     <string name="setup_autoplay_body">Bir YouTube videosunun sonunda, Grayjoy bir sonraki videoyu önerebilir ve oynatabilir. Başlığını, 10 saniyelik geri sayımı ve İptal düğmesini de tam ekranda göreceksiniz. Bu geçici sıra, çalma listeleriniz arasına kaydedilmez. Kendi çalma listeleriniz her zamanki sırasını korur.</string>
     <string name="setup_ready">Hazırsın!</string>
-    <string name="setup_done_body">Geçerli profil için yaptığınız seçimler kaydedilir. Bir video aramayı veya kitaplığınızı açmayı deneyin. Unutmayın: Bu kılavuza istediğiniz zaman Ana Sayfadaki sihirbazı kullanarak geri dönebilirsiniz.</string>
+    <string name="setup_done_body">Seçimleriniz geçerli profile kaydedilir. Arama yapmayı veya kitaplığı açmayı deneyin. Rehberi Home → ? → Kurulum sihirbazı yoluyla yeniden açabilirsiniz.</string>
     <string name="youtube_open_menu_title">YouTube menüsünü aç</string>
     <string name="youtube_open_menu_instruction">Okla gösterildiği gibi sayfanın sol üst kısmındaki ☰ menüsüne dokunun. Ardından oturum açma işlemini tamamlamak için kullanmak istediğiniz hesabı/kanalı seçin.</string>
     <string name="setup_import_choice_title">Verilerinizi içe aktarmak ister misiniz?</string>
@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s / %2$s</string>
     <string name="update_downloaded_amount">%1$s indirildi</string>
     <string name="save_crash_logs">Kilitlenme günlüklerini kaydet</string>
-    <string name="save_crash_logs_description">En fazla 10 yerel tanı dosyasını saklayın ve her yeni kilitlenme günlüğünü İndirilenler/Grayjoy konumuna kopyalayın. Hiçbir şey yüklenmedi.</string>
+    <string name="save_crash_logs_description">Son 1.000 teknik olayı ve en fazla 10 çökme günlüğünü yerel olarak saklar. Paylaşılan raporlara hata mesajları ve içerik kimlikleri eklenmez. Yeni günlükler Downloads/Grayjoy klasörüne de kopyalanır. Otomatik yükleme yapılmaz.</string>
     <string name="open_navigation_menu">Gezinme menüsünü aç</string>
     <string name="close_navigation_menu">Gezinme menüsünü kapat</string>
     <string name="comment_replies">Yanıtlar</string>
@@ -296,11 +296,11 @@
     <string name="profile_split_scope_changed">Orijinal profil hazırlık sırasında korunmuş veya kaldırılmıştır. Bekleyen kopyalar etkinleştirilmedi; orijinal verileriniz güvende.</string>
     <string name="source_profile_locked">Bu profil tek bir kaynağa ayrılmıştır. Oturum açabilir veya güncelleyebilirsiniz ancak buraya kaldıramaz veya başka kaynaklar ekleyemezsiniz.</string>
     <string name="setup_help_title">Yardım her zaman yakındadır</string>
-    <string name="setup_help_body">Ana ekranda sol üstteki daire içindeki soru işaretine dokunun. \"Nasıl...?\" arama, oynatma listeleri, indirmeler ve kanalları takip etme konusunda size rehberlik eder. Bu kurulumu yanındaki sihirbaz şapkası simgesini kullanarak yeniden açabilirsiniz.</string>
+    <string name="setup_help_body">Home ekranında etkileşimli yardım için sol üstteki soru işaretine dokunun. Bu sayfadaki Kurulum sihirbazı düğmesi ilk kurulum rehberini açar.</string>
     <string name="help_profiles">Kaynak profilini değiştir</string>
     <string name="help_profiles_body">Ayrı kaynak profilleriniz arasında geçiş yapın. Her biri kendi kütüphanesini, giriş bilgilerini ve rengini saklar.</string>
     <string name="help_profiles_open">Kullanılabilir profilleri görmek için Ana Sayfanın sağ üst köşesindeki profil simgesine dokunun.</string>
-    <string name="help_profiles_choose">İstediğiniz kaynak profilini seçin. Ayrıca profiller arasında geçiş yapmak için Ana Sayfa\'daki profil simgesini sola veya sağa kaydırabilirsiniz; korumalı profiller atlanır. Korumalı bir profili açmak için profili buradan seçin ve kilidini açın.</string>
+    <string name="help_profiles_choose">Bir kaynak profili seçin. Hızlı geçiş için Home ekranındaki profil simgesini yukarı veya aşağı kaydırın; korumalı profiller atlanır. Korumalı profili burada seçip kilidini açın.</string>
     <plurals name="followed_channels">
         <item quantity="one">%d kanalı takip etti</item>
         <item quantity="other">%d takip edilen kanallar</item>

@@ -48,6 +48,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -144,6 +145,7 @@ fun SettingsScreen(
     onScanPcPairingQr: () -> Unit = {},
     onRemovePairedComputer: (String) -> Unit = {},
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val performance = rememberDevicePerformanceProfile()
     val compactLayout = compactUi()
     var showSpeedDialog by rememberSaveable { mutableStateOf(false) }
@@ -170,6 +172,8 @@ fun SettingsScreen(
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     var showPairedComputers by rememberSaveable { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
+    var advancedUnlocked by remember { mutableStateOf(com.futo.platformplayer.compose.diagnostics.AdvancedOptions.isUnlocked(context)) }
+    val advancedUnlockTaps = remember { com.futo.platformplayer.compose.diagnostics.AdvancedUnlockTaps() }
     var showVoiceControl by rememberSaveable { mutableStateOf(false) }
     val extras = LocalExtraPreferences.current
     val guidedSetup = com.futo.platformplayer.compose.onboarding.LocalGuidedSetup.current
@@ -496,6 +500,9 @@ fun SettingsScreen(
                     testTag = "crash-logging",
                 )
             }
+            setting("share-diagnostics", "link") {
+                com.futo.platformplayer.compose.diagnostics.ShareDiagnosticsButton()
+            }
         }
         settingsGroup("settings-group-7", R.string.settings_sources, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
             setting("manage-sources", "link") {
@@ -583,7 +590,7 @@ fun SettingsScreen(
             LinkSetting(stringResource(R.string.setup_title), stringResource(R.string.setup_reopen),
                 Icons.Outlined.Language, guidedSetup.open, "open-guided-setup")
         }
-        if (searchQuery.isBlank() || "advanced-preferences" in matching) item(key = "advanced-preferences") {
+        if (advancedUnlocked && (searchQuery.isBlank() || "advanced-preferences" in matching)) item(key = "advanced-preferences") {
             LinkSetting(stringResource(R.string.advanced_settings), stringResource(R.string.advanced_settings_description), Icons.Outlined.BugReport,
                 { showAdvanced = true }, "advanced-settings")
         }
@@ -596,6 +603,17 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 12.dp)
+                    .clickable {
+                        if (!advancedUnlocked) {
+                            val left = advancedUnlockTaps.tap(android.os.SystemClock.elapsedRealtime())
+                            if (left == 0) {
+                                com.futo.platformplayer.compose.diagnostics.AdvancedOptions.unlock(context)
+                                advancedUnlocked = true
+                                android.widget.Toast.makeText(context, R.string.advanced_options_unlocked, android.widget.Toast.LENGTH_SHORT).show()
+                            } else if (left <= 3) android.widget.Toast.makeText(context,
+                                resources.getString(R.string.advanced_options_taps_left, left), android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
                     .testTag("version-information"),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(2.dp),

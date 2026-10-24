@@ -658,4 +658,20 @@
         <item quantity="one">%2$s oynatma listesinden %1$d video</item>
         <item quantity="other">%2$s oynatma listesinden %1$d video</item>
     </plurals>
+    <string name="guided_setup_action">Kurulum sihirbazı</string>
+    <string name="advanced_options_unlocked">Gelişmiş seçenekler etkinleştirildi</string>
+    <string name="advanced_options_taps_left">Gelişmiş seçenekleri açmak için %1$d kez daha dokunun</string>
+    <string name="show_backend_change_notices">Oynatma motoru değişikliklerini göster</string>
+    <string name="backend_changed_notice">Oynatma motoru: %1$s → %2$s</string>
+    <string name="catalog_audio_not_found">Uygun bir ses kaynağı bulunamadı. Parça kullanılamıyor olabilir. Daha sonra yeniden deneyin.</string>
+    <string name="share_diagnostics">Tanılama günlüklerini paylaş (ZIP)</string>
+    <string name="diagnostics_share_failed">Tanılama raporu hazırlanamadı veya paylaşılamadı.</string>
+    <string name="previous_crash_title">Grayjoy beklenmedik şekilde kapandı mı?</string>
+    <string name="previous_crash_body">Grayjoy önceki çalıştırmada çökmüş olabilir. Rapor paylaşmak nedeni bulmamıza ve kararlılığı artırmamıza yardımcı olur. ZIP, hesap bilgileri, çerezler, URL’ler ve içerik başlıkları olmadan filtrelenmiş teknik bilgiler içerir. Paylaşmadan önce inceleyebilirsiniz. Hiçbir şey otomatik gönderilmez.</string>
+    <string name="previous_crash_logging_off">Tanılama kaydı kapalıydı; rapor sınırlı teknik bilgi içerir. Gelecekteki sorunlar için tercihlerden açabilirsiniz.</string>
+    <string name="skip_crash_report_title">Rapor atlansın mı?</string>
+    <string name="skip_crash_report_body">Sorun bildirmek Grayjoy’u herkes için iyileştirmeye yardımcı olur. Günlükleri daha sonra tercihlerden de paylaşabilirsiniz.</string>
+    <string name="skip_crash_report_action">Atla</string>
+    <string name="job_finished_notice">İş tamamlandı: %1$s</string>
+    <string name="update_download_job_title">Güncelleme indirme</string>
 </resources>

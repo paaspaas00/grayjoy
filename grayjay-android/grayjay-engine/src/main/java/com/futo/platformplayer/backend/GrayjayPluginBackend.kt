@@ -724,12 +724,14 @@ class GrayjayPluginBackend(
         type: GrayjaySearchType = GrayjaySearchType.Videos,
         pageSize: Int = 30,
         filtersBySource: Map<String, Map<String, List<String>>> = emptyMap(),
+        background: Boolean = false,
     ): GrayjayPluginSearchResult = withContext(Dispatchers.IO) {
         val outcomes = coroutineScope {
             enabledSources.entries.map { (alias, endpoint) ->
                 async {
                     runCatching {
-                        val plugin = getOrLoad(alias, endpoint)
+                        val parent = getOrLoad(alias, endpoint)
+                        val plugin = if (background) metadataClientPool.getClientPooled(parent, METADATA_CLIENT_CONCURRENCY) as JSClient else parent
                         val pager = when (type) {
                             GrayjaySearchType.Videos -> filtersBySource[alias]
                                 ?.takeIf(Map<*, *>::isNotEmpty)

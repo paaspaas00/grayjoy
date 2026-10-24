@@ -41,6 +41,7 @@ internal val settingsSearchResources = mapOf(
     "toggle-private-session" to listOf(R.string.private_session, R.string.private_session_description),
     "privacy-controls" to listOf(R.string.privacy_controls, R.string.privacy_controls_description),
     "crash-logging" to listOf(R.string.save_crash_logs, R.string.save_crash_logs_description),
+    "share-diagnostics" to listOf(R.string.share_diagnostics),
     "manage-sources" to listOf(R.string.manage_sources),
     "paired-computers" to listOf(R.string.paired_computers, R.string.paired_computers_count),
     "import-grayjay-database" to listOf(R.string.import_grayjay_database, R.string.import_grayjay_database_description),

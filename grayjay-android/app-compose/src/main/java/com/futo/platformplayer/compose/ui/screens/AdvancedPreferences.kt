@@ -35,6 +35,7 @@ internal fun AdvancedPreferencesDialog(sources: List<SourceUiModel>, onDismiss: 
     val context = LocalContext.current
     val options = LocalExtraPreferences.current
     var confirmClear by rememberSaveable { mutableStateOf(false) }
+    var backendNotices by remember { mutableStateOf(com.futo.platformplayer.compose.diagnostics.AdvancedOptions.showBackendChanges(context)) }
     val versions by produceState<Map<String, String>?>(null, sources) {
         value = withContext(Dispatchers.IO) { sources.associate { it.id to pluginVersion(context, it) } }
     }
@@ -42,6 +43,15 @@ internal fun AdvancedPreferencesDialog(sources: List<SourceUiModel>, onDismiss: 
         title = { Text(stringResource(R.string.advanced_settings)) },
         text = {
             LazyColumn(Modifier.heightIn(max = 600.dp).testTag("advanced-options-list"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                item {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text(stringResource(R.string.show_backend_change_notices), Modifier.weight(1f))
+                        Switch(checked = backendNotices, onCheckedChange = {
+                            backendNotices = it
+                            com.futo.platformplayer.compose.diagnostics.AdvancedOptions.setShowBackendChanges(context, it)
+                        }, modifier = Modifier.testTag("backend-change-notices"))
+                    }
+                }
                 item {
                     Text(stringResource(R.string.rebuild_cache_description), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))

@@ -6,7 +6,7 @@
     <string name="setup_reopen">Apri la guida: scopri Grayjoy e cambia le tue scelte quando vuoi.</string>
     <string name="setup_welcome">Benvenuto in Grayjoy</string>
     <string name="setup_welcome_body">Video, musica e i tuoi creator preferiti, insieme in una sola app. Cerca, segui i canali, salva playlist e scarica contenuti da ascoltare senza internet. Configuriamo tutto insieme: non servono conoscenze tecniche.</string>
-    <string name="setup_later">Puoi cambiare ogni scelta più avanti nelle Prefs. Il mago in alto a sinistra nella Home riapre sempre questa guida. Saltare un passaggio non elimina i tuoi dati.</string>
+    <string name="setup_later">Puoi cambiare le scelte più avanti nelle Prefs. Riapri questa guida da Home → ? → Configurazione guidata. Saltare un passaggio non elimina i tuoi dati.</string>
     <string name="setup_step">Passaggio %1$d di %2$d</string>
     <string name="setup_next">Avanti</string>
     <string name="setup_skip">Salta</string>
@@ -64,7 +64,7 @@
     <string name="setup_sponsor_animation">Dimostrazione: il cursore salta un segmento sponsorizzato in verde.</string>
     <string name="setup_autoplay_body">Alla fine di un video YouTube, Grayjoy può proporre e riprodurre il successivo. Vedrai il titolo, un conto alla rovescia di 10 secondi e il pulsante Annulla, anche a schermo intero. Questa coda temporanea non viene salvata tra le playlist. Le tue playlist mantengono il loro ordine abituale.</string>
     <string name="setup_ready">Tutto pronto!</string>
-    <string name="setup_done_body">Le scelte vengono salvate mentre le fai, nel profilo attuale. Prova a cercare un video o ad aprire la tua raccolta. Ricorda: puoi sempre tornare a questa guida con il mago nella Home.</string>
+    <string name="setup_done_body">Le scelte vengono salvate nel profilo attuale mentre le fai. Prova una ricerca o apri la raccolta. Puoi riaprire la guida da Home → ? → Configurazione guidata.</string>
     <string name="youtube_open_menu_title">Apri il menu di YouTube</string>
     <string name="youtube_open_menu_instruction">Tocca il pulsante ☰ in alto a sinistra nella pagina, indicato dalla freccia. Poi scegli l’account o canale che vuoi usare per completare l’accesso.</string>
     <string name="setup_import_choice_title">Vuoi importare i tuoi dati?</string>

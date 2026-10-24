@@ -797,9 +797,11 @@ class GrayjayAppTest {
         closeSoftKeyboard(); capture("04-search")
         composeRule.onNodeWithTag("nav-library").performClick(); capture("05-library")
         composeRule.onNodeWithTag("nav-settings").performClick(); capture("06-settings")
-        composeRule.onNodeWithTag("settings-list").performScrollToNode(hasTestTag("advanced-settings"))
-        composeRule.onNodeWithTag("advanced-settings").performClick(); capture("06b-advanced")
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.close)).performClick()
+        if (com.futo.platformplayer.compose.diagnostics.AdvancedOptions.isUnlocked(composeRule.activity)) {
+            composeRule.onNodeWithTag("settings-list").performScrollToNode(hasTestTag("advanced-settings"))
+            composeRule.onNodeWithTag("advanced-settings").performClick(); capture("06b-advanced")
+            composeRule.onNodeWithText(composeRule.activity.getString(R.string.close)).performClick()
+        }
         if (compactAudit) {
             composeRule.onNodeWithTag("settings-list").performScrollToNode(hasTestTag("default-playback-speed"))
             composeRule.onNodeWithTag("default-playback-speed").assertIsDisplayed()

@@ -16,7 +16,7 @@ class HelpNavigationRegressionTest {
     private lateinit var player: ExoPlayer
     @After fun release() { if (::player.isInitialized) rule.runOnUiThread { player.release() } }
 
-    @Test fun helpIsOnTheLeftOfEveryMainRouteAndBothPlayerModes() {
+    @Test fun helpIsOnlyOnHomeAndSetupLivesInsideHelp() {
         val video = VideoUiModel("help-video", "Video", "Creator", "", "3:00")
         val channel = ChannelUiModel("help-channel", "Creator", "youtube", "YouTube", 0, "", "")
         val playlist = PlaylistUiModel("help-playlist", "Playlist", "", listOf(video.id))
@@ -32,25 +32,28 @@ class HelpNavigationRegressionTest {
             val screen = rule.onRoot().fetchSemanticsNode().boundsInRoot
             assertTrue("Help should be in the left half: $button / $screen", button.center.x < screen.center.x)
         }
-        for (tab in listOf("home", "subscriptions", "library", "settings", "search")) {
+        assertHelpLeft()
+        rule.onNodeWithTag("home-guided-setup").assertDoesNotExist()
+        rule.onNodeWithTag("open-help").performClick()
+        rule.onNodeWithTag("help-guided-setup").assertIsDisplayed()
+        rule.onNodeWithContentDescription(rule.activity.getString(com.futo.platformplayer.compose.R.string.close)).performClick()
+        for (tab in listOf("subscriptions", "library", "settings", "search")) {
             rule.onNodeWithTag("nav-$tab").performClick()
-            assertHelpLeft()
+            rule.onNodeWithTag("open-help").assertDoesNotExist()
         }
         rule.onNodeWithTag("nav-settings").performClick()
         rule.onNodeWithTag("settings-list").performScrollToNode(hasTestTag("manage-sources"))
         rule.onNodeWithTag("manage-sources").performClick()
-        assertHelpLeft()
+        rule.onNodeWithTag("open-help").assertDoesNotExist()
         rule.runOnUiThread { state.value = state.value.copy(externalNavigation = ExternalNavigationUiModel(2, ExternalNavigationKind.Channel, channel.id)) }
-        assertHelpLeft()
+        rule.onNodeWithTag("open-help").assertDoesNotExist()
         rule.runOnUiThread { state.value = state.value.copy(externalNavigation = ExternalNavigationUiModel(3, ExternalNavigationKind.Playlist, playlist.id)) }
-        assertHelpLeft()
+        rule.onNodeWithTag("open-help").assertDoesNotExist()
         rule.runOnUiThread { state.value = state.value.copy(nowPlaying = NowPlayingUiState(video = video),
             playback = PlaybackUiState(currentVideoId = video.id, currentVideoWidth = 1080, currentVideoHeight = 1920),
             externalNavigation = ExternalNavigationUiModel(4, ExternalNavigationKind.Video, video.id)) }
-        assertHelpLeft()
+        rule.onNodeWithTag("open-help").assertDoesNotExist()
         rule.onNodeWithTag("player-fullscreen").performClick()
-        assertHelpLeft()
-        rule.onNodeWithTag("open-help").performClick()
-        rule.onNodeWithTag("help-topics").assertIsDisplayed()
+        rule.onNodeWithTag("open-help").assertDoesNotExist()
     }
 }

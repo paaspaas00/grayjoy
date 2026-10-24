@@ -129,7 +129,11 @@ class HistoryMusicWorker(context: Context, parameters: WorkerParameters) : Corou
             if (continueImmediately) {
                 HistoryMusicClassifier.continueQueue(applicationContext, profile)
                 Result.success()
-            } else if (retryNeeded) Result.retry() else Result.success()
+            } else if (retryNeeded) Result.retry() else {
+                if (candidates.isNotEmpty()) com.futo.platformplayer.compose.jobs.notifyJobFinished(applicationContext,
+                    com.futo.platformplayer.compose.R.string.history_music_background_job)
+                Result.success()
+            }
         } finally {
             // Persist completed metadata even if Android stops this worker between chunks.
             withContext(kotlinx.coroutines.NonCancellable) { flush() }

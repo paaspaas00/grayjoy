@@ -658,4 +658,20 @@
         <item quantity="one">プレイリスト「%2$s」から %1$d 本の動画</item>
         <item quantity="other">プレイリスト「%2$s」から %1$d 本の動画</item>
     </plurals>
+    <string name="guided_setup_action">初期設定ガイド</string>
+    <string name="advanced_options_unlocked">詳細設定を有効にしました</string>
+    <string name="advanced_options_taps_left">詳細設定を有効にするには、あと%1$d回タップ</string>
+    <string name="show_backend_change_notices">再生エンジンの切り替えを表示</string>
+    <string name="backend_changed_notice">再生エンジン: %1$s → %2$s</string>
+    <string name="catalog_audio_not_found">適切な音声ソースが見つかりませんでした。この曲は利用できない可能性があります。後でもう一度お試しください。</string>
+    <string name="share_diagnostics">診断ログを共有（ZIP）</string>
+    <string name="diagnostics_share_failed">診断レポートの作成または共有ができませんでした。</string>
+    <string name="previous_crash_title">Grayjoyが予期せず終了しましたか？</string>
+    <string name="previous_crash_body">前回Grayjoyがクラッシュしたようです。レポートの共有は原因の特定と安定性の改善に役立ちます。ZIPには技術情報のみが含まれ、アカウント情報、Cookie、URL、コンテンツのタイトルは除外されます。共有前に確認できます。自動送信は行いません。</string>
+    <string name="previous_crash_logging_off">診断ログが無効だったため、レポートの技術情報は限定的です。今後の問題に備えて設定で有効にできます。</string>
+    <string name="skip_crash_report_title">レポートをスキップしますか？</string>
+    <string name="skip_crash_report_body">問題の報告はGrayjoyの改善に役立ちます。後で設定からログを共有することもできます。</string>
+    <string name="skip_crash_report_action">スキップ</string>
+    <string name="job_finished_notice">ジョブ終了: %1$s</string>
+    <string name="update_download_job_title">更新のダウンロード</string>
 </resources>

@@ -6,7 +6,7 @@
     <string name="setup_reopen">Abra o guia: aprenda Grayjoy e mude suas escolhas a qualquer momento.</string>
     <string name="setup_welcome">Bem-vindo ao Grayjoy</string>
     <string name="setup_welcome_body">Vídeos, músicas e seus criadores favoritos, juntos em um só app. Pesquise, siga canais, salve playlists e baixe conteúdo para reprodução offline. Vamos acertar as coisas juntos: nada aqui exige conhecimento técnico.</string>
-    <string name="setup_later">Cada escolha pode ser alterada posteriormente em Configurações. O mágico no canto superior esquerdo da página inicial sempre reabre este guia. Ignorar não exclui seus dados.</string>
+    <string name="setup_later">Pode alterar as escolhas nas preferências. Reabra este guia em Home → ? → Configuração guiada. Ignorar um passo não elimina os seus dados.</string>
     <string name="setup_step">Etapa %1$d de %2$d</string>
     <string name="setup_next">Próximo</string>
     <string name="setup_skip">Pular</string>
@@ -64,7 +64,7 @@
     <string name="setup_sponsor_animation">Demonstração: a reprodução pula um segmento patrocinado em verde.</string>
     <string name="setup_autoplay_body">No final de um vídeo de YouTube, Grayjoy pode sugerir e reproduzir o próximo. Você verá o título, uma contagem regressiva de 10 segundos e um botão Cancelar, também em tela cheia. Esta fila temporária não é salva em suas playlists. Suas próprias playlists mantêm a ordem normal.</string>
     <string name="setup_ready">Você está pronto!</string>
-    <string name="setup_done_body">Suas escolhas são salvas conforme você as faz, para o perfil atual. Tente pesquisar um vídeo ou abrir sua biblioteca. Lembre-se: você sempre pode retornar a este guia usando o mágico da Página inicial.</string>
+    <string name="setup_done_body">As escolhas são guardadas no perfil atual. Experimente uma pesquisa ou abra a biblioteca. Reabra o guia em Home → ? → Configuração guiada.</string>
     <string name="youtube_open_menu_title">Abra o menu YouTube</string>
     <string name="youtube_open_menu_instruction">Toque no menu ☰ no canto superior esquerdo da página, conforme mostrado pela seta. Em seguida, escolha a conta/canal que deseja usar para concluir o login.</string>
     <string name="setup_import_choice_title">Gostaria de importar seus dados?</string>
@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s de %2$s</string>
     <string name="update_downloaded_amount">%1$s baixado</string>
     <string name="save_crash_logs">Salvar registros de falhas</string>
-    <string name="save_crash_logs_description">Mantenha até 10 arquivos de diagnóstico locais e copie cada novo log de travamento para Downloads/Grayjoy. Nada é carregado.</string>
+    <string name="save_crash_logs_description">Guarda os últimos 1.000 eventos técnicos e até 10 registos de falhas locais. Os relatórios partilhados excluem mensagens de exceções e identificadores de conteúdo. Os novos registos também são copiados para Downloads/Grayjoy. Nada é enviado.</string>
     <string name="open_navigation_menu">Abrir menu de navegação</string>
     <string name="close_navigation_menu">Fechar menu de navegação</string>
     <string name="comment_replies">Respostas</string>
@@ -296,11 +296,11 @@
     <string name="profile_split_scope_changed">Um perfil original foi protegido ou removido durante a preparação. As cópias pendentes não foram ativadas; seus dados originais estão seguros.</string>
     <string name="source_profile_locked">Este perfil é dedicado a uma fonte. Você pode fazer login ou atualizá-lo, mas não pode removê-lo ou adicionar outras fontes aqui.</string>
     <string name="setup_help_title">A ajuda está sempre por perto</string>
-    <string name="setup_help_body">Na tela inicial, toque no ponto de interrogação em um círculo no canto superior esquerdo. “Como eu…?” orienta você em pesquisas, listas de reprodução, downloads e acompanhamento de canais. Você pode reabrir esta configuração usando o ícone de chapéu de assistente próximo a ela.</string>
+    <string name="setup_help_body">Em Home, toque no ponto de interrogação no canto superior esquerdo para obter ajuda interativa. O botão Configuração guiada nessa página reabre o guia inicial.</string>
     <string name="help_profiles">Alterar perfil de origem</string>
     <string name="help_profiles_body">Alterne entre seus perfis de origem separados. Cada um mantém sua própria biblioteca, login e cor.</string>
     <string name="help_profiles_open">Toque no ícone do perfil no canto superior direito da página inicial para ver os perfis disponíveis.</string>
-    <string name="help_profiles_choose">Escolha o perfil de origem desejado. Você também pode deslizar para a esquerda ou para a direita no ícone do perfil na página inicial para percorrer os perfis; perfis protegidos são ignorados. Para abrir um perfil protegido, selecione-o aqui e desbloqueie-o.</string>
+    <string name="help_profiles_choose">Escolha um perfil de fonte. Deslize para cima ou para baixo no ícone do perfil em Home para mudar rapidamente; os perfis protegidos são ignorados. Selecione e desbloqueie um perfil protegido aqui.</string>
     <plurals name="followed_channels">
         <item quantity="one">%d seguiu canal</item>
         <item quantity="other">%d canais seguidos</item>

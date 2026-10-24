@@ -10,7 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.futo.platformplayer.compose.diagnostics.DiagnosticLog as Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -136,7 +136,8 @@ class PcLinkService : Service() {
             .setContentIntent(openApp)
             .setOnlyAlertOnce(true)
             .setOngoing(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(com.futo.platformplayer.compose.notifications.migratedNotificationVisibility(
+                this, CHANNEL_ID, "grayjoy_pc_link", NotificationCompat.VISIBILITY_PUBLIC))
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
 
         if (playback == null) {
@@ -219,21 +220,13 @@ class PcLinkService : Service() {
     }
 
     private fun createNotificationChannel() {
-        getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                getString(R.string.pc_link_notification_channel),
-                NotificationManager.IMPORTANCE_LOW,
-            ).apply {
-                description = getString(R.string.pc_link_notification_channel_description)
-                setSound(null, null)
-                enableVibration(false)
-            },
-        )
+        com.futo.platformplayer.compose.notifications.ensureNonBadgingChannel(this, CHANNEL_ID,
+            "grayjoy_pc_link", getString(R.string.pc_link_notification_channel),
+            getString(R.string.pc_link_notification_channel_description))
     }
 
     companion object {
-        private const val CHANNEL_ID = "grayjoy_pc_link"
+        private const val CHANNEL_ID = "grayjoy_pc_link_no_badge"
         private const val NOTIFICATION_ID = 7304
         private const val ACTION_PLAY = "com.futo.platformplayer.compose.pclink.PLAY"
         private const val ACTION_PAUSE = "com.futo.platformplayer.compose.pclink.PAUSE"

@@ -24,6 +24,11 @@ class GrayjoyDownloadService : DownloadService(
     R.string.download_notification_channel,
     0,
 ) {
+    override fun onCreate() {
+        com.futo.platformplayer.compose.notifications.ensureNonBadgingChannel(this, CHANNEL_ID,
+            "grayjoy_downloads", getString(R.string.download_notification_channel))
+        super.onCreate()
+    }
     override fun onTimeout(startId: Int, fgsType: Int) {
         com.futo.platformplayer.compose.jobs.RunningJobs.pause()
         GrayjoyDownloadStore.holdUntilAppRestore(this)
@@ -60,6 +65,8 @@ class GrayjoyDownloadService : DownloadService(
     ).let { notification ->
         // One stable, silent transfer notification, grouped under the aggregate job progress.
         androidx.core.app.NotificationCompat.Builder(this, notification)
+            .setVisibility(com.futo.platformplayer.compose.notifications.migratedNotificationVisibility(
+                this, CHANNEL_ID, "grayjoy_downloads", notification.visibility))
             .setOnlyAlertOnce(true).setSilent(true).setGroup("grayjoy_background_jobs")
             .setGroupAlertBehavior(androidx.core.app.NotificationCompat.GROUP_ALERT_SUMMARY).build()
     }
@@ -67,7 +74,7 @@ class GrayjoyDownloadService : DownloadService(
     companion object {
         private const val NOTIFICATION_ID = 2042
         private const val DOWNLOAD_JOB_ID = 2043
-        private const val CHANNEL_ID = "grayjoy_downloads"
+        private const val CHANNEL_ID = "grayjoy_downloads_no_badge"
 
         fun add(context: Context, request: DownloadRequest) {
             try {

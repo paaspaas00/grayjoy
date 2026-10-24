@@ -31,11 +31,11 @@
     <string name="profile_split_scope_changed">Un profilo di origine è stato protetto o rimosso durante la preparazione. Le copie in attesa non sono state attivate e i dati originali sono al sicuro.</string>
     <string name="source_profile_locked">Questo profilo è dedicato a una sorgente. Puoi effettuare l’accesso o aggiornarla, ma non rimuoverla né aggiungere altre sorgenti qui.</string>
     <string name="setup_help_title">L’aiuto è sempre a portata di mano</string>
-    <string name="setup_help_body">Nella Home, tocca il punto interrogativo dentro il cerchio in alto a sinistra. «Come faccio per…?» ti guida nella ricerca, nelle playlist, nei download e nel seguire i canali. Puoi riaprire questa configurazione dal cappello del mago lì accanto.</string>
+    <string name="setup_help_body">Nella Home, tocca il punto interrogativo in alto a sinistra per le guide interattive. Il bottone Configurazione guidata in quella pagina riapre la guida iniziale.</string>
     <string name="help_profiles">Cambiare profilo di sorgente</string>
     <string name="help_profiles_body">Passa da un profilo di sorgente all’altro. Ognuno mantiene la propria libreria, l’accesso e il colore.</string>
     <string name="help_profiles_open">Tocca l’icona del profilo in alto a destra nella Home per vedere i profili disponibili.</string>
-    <string name="help_profiles_choose">Scegli il profilo della sorgente che vuoi usare. Puoi anche scorrere a sinistra o a destra sull’icona del profilo nella Home per cambiare rapidamente: i profili protetti vengono saltati. Per aprirne uno protetto, selezionalo qui e sbloccalo.</string>
+    <string name="help_profiles_choose">Scegli il profilo della sorgente che vuoi usare. Scorri verso l’alto o il basso sull’icona del profilo nella Home per cambiare rapidamente: i profili protetti vengono saltati. Per aprirne uno protetto, selezionalo qui e sbloccalo.</string>
     <plurals name="followed_channels">
         <item quantity="one">%d canale seguito</item>
         <item quantity="other">%d canali seguiti</item>

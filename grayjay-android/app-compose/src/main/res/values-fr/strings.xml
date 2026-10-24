@@ -658,4 +658,20 @@
         <item quantity="one">%1$d vidéo de la playlist %2$s</item>
         <item quantity="other">%1$d vidéos de la playlist %2$s</item>
     </plurals>
+    <string name="guided_setup_action">Configuration guidée</string>
+    <string name="advanced_options_unlocked">Options avancées activées</string>
+    <string name="advanced_options_taps_left">Encore %1$d appuis pour activer les options avancées</string>
+    <string name="show_backend_change_notices">Afficher les changements de moteur de lecture</string>
+    <string name="backend_changed_notice">Moteur de lecture : %1$s → %2$s</string>
+    <string name="catalog_audio_not_found">Aucune source audio adaptée trouvée. Ce morceau est peut-être indisponible. Réessayez plus tard.</string>
+    <string name="share_diagnostics">Partager les journaux de diagnostic (ZIP)</string>
+    <string name="diagnostics_share_failed">Impossible de préparer ou de partager le rapport de diagnostic.</string>
+    <string name="previous_crash_title">Grayjoy s’est fermé de façon inattendue ?</string>
+    <string name="previous_crash_body">Grayjoy semble avoir planté la dernière fois. Un rapport nous aide à trouver la cause et améliorer la stabilité. Le ZIP contient des données techniques filtrées, sans comptes, cookies, URL ni titres. Vous pouvez le vérifier avant de le partager. Rien n’est envoyé automatiquement.</string>
+    <string name="previous_crash_logging_off">La journalisation était désactivée. Le rapport ne contient que des données techniques limitées. Vous pouvez activer les diagnostics dans les préférences pour les prochains problèmes.</string>
+    <string name="skip_crash_report_title">Ignorer le rapport ?</string>
+    <string name="skip_crash_report_body">Signaler un problème aide à améliorer Grayjoy pour tous. Vous pouvez aussi partager les journaux plus tard depuis les préférences.</string>
+    <string name="skip_crash_report_action">Ignorer</string>
+    <string name="job_finished_notice">Tâche terminée : %1$s</string>
+    <string name="update_download_job_title">Téléchargement de la mise à jour</string>
 </resources>

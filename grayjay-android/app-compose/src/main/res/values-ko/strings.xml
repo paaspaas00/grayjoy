@@ -658,4 +658,20 @@
         <item quantity="one">재생목록 %2$s의 동영상 %1$d개</item>
         <item quantity="other">재생목록 %2$s의 동영상 %1$d개</item>
     </plurals>
+    <string name="guided_setup_action">설정 안내</string>
+    <string name="advanced_options_unlocked">고급 옵션을 사용하도록 설정했습니다</string>
+    <string name="advanced_options_taps_left">고급 옵션을 켜려면 %1$d번 더 탭하세요</string>
+    <string name="show_backend_change_notices">재생 엔진 변경 알림 표시</string>
+    <string name="backend_changed_notice">재생 엔진: %1$s → %2$s</string>
+    <string name="catalog_audio_not_found">적절한 오디오 소스를 찾지 못했습니다. 이 곡을 사용할 수 없을 수 있습니다. 나중에 다시 시도하세요.</string>
+    <string name="share_diagnostics">진단 로그 공유 (ZIP)</string>
+    <string name="diagnostics_share_failed">진단 보고서를 준비하거나 공유할 수 없습니다.</string>
+    <string name="previous_crash_title">Grayjoy가 예기치 않게 종료되었나요?</string>
+    <string name="previous_crash_body">지난번에 Grayjoy가 비정상 종료된 것 같습니다. 보고서를 공유하면 원인을 찾고 안정성을 높이는 데 도움이 됩니다. ZIP에는 계정 정보, 쿠키, URL, 콘텐츠 제목을 제외한 기술 정보가 포함됩니다. 공유 전에 확인할 수 있으며 자동 전송되지 않습니다.</string>
+    <string name="previous_crash_logging_off">진단 기록이 꺼져 있어 보고서에는 제한된 기술 정보만 포함됩니다. 향후 문제를 위해 환경설정에서 켤 수 있습니다.</string>
+    <string name="skip_crash_report_title">보고서를 건너뛸까요?</string>
+    <string name="skip_crash_report_body">문제를 보고하면 모두를 위한 Grayjoy 개선에 도움이 됩니다. 나중에 환경설정에서 로그를 공유할 수도 있습니다.</string>
+    <string name="skip_crash_report_action">건너뛰기</string>
+    <string name="job_finished_notice">작업 종료: %1$s</string>
+    <string name="update_download_job_title">업데이트 다운로드</string>
 </resources>
