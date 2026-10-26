@@ -679,4 +679,7 @@
     <string name="audio_normalization_description">Ajusta gradualmente la sonoridad durante la reproducción, con protección contra picos. Al desactivarlo, se omite el DSP. No se aplica a la transmisión Cast.</string>
     <string name="grayjoy_repository">Repositorio de Grayjoy</string>
     <string name="repository_open_failed">No hay ninguna aplicación para abrir este enlace.</string>
+    <string name="temporary_queue_title">En cola</string>
+    <string name="save_as_playlist">Guardar como lista</string>
+    <string name="temporary_queue_description">Esta cola es temporal. Guárdala con un nombre para conservarla después de cerrar el reproductor.</string>
 </resources>

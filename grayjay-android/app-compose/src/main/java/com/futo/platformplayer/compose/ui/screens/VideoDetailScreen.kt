@@ -415,6 +415,11 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
         )
     }
     val displayedCreatorChannel = creatorChannel ?: fallbackCreatorChannel
+    val creatorSheet = LocalCreatorSheet.current
+    if (showCreatorSheet && creatorSheet != null) LaunchedEffect(showCreatorSheet) {
+        creatorSheet.show(displayedCreatorChannel, nowPlaying.isFollowing, onToggleFollowing) { onCreatorClick(displayedCreatorChannel) }
+        showCreatorSheet = false
+    }
     val selectedSection = com.futo.platformplayer.compose.ui.restoredEnumValue(selectedSectionName, DetailSection.UpNext)
     val topPlayerControlsAtStart = shouldUseSideBySideNowPlaying(
         drawerHidden = allowSideBySideLayout,
@@ -646,7 +651,7 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
         }
     }
 
-    if (showCreatorSheet) {
+    if (showCreatorSheet && creatorSheet == null) {
         CreatorInfoSheet(
             channel = displayedCreatorChannel,
             isFollowing = nowPlaying.isFollowing,
@@ -876,6 +881,10 @@ internal fun PlayerSurface(
     onResumeFromHistory: () -> Unit = {},
 ) {
     var isTimelineSeeking by remember(video.id) { mutableStateOf(false) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+        isTimelineSeeking = false
+    }
+    var blurPlayerView by remember(video.id, isFullscreen, video.isDrmProtected) { mutableStateOf<PlayerView?>(null) }
     var surfaceHeightPx by remember(isFullscreen) { mutableIntStateOf(0) }
     var surfaceOrigin by remember(isFullscreen) { mutableStateOf(Offset.Zero) }
     var settingsButtonBounds by remember(isFullscreen) { mutableStateOf<Rect?>(null) }
@@ -883,11 +892,18 @@ internal fun PlayerSurface(
         with(LocalDensity.current) { (surfaceHeightPx / 5f).toDp().coerceAtLeast(48.dp) }
     } else 48.dp
     var speedHolding by remember(video.id, isFullscreen) { mutableStateOf(false) }
+    val fastControlsFadeMs = LocalContext.current.resources.getInteger(android.R.integer.config_shortAnimTime)
+    var controlsFadeMs by remember(video.id, isFullscreen) { mutableIntStateOf(fastControlsFadeMs) }
+    val tapSequence = remember(video.id, isFullscreen) { PlayerTapSequence() }
+    val inputEventTime = remember { longArrayOf(0L) }
+    val latestPlayback by androidx.compose.runtime.rememberUpdatedState(playback)
+    val latestSeekBy by androidx.compose.runtime.rememberUpdatedState(onSeekBy)
     var controlsVisible by remember(video.id, isFullscreen) { mutableStateOf(true) }
     var isPointerDown by remember(video.id, isFullscreen) { mutableStateOf(false) }
     var interactionSequence by remember(video.id, isFullscreen) { mutableStateOf(0) }
     var seekFeedbackSequence by remember(video.id, isFullscreen) { mutableStateOf(0) }
     var seekFeedbackForward by remember(video.id, isFullscreen) { mutableStateOf(true) }
+    var seekFeedbackSeconds by remember(video.id, isFullscreen) { mutableIntStateOf(10) }
     var showSettings by rememberSaveable(video.id, isFullscreen) { mutableStateOf(false) }
     var settingsPageName by rememberSaveable(video.id, isFullscreen) {
         mutableStateOf(PlayerSettingsPage.Main.name)
@@ -902,7 +918,7 @@ internal fun PlayerSurface(
         (controlsVisible || playback.errorMessage != null)
     val controlsVisibilityAlpha = animateFloatAsState(
         targetValue = if (showControls) 1f else 0f,
-        animationSpec = tween(durationMillis = 90),
+        animationSpec = tween(durationMillis = controlsFadeMs, easing = LinearEasing),
         label = "player-controls-visibility",
     )
     val controlsAreDrawn by remember {
@@ -919,10 +935,11 @@ internal fun PlayerSurface(
         interactionSequence,
     ) {
         if (
-            controlsVisible && playback.errorMessage == null &&
+            controlsVisible && playback.isPlaying && playback.errorMessage == null &&
             !showSettings && !isPointerDown && !isTimelineSeeking
         ) {
-            delay(3_000)
+            delay(2_000)
+            controlsFadeMs = 700
             controlsVisible = false
         }
     }
@@ -957,6 +974,7 @@ internal fun PlayerSurface(
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.firstOrNull()?.let { inputEventTime[0] = it.uptimeMillis }
                         val pointerIsDown = event.changes.any { it.pressed }
                         if (pointerIsDown != isPointerDown) {
                             isPointerDown = pointerIsDown
@@ -986,11 +1004,12 @@ internal fun PlayerSurface(
                         keepScreenOn = true
                     }
                 },
-                update = { PlayerViewTargets.attach(it, player) },
+                update = { blurPlayerView = it; PlayerViewTargets.attach(it, player) },
                 onReset = PlayerViewTargets::detach,
                 onRelease = PlayerViewTargets::detach,
                 modifier = Modifier.fillMaxSize(),
             )
+            if (!video.playbackAudioOnly) SeekVideoBlur(blurPlayerView, isTimelineSeeking, video.isDrmProtected)
         }
         if (video.playbackAudioOnly) {
             AudioOnlySpectrogram(
@@ -1044,28 +1063,37 @@ internal fun PlayerSurface(
                 .pointerInput(video.id, controlsLocked, holdToSpeedEnabled) {
                     detectTapGestures(
                         onPress = {
-                            // Both directions respond on press, without the double-tap timeout.
-                            val previouslyVisible = controlsVisible
-                            controlsVisible = !previouslyVisible
-                            if (!tryAwaitRelease()) controlsVisible = previouslyVisible
+                            if (!tryAwaitRelease()) tapSequence.reset()
                         },
-                        onTap = {},
-                        onLongPress = {
-                            if (
-                                holdToSpeedEnabled && !controlsLocked &&
-                                playback.errorMessage == null && !speedHolding
-                            ) {
-                                speedHolding = true
-                                controlsVisible = true
-                                onSpeedHoldStart()
+                        onTap = { tap ->
+                            when (val action = tapSequence.released(inputEventTime[0],
+                                tap.x / size.width.coerceAtLeast(1),
+                                !controlsLocked && !video.isLive && latestPlayback.durationMs > 0 && latestPlayback.errorMessage == null,
+                                android.view.ViewConfiguration.getDoubleTapTimeout().toLong())) {
+                                PlayerTapAction.ToggleControls -> {
+                                    controlsFadeMs = fastControlsFadeMs
+                                    controlsVisible = !controlsVisible
+                                }
+                                is PlayerTapAction.Seek -> {
+                                    controlsFadeMs = 0
+                                    controlsVisible = false
+                                    seekFeedbackForward = action.direction > 0
+                                    seekFeedbackSeconds = action.accumulatedSeconds
+                                    seekFeedbackSequence++
+                                    latestSeekBy(action.direction * 10_000L)
+                                }
                             }
                         },
-                        onDoubleTap = { tap ->
-                            if (!controlsLocked) {
-                                seekFeedbackForward = tap.x >= size.width / 2f
-                                seekFeedbackSequence += 1
-                                onSeekBy(if (seekFeedbackForward) 10_000L else -10_000L)
+                        onLongPress = {
+                            tapSequence.reset()
+                            if (
+                                holdToSpeedEnabled && !controlsLocked &&
+                                latestPlayback.errorMessage == null && !speedHolding
+                            ) {
+                                speedHolding = true
+                                controlsFadeMs = fastControlsFadeMs
                                 controlsVisible = true
+                                onSpeedHoldStart()
                             }
                         },
                     )
@@ -1076,6 +1104,7 @@ internal fun PlayerSurface(
             key(seekFeedbackSequence) {
                 DoubleTapSeekFeedback(
                     forward = seekFeedbackForward,
+                    seconds = seekFeedbackSeconds,
                     isFullscreen = isFullscreen,
                     modifier = Modifier
                         .align(if (seekFeedbackForward) Alignment.CenterEnd else Alignment.CenterStart)
@@ -1150,6 +1179,8 @@ internal fun PlayerSurface(
                     isFullscreen = isFullscreen,
                     hideSettingsActions = isFullscreen && showSettings,
                     onLockControls = {
+                        tapSequence.reset()
+                        controlsFadeMs = fastControlsFadeMs
                         controlsLocked = true
                         controlsVisible = true
                         showSettings = false
@@ -1269,6 +1300,7 @@ internal fun PlayerSurface(
                     .testTag("player-unlock"),
                 onClick = {
                     controlsLocked = false
+                    controlsFadeMs = fastControlsFadeMs
                     controlsVisible = true
                 },
                 shape = CircleShape,
@@ -1794,6 +1826,7 @@ internal fun Modifier.playerSeekPreviewPlacement(progress: Float, touchHeight: D
 @Composable
 private fun DoubleTapSeekFeedback(
     forward: Boolean,
+    seconds: Int = 10,
     isFullscreen: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -1838,7 +1871,7 @@ private fun DoubleTapSeekFeedback(
                 modifier = Modifier.size(if (isFullscreen) 52.dp else 44.dp),
             )
             Text(
-                text = if (forward) "+10" else "−10",
+                text = if (forward) "+$seconds" else "−$seconds",
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
@@ -2639,22 +2672,19 @@ private fun LazyListScope.videoDetails(
             val recommendations = nowPlaying.recommendations.filter { recommendation ->
                 recommendation.id != currentId && queue.none { it.id == recommendation.id }
             }
-            if (queue.isNotEmpty()) {
+            if (queueVideos.isNotEmpty()) {
                 item {
-                    Text(
-                        stringResource(R.string.queue),
-                        modifier = Modifier.padding(horizontal = horizontalPadding),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
+                    QueueSectionHeader(Modifier.padding(horizontal = horizontalPadding))
                 }
                 val visibleQueue = if (showFullQueue) queue else queue.take(3)
                 visibleQueue.forEachIndexed { index, queuedVideo ->
                     item(key = lazyVideoItemKey("queue", index, queuedVideo.id), contentType = "video") {
+                        val queueActions = LocalTemporaryQueue.current
                         Box(Modifier.padding(horizontal = horizontalPadding)) {
                             CompactVideoCard(
                                 video = queuedVideo,
                                 index = index,
-                                onClick = { onVideoClick(queuedVideo) },
+                                onClick = { queueActions.onPlay?.invoke(queuedVideo.id) ?: onVideoClick(queuedVideo) },
                                 onLongClick = { onQueueVideoLongClick(queuedVideo) },
                             )
                         }

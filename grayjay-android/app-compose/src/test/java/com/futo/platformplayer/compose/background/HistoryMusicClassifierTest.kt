@@ -15,6 +15,7 @@ class HistoryMusicClassifierTest {
         assertFalse(needsMusicClassification(video(1).copy(isMusic = false)))
         assertFalse(needsMusicClassification(video(1).copy(isMusic = true)))
         assertFalse(needsMusicClassification(video(1).copy(lastWatchedAt = 0L)))
+        assertTrue(needsMusicClassification(video(1).copy(lastWatchedAt = 0L, isDownloaded = true)))
         assertFalse(needsMusicClassification(video(1).copy(sourceId = "other")))
         assertTrue(needsMusicClassification(video(1).copy(lastWatchedAt = 0L, watchProgress = 0.2f)))
     }

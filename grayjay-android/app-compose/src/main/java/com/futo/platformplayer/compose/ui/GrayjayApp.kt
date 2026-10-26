@@ -584,11 +584,14 @@ fun GrayjayApp(
     pictureInPictureMode: Boolean = false,
 ) {
     val help = rememberHelpGuide()
+    com.futo.platformplayer.compose.ui.screens.CreatorSheetTransitionHost(
+        uiState.activeProfileId, actions.onLoadChannel, uiState.channelDetail.channel, uiState.channelDetail.isLoading) {
     CompositionLocalProvider(LocalHelpGuide provides help, LocalYoutubeOnly provides uiState.sources.isYoutubeOnly(),
         LocalProfileNavigation provides ProfileNavigation(uiState.profiles, uiState.activeProfileId,
             !uiState.isSwitchingProfile && !uiState.sourceProfileSetup.isRunning, actions.onSwitchProfile)) {
         GrayjayAppContent(uiState, player, actions, uiLanguageTag, isDarkTheme, updateDownload,
             deviceIsLandscape, automaticPlayerRotationEnabled, pictureInPictureMode)
+    }
     }
 }
 
@@ -684,6 +687,7 @@ private fun GrayjayAppContent(
         uiState.remotePlaylistDetail.videos,
         uiState.nowPlaying.video,
         uiState.nowPlaying.recommendations,
+        uiState.playbackQueueVideos,
     ) {
         buildMap {
             sequenceOf(
@@ -700,6 +704,7 @@ private fun GrayjayAppContent(
                 uiState.remotePlaylistDetail.videos,
                 listOfNotNull(uiState.nowPlaying.video),
                 uiState.nowPlaying.recommendations,
+                uiState.playbackQueueVideos,
             ).forEach { videos ->
                 videos.forEach { video -> putIfAbsent(video.id, video) }
             }
@@ -1640,6 +1645,10 @@ private fun GrayjayAppContent(
         LocalChannelArtworkIndex provides channelArtworkIndex,
         LocalChannelArtworkRequest provides actions.onHydrateChannelArtwork,
         LocalDisplayClock provides displayClock,
+        com.futo.platformplayer.compose.ui.screens.LocalTemporaryQueue provides
+            com.futo.platformplayer.compose.ui.screens.TemporaryQueueActions(
+                uiState.temporaryPlaybackQueue, remember(uiState.playlists) { uiState.playlists.map { it.title } },
+                actions.onCreatePlaylist, actions.onPlayQueuedVideo),
         com.futo.platformplayer.compose.ui.screens.LocalExtraPreferences provides com.futo.platformplayer.compose.ui.screens.ExtraPreferences(
             uiState.brainrotShortsEnabled, actions.onBrainrotShortsChange, uiState.rebuildingCaches, actions.onRebuildContentCaches,
             uiState.youtubeAutoplayEnabled, actions.onYoutubeAutoplayChange,
@@ -2460,6 +2469,8 @@ private fun GrayjayScaffold(
                 }
                 QuickPageTransition(
                     targetKey = contentPageKey,
+                    animate = com.futo.platformplayer.compose.ui.screens.LocalCreatorSheet.current?.request?.phase !=
+                        com.futo.platformplayer.compose.ui.screens.CreatorSheetPhase.Opening,
                     horizontalSlideDirection = playback.pageSlideDirection,
                     animationRequest = playback.pageSlideRequest,
                     modifier = Modifier.align(Alignment.TopCenter).widthIn(max = 760.dp).fillMaxSize(),
@@ -3152,9 +3163,6 @@ private fun GrayjayScaffold(
                         )
                 })
                     .then(transitionDragModifier)
-                    // The shared video surface is above the miniature's clickable card.
-                    // Forward taps on that area to the same expansion action as its title.
-                    .clickable(enabled = !transitionActive && dismissJob?.isActive != true, onClick = playback.onExpand)
                     .graphicsLayer { alpha = 1f - dismissProgress.value }
                     .drawWithContent {
                         // The shared video sits above Scaffold, unlike its miniature chrome.

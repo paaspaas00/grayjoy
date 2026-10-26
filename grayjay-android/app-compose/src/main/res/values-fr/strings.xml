@@ -679,4 +679,7 @@
     <string name="audio_normalization_description">Adapte progressivement le niveau sonore pendant la lecture, avec protection contre les crêtes. Le DSP est contourné si désactivé. Ne concerne pas la diffusion Cast.</string>
     <string name="grayjoy_repository">Dépôt Grayjoy</string>
     <string name="repository_open_failed">Aucune application disponible pour ouvrir ce lien.</string>
+    <string name="temporary_queue_title">En file</string>
+    <string name="save_as_playlist">Enregistrer comme playlist</string>
+    <string name="temporary_queue_description">Cette file est temporaire. Enregistrez-la avec un nom pour la conserver après la fermeture du lecteur.</string>
 </resources>

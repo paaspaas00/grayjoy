@@ -13,6 +13,8 @@ data class GrayjayUiState(
     val channels: List<ChannelUiModel> = emptyList(),
     val playlists: List<PlaylistUiModel> = emptyList(),
     val playbackPlaylist: PlaylistUiModel? = null,
+    val temporaryPlaybackQueue: PlaylistUiModel? = null,
+    val playbackQueueVideos: List<VideoUiModel> = emptyList(),
     val shuffledPlaylistIds: Set<String> = emptySet(),
     val recentPlaylists: List<PlaylistUiModel> = emptyList(),
     val sources: List<SourceUiModel> = emptyList(),

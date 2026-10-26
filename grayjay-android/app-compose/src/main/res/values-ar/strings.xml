@@ -763,4 +763,7 @@
     <string name="audio_normalization_description">يضبط جهارة الصوت تدريجيًا أثناء التشغيل مع الحماية من الذروات. يتم تجاوز DSP عند التعطيل. لا ينطبق على البث عبر Cast.</string>
     <string name="grayjoy_repository">مستودع Grayjoy</string>
     <string name="repository_open_failed">لا يوجد تطبيق لفتح هذا الرابط.</string>
+    <string name="temporary_queue_title">في قائمة الانتظار</string>
+    <string name="save_as_playlist">حفظ كقائمة تشغيل</string>
+    <string name="temporary_queue_description">قائمة الانتظار مؤقتة. احفظها باسم للاحتفاظ بها بعد إغلاق المشغل.</string>
 </resources>

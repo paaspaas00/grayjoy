@@ -23,7 +23,7 @@ import kotlin.coroutines.coroutineContext
 
 internal fun needsMusicClassification(video: VideoUiModel): Boolean =
     video.sourceId.equals("youtube", true) && video.isMusic == null &&
-        (video.lastWatchedAt > 0L || video.watchProgress > 0f)
+        (video.lastWatchedAt > 0L || video.watchProgress > 0f || video.isDownloaded)
 
 /** One persisted queue per profile, independent of the library screen and its filters. */
 internal object HistoryMusicClassifier {
@@ -63,7 +63,7 @@ class HistoryMusicWorker(context: Context, parameters: WorkerParameters) : Corou
             if (recovered.isNotEmpty()) repository.saveVideos(recovered)
         }
         val history = repository.loadSavedVideos().filter { it.sourceId.equals("youtube", true) &&
-            (it.lastWatchedAt > 0L || it.watchProgress > 0f) }
+            (it.lastWatchedAt > 0L || it.watchProgress > 0f || it.isDownloaded) }
         val initial = history.filter(::needsMusicClassification)
         // A successful page without a category is still processed: it stays in All, not silently
         // labelled non-music. Only transport/server failures receive a delayed retry.

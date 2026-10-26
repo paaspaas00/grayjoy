@@ -34,6 +34,9 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
@@ -58,11 +61,13 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
 ) {
     val normalizedAlpha = chromeAlpha.coerceIn(0f, 1f)
+    val expandLabel = stringResource(R.string.open_item, stringResource(R.string.now_playing))
     Surface(
-        onClick = onExpand,
-        enabled = normalizedAlpha > 0.95f,
         modifier = modifier
             .fillMaxWidth()
+            .then(if (normalizedAlpha > .95f) Modifier.semantics {
+                customActions = listOf(CustomAccessibilityAction(expandLabel) { onExpand(); true })
+            } else Modifier)
             .then(
                 if (normalizedAlpha >= 0.999f) Modifier
                 else Modifier.graphicsLayer { alpha = normalizedAlpha },

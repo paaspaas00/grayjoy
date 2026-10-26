@@ -679,4 +679,7 @@
     <string name="audio_normalization_description">再生中に音量感を徐々に調整し、ピークを抑えます。オフの場合は DSP を使用しません。キャストには適用されません。</string>
     <string name="grayjoy_repository">Grayjoy リポジトリ</string>
     <string name="repository_open_failed">このリンクを開けるアプリがありません。</string>
+    <string name="temporary_queue_title">再生キュー</string>
+    <string name="save_as_playlist">プレイリストとして保存</string>
+    <string name="temporary_queue_description">このキューは一時的です。プレーヤーを閉じた後も残すには、名前を付けて保存してください。</string>
 </resources>

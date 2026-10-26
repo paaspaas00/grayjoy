@@ -679,4 +679,7 @@
     <string name="audio_normalization_description">播放时逐渐调整响度并限制峰值。关闭时绕过 DSP。不适用于投屏。</string>
     <string name="grayjoy_repository">Grayjoy 代码仓库</string>
     <string name="repository_open_failed">没有可打开此链接的应用。</string>
+    <string name="temporary_queue_title">播放队列</string>
+    <string name="save_as_playlist">保存为播放列表</string>
+    <string name="temporary_queue_description">此队列是临时的。请命名保存，以便关闭播放器后仍可保留。</string>
 </resources>

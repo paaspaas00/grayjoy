@@ -89,7 +89,7 @@ class FullscreenPlayerSettingsTest {
         var sought = 0L
         rule.setContent { GrayjayTheme(dynamicColor = false) {
             FullscreenPlayerScreen(VideoUiModel("tap-fixture", "Video", "Channel", "", "1:00"),
-                player, PlaybackUiState(durationMs = 60_000L), false,
+                player, PlaybackUiState(durationMs = 60_000L, isPlaying = true), false,
                 onTogglePlayback = {}, onSkipPrevious = {}, onSkipNext = {}, onSeekBy = { sought += it }, onSeek = {},
                 onSpeedChange = {}, onQualityChange = {}, onCaptionsEnabledChange = {},
                 onSubtitleLanguageChange = {}, onRetryPlayback = {}, onExitFullscreen = {}, portraitFullscreen = true)
@@ -98,15 +98,15 @@ class FullscreenPlayerSettingsTest {
         rule.onNodeWithTag("player-settings").assertDoesNotExist()
         rule.mainClock.autoAdvance = false
         rule.onNodeWithTag("media-player").performTouchInput { click(Offset(width * .25f, height * .45f)) }
-        rule.mainClock.advanceTimeBy(120)
+        rule.mainClock.advanceTimeBy(240)
         rule.onNodeWithTag("player-settings").assertIsDisplayed()
         rule.mainClock.advanceTimeBy(400) // A separate tap, not the second half of a double tap.
         rule.onNodeWithTag("media-player").performTouchInput { click(Offset(width * .25f, height * .45f)) }
-        rule.mainClock.advanceTimeBy(120)
+        rule.mainClock.advanceTimeBy(240)
         rule.onNodeWithTag("player-settings").assertDoesNotExist()
         rule.mainClock.advanceTimeBy(400)
         rule.onNodeWithTag("media-player").performTouchInput { click(Offset(width * .25f, height * .45f)) }
-        rule.mainClock.advanceTimeBy(120)
+        rule.mainClock.advanceTimeBy(240)
         rule.onNodeWithTag("player-settings").assertIsDisplayed()
         rule.mainClock.autoAdvance = true
         rule.onNodeWithTag("player-lock").performTouchInput { click() }

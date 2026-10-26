@@ -854,4 +854,7 @@
     <string name="audio_normalization_description">Adatta gradualmente la sonorità durante la riproduzione, con protezione dai picchi. Se disattivata, il DSP è escluso. Non si applica al casting.</string>
     <string name="grayjoy_repository">Repository di Grayjoy</string>
     <string name="repository_open_failed">Nessuna app disponibile per aprire questo link.</string>
+    <string name="temporary_queue_title">In coda</string>
+    <string name="save_as_playlist">Salva come playlist</string>
+    <string name="temporary_queue_description">Questa coda è temporanea. Salvala con un nome per conservarla dopo la chiusura del player.</string>
 </resources>

@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -17,6 +18,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import com.futo.platformplayer.compose.LocalDevicePerformanceProfile
 import com.futo.platformplayer.compose.devicePerformanceProfile
+import com.futo.platformplayer.compose.data.YOUTUBE_SOURCE_ACCENT
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFF405DB1),
@@ -69,24 +71,8 @@ fun GrayjayTheme(
             darkTheme -> DarkColors
             else -> LightColors
         }
-        if (sourceAccentColor == null || musicProfile) base else {
-            val brand = Color(sourceAccentColor)
-            var primary = if (darkTheme) lerp(brand, Color.White, .52f) else brand
-            if (!darkTheme) repeat(12) {
-                if (1.05f / (primary.luminance() + .05f) < 4.5f) primary = lerp(primary, Color.Black, .08f)
-            }
-            val container = lerp(brand, if (darkTheme) Color.Black else Color.White, if (darkTheme) .6f else .85f)
-            base.copy(
-                primary = primary, onPrimary = if (darkTheme) Color.Black else Color.White,
-                primaryContainer = container, onPrimaryContainer = if (darkTheme) Color.White else Color.Black,
-                secondary = primary, onSecondary = if (darkTheme) Color.Black else Color.White,
-                secondaryContainer = container, onSecondaryContainer = if (darkTheme) Color.White else Color.Black,
-                background = lerp(base.background, brand, .025f),
-                surface = lerp(base.surface, brand, .025f),
-                surfaceContainer = lerp(base.surfaceContainer, brand, .055f),
-                surfaceContainerLow = lerp(base.surfaceContainerLow, brand, .025f),
-            )
-        }
+        if (sourceAccentColor == null || musicProfile) base
+        else sourceProfileColorScheme(base, sourceAccentColor, darkTheme)
     }
     val performance = remember(context) { devicePerformanceProfile(context) }
 
@@ -98,6 +84,38 @@ fun GrayjayTheme(
             content = content,
         )
     }
+}
+
+internal fun sourceProfileColorScheme(base: ColorScheme, sourceAccentColor: Long, darkTheme: Boolean): ColorScheme {
+    if (darkTheme && sourceAccentColor == YOUTUBE_SOURCE_ACCENT) {
+        // Dark surfaces need their own red tones: a white blend of the deep light-theme
+        // accent looked dusty pink, while a black blend made selected chips disappear.
+        return base.copy(
+            primary = Color(0xFFD9625C), onPrimary = Color(0xFF320705),
+            primaryContainer = Color(0xFF602024), onPrimaryContainer = Color(0xFFFFE5E2),
+            secondary = Color(0xFFD9625C), onSecondary = Color(0xFF320705),
+            secondaryContainer = Color(0xFF602024), onSecondaryContainer = Color(0xFFFFE5E2),
+            background = Color(0xFF141112), surface = Color(0xFF141112),
+            surfaceContainerLow = Color(0xFF1D1819), surfaceContainer = Color(0xFF241E1F),
+            surfaceContainerHigh = Color(0xFF302729), surfaceContainerHighest = Color(0xFF3A3032),
+        )
+    }
+    val brand = Color(sourceAccentColor)
+    var primary = if (darkTheme) lerp(brand, Color.White, .52f) else brand
+    if (!darkTheme) repeat(12) {
+        if (1.05f / (primary.luminance() + .05f) < 4.5f) primary = lerp(primary, Color.Black, .08f)
+    }
+    val container = lerp(brand, if (darkTheme) Color.Black else Color.White, if (darkTheme) .6f else .85f)
+    return base.copy(
+        primary = primary, onPrimary = if (darkTheme) Color.Black else Color.White,
+        primaryContainer = container, onPrimaryContainer = if (darkTheme) Color.White else Color.Black,
+        secondary = primary, onSecondary = if (darkTheme) Color.Black else Color.White,
+        secondaryContainer = container, onSecondaryContainer = if (darkTheme) Color.White else Color.Black,
+        background = lerp(base.background, brand, .025f),
+        surface = lerp(base.surface, brand, .025f),
+        surfaceContainer = lerp(base.surfaceContainer, brand, .055f),
+        surfaceContainerLow = lerp(base.surfaceContainerLow, brand, .025f),
+    )
 }
 
 private val LightMusicColors = lightColorScheme(

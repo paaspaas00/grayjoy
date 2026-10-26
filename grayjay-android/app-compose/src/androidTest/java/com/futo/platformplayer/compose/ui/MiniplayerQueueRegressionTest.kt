@@ -19,8 +19,8 @@ class MiniplayerQueueRegressionTest {
     private lateinit var player: ExoPlayer
     @After fun release() { if (::player.isInitialized) rule.runOnUiThread { player.release() } }
 
-    @Test fun historyEnqueueKeepsTapAndSwipeWorkingBeforeQueuedSourcesAreReady() = checkQueue(false)
-    @Test fun audioOnlyHistoryEnqueueKeepsTapAndSwipeWorkingBeforeQueuedSourcesAreReady() = checkQueue(true)
+    @Test fun historyEnqueueIgnoresTapsButAllowsSwipingBeforeQueuedSourcesAreReady() = checkQueue(false)
+    @Test fun audioOnlyHistoryEnqueueIgnoresTapsButAllowsSwipingBeforeQueuedSourcesAreReady() = checkQueue(true)
 
     @Test fun loadingVideoStaysMinimizedWhenItsPlaybackAndExtrasArrive() = checkLoadingCompletion(false)
     @Test fun loadingVideoDoesNotReopenAfterNavigatingToAnotherTab() = checkLoadingCompletion(true)
@@ -62,6 +62,8 @@ class MiniplayerQueueRegressionTest {
         rule.onNodeWithTag("mini-player").assertIsDisplayed()
         rule.onNodeWithTag("now-playing-close").assertDoesNotExist()
         rule.onNodeWithTag("mini-player").performTouchInput { click(Offset(width * .4f, height * .5f)) }
+        rule.onNodeWithTag("now-playing-close").assertDoesNotExist()
+        rule.onNodeWithTag("mini-player").performTouchInput { swipe(center, center.copy(y = -1200f), 500) }
         rule.onNodeWithTag("now-playing-close").assertIsDisplayed()
     }
 
@@ -78,9 +80,9 @@ class MiniplayerQueueRegressionTest {
             onExternalNavigationHandled = { state.value = state.value.copy(externalNavigation = null) }
             onQueueVideos = { ids ->
                 enqueued = ids
-                val playlist = PlaylistUiModel("queue-list", "Played today", "", listOf(current.id) + ids, isPlaybackQueue = true)
+                val playlist = PlaylistUiModel("queue-list", "In coda", "", listOf(current.id) + ids, isPlaybackQueue = true)
                 // Publish the logical queue, but deliberately never resolve the queued sources.
-                state.value = state.value.copy(playlists = listOf(playlist), playbackPlaylist = playlist,
+                state.value = state.value.copy(temporaryPlaybackQueue = playlist,
                     playback = state.value.playback.copy(fullQueueVideoIds = playlist.videoIds))
             }
         }
@@ -94,12 +96,15 @@ class MiniplayerQueueRegressionTest {
         rule.onNodeWithTag("history-enqueue").performClick()
         rule.runOnIdle { assertEquals(videos.drop(1).map { it.id }.toSet(), enqueued.toSet()) }
         rule.onNodeWithTag("mini-player").performTouchInput { click(Offset(width * .4f, height * .5f)) }
+        rule.onNodeWithTag("now-playing-close").assertDoesNotExist()
+        rule.onNodeWithTag("mini-player").performTouchInput { swipe(center, center.copy(y = -1200f), 500) }
         rule.onNodeWithTag("now-playing-close").assertIsDisplayed()
         rule.onNodeWithTag("media-player").performTouchInput { swipe(center, center + Offset(0f, 1300f), 700) }
         rule.onNodeWithTag("mini-player").performTouchInput { swipe(Offset(width * .4f, height * .5f), Offset(width * .4f, -1000f), 700) }
         rule.onNodeWithTag("now-playing-close").assertIsDisplayed()
         rule.onNodeWithTag("media-player").performTouchInput { swipe(center, center + Offset(0f, 1300f), 700) }
         rule.onNodeWithTag("mini-player").performTouchInput { click(Offset(width * .1f, height * .5f)) }
-        rule.onNodeWithTag("now-playing-close").assertIsDisplayed()
+        rule.onNodeWithTag("now-playing-close").assertDoesNotExist()
+        assertEquals(emptyList<PlaylistUiModel>(), state.value.playlists)
     }
 }

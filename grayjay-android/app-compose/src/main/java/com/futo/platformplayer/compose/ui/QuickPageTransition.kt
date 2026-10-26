@@ -19,14 +19,17 @@ internal fun QuickPageTransition(
     modifier: Modifier = Modifier,
     horizontalSlideDirection: Int = 0,
     animationRequest: Long = 0L,
+    animate: Boolean = true,
     content: @Composable (String) -> Unit,
 ) {
     key(targetKey) {
         // Capture the one-shot navigation request. Its caller can clear the pending direction
         // immediately without snapping a transition that is already being drawn.
         val slideDirection = remember(animationRequest) { horizontalSlideDirection.coerceIn(-1, 1) }
-        val progress = remember { Animatable(0f) }
+        val animateThisPage = remember { animate }
+        val progress = remember { Animatable(if (animateThisPage) 0f else 1f) }
         LaunchedEffect(animationRequest) {
+            if (!animateThisPage) return@LaunchedEffect
             progress.snapTo(0f)
             progress.animateTo(
                 1f,

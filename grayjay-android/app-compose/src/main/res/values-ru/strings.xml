@@ -721,4 +721,7 @@
     <string name="audio_normalization_description">Плавно регулирует громкость при воспроизведении, ограничивая пики. При отключении DSP не используется. Не применяется к трансляции Cast.</string>
     <string name="grayjoy_repository">Репозиторий Grayjoy</string>
     <string name="repository_open_failed">Нет приложения для открытия этой ссылки.</string>
+    <string name="temporary_queue_title">В очереди</string>
+    <string name="save_as_playlist">Сохранить как плейлист</string>
+    <string name="temporary_queue_description">Эта очередь временная. Сохраните её под выбранным именем, чтобы не потерять после закрытия плеера.</string>
 </resources>

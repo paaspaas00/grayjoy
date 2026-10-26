@@ -34,7 +34,7 @@ class DescriptionScrollRegressionTest {
         rule.onNodeWithText(rule.activity.getString(R.string.nav_search)).performClick()
         val oldMiniBounds = rule.onNodeWithTag("mini-player").fetchSemanticsNode().boundsInRoot
         val toggleBounds = rule.onNodeWithTag("mini-player-toggle").fetchSemanticsNode().boundsInRoot
-        rule.onNodeWithTag("mini-player").performClick()
+        rule.onNodeWithTag("mini-player").performTouchInput { swipe(center, center.copy(y = -1200f), 500) }
         rule.waitForIdle()
         val list = rule.onNodeWithTag("video-detail-list")
         val viewport = list.fetchSemanticsNode().boundsInRoot

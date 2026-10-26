@@ -679,4 +679,7 @@
     <string name="audio_normalization_description">재생 중 음량을 점진적으로 조절하고 피크를 보호합니다. 꺼져 있으면 DSP를 사용하지 않습니다. 캐스팅에는 적용되지 않습니다.</string>
     <string name="grayjoy_repository">Grayjoy 저장소</string>
     <string name="repository_open_failed">이 링크를 열 수 있는 앱이 없습니다.</string>
+    <string name="temporary_queue_title">재생 대기열</string>
+    <string name="save_as_playlist">재생목록으로 저장</string>
+    <string name="temporary_queue_description">이 대기열은 임시입니다. 플레이어를 닫은 후에도 유지하려면 이름을 지정해 저장하세요.</string>
 </resources>

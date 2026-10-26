@@ -629,7 +629,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val queuePreparation = QueuePreparationGate(viewModelScope)
     private var queuePreparationBlockedUntilMs = 0L
     private val queueMutations = SerialMutationQueue(viewModelScope)
-    private var searchPlaylistJob: Job? = null
     private var watchProgressWriteJob: Job? = null
     private var externalUrlJob: Job? = null
     private var releaseCheckJob: Job? = null
@@ -663,7 +662,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var activePlaylistId: String? = null
         set(value) {
             field = value
-            _uiState.update { state -> state.copy(playbackPlaylist = value?.let { id ->
+            _uiState.update { state -> state.copy(temporaryPlaybackQueue = null, playbackQueueVideos = emptyList(), playbackPlaylist = value?.let { id ->
                 state.playlists.firstOrNull { it.id == id }
             }) }
         }
@@ -2252,7 +2251,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val nextFollowedCreators = nextPreferences.initializeFollowedCreators(content.channels.map(ChannelUiModel::id).toSet())
         val nextProfileSourceCatalog = withContext(Dispatchers.IO) { loadSourceProfileCatalog() }
         searchRequests.next()
-        searchPlaylistJob?.cancel()
         com.futo.platformplayer.compose.voice.VoiceAccess.stopListening(getApplication())
         resetMetadataHydration()
         scheduledHistoryMusicIds.clear()
@@ -3319,6 +3317,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 }
                 val generation = invalidatePlaybackQueue()
                 activePlaylistId = null
+                _uiState.update { it.copy(playbackQueueVideos = listOf(resolved), temporaryPlaybackQueue = com.futo.platformplayer.compose.data.temporaryPlaybackQueue(
+                    null, listOf(resolved.id), text(R.string.temporary_queue_title), "temporary-queue:$activeProfileId:$generation")) }
                 // recordHistory below persists the resolved availability and schedule together.
                 // Two standalone mutations here rewrote the whole library before the first frame.
                 remoteVideos[resolved.id] = resolved
@@ -3536,6 +3536,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         startQueue(videoIds)
     }
 
+    fun playQueuedVideo(videoId: String) {
+        val ids = playbackQueueSession?.orderedVideoIds?.toList()
+            ?: _uiState.value.temporaryPlaybackQueue?.videoIds
+            ?: engine.playback.value.queueVideoIds
+        if (videoId !in ids) return
+        startQueue(playlistQueueFrom(ids, videoId))
+    }
+
     fun setYoutubeAutoplayEnabled(enabled: Boolean) {
         val wasEnabled = preferences.youtubeAutoplayEnabled
         preferences.youtubeAutoplayEnabled = enabled
@@ -3656,37 +3664,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun playSearchResults(videoIds: List<String>) {
-        if (searchPlaylistJob?.isActive == true) return
         val now = System.currentTimeMillis()
         val videos = videoIds.distinct().mapNotNull(::findVideo)
             .filter { it.isAvailable && it.scheduledStartAtMs <= now }
         if (videos.isEmpty()) return
-        val profile = activeProfileId
-        val repository = libraryRepository
-        val generation = playbackGeneration
-        val base = text(R.string.search_results_playlist_title, _uiState.value.search.query.trim()).take(80)
-        searchPlaylistJob = viewModelScope.launch {
-            val (playlist, snapshot) = tryLibraryMutation { withContext(Dispatchers.IO) {
-                synchronized(repository.transactionLock) {
-                    val existing = repository.loadPlaylists().map(PlaylistUiModel::title)
-                    var title = base
-                    var suffix = 2
-                    while (playlistTitleExists(title, existing)) {
-                        val tail = " (${suffix++})"
-                        title = base.take(80 - tail.length) + tail
-                    }
-                    val created = repository.createPlaylist(title, videos) ?: return@withContext null
-                    created to repository.snapshot()
-                }
-            } } ?: return@launch
-            if (profile != activeProfileId || repository !== libraryRepository) return@launch
-            applyLibrarySnapshot(snapshot)
-            if (generation != playbackGeneration) return@launch
-            activePlaylistId = playlist.id
-            startQueue(playlist.videoIds)
-            rememberPlayedPlaylist(playlist)
-            publishExternalNavigation(ExternalNavigationKind.Video, playlist.videoIds.first())
-        }
+        playQueue(videos.map(VideoUiModel::id))
+        publishExternalNavigation(ExternalNavigationKind.Video, videos.first().id)
     }
 
     fun enqueueVideos(videoIds: List<String>) {
@@ -3697,7 +3680,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val requestedRepository = libraryRepository
         queueMutations.launch {
             if (activeProfileId != requestedProfile || libraryRepository !== requestedRepository) return@launch
-            tryLibraryMutation { enqueueVideosWithoutBlockingUi(requested) }
+            enqueueVideosWithoutBlockingUi(requested)
         }
     }
 
@@ -3719,9 +3702,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         prepareQueueLookAhead()
     }
 
-    private suspend fun enqueueVideosWithoutBlockingUi(requested: List<VideoUiModel>) {
+    private fun enqueueVideosWithoutBlockingUi(requested: List<VideoUiModel>) {
         val profileAtStart = activeProfileId
-        val repositoryAtStart = libraryRepository
         val generationAtStart = playbackGeneration
         val currentPlayback = engine.playback.value
         val currentSession = playbackQueueSession
@@ -3735,86 +3717,28 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
         val currentVideoId = currentPlayback.currentVideoId
             ?: _uiState.value.nowPlaying.video?.id
-        if (currentVideoId == null || engine.player.mediaItemCount == 0) {
-            val createdSnapshot = withContext(Dispatchers.IO) {
-                val created = repositoryAtStart.createPlaylist(
-                    playedOnPlaylistTitle(repositoryAtStart),
-                    requested,
-                    isPlaybackQueue = true,
-                ) ?: return@withContext null
-                created to repositoryAtStart.snapshot()
-            } ?: return
-            if (
-                profileAtStart != activeProfileId ||
-                repositoryAtStart !== libraryRepository ||
-                generationAtStart != playbackGeneration
-            ) return
-            applyLibrarySnapshot(createdSnapshot.second)
-            activePlaylistId = createdSnapshot.first.id
-            startQueue(createdSnapshot.first.videoIds)
+        if (pendingPlaybackVideoId != null && currentSession == null) {
+            playQueue(listOfNotNull(pendingPlaybackVideoId) + requested.map(VideoUiModel::id))
             return
         }
-
-        var queueSession = currentSession
-        if (activePlaylistId == null) {
-            val snapshotIds = buildList {
-                addAll(currentPlayback.queueVideoIds)
-                currentSession?.pendingVideos?.mapTo(this, VideoUiModel::id)
-                addAll(additions.map(VideoUiModel::id))
-            }.distinct()
-            val snapshotVideos = snapshotIds.mapNotNull(::findVideo)
-            val createdSnapshot = withContext(Dispatchers.IO) {
-                val created = repositoryAtStart.createPlaylist(
-                    playedOnPlaylistTitle(repositoryAtStart),
-                    snapshotVideos,
-                    isPlaybackQueue = true,
-                ) ?: return@withContext null
-                created to repositoryAtStart.snapshot()
-            } ?: return
-            if (
-                profileAtStart != activeProfileId ||
-                repositoryAtStart !== libraryRepository ||
-                generationAtStart != playbackGeneration
-            ) return
-            applyLibrarySnapshot(createdSnapshot.second)
-            activePlaylistId = createdSnapshot.first.id
-            queueSession = if (currentSession == null) {
-                PlaybackQueueSession(
-                    generation = generationAtStart,
-                    profileId = profileAtStart,
-                    playlistId = createdSnapshot.first.id,
-                    pendingVideos = mutableListOf(),
-                    knownVideoIds = currentPlayback.queueVideoIds.toMutableSet(),
-                    orderedVideoIds = currentPlayback.queueVideoIds.toMutableList(),
-                )
-            } else {
-                currentSession.copy(playlistId = createdSnapshot.first.id, automatic = false)
-            }
-            playbackQueueSession = queueSession
-        } else if (queueSession == null) {
-            queueSession = PlaybackQueueSession(
+        if (currentVideoId == null || engine.player.mediaItemCount == 0) {
+            playQueue(requested.map(VideoUiModel::id))
+            return
+        }
+        // Enqueue only changes the in-memory playback session, never a saved collection.
+        val previousTemporaryQueue = _uiState.value.temporaryPlaybackQueue
+        activePlaylistId = null
+        _uiState.update { it.copy(temporaryPlaybackQueue = previousTemporaryQueue) }
+        val queueSession = currentSession?.copy(playlistId = null, automatic = false)
+            ?: PlaybackQueueSession(
                 generation = generationAtStart,
                 profileId = profileAtStart,
-                playlistId = activePlaylistId,
+                playlistId = null,
                 pendingVideos = mutableListOf(),
                 knownVideoIds = currentPlayback.queueVideoIds.toMutableSet(),
                 orderedVideoIds = currentPlayback.queueVideoIds.toMutableList(),
             )
-            playbackQueueSession = queueSession
-        }
-
-        // Only auto-created queue playlists grow with enqueue. A user's ordinary playlist is
-        // not edited implicitly. Persist before publishing so returning to it sees the same tail.
-        val queuePlaylist = _uiState.value.playlists.firstOrNull { it.id == activePlaylistId }
-        if (queuePlaylist?.isPlaybackQueue == true) {
-            val snapshot = withContext(Dispatchers.IO) {
-                repositoryAtStart.addVideosToPlaylist(queuePlaylist.id, additions)
-                repositoryAtStart.snapshot()
-            }
-            if (profileAtStart != activeProfileId || repositoryAtStart !== libraryRepository ||
-                generationAtStart != playbackGeneration) return
-            applyLibrarySnapshot(snapshot)
-        }
+        playbackQueueSession = queueSession
         additions.forEach { video ->
             if (queueSession.knownVideoIds.add(video.id)) {
                 queueSession.pendingVideos += video
@@ -3872,6 +3796,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             knownVideoIds = queue.mapTo(linkedSetOf(), VideoUiModel::id),
             orderedVideoIds = queue.mapTo(mutableListOf(), VideoUiModel::id),
         )
+        publishLogicalQueue()
         detailsJob?.cancel()
         storyboardJob?.cancel()
         extrasPagingJobs.cancelAndClearJobs()
@@ -6638,19 +6563,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun playedOnPlaylistTitle(repository: LibraryRepository = libraryRepository): String {
-        val formattedDate = DateFormat.getDateTimeInstance(
-            DateFormat.MEDIUM,
-            DateFormat.SHORT,
-        ).format(Date())
-        val base = text(R.string.played_on_date, formattedDate)
-        val existing = repository.loadPlaylists().map(PlaylistUiModel::title)
-        if (!playlistTitleExists(base, existing)) return base
-        var suffix = 2
-        while (playlistTitleExists("$base ($suffix)", existing)) suffix += 1
-        return "$base ($suffix)"
-    }
-
     fun renamePlaylist(playlistId: String, title: String) {
         tryLibraryMutation { libraryRepository.renamePlaylist(playlistId, title) } ?: return
         reloadLibrary()
@@ -8383,6 +8295,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 followingVideos = state.followingVideos.mapIfChanged(::merge),
                 home = state.home.copy(videos = state.home.videos.mapIfChanged(::merge)),
                 libraryVideos = allVideos,
+                playbackQueueVideos = state.playbackQueueVideos.mapIfChanged(::merge),
                 playlists = playlists,
                 playbackPlaylist = activePlaylistId?.let { id -> playlists.firstOrNull { it.id == id } }
                     ?: state.playbackPlaylist?.takeIf { activePlaylistId == null },
@@ -8431,6 +8344,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             libraryVideos = state.libraryVideos.mapIfChanged {
                 if (it.id == videoId) transform(it) else it
             },
+            playbackQueueVideos = state.playbackQueueVideos.mapIfChanged {
+                if (it.id == videoId) transform(it) else it
+            },
             search = state.search.copy(
                 videos = state.search.videos.mapIfChanged { if (it.id == videoId) transform(it) else it },
             ),
@@ -8465,9 +8381,15 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private fun publishLogicalQueue() {
         val logicalIds = playbackQueueSession?.orderedVideoIds?.toList().orEmpty()
         _uiState.update { state ->
+            val ids = logicalIds.ifEmpty { state.playback.queueVideoIds }
             state.copy(
+                playbackQueueVideos = ids.mapNotNull(::findVideo),
+                temporaryPlaybackQueue = if (state.playbackPlaylist == null && ids.isNotEmpty())
+                    com.futo.platformplayer.compose.data.temporaryPlaybackQueue(
+                        state.temporaryPlaybackQueue, ids, text(R.string.temporary_queue_title),
+                        "temporary-queue:$activeProfileId:$playbackGeneration") else null,
                 playback = state.playback.copy(
-                    fullQueueVideoIds = logicalIds.ifEmpty { state.playback.queueVideoIds },
+                    fullQueueVideoIds = ids,
                 ),
             )
         }

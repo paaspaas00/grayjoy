@@ -164,6 +164,15 @@ fun ChannelDetailScreen(
     val sortMode = runCatching { ChannelSortMode.valueOf(sortModeName) }
         .getOrDefault(ChannelSortMode.UploadDate)
     val listState = rememberContentListState()
+    val openingFromSheet = LocalCreatorSheet.current?.request?.let {
+        it.channel.id == channel.id && it.phase == CreatorSheetPhase.Opening
+    } == true
+    LaunchedEffect(openingFromSheet) {
+        if (openingFromSheet) {
+            searchMode = false
+            listState.requestScrollToItem(0)
+        }
+    }
     fun onSearchFocusChanged(focused: Boolean) {
         if (focused && !detail.selectedTab.isPlaylistTab) {
             searchMode = true
@@ -410,14 +419,14 @@ fun ChannelDetailScreen(
                     ChannelAvatarImage(
                         name = displayedChannel.name,
                         thumbnailUrl = displayedChannel.thumbnailUrl,
-                        modifier = Modifier.align(Alignment.Center).size(if (performance.compactContent) 72.dp else 96.dp),
+                        modifier = Modifier.align(Alignment.Center).creatorSharedElement(displayedChannel.id, "avatar")
+                            .size(if (performance.compactContent) 72.dp else 96.dp),
                     )
                     if (perChannelPlaybackSpeedEnabled || displayedChannel.sourceId.equals("youtube", true)) {
                         ChannelSettingsButton(onClick = { showSettingsSheet = true }, modifier = Modifier.align(Alignment.TopEnd))
                     }
                     }
-                    Text(
-                        displayedChannel.name,
+                    SharedCreatorText(displayedChannel.id, "name", displayedChannel.name,
                         textAlign = TextAlign.Center,
                         style = if (performance.compactContent) {
                             MaterialTheme.typography.titleLarge
@@ -425,14 +434,12 @@ fun ChannelDetailScreen(
                             MaterialTheme.typography.headlineMedium
                         },
                     )
-                    Text(
-                        "${displayedChannel.source} • ${sourceCreatorFallback(displayedChannel.followerCount)}",
+                    SharedCreatorText(displayedChannel.id, "metadata", "${displayedChannel.source} • ${sourceCreatorFallback(displayedChannel.followerCount)}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     if (displayedChannel.description.isNotBlank() && (!compactLayout || descriptionExpanded)) {
-                        Text(
-                            displayedChannel.description,
+                        SharedCreatorText(displayedChannel.id, "description", displayedChannel.description,
                             modifier = Modifier.padding(horizontal = 8.dp),
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -477,7 +484,8 @@ fun ChannelDetailScreen(
                     ) {
                         Button(
                             onClick = { onFollowingChange(!isFollowing) },
-                            modifier = Modifier.weight(1f).testTag("channel-follow").helpAnchor("channel-follow"),
+                            modifier = Modifier.weight(1f).creatorSharedElement(displayedChannel.id, "follow")
+                                .testTag("channel-follow").helpAnchor("channel-follow"),
                         ) {
                             Text(stringResource(if (isFollowing) R.string.following else R.string.follow))
                         }

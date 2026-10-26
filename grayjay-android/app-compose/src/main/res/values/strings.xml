@@ -854,4 +854,7 @@
     <string name="audio_normalization_description">Adjusts loudness gradually during playback, with peak protection. DSP is bypassed when off. Does not apply to casting.</string>
     <string name="grayjoy_repository">Grayjoy repository</string>
     <string name="repository_open_failed">No app is available to open this link.</string>
+    <string name="temporary_queue_title">In queue</string>
+    <string name="save_as_playlist">Save as playlist</string>
+    <string name="temporary_queue_description">This queue is temporary. Save it with a name to keep it after closing the player.</string>
 </resources>

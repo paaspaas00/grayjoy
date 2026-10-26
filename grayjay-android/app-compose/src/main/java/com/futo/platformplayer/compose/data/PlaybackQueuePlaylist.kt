@@ -3,6 +3,14 @@ package com.futo.platformplayer.compose.data
 import java.text.DateFormat
 import java.text.ParsePosition
 import java.util.Locale
+import com.futo.platformplayer.compose.ui.PlaylistUiModel
+
+/** A UI-only queue descriptor. Callers must explicitly save a normal playlist to persist it. */
+internal fun temporaryPlaybackQueue(previous: PlaylistUiModel?, videoIds: List<String>, title: String, sessionId: String): PlaylistUiModel {
+    val ids = videoIds.distinct()
+    if (previous?.videoIds == ids && previous.title == title) return previous
+    return PlaylistUiModel(previous?.id ?: sessionId, title, "", ids, isPlaybackQueue = true)
+}
 
 /** Older backups had no queue marker. Match the complete generated date, not just the prefix. */
 internal fun isLegacyPlaybackQueueTitle(title: String, templates: List<String>, locales: List<Locale>): Boolean {

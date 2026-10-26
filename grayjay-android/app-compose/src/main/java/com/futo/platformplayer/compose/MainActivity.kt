@@ -443,6 +443,7 @@ class MainActivity : FragmentActivity() {
                     onPerChannelPlaybackSpeedChange = viewModel::setPerChannelPlaybackSpeedEnabled
                     onHoldToSpeedChange = viewModel::setHoldToSpeedEnabled
                     onAudioNormalizationChange = viewModel::setAudioNormalizationEnabled
+                    onPlayQueuedVideo = viewModel::playQueuedVideo
                     onSponsorBlockEnabledChange = viewModel::setSponsorBlockEnabled
                     onSponsorBlockAutomaticSkipChange = viewModel::setSponsorBlockAutomaticSkip
                     onSponsorBlockSkipNoticesEnabledChange = viewModel::setSponsorBlockSkipNoticesEnabled

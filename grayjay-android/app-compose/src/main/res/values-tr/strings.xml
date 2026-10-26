@@ -679,4 +679,7 @@
     <string name="audio_normalization_description">Oynatma sırasında ses yüksekliğini kademeli olarak ayarlar ve tepe koruması sağlar. Kapalıyken DSP devre dışıdır. Cast yayınına uygulanmaz.</string>
     <string name="grayjoy_repository">Grayjoy deposu</string>
     <string name="repository_open_failed">Bu bağlantıyı açacak uygulama yok.</string>
+    <string name="temporary_queue_title">Kuyrukta</string>
+    <string name="save_as_playlist">Oynatma listesi olarak kaydet</string>
+    <string name="temporary_queue_description">Bu kuyruk geçicidir. Oynatıcıyı kapattıktan sonra saklamak için bir ad vererek kaydedin.</string>
 </resources>

@@ -679,4 +679,7 @@
     <string name="audio_normalization_description">Passt die Lautheit während der Wiedergabe schrittweise an, mit Spitzenschutz. Bei Deaktivierung wird DSP umgangen. Gilt nicht für Casting.</string>
     <string name="grayjoy_repository">Grayjoy-Repository</string>
     <string name="repository_open_failed">Keine App zum Öffnen dieses Links verfügbar.</string>
+    <string name="temporary_queue_title">In der Warteschlange</string>
+    <string name="save_as_playlist">Als Playlist speichern</string>
+    <string name="temporary_queue_description">Diese Warteschlange ist vorübergehend. Speichere sie unter einem Namen, um sie nach dem Schließen des Players zu behalten.</string>
 </resources>

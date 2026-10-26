@@ -632,7 +632,7 @@ class GrayjayAppTest {
         ).performClick()
         composeRule.onNodeWithTag("nav-search").performClick()
         closeSoftKeyboard()
-        composeRule.onNodeWithTag("mini-player").performClick()
+        composeRule.onNodeWithTag("mini-player").performTouchInput { swipe(center, center.copy(y = -1200f), 500) }
         composeRule.onNodeWithTag("now-playing-close").performClick()
 
         composeRule.onNodeWithTag("playlist-detail-close-origin").assertIsDisplayed()
@@ -664,7 +664,7 @@ class GrayjayAppTest {
         composeRule.onNodeWithTag("mini-player").assertIsDisplayed()
         for (retainNowPlaying in listOf(false, true)) {
             if (retainNowPlaying) {
-                composeRule.onNodeWithTag("mini-player").performClick()
+                composeRule.onNodeWithTag("mini-player").performTouchInput { swipe(center, center.copy(y = -1200f), 500) }
                 composeRule.onNodeWithTag("now-playing-close").assertIsDisplayed()
                 composeRule.onNodeWithContentDescription(
                     composeRule.activity.getString(R.string.back),
@@ -706,7 +706,7 @@ class GrayjayAppTest {
     @Test
     fun castSheetSeparatesChromecastAndFCastDevicesIntoTabs() {
         openVideo("real-video-one")
-        composeRule.onNodeWithTag("mini-player").performClick()
+        composeRule.onNodeWithTag("mini-player").performTouchInput { swipe(center, center.copy(y = -1200f), 500) }
         state.value = state.value.copy(
             chromecast = ChromecastUiState(
                 devices = listOf(

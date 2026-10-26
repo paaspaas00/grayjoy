@@ -118,8 +118,8 @@ internal enum class LibraryFilter(
     val icon: ImageVector,
 ) {
     History(R.string.history, Icons.Outlined.History),
-    WatchLater(R.string.watch_later, Icons.Outlined.Schedule),
     Playlists(R.string.playlists, Icons.AutoMirrored.Outlined.PlaylistPlay),
+    WatchLater(R.string.watch_later, Icons.Outlined.Schedule),
     Downloads(R.string.downloads, Icons.Outlined.Download),
 }
 
@@ -219,6 +219,7 @@ internal fun LibraryScreen(
     var playlistQuery by rememberSaveable { mutableStateOf("") }
     var historyQuery by rememberSaveable { mutableStateOf("") }
     var historyMusicFilter by rememberSaveable { mutableStateOf(HistoryMusicFilter.All) }
+    var downloadsMusicFilter by rememberSaveable { mutableStateOf(HistoryMusicFilter.All) }
     var expandedHistoryGroups by androidx.compose.runtime.key(historyEntryGeneration) {
         rememberSaveable { mutableStateOf(emptyList<String>()) }
     }
@@ -392,10 +393,12 @@ internal fun LibraryScreen(
                     if (pageFilter == LibraryFilter.Downloads) downloadVideos
                     else videosForLibraryFilter(videos, pageFilter)
                 }
-                val musicFilteredPageVideos = remember(unfilteredPageVideos, pageFilter, historyMusicFilter) {
-                    if (pageFilter == LibraryFilter.History) {
-                        videosForHistoryMusicFilter(unfilteredPageVideos, historyMusicFilter)
-                    } else unfilteredPageVideos
+                val musicFilteredPageVideos = remember(unfilteredPageVideos, pageFilter, historyMusicFilter, downloadsMusicFilter) {
+                    when (pageFilter) {
+                        LibraryFilter.History -> videosForHistoryMusicFilter(unfilteredPageVideos, historyMusicFilter)
+                        LibraryFilter.Downloads -> videosForHistoryMusicFilter(unfilteredPageVideos, downloadsMusicFilter)
+                        else -> unfilteredPageVideos
+                    }
                 }
                 val unknownHistoryIds = remember(unfilteredPageVideos, pageFilter, historyQuery) {
                     if (pageFilter == LibraryFilter.History) videosMatchingLibraryQuery(unfilteredPageVideos, historyQuery)
@@ -490,7 +493,7 @@ internal fun LibraryScreen(
                     verticalArrangement = Arrangement.spacedBy(if (compactLayout) 8.dp else 16.dp),
                 ) {
         item {
-            if (!compactLayout || selectionMode || pageFilter == LibraryFilter.Downloads) {
+            if (!compactLayout || selectionMode || pageFilter in setOf(LibraryFilter.Downloads, LibraryFilter.Playlists, LibraryFilter.WatchLater)) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -498,7 +501,16 @@ internal fun LibraryScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(stringResource(pageFilter.labelRes), style = MaterialTheme.typography.titleLarge)
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(pageFilter.labelRes), style = MaterialTheme.typography.titleLarge)
+                    if (pageFilter in setOf(LibraryFilter.Downloads, LibraryFilter.Playlists, LibraryFilter.WatchLater)) {
+                        val count = if (pageFilter == LibraryFilter.Playlists) matchingPlaylists.size else pageVideos.size
+                        Text(count.toString(), style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("library-count-${pageFilter.name.lowercase()}"))
+                    }
+                }
                 if (
                     pageFilter in setOf(
                         LibraryFilter.History,
@@ -531,7 +543,7 @@ internal fun LibraryScreen(
             }
             }
         }
-        if (pageFilter != LibraryFilter.History) item {
+        if (pageFilter !in setOf(LibraryFilter.History, LibraryFilter.Downloads, LibraryFilter.Playlists, LibraryFilter.WatchLater)) item {
             if (compactLayout) {
                 val count = if (pageFilter == LibraryFilter.Playlists) playlists.size else musicFilteredPageVideos.size
                 Text(pluralStringResource(if (pageFilter == LibraryFilter.Playlists) R.plurals.playlist_count else R.plurals.video_count, count, count),
@@ -541,6 +553,17 @@ internal fun LibraryScreen(
                 videos = musicFilteredPageVideos,
                 playlistCount = playlists.size,
             )
+        }
+        if (pageFilter == LibraryFilter.Downloads) stickyHeader(key = "downloads-music-filters") {
+            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)
+                .horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HistoryMusicFilter.entries.forEach { filter ->
+                    FilterChip(selected = downloadsMusicFilter == filter,
+                        onClick = { downloadsMusicFilter = filter; leaveSelectionMode() },
+                        label = { Text(stringResource(filter.labelRes)) },
+                        modifier = Modifier.testTag("downloads-music-${filter.name.lowercase()}"))
+                }
+            }
         }
         if (pageFilter in setOf(LibraryFilter.History, LibraryFilter.Playlists)) {
             stickyHeader(key = "library-search-${pageFilter.name}") {
@@ -1031,7 +1054,7 @@ private fun SelectionTooltip(label: String, content: @Composable () -> Unit) {
     )
 }
 
-private const val LIBRARY_SEARCH_FOCUSED_SCROLL_INDEX = 2
+private const val LIBRARY_SEARCH_FOCUSED_SCROLL_INDEX = 1
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable

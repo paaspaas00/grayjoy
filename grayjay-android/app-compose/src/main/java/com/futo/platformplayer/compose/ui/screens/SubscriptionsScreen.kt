@@ -556,9 +556,10 @@ private fun ManageSubscriptionsPane(
     onRemoveSelected: () -> Unit,
     onDone: () -> Unit,
 ) {
+    Column(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth().weight(1f)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -629,39 +630,7 @@ private fun ManageSubscriptionsPane(
                 modifier = Modifier.testTag("manage-subscriptions-layout"),
             )
         }
-        if (selectedChannelIds.isNotEmpty()) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("manage-subscriptions-selection-header"),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = MaterialTheme.shapes.large,
-                tonalElevation = 3.dp,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        pluralStringResource(
-                            R.plurals.selected_count,
-                            selectedChannelIds.size,
-                            selectedChannelIds.size,
-                        ),
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Button(
-                        onClick = onRemoveSelected,
-                        modifier = Modifier.testTag("remove-selected-subscriptions"),
-                    ) {
-                        Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
-                        Text(stringResource(R.string.remove))
-                    }
-                }
-            }
-        } else {
+        if (selectedChannelIds.isEmpty()) {
             Text(
                 stringResource(R.string.long_press_subscription),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -719,6 +688,21 @@ private fun ManageSubscriptionsPane(
                 }
             }
         }
+    }
+    if (selectedChannelIds.isNotEmpty()) {
+        Surface(Modifier.fillMaxWidth().testTag("manage-subscriptions-selection-header"),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 3.dp) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(pluralStringResource(R.plurals.selected_count, selectedChannelIds.size, selectedChannelIds.size),
+                    Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                Button(onClick = onRemoveSelected, modifier = Modifier.testTag("remove-selected-subscriptions")) {
+                    Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
+                    Text(stringResource(R.string.remove))
+                }
+            }
+        }
+    }
     }
 }
 
