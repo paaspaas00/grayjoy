@@ -682,4 +682,9 @@
     <string name="temporary_queue_title">Na fila</string>
     <string name="save_as_playlist">Guardar como playlist</string>
     <string name="temporary_queue_description">Esta fila é temporária. Guarde-a com um nome para a manter após fechar o leitor.</string>
+    <string name="one_handed_player">Otimizar para uso com uma mão</string>
+    <string name="one_handed_player_description">Move o título e as visualizações para cima do leitor na reprodução vertical, aproximando os controlos do polegar.</string>
+    <string name="setup_player_layout">Disposição do leitor</string>
+    <string name="setup_player_standard">Normal</string>
+    <string name="setup_player_one_handed">Uma mão</string>
 </resources>

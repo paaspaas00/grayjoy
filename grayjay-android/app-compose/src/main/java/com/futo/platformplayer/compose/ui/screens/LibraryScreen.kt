@@ -244,7 +244,6 @@ internal fun LibraryScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val activeFilter by rememberUpdatedState(selectedFilter)
-    var programmaticPaging by remember { mutableStateOf(false) }
     var userPaging by remember { mutableStateOf(false) }
     val matchingPlaylists = remember(playlists, playlistQuery) {
         playlistsMatchingQuery(playlists, playlistQuery)
@@ -284,12 +283,16 @@ internal fun LibraryScreen(
         }
     }
 
+    LaunchedEffect(pagerState.interactionSource) {
+        pagerState.interactionSource.interactions.collect { interaction ->
+            if (interaction is androidx.compose.foundation.interaction.DragInteraction.Start) userPaging = true
+        }
+    }
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.isScrollInProgress to pagerState.settledPage }
             .distinctUntilChanged()
             .collect { (scrolling, page) ->
-                if (scrolling && !programmaticPaging) userPaging = true
-                if (!scrolling && userPaging && !programmaticPaging) {
+                if (!scrolling && userPaging) {
                     userPaging = false
                     filters.getOrNull(page)?.let { filter ->
                     if (filter != activeFilter) {
@@ -311,16 +314,10 @@ internal fun LibraryScreen(
             focusedSearchFilter = null
         }
         if (page >= 0 && page != pagerState.currentPage) {
-            programmaticPaging = true
             userPaging = false
-            try {
-                if (downloadFocusVideoId != null) pagerState.scrollToPage(page)
-                else pagerState.animateScrollToPage(page)
-            } finally {
-                programmaticPaging = false
-            }
+            if (downloadFocusVideoId != null) pagerState.scrollToPage(page)
+            else pagerState.animateScrollToPage(page)
         }
-        if (page >= 0) filterListState.animateScrollToItem(page)
     }
     PageBackHandler(enabled = focusedSearchFilter != null) {
         keyboardController?.hide()
@@ -348,7 +345,7 @@ internal fun LibraryScreen(
     Column(Modifier.fillMaxSize()) {
         LazyRow(
             state = filterListState,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag("library-filter-strip"),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
                 horizontal = 16.dp,
                 vertical = 10.dp,
@@ -362,6 +359,7 @@ internal fun LibraryScreen(
                 FilterChip(
                     selected = selectedFilter == filter,
                     onClick = {
+                        userPaging = false
                         onSelectedFilterChange(filter)
                         leaveSelectionMode()
                     },

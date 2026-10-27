@@ -724,4 +724,9 @@
     <string name="temporary_queue_title">В очереди</string>
     <string name="save_as_playlist">Сохранить как плейлист</string>
     <string name="temporary_queue_description">Эта очередь временная. Сохраните её под выбранным именем, чтобы не потерять после закрытия плеера.</string>
+    <string name="one_handed_player">Управление одной рукой</string>
+    <string name="one_handed_player_description">Перемещает название и число просмотров над проигрывателем в портретном режиме, приближая кнопки к большому пальцу.</string>
+    <string name="setup_player_layout">Расположение плеера</string>
+    <string name="setup_player_standard">Обычное</string>
+    <string name="setup_player_one_handed">Одной рукой</string>
 </resources>

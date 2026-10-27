@@ -682,4 +682,9 @@
     <string name="temporary_queue_title">Kuyrukta</string>
     <string name="save_as_playlist">Oynatma listesi olarak kaydet</string>
     <string name="temporary_queue_description">Bu kuyruk geçicidir. Oynatıcıyı kapattıktan sonra saklamak için bir ad vererek kaydedin.</string>
+    <string name="one_handed_player">Tek elle kullanım için optimize et</string>
+    <string name="one_handed_player_description">Dikey oynatma ekranında başlığı ve görüntüleme sayısını oynatıcının üstüne taşıyarak kontrolleri başparmağına yaklaştırır.</string>
+    <string name="setup_player_layout">Oynatıcı düzeni</string>
+    <string name="setup_player_standard">Standart</string>
+    <string name="setup_player_one_handed">Tek elle</string>
 </resources>

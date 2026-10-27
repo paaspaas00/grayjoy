@@ -14,6 +14,7 @@ internal fun settingsTextMatches(text: String, query: String): Boolean {
 }
 
 internal val settingsSearchResources = mapOf(
+    "one-handed-player" to listOf(R.string.experimental_features, R.string.one_handed_player, R.string.one_handed_player_description),
     "audio-normalization" to listOf(R.string.experimental_features, R.string.audio_normalization, R.string.audio_normalization_description),
     "app-language" to listOf(R.string.system_default_language, R.string.app_language, R.string.app_language_description),
     "theme-mode" to listOf(R.string.settings_appearance, R.string.automatic, R.string.use_light_theme, R.string.use_dark_theme),

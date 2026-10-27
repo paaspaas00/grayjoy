@@ -857,4 +857,9 @@
     <string name="temporary_queue_title">In queue</string>
     <string name="save_as_playlist">Save as playlist</string>
     <string name="temporary_queue_description">This queue is temporary. Save it with a name to keep it after closing the player.</string>
+    <string name="one_handed_player">Optimize for one-handed use</string>
+    <string name="one_handed_player_description">Move the video title and view count above the player in portrait Now Playing, bringing playback controls closer to your thumb.</string>
+    <string name="setup_player_layout">Player layout</string>
+    <string name="setup_player_standard">Standard</string>
+    <string name="setup_player_one_handed">One-handed</string>
 </resources>

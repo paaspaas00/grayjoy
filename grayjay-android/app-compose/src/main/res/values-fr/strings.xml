@@ -682,4 +682,9 @@
     <string name="temporary_queue_title">En file</string>
     <string name="save_as_playlist">Enregistrer comme playlist</string>
     <string name="temporary_queue_description">Cette file est temporaire. Enregistrez-la avec un nom pour la conserver après la fermeture du lecteur.</string>
+    <string name="one_handed_player">Optimiser pour une seule main</string>
+    <string name="one_handed_player_description">Place le titre et les vues au-dessus du lecteur en mode portrait pour rapprocher les commandes du pouce.</string>
+    <string name="setup_player_layout">Disposition du lecteur</string>
+    <string name="setup_player_standard">Standard</string>
+    <string name="setup_player_one_handed">Une main</string>
 </resources>

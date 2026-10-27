@@ -76,6 +76,7 @@ class GrayjayAppActions {
     var onRemovePlaylists: (List<String>) -> Unit = {}
     var onExportDownloads: (List<String>, DownloadMediaType, Uri) -> Unit = { _, _, _ -> }
     var onSeekPlayback: (Float) -> Unit = { _ -> }
+    var onSeekPreviewChange: (String, Boolean) -> Unit = { _, _ -> }
     var onSourceEnabledChange: (String, Boolean) -> Unit = { _, _ -> }
     var onInstallSource: (String) -> Unit = { _ -> }
     var onScanSourceQr: () -> Unit = {}
@@ -133,6 +134,7 @@ class GrayjayAppActions {
     var onPerChannelPlaybackSpeedChange: (Boolean) -> Unit = { _ -> }
     var onHoldToSpeedChange: (Boolean) -> Unit = {}
     var onAudioNormalizationChange: (Boolean) -> Unit = {}
+    var onOneHandedPlayerChange: (Boolean) -> Unit = {}
     var onPlayQueuedVideo: ((String) -> Unit)? = null
     var onSponsorBlockEnabledChange: (Boolean) -> Unit = {}
     var onSponsorBlockAutomaticSkipChange: (Boolean) -> Unit = {}

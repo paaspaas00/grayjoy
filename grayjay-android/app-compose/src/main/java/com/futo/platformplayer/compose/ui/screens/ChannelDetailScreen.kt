@@ -420,10 +420,11 @@ fun ChannelDetailScreen(
                         name = displayedChannel.name,
                         thumbnailUrl = displayedChannel.thumbnailUrl,
                         modifier = Modifier.align(Alignment.Center).creatorSharedElement(displayedChannel.id, "avatar")
+                            .testTag("channel-header-avatar")
                             .size(if (performance.compactContent) 72.dp else 96.dp),
                     )
                     if (perChannelPlaybackSpeedEnabled || displayedChannel.sourceId.equals("youtube", true)) {
-                        ChannelSettingsButton(onClick = { showSettingsSheet = true }, modifier = Modifier.align(Alignment.TopEnd))
+                        ChannelSettingsButton(onClick = { showSettingsSheet = true }, modifier = Modifier.align(Alignment.CenterEnd))
                     }
                     }
                     SharedCreatorText(displayedChannel.id, "name", displayedChannel.name,

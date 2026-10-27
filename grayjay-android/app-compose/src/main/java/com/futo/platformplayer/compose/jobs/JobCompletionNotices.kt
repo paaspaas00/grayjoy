@@ -18,24 +18,28 @@ internal fun notifyJobFinished(context: Context, label: Int) {
 /** A download batch is one job; paused work and profile changes are not completion events. */
 internal class JobCompletionTracker {
     private var previous: GrayjayUiState? = null
-    private var sawDownloads = false
+    private var completedTransferInBatch = false
     fun observe(state: GrayjayUiState): List<Int> {
         val old = previous
         previous = state
         if (old == null || old.activeProfileId != state.activeProfileId || state.backgroundJobsSuspended) {
-            sawDownloads = !state.backgroundJobsSuspended && (state.activePlaylistDownloads.isNotEmpty() ||
-                state.downloads.values.any { it.status in setOf(DownloadStatus.Preparing, DownloadStatus.Queued, DownloadStatus.Downloading) })
+            completedTransferInBatch = false
             return emptyList()
         }
         return buildList {
-            if (old.downloads !== state.downloads || old.activePlaylistDownloads != state.activePlaylistDownloads) {
+            if (state.downloadCompletionGeneration > old.downloadCompletionGeneration) completedTransferInBatch = true
+            if (state.downloadBatchProgress.total < old.downloadBatchProgress.total &&
+                old.downloadBatchProgress.completed < old.downloadBatchProgress.total) completedTransferInBatch = false
+            if (old.downloads !== state.downloads || old.activePlaylistDownloads != state.activePlaylistDownloads ||
+                old.downloadCompletionGeneration != state.downloadCompletionGeneration) {
                 val runnable = state.activePlaylistDownloads.isNotEmpty() || state.downloads.values.any {
                     it.status in setOf(DownloadStatus.Preparing, DownloadStatus.Queued, DownloadStatus.Downloading)
                 }
-                if (runnable) sawDownloads = true
-                else if (sawDownloads && state.downloads.values.none { it.status == DownloadStatus.Paused }) {
-                    sawDownloads = false
-                    if (state.downloadBatchProgress.total > 0) add(R.string.downloads)
+                if (!runnable) {
+                    if (completedTransferInBatch && state.downloadBatchProgress.total > 0 &&
+                        state.downloadBatchProgress.completed == state.downloadBatchProgress.total &&
+                        state.downloads.values.none { it.status == DownloadStatus.Paused }) add(R.string.downloads)
+                    completedTransferInBatch = false
                 }
             }
             fun finished(before: Boolean, after: Boolean, label: Int) { if (before && !after) add(label) }

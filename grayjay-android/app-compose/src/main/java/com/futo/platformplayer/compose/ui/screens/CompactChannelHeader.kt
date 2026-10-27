@@ -27,7 +27,7 @@ internal fun CompactChannelHeader(channel: ChannelUiModel, following: Boolean, o
     Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ChannelAvatarImage(channel.name, channel.thumbnailUrl,
-                modifier = Modifier.creatorSharedElement(channel.id, "avatar").size(32.dp))
+                modifier = Modifier.creatorSharedElement(channel.id, "avatar").size(32.dp).testTag("channel-header-avatar"))
             Column(Modifier.weight(1f)) {
                 Text(sourceCreatorFallback(channel.followerCount), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(channel.source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)

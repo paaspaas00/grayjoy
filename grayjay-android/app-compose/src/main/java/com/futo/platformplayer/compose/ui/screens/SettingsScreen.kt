@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.ClosedCaption
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.PictureInPicture
 import androidx.compose.material.icons.outlined.Recommend
 import androidx.compose.material.icons.outlined.ScreenLockPortrait
@@ -603,6 +604,11 @@ fun SettingsScreen(
         }
         settingsGroup("settings-experimental", R.string.experimental_features, groupSpacing,
             matches = { searchQuery.isBlank() || it in matching }) {
+            setting("one-handed-player", "toggle") {
+                ToggleSetting(stringResource(R.string.one_handed_player),
+                    stringResource(R.string.one_handed_player_description), Icons.Outlined.TouchApp,
+                    extras.oneHandedPlayerEnabled, extras.onOneHandedPlayerChange, "one-handed-player")
+            }
             setting("audio-normalization", "toggle") {
                 ToggleSetting(stringResource(R.string.audio_normalization),
                     stringResource(R.string.audio_normalization_description), Icons.Outlined.MusicNote,

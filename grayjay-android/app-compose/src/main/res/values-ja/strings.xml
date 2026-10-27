@@ -682,4 +682,9 @@
     <string name="temporary_queue_title">再生キュー</string>
     <string name="save_as_playlist">プレイリストとして保存</string>
     <string name="temporary_queue_description">このキューは一時的です。プレーヤーを閉じた後も残すには、名前を付けて保存してください。</string>
+    <string name="one_handed_player">片手操作に最適化</string>
+    <string name="one_handed_player_description">縦向きの再生画面でタイトルと再生回数をプレーヤーの上に移動し、操作ボタンを親指に近づけます。</string>
+    <string name="setup_player_layout">プレーヤーの配置</string>
+    <string name="setup_player_standard">標準</string>
+    <string name="setup_player_one_handed">片手操作</string>
 </resources>

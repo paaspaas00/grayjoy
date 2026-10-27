@@ -46,7 +46,9 @@ class October26UxTest {
         rule.onNodeWithTag("library-filter-watchlater").performScrollTo().performClick()
         rule.onNodeWithTag("library-count-watchlater").assertTextEquals("1")
         rule.onNodeWithTag("library-summary-watchlater").assertDoesNotExist()
-        rule.onNodeWithTag("library-filter-downloads").performScrollTo().performClick()
+        rule.onNodeWithTag("library-filter-strip").performTouchInput { swipeLeft() }
+        rule.onNodeWithTag("library-filter-downloads").performClick()
+        rule.onNodeWithTag("library-filter-downloads").assertIsSelected()
         rule.onNodeWithTag("library-count-downloads").assertTextEquals("3")
         rule.onNodeWithTag("library-summary-downloads").assertDoesNotExist()
         rule.onNodeWithTag("downloads-music-music").performClick()

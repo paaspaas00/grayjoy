@@ -682,4 +682,9 @@
     <string name="temporary_queue_title">In der Warteschlange</string>
     <string name="save_as_playlist">Als Playlist speichern</string>
     <string name="temporary_queue_description">Diese Warteschlange ist vorübergehend. Speichere sie unter einem Namen, um sie nach dem Schließen des Players zu behalten.</string>
+    <string name="one_handed_player">Für Einhandbedienung optimieren</string>
+    <string name="one_handed_player_description">Titel und Aufrufe in der Hochformat-Wiedergabe über dem Player anzeigen, damit die Steuerung näher am Daumen liegt.</string>
+    <string name="setup_player_layout">Player-Layout</string>
+    <string name="setup_player_standard">Standard</string>
+    <string name="setup_player_one_handed">Einhand</string>
 </resources>

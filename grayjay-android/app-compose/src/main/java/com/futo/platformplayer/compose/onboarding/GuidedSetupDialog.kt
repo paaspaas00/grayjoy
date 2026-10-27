@@ -180,6 +180,13 @@ internal fun GuidedSetupDialog(
                                 Text(stringResource(R.string.setup_hold_body), style = MaterialTheme.typography.bodyLarge)
                                 SetupToggle(stringResource(R.string.hold_to_speed), state.holdToSpeedEnabled, actions.onHoldToSpeedChange)
                             }
+                            SetupStep.PlayerLayout -> {
+                                Text(stringResource(R.string.experimental_features),
+                                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                Text(stringResource(R.string.one_handed_player_description), style = MaterialTheme.typography.bodyLarge)
+                                OneHandedPlayerChoice(state.oneHandedPlayerEnabled, actions.onOneHandedPlayerChange)
+                                Text(stringResource(R.string.setup_later), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             SetupStep.SponsorBlock -> {
                                 SetupIllustration(SetupDemo.Sponsor, page == pager.currentPage)
                                 Text(stringResource(R.string.setup_sponsor_body), style = MaterialTheme.typography.bodyLarge)

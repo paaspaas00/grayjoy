@@ -682,4 +682,9 @@
     <string name="temporary_queue_title">播放队列</string>
     <string name="save_as_playlist">保存为播放列表</string>
     <string name="temporary_queue_description">此队列是临时的。请命名保存，以便关闭播放器后仍可保留。</string>
+    <string name="one_handed_player">优化单手操作</string>
+    <string name="one_handed_player_description">在竖屏播放界面中，将标题和观看次数移至播放器上方，让播放控件更靠近拇指。</string>
+    <string name="setup_player_layout">播放器布局</string>
+    <string name="setup_player_standard">标准</string>
+    <string name="setup_player_one_handed">单手</string>
 </resources>

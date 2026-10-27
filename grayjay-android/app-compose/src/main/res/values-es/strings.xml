@@ -682,4 +682,9 @@
     <string name="temporary_queue_title">En cola</string>
     <string name="save_as_playlist">Guardar como lista</string>
     <string name="temporary_queue_description">Esta cola es temporal. Guárdala con un nombre para conservarla después de cerrar el reproductor.</string>
+    <string name="one_handed_player">Optimizar para usar con una mano</string>
+    <string name="one_handed_player_description">Mueve el título y las visualizaciones encima del reproductor en vertical para acercar los controles al pulgar.</string>
+    <string name="setup_player_layout">Diseño del reproductor</string>
+    <string name="setup_player_standard">Normal</string>
+    <string name="setup_player_one_handed">Una mano</string>
 </resources>

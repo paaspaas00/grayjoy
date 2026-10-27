@@ -12,6 +12,7 @@ internal enum class SetupStep(val title: Int, val tag: String) {
     ImportDetails(R.string.setup_import_title, "import-details"),
     Shorts(R.string.brainrot_shorts, "shorts"),
     HoldSpeed(R.string.hold_to_speed, "hold-speed"),
+    PlayerLayout(R.string.setup_player_layout, "player-layout"),
     SponsorBlock(R.string.sponsorblock, "sponsorblock"),
     Autoplay(R.string.youtube_autoplay, "autoplay"),
     SourceProfiles(R.string.profile_split_title, "source-profiles"),

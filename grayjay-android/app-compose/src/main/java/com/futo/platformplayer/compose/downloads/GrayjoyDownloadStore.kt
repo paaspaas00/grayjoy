@@ -378,6 +378,8 @@ class GrayjoyDownloadStore private constructor(context: Context) {
         databaseProvider,
     )
     private val downloadsById = ConcurrentHashMap<String, Download>()
+    private val completionGenerations = ConcurrentHashMap<String, Long>()
+    internal fun completionGeneration(profileId: String): Long = completionGenerations[profileId] ?: 0L
     private val removingGroups = ConcurrentHashMap.newKeySet<DownloadGroupKey>()
     private val metadataCache = ConcurrentHashMap<String, Pair<ByteArray, DownloadRequestMetadata?>>()
     private val requestDataSourceFactories = ConcurrentHashMap<String, DataSource.Factory>()
@@ -427,7 +429,15 @@ class GrayjoyDownloadStore private constructor(context: Context) {
                             download: Download,
                             finalException: Exception?,
                         ) {
-                            downloadsById[download.request.id] = download
+                            val previous = downloadsById.put(download.request.id, download)
+                            // Only a transfer observed running in this process is a completion.
+                            // Loading already-complete entries from the index is not a new job.
+                            if (initialized.isCompleted && previous?.state == Download.STATE_DOWNLOADING &&
+                                download.state == Download.STATE_COMPLETED) {
+                                metadataFor(download.request)?.profileId?.let { profile ->
+                                    completionGenerations.merge(profile, 1L, Long::plus)
+                                }
+                            }
                             if (download.state == Download.STATE_COMPLETED) {
                                 releaseRequestDataSourceFactory(download.request.id)
                             }

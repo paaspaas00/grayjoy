@@ -671,6 +671,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private var suppressChromecastHandoff = false
     private var resumeLocalAfterFailedCast = false
     private var speedHoldSnapshot: SpeedHoldSnapshot? = null
+    private val seekPreviewPause = com.futo.platformplayer.compose.playback.SeekPreviewPause()
     private val downloadJobs = mutableMapOf<String, Job>()
     private val downloadBatchPreparationJobs = mutableMapOf<String, Job>()
     // Old Grayjay prepares the next queued video immediately before transferring it. Keeping
@@ -724,6 +725,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
             holdToSpeedEnabled = preferences.holdToSpeedEnabled,
             audioNormalizationEnabled = preferences.audioNormalizationEnabled,
+            oneHandedPlayerEnabled = preferences.oneHandedPlayerEnabled,
             brainrotShortsEnabled = preferences.brainrotShortsEnabled,
             youtubeAutoplayEnabled = preferences.youtubeAutoplayEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
@@ -1109,6 +1111,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         preferences.audioNormalizationEnabled = enabled
         _uiState.update { it.copy(audioNormalizationEnabled = enabled) }
         engine.setAudioNormalizationEnabled(enabled)
+    }
+
+    fun setOneHandedPlayerEnabled(enabled: Boolean) {
+        preferences.oneHandedPlayerEnabled = enabled
+        _uiState.update { it.copy(oneHandedPlayerEnabled = enabled) }
     }
 
     fun setPreferredVideoQuality(height: Int) {
@@ -2388,6 +2395,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
             holdToSpeedEnabled = preferences.holdToSpeedEnabled,
             audioNormalizationEnabled = preferences.audioNormalizationEnabled,
+            oneHandedPlayerEnabled = preferences.oneHandedPlayerEnabled,
             brainrotShortsEnabled = preferences.brainrotShortsEnabled,
             youtubeAutoplayEnabled = preferences.youtubeAutoplayEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
@@ -3277,6 +3285,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         val resumePositionFraction = video.resumePositionFraction()
+        seekPreviewPause.cancel()
         val profileAtStart = activeProfileId
         videoOpenRequestGeneration += 1L
         val requestGeneration = videoOpenRequestGeneration
@@ -3967,6 +3976,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun invalidatePlaybackQueue(): Long {
+        seekPreviewPause.cancel()
         audioLanguageJob?.cancel()
         clearAutoplayPreparation()
         autoplayRecommendations = null
@@ -3981,6 +3991,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun togglePlayback() {
+        seekPreviewPause.cancel()
         pendingVoicePlayback = null
         if (chromecastManager.state.value.isConnected) chromecastManager.togglePlayback()
         else engine.togglePlayback()
@@ -5333,6 +5344,23 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             engine.seekToFraction(fraction)
         }
         _uiState.value.playback.currentVideoId?.let { setWatchProgress(it, fraction) }
+    }
+
+    fun setSeekPreviewActive(videoId: String, active: Boolean) {
+        val state = _uiState.value
+        val cast = chromecastManager.state.value
+        val currentId = if (cast.isConnected) state.playback.currentVideoId else engine.player.currentMediaItem?.mediaId
+        val identity = com.futo.platformplayer.compose.playback.SeekPreviewIdentity(
+            currentId.orEmpty(), activeProfileId, videoOpenRequestGeneration, playbackGeneration, cast.isConnected)
+        if (active) {
+            if (currentId != videoId || pendingPlaybackVideoId?.let { it != videoId } == true) return
+            if (seekPreviewPause.begin(identity, if (cast.isConnected) cast.isPlaying else engine.player.playWhenReady)) {
+                if (cast.isConnected) chromecastManager.togglePlayback() else engine.pausePlayback()
+            }
+        } else if (seekPreviewPause.finish(videoId, identity) && state.playback.errorMessage == null) {
+            if (cast.isConnected) { if (!cast.isPlaying) chromecastManager.togglePlayback() }
+            else if (engine.player.mediaItemCount > 0 && !engine.player.playWhenReady) engine.resumePlayback()
+        }
     }
 
     fun resumePlaybackFromHistory() {
@@ -8119,6 +8147,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val batchProgress = if (downloadStore.isInitialized()) {
             downloadBatchProgressStore.update(activeProfileId, visibleDownloads.values, downloadQueue.all(activeProfileId))
         } else _uiState.value.downloadBatchProgress
+        val completionGeneration = downloadStore.completionGeneration(activeProfileId)
         _uiState.update { state ->
             val remoteDownloadTypes = if (state.remotePlaylistDetail.isLoadingAll) {
                 state.remotePlaylistDetail.activeDownloadMediaTypes
@@ -8132,6 +8161,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             if (
                 state.downloads == visibleDownloads &&
                 state.downloadBatchProgress == batchProgress &&
+                state.downloadCompletionGeneration == completionGeneration &&
                 state.activePlaylistDownloads == activePlaylistDownloads &&
                 state.automaticPlaylistDownloads == automaticPlaylistDownloads &&
                 state.remotePlaylistDetail.activeDownloadMediaTypes == remoteDownloadTypes
@@ -8141,6 +8171,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 state.copy(
                     downloads = visibleDownloads,
                     downloadBatchProgress = batchProgress,
+                    downloadCompletionGeneration = completionGeneration,
                     activePlaylistDownloads = activePlaylistDownloads,
                     automaticPlaylistDownloads = automaticPlaylistDownloads,
                     remotePlaylistDetail = state.remotePlaylistDetail.copy(

@@ -606,7 +606,11 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
         } else {
             naturalPlayerHeight
         }
+        val oneHanded = LocalExtraPreferences.current.oneHandedPlayerEnabled && maxHeight > maxWidth
         Column(Modifier.fillMaxSize()) {
+            if (oneHanded) VideoPrimaryInfo(video,
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
+                    .testTag("one-handed-video-info"), compact = true)
             playerHost(Modifier.fillMaxWidth().height(playerHeight))
             LazyColumn(
                 state = detailListState,
@@ -623,6 +627,8 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
                     queueVideos = queueVideos,
                     selectedSection = selectedSection,
                     horizontalPadding = 16.dp,
+                    includePrimaryInfo = !oneHanded,
+                    includeActions = true,
                     onSectionChange = { selectedSectionName = it.name },
                     onToggleWatchLater = onToggleWatchLater,
                     download = download,
@@ -881,8 +887,13 @@ internal fun PlayerSurface(
     onResumeFromHistory: () -> Unit = {},
 ) {
     var isTimelineSeeking by remember(video.id) { mutableStateOf(false) }
+    val seekPreviewPlayback = com.futo.platformplayer.compose.playback.LocalSeekPreviewPlayback.current
+    val setTimelineSeeking: (Boolean) -> Unit = { seeking ->
+        isTimelineSeeking = seeking
+        seekPreviewPlayback(video.id, seeking)
+    }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) {
-        isTimelineSeeking = false
+        setTimelineSeeking(false)
     }
     var blurPlayerView by remember(video.id, isFullscreen, video.isDrmProtected) { mutableStateOf<PlayerView?>(null) }
     var surfaceHeightPx by remember(isFullscreen) { mutableIntStateOf(0) }
@@ -1199,9 +1210,8 @@ internal fun PlayerSurface(
             Row(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    // The transport row belongs to the area above the seek bar, not to the
-                    // geometric centre of the entire surface.
-                    .offset(y = if (isFullscreen) (-26).dp else (-24).dp),
+                    .offset(y = if (isFullscreen) (-26).dp else (-8).dp)
+                    .testTag("player-transport-controls"),
                 horizontalArrangement = Arrangement.spacedBy(
                     if (isPlaylistPlayback) {
                         if (isFullscreen) 44.dp else 30.dp
@@ -1272,7 +1282,7 @@ internal fun PlayerSurface(
                 isFullscreen = isFullscreen,
                 isPortraitFullscreen = isPortraitFullscreen,
                 onSeek = onSeek,
-                onSeekingChanged = { isTimelineSeeking = it },
+                onSeekingChanged = setTimelineSeeking,
                 onStoryboardLoadFailure = onStoryboardLoadFailure,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1616,6 +1626,18 @@ internal fun PlayerTimelineRow(
     DisposableEffect(video.id) {
         onDispose { onSeekingChanged(false) }
     }
+    LaunchedEffect(sliderInteraction, video.id) {
+        sliderInteraction.interactions.collect { interaction ->
+            if (interaction is androidx.compose.foundation.interaction.DragInteraction.Cancel) {
+                isSeeking = false
+                onSeekingChanged(false)
+            }
+        }
+    }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+        isSeeking = false
+        onSeekingChanged(false)
+    }
 
     val observedPositionMs = remotePositionMs ?: playerPositionMs
     LaunchedEffect(observedPositionMs, pendingSeekPositionMs) {
@@ -1700,6 +1722,7 @@ internal fun PlayerTimelineRow(
                     seekProgress = it
                 },
                 onValueChangeFinished = {
+                    if (!isSeeking) return@Slider
                     val targetPositionMs = seekPreviewPositionMs(durationMs, seekProgress)
                     pendingSeekPositionMs = targetPositionMs
                     if (remotePositionMs == null) playerPositionMs = targetPositionMs
@@ -2790,17 +2813,21 @@ private fun LazyListScope.videoDetails(
 private fun VideoPrimaryInfo(
     video: VideoUiModel,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(video.title, style = MaterialTheme.typography.titleLarge)
+        Text(video.title, style = MaterialTheme.typography.titleLarge,
+            maxLines = if (compact) 3 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis)
         if (video.metadata.isNotBlank()) {
             Text(
                 video.metadata,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
+                maxLines = if (compact) 2 else Int.MAX_VALUE,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

@@ -370,6 +370,7 @@ class MainActivity : FragmentActivity() {
                     onRemovePlaylists = viewModel::removePlaylists
                     onExportDownloads = viewModel::exportDownloads
                     onSeekPlayback = viewModel::seekPlayback
+                    onSeekPreviewChange = viewModel::setSeekPreviewActive
                     onResumeFromHistory = viewModel::resumePlaybackFromHistory
                     onSourceEnabledChange = viewModel::setSourceEnabled
                     onInstallSource = viewModel::installSource
@@ -443,6 +444,7 @@ class MainActivity : FragmentActivity() {
                     onPerChannelPlaybackSpeedChange = viewModel::setPerChannelPlaybackSpeedEnabled
                     onHoldToSpeedChange = viewModel::setHoldToSpeedEnabled
                     onAudioNormalizationChange = viewModel::setAudioNormalizationEnabled
+                    onOneHandedPlayerChange = viewModel::setOneHandedPlayerEnabled
                     onPlayQueuedVideo = viewModel::playQueuedVideo
                     onSponsorBlockEnabledChange = viewModel::setSponsorBlockEnabled
                     onSponsorBlockAutomaticSkipChange = viewModel::setSponsorBlockAutomaticSkip

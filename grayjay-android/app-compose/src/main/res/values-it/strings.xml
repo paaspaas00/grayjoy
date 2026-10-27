@@ -857,4 +857,9 @@
     <string name="temporary_queue_title">In coda</string>
     <string name="save_as_playlist">Salva come playlist</string>
     <string name="temporary_queue_description">Questa coda è temporanea. Salvala con un nome per conservarla dopo la chiusura del player.</string>
+    <string name="one_handed_player">Ottimizza per uso a una mano</string>
+    <string name="one_handed_player_description">Sposta titolo e visualizzazioni sopra il video nella schermata In riproduzione in verticale. I controlli sono così più vicini al pollice.</string>
+    <string name="setup_player_layout">Disposizione del player</string>
+    <string name="setup_player_standard">Normale</string>
+    <string name="setup_player_one_handed">A una mano</string>
 </resources>

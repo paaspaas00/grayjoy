@@ -84,6 +84,10 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         get() = preferences.getBoolean("audio_normalization_enabled", false)
         set(value) { preferences.edit().putBoolean("audio_normalization_enabled", value).apply() }
 
+    var oneHandedPlayerEnabled: Boolean
+        get() = preferences.getBoolean("one_handed_player_enabled", false)
+        set(value) { preferences.edit().putBoolean("one_handed_player_enabled", value).apply() }
+
     var youtubeAutoplayEnabled: Boolean
         get() = preferences.getBoolean("youtube_autoplay_enabled", false)
         set(value) { preferences.edit().putBoolean("youtube_autoplay_enabled", value).apply() }

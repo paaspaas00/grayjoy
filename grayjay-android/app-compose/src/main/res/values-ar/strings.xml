@@ -766,4 +766,9 @@
     <string name="temporary_queue_title">في قائمة الانتظار</string>
     <string name="save_as_playlist">حفظ كقائمة تشغيل</string>
     <string name="temporary_queue_description">قائمة الانتظار مؤقتة. احفظها باسم للاحتفاظ بها بعد إغلاق المشغل.</string>
+    <string name="one_handed_player">تحسين الاستخدام بيد واحدة</string>
+    <string name="one_handed_player_description">ينقل العنوان وعدد المشاهدات فوق المشغّل في الوضع العمودي لتقريب عناصر التحكم من الإبهام.</string>
+    <string name="setup_player_layout">تخطيط المشغّل</string>
+    <string name="setup_player_standard">عادي</string>
+    <string name="setup_player_one_handed">بيد واحدة</string>
 </resources>

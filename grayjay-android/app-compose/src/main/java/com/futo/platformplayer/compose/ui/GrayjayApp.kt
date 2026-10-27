@@ -302,6 +302,7 @@ private data class PlaybackPresentation(
     val transition: PlayerTransitionState,
     val navigationBackProgress: MutableFloatState,
     val navigationBackFromRight: Boolean,
+    val navigationBackTarget: BrowsePage?,
     val onExpand: () -> Unit,
     val onCollapse: () -> Unit,
     val onTransitionDragStart: () -> Unit,
@@ -587,6 +588,7 @@ fun GrayjayApp(
     com.futo.platformplayer.compose.ui.screens.CreatorSheetTransitionHost(
         uiState.activeProfileId, actions.onLoadChannel, uiState.channelDetail.channel, uiState.channelDetail.isLoading) {
     CompositionLocalProvider(LocalHelpGuide provides help, LocalYoutubeOnly provides uiState.sources.isYoutubeOnly(),
+        com.futo.platformplayer.compose.playback.LocalSeekPreviewPlayback provides actions.onSeekPreviewChange,
         LocalProfileNavigation provides ProfileNavigation(uiState.profiles, uiState.activeProfileId,
             !uiState.isSwitchingProfile && !uiState.sourceProfileSetup.isRunning, actions.onSwitchProfile)) {
         GrayjayAppContent(uiState, player, actions, uiLanguageTag, isDarkTheme, updateDownload,
@@ -629,7 +631,8 @@ private fun GrayjayAppContent(
     val keyboardController = LocalSoftwareKeyboardController.current
     val backDispatcher = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     var destinationName by rememberSaveable { mutableStateOf(GrayjayDestination.Home.name) }
-    var selectedVideoId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedVideoId by rememberSaveable { mutableStateOf(
+        uiState.externalNavigation?.takeIf { it.kind == ExternalNavigationKind.Video }?.contentId) }
     var selectedChannelId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
     var browseHistory by rememberSaveable(stateSaver = BrowseHistorySaver) {
@@ -743,12 +746,20 @@ private fun GrayjayAppContent(
     }
     val navigationBackProgress = remember { mutableFloatStateOf(0f) }
     var navigationBackFromRight by remember { mutableStateOf(false) }
+    var navigationBackTarget by remember { mutableStateOf<BrowsePage?>(null) }
     val playerTransitionScope = rememberCoroutineScope()
     var playerTransitionJob by remember { mutableStateOf<Job?>(null) }
     val snapPlayerTransition: (Float) -> Unit = { value ->
         // A navigation reset must also stop the old completion callback from reopening the player.
         playerTransitionJob?.cancel()
         playerTransition.snapTo(value)
+    }
+    val openPlayerDirectly: (String) -> Unit = { videoId ->
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        searchAutoFocusRequested = false
+        snapPlayerTransition(0f)
+        selectedVideoId = videoId
     }
     val restorePlaybackPlaylistDestination: () -> Unit = {
         uiState.playbackPlaylist?.let { playingPlaylist ->
@@ -895,7 +906,7 @@ private fun GrayjayAppContent(
         if (shortsModeActive) { isFullscreen = true; fullscreenEnteredByRotation = false }
         actions.onOpenVideo(it.id)
         if (it.isAvailable && it.scheduledStartAtMs <= System.currentTimeMillis()) {
-            settlePlayer(0f, it.id)
+            openPlayerDirectly(it.id)
         }
     }
     val onVideoLongClick: (VideoUiModel) -> Unit = {
@@ -972,8 +983,7 @@ private fun GrayjayAppContent(
         searchAutoFocusRequested = false
         when (request.kind) {
             ExternalNavigationKind.Video -> {
-                selectedVideoId = request.contentId
-                settlePlayer(0f, request.contentId)
+                openPlayerDirectly(request.contentId)
             }
             ExternalNavigationKind.Channel -> {
                 if (selectedChannelId != request.contentId || selectedVideoId != null) rememberBrowseOrigin()
@@ -1160,6 +1170,7 @@ private fun GrayjayAppContent(
         transition = playerTransition,
         navigationBackProgress = navigationBackProgress,
         navigationBackFromRight = navigationBackFromRight,
+        navigationBackTarget = navigationBackTarget,
         onExpand = { settlePlayer(0f, playbackVideo?.id) },
         onCollapse = { settlePlayer(1f, selectedVideoId ?: playbackVideo?.id) },
         onTransitionDragStart = {
@@ -1239,7 +1250,7 @@ private fun GrayjayAppContent(
         onPlayQueue = { queueIds ->
             if (queueIds.isNotEmpty()) {
                 actions.onPlayQueue(queueIds)
-                settlePlayer(0f, queueIds.first())
+                openPlayerDirectly(queueIds.first())
             }
         },
         onQueueVideos = actions.onQueueVideos,
@@ -1250,14 +1261,14 @@ private fun GrayjayAppContent(
             if (playlist != null && playlist.videoIds.isNotEmpty()) {
                 val first = if (playlistId in uiState.shuffledPlaylistIds) playlist.videoIds.random() else playlist.videoIds.first()
                 actions.onPlayPlaylistFrom(playlistId, first)
-                settlePlayer(0f, first)
+                openPlayerDirectly(first)
             }
         },
         onPlayPlaylistFrom = { playlistId, videoId ->
             val playlist = uiState.playlists.firstOrNull { it.id == playlistId }
             if (playlist != null && videoId in playlist.videoIds) {
                 actions.onPlayPlaylistFrom(playlistId, videoId)
-                settlePlayer(0f, videoId)
+                openPlayerDirectly(videoId)
             }
         },
         onToggleWatchLater = actions.onToggleWatchLater,
@@ -1524,6 +1535,7 @@ private fun GrayjayAppContent(
                     (uiState.home.selectedFeed != HomeFeedType.Subscriptions || uiState.home.browseSourceId != null))
             ),
     ) { backEvents ->
+        val origin = currentBrowseRoute()
         val minimizesPlayer = !isFullscreen &&
             selectedVideo != null
         if (minimizesPlayer) {
@@ -1539,6 +1551,20 @@ private fun GrayjayAppContent(
         } else {
             try {
                 backEvents.collect { event ->
+                    if (!isFullscreen && navigationBackTarget == null) {
+                        val route = browseHistory.lastOrNull() ?: when {
+                            selectedChannelId != null -> currentBrowseRoute().copy(channelId = null, videoId = null)
+                            selectedPlaylistId != null -> currentBrowseRoute().copy(playlistId = null, videoId = null,
+                                libraryFilter = if (selectedPlaylist?.sourceId.isNullOrBlank()) LibraryFilter.Playlists.name else libraryFilterName)
+                            nestedBackDestinationName != null -> BrowseRoute(nestedBackDestinationName!!, libraryFilter = libraryFilterName)
+                            else -> topLevelBackDestination(selected)?.let { BrowseRoute(it.name, libraryFilter = libraryFilterName) }
+                        }
+                        navigationBackTarget = route?.takeIf { it.videoId == null }?.let {
+                            BrowsePage(it, visitedChannels[it.channelId] ?: uiState.channels.firstOrNull { c -> c.id == it.channelId },
+                                visitedPlaylists[it.playlistId] ?: uiState.playlists.firstOrNull { p -> p.id == it.playlistId },
+                                showBack = it.channelId != null || it.playlistId != null || it.parentDestination != null || browseHistory.size > 1)
+                        }
+                    }
                     navigationBackFromRight = event.swipeEdge == androidx.activity.BackEventCompat.EDGE_RIGHT
                     navigationBackProgress.floatValue = event.progress
                 }
@@ -1547,9 +1573,14 @@ private fun GrayjayAppContent(
                     fullscreenEnteredByRotation = false
                     isFullscreen = false
                 } else {
-                    onNavigateBack()
+                    if (navigationBackTarget != null) animate(navigationBackProgress.floatValue, 1f,
+                        animationSpec = tween(180, easing = FastOutSlowInEasing)) { value, _ ->
+                        navigationBackProgress.floatValue = value
+                    }
+                    if (currentBrowseRoute() == origin) onNavigateBack()
                 }
                 navigationBackProgress.floatValue = 0f
+                navigationBackTarget = null
             } catch (_: CancellationException) {
                 withContext(NonCancellable) {
                     try {
@@ -1560,6 +1591,7 @@ private fun GrayjayAppContent(
                         ) { value, _ -> navigationBackProgress.floatValue = value }
                     } finally {
                         navigationBackProgress.floatValue = 0f
+                        navigationBackTarget = null
                     }
                 }
             }
@@ -1653,6 +1685,7 @@ private fun GrayjayAppContent(
             uiState.brainrotShortsEnabled, actions.onBrainrotShortsChange, uiState.rebuildingCaches, actions.onRebuildContentCaches,
             uiState.youtubeAutoplayEnabled, actions.onYoutubeAutoplayChange,
             uiState.audioNormalizationEnabled, actions.onAudioNormalizationChange,
+            uiState.oneHandedPlayerEnabled, actions.onOneHandedPlayerChange,
         ),
     ) {
         val navigationVideos = remember(uiState.videos, uiState.subscriptionVideos) {
@@ -2187,9 +2220,7 @@ private fun GrayjayScaffold(
     val compactChrome = com.futo.platformplayer.compose.ui.screens.compactUi()
     val transitionVideo = selectedVideo ?: playback.video
     val transitionActive = transitionVideo != null && selectedVideo != null
-    val isRootSearch = selected == GrayjayDestination.Search &&
-        selectedChannel == null && selectedPlaylist == null && !nestedBackEnabled
-    var channelSearchMode by rememberSaveable(selectedChannel?.id) { mutableStateOf(false) }
+    var channelSearchModes by rememberSaveable { mutableStateOf(emptyMap<String, Boolean>()) }
     val dismissProgress = remember { Animatable(0f) }
     val dismissScope = rememberCoroutineScope()
     var dismissJob by remember { mutableStateOf<Job?>(null) }
@@ -2207,14 +2238,6 @@ private fun GrayjayScaffold(
                 if (latestPlayback.video?.id == closingVideoId) latestPlayback.onClose()
             }
         }
-    }
-    val predictiveBackTransform = Modifier.graphicsLayer {
-        val progress = playback.navigationBackProgress.floatValue.coerceIn(0f, 1f)
-        transformOrigin = TransformOrigin(if (playback.navigationBackFromRight) 1f else 0f, 0.5f)
-        translationX = size.width * 0.16f * progress * if (playback.navigationBackFromRight) -1f else 1f
-        scaleX = 1f - 0.025f * progress
-        scaleY = 1f - 0.025f * progress
-        alpha = 1f - 0.12f * progress
     }
     val dragState = rememberDraggableState { delta ->
         val expanded = expandedPlayerBounds
@@ -2273,15 +2296,68 @@ private fun GrayjayScaffold(
     ) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            topBar = {
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            bottomBar = {
+                KeyboardAwarePlayerBar(
+                    onMiniatureBottomChanged = { miniPlayerSlotBottomPx = it - rootTopPx },
+                    navigation = {
+                        Box(if (bottomNavigationProvidesInset) Modifier else Modifier.navigationBarsPadding()) {
+                            bottomBar()
+                        }
+                    },
+                    miniature = {
+                    playback.video?.let { video ->
+                        MiniPlayer(
+                            video = video,
+                            isPlaying = playback.isPlaying,
+                            progress = if (playback.state.durationMs > 0) {
+                                playback.state.positionMs.toFloat() / playback.state.durationMs
+                            } else {
+                                0f
+                            },
+                            player = playback.player.takeUnless { playback.state.isCasting },
+                            canSkip = playback.queueSize > 1,
+                            chromeAlpha = if (transitionActive) 0f else 1f - dismissProgress.value,
+                            onExpand = playback.onExpand,
+                            onTogglePlayback = playback.onToggle,
+                            onSkipToNext = playback.onNext,
+                            onClose = dismissMiniplayer,
+                            onVideoBoundsChanged = { measuredBounds ->
+                                miniPlayerBounds = playerBoundsInsideScaffold(
+                                    boundsInRoot = measuredBounds,
+                                    scaffoldLeftInRoot = rootLeftPx,
+                                    scaffoldTopInRoot = rootTopPx,
+                                )
+                            },
+                            // Keep the initiating pointer node alive throughout the morph.
+                            // Removing it when details appear cancels the user's ongoing swipe.
+                            modifier = Modifier.offset {
+                                IntOffset(0, (24.dp.toPx() * dismissProgress.value).roundToInt())
+                            }.then(transitionDragModifier),
+                        )
+                    }
+                    },
+                )
+            },
+        ) { contentPadding ->
+            val currentPage = BrowsePage(BrowseRoute(selected.name, selectedChannel?.id, selectedPlaylist?.id,
+                playback.libraryFilter.name), selectedChannel, selectedPlaylist, nestedBackEnabled)
+            PredictiveBrowseTransition(currentPage, playback.navigationBackTarget,
+                playback.navigationBackProgress, playback.navigationBackFromRight,
+                Modifier.fillMaxSize().padding(contentPadding)) { page, preview ->
+                val selected = restoredEnumValue(page.route.destination, GrayjayDestination.Home)
+                val selectedChannel = page.channel
+                val selectedPlaylist = page.playlist
+                val channelSearchMode = channelSearchModes[selectedChannel?.id] == true
+                Column(Modifier.fillMaxSize()) {
                 Column(Modifier.statusBarsPadding()) {
-                if (!isRootSearch) AnimatedVisibility(visible = !channelSearchMode,
+                if (!(page.route.channelId == null && page.route.playlistId == null && selected == GrayjayDestination.Search)) AnimatedVisibility(visible = !channelSearchMode,
                     enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 Column {
                 CenterAlignedTopAppBar(
                     windowInsets = WindowInsets(0, 0, 0, 0),
                     expandedHeight = if (compactChrome) 56.dp else 64.dp,
-                    modifier = predictiveBackTransform.testTag("browse-top-bar").then(
+                    modifier = Modifier.testTag("browse-top-bar").then(
                         if (transitionActive) Modifier.clearAndSetSemantics { }
                         else Modifier,
                     ),
@@ -2318,7 +2394,7 @@ private fun GrayjayScaffold(
                     navigationIcon = {
                         val guidedSetup = com.futo.platformplayer.compose.onboarding.LocalGuidedSetup.current
                         val hasBack = selectedChannel != null ||
-                            selectedPlaylist != null || nestedBackEnabled
+                            selectedPlaylist != null || page.showBack
                         Row {
                             if (onToggleDrawer != null && !drawerVisible) {
                                 IconButton(onClick = onToggleDrawer) {
@@ -2400,55 +2476,11 @@ private fun GrayjayScaffold(
                 }
                 }
                 }
-            },
-            bottomBar = {
-                KeyboardAwarePlayerBar(
-                    onMiniatureBottomChanged = { miniPlayerSlotBottomPx = it - rootTopPx },
-                    navigation = {
-                        Box(if (bottomNavigationProvidesInset) Modifier else Modifier.navigationBarsPadding()) {
-                            bottomBar()
-                        }
-                    },
-                    miniature = {
-                    playback.video?.let { video ->
-                        MiniPlayer(
-                            video = video,
-                            isPlaying = playback.isPlaying,
-                            progress = if (playback.state.durationMs > 0) {
-                                playback.state.positionMs.toFloat() / playback.state.durationMs
-                            } else {
-                                0f
-                            },
-                            player = playback.player.takeUnless { playback.state.isCasting },
-                            canSkip = playback.queueSize > 1,
-                            chromeAlpha = if (transitionActive) 0f else 1f - dismissProgress.value,
-                            onExpand = playback.onExpand,
-                            onTogglePlayback = playback.onToggle,
-                            onSkipToNext = playback.onNext,
-                            onClose = dismissMiniplayer,
-                            onVideoBoundsChanged = { measuredBounds ->
-                                miniPlayerBounds = playerBoundsInsideScaffold(
-                                    boundsInRoot = measuredBounds,
-                                    scaffoldLeftInRoot = rootLeftPx,
-                                    scaffoldTopInRoot = rootTopPx,
-                                )
-                            },
-                            // Keep the initiating pointer node alive throughout the morph.
-                            // Removing it when details appear cancels the user's ongoing swipe.
-                            modifier = Modifier.offset {
-                                IntOffset(0, (24.dp.toPx() * dismissProgress.value).roundToInt())
-                            }.then(transitionDragModifier),
-                        )
-                    }
-                    },
-                )
-            },
-        ) { contentPadding ->
+
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(contentPadding)
-                    .then(predictiveBackTransform)
+                    .weight(1f)
+                    .fillMaxWidth()
                     .then(
                         if (transitionActive) Modifier.clearAndSetSemantics { }
                         else Modifier,
@@ -2469,7 +2501,7 @@ private fun GrayjayScaffold(
                 }
                 QuickPageTransition(
                     targetKey = contentPageKey,
-                    animate = com.futo.platformplayer.compose.ui.screens.LocalCreatorSheet.current?.request?.phase !=
+                    animate = playback.navigationBackTarget == null && com.futo.platformplayer.compose.ui.screens.LocalCreatorSheet.current?.request?.phase !=
                         com.futo.platformplayer.compose.ui.screens.CreatorSheetPhase.Opening,
                     horizontalSlideDirection = playback.pageSlideDirection,
                     animationRequest = playback.pageSlideRequest,
@@ -2477,7 +2509,7 @@ private fun GrayjayScaffold(
                 ) { animatedPageKey ->
                 pageStateHolder.SaveableStateProvider("${playback.activeProfileId}:$animatedPageKey") {
                 CompositionLocalProvider(
-                    LocalPageBackEnabled provides (!transitionActive && animatedPageKey == contentPageKey),
+                    LocalPageBackEnabled provides (!transitionActive && !preview && playback.navigationBackTarget == null && animatedPageKey == contentPageKey),
                 ) {
                 val animatedChannel = animatedPageKey
                     .takeIf { it.startsWith("channel:") }
@@ -2497,8 +2529,13 @@ private fun GrayjayScaffold(
                     ?: selected
                 if (animatedChannel != null) {
                 ChannelDetailScreen(
-                    onSearchModeChange = { channelSearchMode = it },
-                    isPageVisible = !transitionActive,
+                    onSearchModeChange = { mode ->
+                        if (channelSearchModes[animatedChannel.id] != mode) {
+                            channelSearchModes = (channelSearchModes + (animatedChannel.id to mode)).toList()
+                                .takeLast(20).toMap()
+                        }
+                    },
+                    isPageVisible = !transitionActive && !preview,
                     onAddSelectionToPlaylist = playback.onAddSelectionToPlaylist,
                     onPlaySelection = playback.onPlayQueue,
                     shuffledPlaylistIds = playback.shuffledPlaylistIds,
@@ -2652,7 +2689,7 @@ private fun GrayjayScaffold(
                         completeFeedCompleted = playback.followingFeedCompleted,
                         completeFeedTotal = playback.followingFeedTotal,
                         completeFeedError = playback.followingFeedError,
-                        onRequestCompleteFeed = playback.onLoadFollowingComplete,
+                        onRequestCompleteFeed = { if (!preview) playback.onLoadFollowingComplete() },
                         onRefresh = playback.onRefreshFollowing,
                         followedCreatorIds = playback.followedCreatorIds,
                         onFollowedChange = playback.onCreatorFollowedChange,
@@ -2676,7 +2713,7 @@ private fun GrayjayScaffold(
                         onVideoLongClick = sourcePresentation.onSearchVideoLongClick,
                         onChannelClick = onChannelClick,
                         onPlaylistClick = onPlaylistClick,
-                        autoFocus = sourcePresentation.searchAutoFocusRequested,
+                        autoFocus = !preview && sourcePresentation.searchAutoFocusRequested,
                         onAutoFocusConsumed = sourcePresentation.onSearchAutoFocusConsumed,
                         showNavigationMenuButton = onToggleDrawer != null && !drawerVisible,
                         onNavigationMenuClick = onToggleDrawer ?: {},
@@ -2707,7 +2744,7 @@ private fun GrayjayScaffold(
                         onRenamePlaylist = playback.onRenamePlaylist,
                         shuffledPlaylistIds = playback.shuffledPlaylistIds,
                         onPlaylistShuffleChange = playback.onPlaylistShuffleChange,
-                        selectedFilter = playback.libraryFilter,
+                        selectedFilter = restoredEnumValue(page.route.libraryFilter, LibraryFilter.History),
                         onSelectedFilterChange = playback.onLibraryFilterChange,
                         playlistListState = playback.libraryPlaylistListState,
                         downloadFocusVideoId = playback.downloadFocusVideoId,
@@ -2814,6 +2851,8 @@ private fun GrayjayScaffold(
                 }
                 }
                 }
+                }
+            }
                 }
             }
         }

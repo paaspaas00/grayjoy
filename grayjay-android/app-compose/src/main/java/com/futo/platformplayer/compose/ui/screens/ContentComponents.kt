@@ -125,8 +125,9 @@ internal fun RequestNextPageEffect(
     onLoadMore: () -> Unit,
     prefetchItems: Int = 4,
 ) {
-    LaunchedEffect(listState, canLoadMore, prefetchItems) {
-        if (!canLoadMore) return@LaunchedEffect
+    val preview = com.futo.platformplayer.compose.ui.LocalNavigationPreview.current
+    LaunchedEffect(listState, canLoadMore, prefetchItems, preview) {
+        if (!canLoadMore || preview) return@LaunchedEffect
         snapshotFlow {
             val layout = listState.layoutInfo
             val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
