@@ -285,7 +285,7 @@ fun ChannelDetailScreen(
             onValueChange = onSearchQueryChange,
             count = if (query.isBlank()) currentVideos.size else visibleVideos.size,
             modifier = modifier.onFocusChanged { onSearchFocusChanged(it.isFocused) }.testTag("channel-video-search"),
-        ) else OutlinedTextField(
+        ) else GrayjoySearchField(
             value = query,
             shape = SearchFieldShape,
             onValueChange = onSearchQueryChange,
@@ -314,7 +314,7 @@ fun ChannelDetailScreen(
         )
     }
     val sortChip: @Composable () -> Unit = {
-        FilterChip(
+        AdaptiveFilterChip(
             selected = showSortSheet,
             onClick = { showSortSheet = true },
             leadingIcon = {
@@ -340,27 +340,6 @@ fun ChannelDetailScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-    if (selectionMode) Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-            .testTag("channel-selection-bar"), verticalAlignment = Alignment.CenterVertically) {
-            Text(selectedVideoIds.size.toString(), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = { selectedVideoIds = emptyList() }, modifier = Modifier.testTag("channel-selection-cancel")) {
-                Text(stringResource(R.string.cancel))
-            }
-            IconButton(onClick = {
-                selectedVideoIds.filter(visibleVideoIds::contains).takeIf(List<String>::isNotEmpty)
-                    ?.let(onAddSelectionToPlaylist)
-            }, modifier = Modifier.testTag("channel-selection-add")) {
-                Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, contentDescription = stringResource(R.string.add_to_playlist))
-            }
-            IconButton(onClick = {
-                val ids = visibleVideos.filter { it.id in selectedVideoIds && it.isAvailable && it.scheduledStartAtMs <= System.currentTimeMillis() }.map { it.id }
-                if (ids.isNotEmpty()) { onPlaySelection(ids); selectedVideoIds = emptyList() }
-            }, modifier = Modifier.testTag("channel-selection-play")) {
-                Icon(Icons.Outlined.PlayArrow, contentDescription = stringResource(R.string.play_selected))
-            }
-        }
-    }
     LazyColumn(
         state = listState,
         modifier = Modifier
@@ -471,7 +450,7 @@ fun ChannelDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             displayedChannel.links.entries.take(6).forEach { (label, url) ->
-                                AssistChip(
+                                AdaptiveAssistChip(
                                     onClick = { runCatching { uriHandler.openUri(url) } },
                                     leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) },
                                     label = { Text(label.ifBlank { stringResource(R.string.link) }) },
@@ -483,14 +462,14 @@ fun ChannelDetailScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Button(
+                        AdaptiveButton(
                             onClick = { onFollowingChange(!isFollowing) },
                             modifier = Modifier.weight(1f).creatorSharedElement(displayedChannel.id, "follow")
                                 .testTag("channel-follow").helpAnchor("channel-follow"),
                         ) {
                             Text(stringResource(if (isFollowing) R.string.following else R.string.follow))
                         }
-                        Button(
+                        AdaptiveButton(
                             onClick = {
                                 val shareUrl = displayedChannel.id
                                 context.startActivity(
@@ -530,7 +509,7 @@ fun ChannelDetailScreen(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             tabs.forEach { tab ->
-                                FilterChip(selected = detail.selectedTab == tab, onClick = { onTabSelected(tab) },
+                                AdaptiveFilterChip(selected = detail.selectedTab == tab, onClick = { onTabSelected(tab) },
                                     label = { Text(stringResource(tab.labelRes)) }, modifier = Modifier.testTag("channel-tab-${tab.name.lowercase()}"))
                             }
                         }
@@ -547,7 +526,7 @@ fun ChannelDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     tabs.forEach { tab ->
-                        FilterChip(
+                        AdaptiveFilterChip(
                             selected = detail.selectedTab == tab,
                             onClick = { onTabSelected(tab) },
                             label = { Text(stringResource(tab.labelRes)) },
@@ -678,6 +657,27 @@ fun ChannelDetailScreen(
         }
     }
 
+    if (selectionMode) Surface(modifier = Modifier.fillMaxWidth().testTag("channel-selection-bar"), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(selectedVideoIds.size.toString(), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = { selectedVideoIds = emptyList() }, modifier = Modifier.testTag("channel-selection-cancel")) {
+                Text(stringResource(R.string.cancel))
+            }
+            IconButton(onClick = {
+                selectedVideoIds.filter(visibleVideoIds::contains).takeIf(List<String>::isNotEmpty)
+                    ?.let(onAddSelectionToPlaylist)
+            }, modifier = Modifier.testTag("channel-selection-add")) {
+                Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, contentDescription = stringResource(R.string.add_to_playlist))
+            }
+            IconButton(onClick = {
+                val ids = visibleVideos.filter { it.id in selectedVideoIds && it.isAvailable && it.scheduledStartAtMs <= System.currentTimeMillis() }.map { it.id }
+                if (ids.isNotEmpty()) { onPlaySelection(ids); selectedVideoIds = emptyList() }
+            }, modifier = Modifier.testTag("channel-selection-play")) {
+                Icon(Icons.Outlined.PlayArrow, contentDescription = stringResource(R.string.play_selected))
+            }
+        }
+    }
     }
     if (showSettingsSheet) {
         ModalBottomSheet(
@@ -739,7 +739,7 @@ fun ChannelDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (detail.selectedTab.isPlaylistTab) {
-                        FilterChip(
+                        AdaptiveFilterChip(
                             selected = sortMode == ChannelSortMode.Name,
                             onClick = { sortModeName = ChannelSortMode.Name.name },
                             leadingIcon = {
@@ -748,13 +748,13 @@ fun ChannelDetailScreen(
                             label = { Text(stringResource(R.string.sort_name)) },
                         )
                     } else {
-                        FilterChip(
+                        AdaptiveFilterChip(
                             selected = sortMode == ChannelSortMode.UploadDate,
                             onClick = { sortModeName = ChannelSortMode.UploadDate.name },
                             label = { Text(stringResource(R.string.sort_upload_date)) },
                         )
                         if (detail.supportsPopularSort || currentVideos.any { it.viewCount > 0L }) {
-                            FilterChip(
+                            AdaptiveFilterChip(
                                 selected = sortMode == ChannelSortMode.Popularity,
                                 onClick = { sortModeName = ChannelSortMode.Popularity.name },
                                 label = { Text(stringResource(R.string.sort_popularity)) },
@@ -763,7 +763,7 @@ fun ChannelDetailScreen(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
+                    AdaptiveFilterChip(
                         selected = sortAscending,
                         onClick = { sortAscending = true },
                         leadingIcon = {
@@ -771,7 +771,7 @@ fun ChannelDetailScreen(
                         },
                         label = { Text(stringResource(R.string.ascending)) },
                     )
-                    FilterChip(
+                    AdaptiveFilterChip(
                         selected = !sortAscending,
                         onClick = { sortAscending = false },
                         leadingIcon = {

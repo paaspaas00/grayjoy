@@ -687,4 +687,11 @@
     <string name="setup_player_layout">Oynatıcı düzeni</string>
     <string name="setup_player_standard">Standart</string>
     <string name="setup_player_one_handed">Tek elle</string>
+    <string name="music_tracks">Parçalar</string>
+    <string name="playlist_reorder_lock">Yeniden sıralamayı kilitle</string>
+    <plurals name="active_sources_short">
+        <item quantity="one">%d etkin</item>
+        <item quantity="other">%d etkin</item>
+    </plurals>
+    <string name="setup_diagnostics_body">Sorunları teşhis etmeye yardımcı olmak için teknik çökme ve hata günlüklerini bu cihazda saklar. Varsayılan olarak açıktır; buradan veya Ayarlardan kapatabilirsiniz. Hiçbir şey otomatik gönderilmez: raporu paylaşmaya siz karar verirsiniz.</string>
 </resources>

@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s de %2$s</string>
     <string name="update_downloaded_amount">%1$s descargado</string>
     <string name="save_crash_logs">Guardar registros de fallos</string>
-    <string name="save_crash_logs_description">Conserva los últimos 1.000 eventos técnicos y hasta 10 registros de fallos locales. Los informes compartidos excluyen mensajes de excepciones e identificadores de contenido. Los nuevos registros también se copian a Downloads/Grayjoy. No se sube nada.</string>
+    <string name="save_crash_logs_description">Conserva los últimos 1.000 eventos técnicos y hasta 10 registros de fallos locales. Los informes compartidos excluyen mensajes de excepciones e identificadores de contenido. No se sube nada.</string>
     <string name="open_navigation_menu">Abrir menú de navegación</string>
     <string name="close_navigation_menu">Cerrar menú de navegación</string>
     <string name="comment_replies">Respuestas</string>

@@ -99,6 +99,8 @@ import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import androidx.compose.foundation.gestures.animateScrollBy
 import kotlinx.coroutines.launch
 
 private const val DOWNLOAD_LIST_CONTENT_START_INDEX = 2
@@ -209,7 +211,12 @@ internal fun LibraryScreen(
     historyEntryGeneration: Long = 0L,
     onGroupHistoryByPlaylistChange: (Boolean) -> Unit = {},
     sources: List<SourceUiModel> = emptyList(),
+    isLoading: Boolean = false,
 ) {
+    if (isLoading) {
+        VideoListSkeleton(count = 4, modifier = Modifier.fillMaxWidth().padding(16.dp).testTag("library-loading"))
+        return
+    }
     val compactLayout = compactUi()
     var selectionMode by rememberSaveable { mutableStateOf(false) }
     var confirmRemoval by rememberSaveable { mutableStateOf(false) }
@@ -308,6 +315,17 @@ internal fun LibraryScreen(
     }
     LaunchedEffect(selectedFilter) {
         val page = filters.indexOf(selectedFilter)
+        if (page >= 0) {
+            snapshotFlow { filterListState.layoutInfo.totalItemsCount }.first { it > 0 }
+            val layout = filterListState.layoutInfo
+            val item = layout.visibleItemsInfo.firstOrNull { it.index == page }
+            if (item == null) filterListState.animateScrollToItem(page)
+            else if (item.offset < layout.viewportStartOffset) filterListState.animateScrollBy((item.offset - layout.viewportStartOffset).toFloat())
+            else if (item.offset + item.size > layout.viewportEndOffset) filterListState.animateScrollBy((item.offset + item.size - layout.viewportEndOffset).toFloat())
+        }
+    }
+    LaunchedEffect(selectedFilter, downloadFocusVideoId) {
+        val page = filters.indexOf(selectedFilter)
         if (selectedFilter !in setOf(LibraryFilter.History, LibraryFilter.Playlists)) {
             keyboardController?.hide()
             focusManager.clearFocus(force = true)
@@ -356,7 +374,7 @@ internal fun LibraryScreen(
                 items = filters,
                 key = { _, filter -> filter.name },
             ) { page, filter ->
-                FilterChip(
+                AdaptiveFilterChip(
                     selected = selectedFilter == filter,
                     onClick = {
                         userPaging = false
@@ -364,17 +382,17 @@ internal fun LibraryScreen(
                         leaveSelectionMode()
                     },
                     modifier = Modifier.testTag("library-filter-${filter.name.lowercase()}"),
-                    leadingIcon = { Icon(filter.icon, contentDescription = null) },
-                    label = { Text(stringResource(filter.labelRes)) },
+                    leadingIcon = { Icon(if (filter == LibraryFilter.WatchLater && LocalMusicPresentation.current) watchLaterIcon(true) else filter.icon, contentDescription = null) },
+                    label = { Text(com.futo.platformplayer.compose.ui.sourceStringResource(filter.labelRes)) },
                 )
             }
         }
 
-        Box(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f)) {
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth().weight(1f)
                     .testTag("library-filter-pager"),
                 // Adjacent pages each contain their own thumbnail-heavy LazyColumn. Pager keeps
                 // the drag target alive while swiping; precomposing another full page only wastes
@@ -476,17 +494,7 @@ internal fun LibraryScreen(
                         start = 16.dp,
                         top = 6.dp,
                         end = 16.dp,
-                        bottom = if (
-                            selectionMode && pageFilter in setOf(
-                                LibraryFilter.History,
-                                LibraryFilter.Downloads,
-                                LibraryFilter.Playlists,
-                            )
-                        ) {
-                            88.dp
-                        } else {
-                            16.dp
-                        },
+                        bottom = 16.dp,
                     ),
                     verticalArrangement = Arrangement.spacedBy(if (compactLayout) 8.dp else 16.dp),
                 ) {
@@ -501,7 +509,7 @@ internal fun LibraryScreen(
             ) {
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(pageFilter.labelRes), style = MaterialTheme.typography.titleLarge)
+                    Text(com.futo.platformplayer.compose.ui.sourceStringResource(pageFilter.labelRes), style = MaterialTheme.typography.titleLarge)
                     if (pageFilter in setOf(LibraryFilter.Downloads, LibraryFilter.Playlists, LibraryFilter.WatchLater)) {
                         val count = if (pageFilter == LibraryFilter.Playlists) matchingPlaylists.size else pageVideos.size
                         Text(count.toString(), style = MaterialTheme.typography.titleMedium,
@@ -509,28 +517,8 @@ internal fun LibraryScreen(
                             modifier = Modifier.testTag("library-count-${pageFilter.name.lowercase()}"))
                     }
                 }
-                if (
-                    pageFilter in setOf(
-                        LibraryFilter.History,
-                        LibraryFilter.Downloads,
-                        LibraryFilter.Playlists,
-                    ) &&
-                    selectionMode
-                ) {
-                    TextButton(
-                        onClick = ::leaveSelectionMode,
-                        modifier = Modifier.testTag(
-                            when (pageFilter) {
-                                LibraryFilter.History -> "history-select-inline"
-                                LibraryFilter.Downloads -> "downloads-select-inline"
-                                else -> "playlists-select-inline"
-                            },
-                        ),
-                    ) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                } else if (pageFilter == LibraryFilter.Downloads && pageVideos.isNotEmpty()) {
-                    Button(
+                if (!selectionMode && pageFilter == LibraryFilter.Downloads && pageVideos.isNotEmpty()) {
+                    AdaptiveButton(
                         onClick = { onPlayDownloads(pageVideos.map(VideoUiModel::id)) },
                         modifier = Modifier.testTag("downloads-play-all"),
                     ) {
@@ -556,7 +544,7 @@ internal fun LibraryScreen(
             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)
                 .horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HistoryMusicFilter.entries.forEach { filter ->
-                    FilterChip(selected = downloadsMusicFilter == filter,
+                    AdaptiveFilterChip(selected = downloadsMusicFilter == filter,
                         onClick = { downloadsMusicFilter = filter; leaveSelectionMode() },
                         label = { Text(stringResource(filter.labelRes)) },
                         modifier = Modifier.testTag("downloads-music-${filter.name.lowercase()}"))
@@ -599,7 +587,7 @@ internal fun LibraryScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         HistoryMusicFilter.entries.forEach { musicFilter ->
-                            FilterChip(
+                            AdaptiveFilterChip(
                                 selected = historyMusicFilter == musicFilter,
                                 onClick = {
                                     historyMusicFilter = musicFilter
@@ -618,7 +606,7 @@ internal fun LibraryScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(stringResource(R.string.group_history_by_playlist), Modifier.weight(1f),
                             style = MaterialTheme.typography.bodyMedium)
-                        Switch(checked = groupHistoryByPlaylist, onCheckedChange = null)
+                        AdaptiveSwitch(checked = groupHistoryByPlaylist, onCheckedChange = null)
                     }
                 }
                 }
@@ -812,7 +800,6 @@ internal fun LibraryScreen(
             ) {
                 Surface(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .testTag(
                             when (selectedFilter) {
@@ -835,14 +822,15 @@ internal fun LibraryScreen(
                             selectedVideoIds.size
                         }
                         Text(
-                            pluralStringResource(
-                                R.plurals.selected_count,
-                                selectedCount,
-                                selectedCount,
-                            ),
+                            selectedCount.toString(),
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
                         )
+                        SelectionTooltip(stringResource(R.string.cancel)) {
+                            IconButton(onClick = ::leaveSelectionMode, modifier = Modifier.testTag("library-selection-cancel")) {
+                                Icon(Icons.Outlined.Close, stringResource(R.string.cancel))
+                            }
+                        }
                         if (
                             selectedFilter == LibraryFilter.Downloads &&
                             selectedVideoIds.size == 1
@@ -902,16 +890,15 @@ internal fun LibraryScreen(
                                 }
                             }
                         } else if (selectedFilter == LibraryFilter.Downloads) {
-                            TextButton(
+                            IconButton(
                                 onClick = { showExportSheet = true },
                                 enabled = selectedVideoIds.isNotEmpty(),
                                 modifier = Modifier.testTag("downloads-export"),
                             ) {
                                 Icon(
                                     Icons.Outlined.FileUpload,
-                                    contentDescription = null,
+                                    contentDescription = stringResource(R.string.export),
                                 )
-                                Text(stringResource(R.string.export))
                             }
                         }
                         SelectionTooltip(stringResource(R.string.remove)) {
@@ -968,7 +955,7 @@ internal fun LibraryScreen(
                 )
             },
             confirmButton = {
-                Button(
+                AdaptiveButton(
                     onClick = {
                         if (selectedFilter == LibraryFilter.Downloads) {
                             onRemoveDownloads(selectedVideoIds.toList())
@@ -1018,7 +1005,7 @@ private fun LibrarySearchField(
     onFocusChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    OutlinedTextField(
+    GrayjoySearchField(
         value = query,
         shape = SearchFieldShape,
         onValueChange = { onQueryChange(it.take(100)) },
@@ -1043,7 +1030,7 @@ private fun LibrarySearchField(
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun SelectionTooltip(label: String, content: @Composable () -> Unit) {
+internal fun SelectionTooltip(label: String, content: @Composable () -> Unit) {
     TooltipBox(
         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
         tooltip = { PlainTooltip { Text(label) } },

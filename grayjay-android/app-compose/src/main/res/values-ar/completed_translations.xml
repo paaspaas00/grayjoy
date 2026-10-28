@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s من %2$s</string>
     <string name="update_downloaded_amount">تم تنزيل %1$s</string>
     <string name="save_crash_logs">حفظ سجلات الأعطال</string>
-    <string name="save_crash_logs_description">يحتفظ بآخر 1,000 حدث تقني وما يصل إلى 10 سجلات أعطال محلية. تُستبعد رسائل الاستثناءات ومعرّفات المحتوى من التقارير المشتركة. تُنسخ السجلات الجديدة أيضًا إلى Downloads/Grayjoy. لا يُرفع شيء تلقائيًا.</string>
+    <string name="save_crash_logs_description">يحتفظ بآخر 1,000 حدث تقني وما يصل إلى 10 سجلات أعطال محلية. تُستبعد رسائل الاستثناءات ومعرّفات المحتوى من التقارير المشتركة. لا يُرفع شيء تلقائيًا.</string>
     <string name="open_navigation_menu">فتح قائمة التنقل</string>
     <string name="close_navigation_menu">إغلاق قائمة التنقل</string>
     <string name="comment_replies">الردود</string>

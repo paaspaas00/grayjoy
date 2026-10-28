@@ -671,7 +671,7 @@
     <string name="update_download_progress">%1$s di %2$s</string>
     <string name="update_downloaded_amount">%1$s scaricati</string>
     <string name="save_crash_logs">Salva log dei crash</string>
-    <string name="save_crash_logs_description">Conserva gli ultimi 1.000 eventi tecnici e fino a 10 crashlog locali. I rapporti condivisi escludono messaggi delle eccezioni e identificativi dei contenuti. I nuovi crashlog sono copiati anche in Download/Grayjoy. Non viene caricato nulla.</string>
+    <string name="save_crash_logs_description">Conserva gli ultimi 1.000 eventi tecnici e fino a 10 crashlog nell’area privata dell’app. I rapporti condivisi escludono messaggi delle eccezioni e identificativi dei contenuti. Non viene inviato nulla automaticamente.</string>
     <string name="open_navigation_menu">Apri menu di navigazione</string>
     <string name="close_navigation_menu">Chiudi menu di navigazione</string>
     <string name="comment_replies">Risposte</string>
@@ -862,4 +862,12 @@
     <string name="setup_player_layout">Disposizione del player</string>
     <string name="setup_player_standard">Normale</string>
     <string name="setup_player_one_handed">A una mano</string>
+    <string name="music_tracks">Brani</string>
+    <string name="playlist_reorder_lock">Blocca il riordino</string>
+    <plurals name="active_sources_short">
+        <item quantity="many">%d attive</item>
+        <item quantity="one">%d attiva</item>
+        <item quantity="other">%d attive</item>
+    </plurals>
+    <string name="setup_diagnostics_body">Salva sul dispositivo registri tecnici di crash ed errori, utili per individuare e risolvere i problemi. È attivo di default e puoi disattivarlo qui o nelle preferenze. Non viene inviato nulla automaticamente: decidi tu se condividere un rapporto.</string>
 </resources>

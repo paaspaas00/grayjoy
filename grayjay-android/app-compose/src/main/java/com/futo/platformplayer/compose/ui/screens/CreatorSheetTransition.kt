@@ -92,14 +92,24 @@ internal fun CreatorSheetTransitionHost(profileId: String, preload: (ChannelUiMo
     resolvedChannel: ChannelUiModel?, loading: Boolean, content: @Composable () -> Unit) {
     val latestPreload by rememberUpdatedState(preload)
     val controller = remember(profileId) { CreatorSheetController { latestPreload(it) } }
-    SharedTransitionLayout(Modifier.fillMaxSize()) {
-        CompositionLocalProvider(LocalCreatorSheet provides controller, LocalCreatorSharedScope provides this) {
-            content()
-            controller.request?.let { request ->
-                val channel = resolvedChannel?.takeIf { it.id == request.channel.id } ?: request.channel
-                CreatorTransitionSheet(controller, request, channel, loading)
+    val latestContent = rememberUpdatedState(content)
+    val movableBody = remember { movableContentOf { latestContent.value() } }
+    var sharedLayoutEnabled by remember { mutableStateOf(false) }
+    // Do not put every first-frame list through lookahead before a shared transition is used.
+    // Movable content keeps navigation, focus, list positions and the player instance intact.
+    CompositionLocalProvider(LocalCreatorSheet provides controller) {
+        if (sharedLayoutEnabled || controller.request != null) {
+            SideEffect { sharedLayoutEnabled = true }
+            SharedTransitionLayout(Modifier.fillMaxSize()) {
+                CompositionLocalProvider(LocalCreatorSharedScope provides this) {
+                    movableBody()
+                    controller.request?.let { request ->
+                        val channel = resolvedChannel?.takeIf { it.id == request.channel.id } ?: request.channel
+                        CreatorTransitionSheet(controller, request, channel, loading)
+                    }
+                }
             }
-        }
+        } else Box(Modifier.fillMaxSize()) { movableBody() }
     }
 }
 
@@ -162,11 +172,11 @@ private fun CreatorTransitionSheet(controller: CreatorSheetController, request: 
                 else if (loading) ShimmerBlock(Modifier.fillMaxWidth(.85f).height(if (compact) 24.dp else 48.dp)
                     .testTag("creator-description-skeleton"))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = controller::toggleFollow,
+                    AdaptiveButton(onClick = controller::toggleFollow,
                         modifier = Modifier.weight(1f).creatorSharedElement(channel.id, "follow", true)) {
                         Text(stringResource(if (request.following) R.string.following else R.string.follow))
                     }
-                    Button(onClick = controller::open, modifier = Modifier.weight(1f)
+                    AdaptiveButton(onClick = controller::open, modifier = Modifier.weight(1f)
                         .graphicsLayer { alpha = if (request.phase == CreatorSheetPhase.Opening) 0f else 1f }.testTag("open-creator-channel")) {
                         Text(stringResource(R.string.view_channel))
                     }

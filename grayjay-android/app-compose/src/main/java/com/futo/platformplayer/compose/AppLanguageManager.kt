@@ -22,6 +22,7 @@ internal object AppLanguageManager {
         UiLanguageOption("it", "Italiano"),
         UiLanguageOption("ja", "日本語"),
         UiLanguageOption("ko", "한국어"),
+        UiLanguageOption("pl", "Polski"),
         UiLanguageOption("pt", "Português"),
         UiLanguageOption("ru", "Русский"),
         UiLanguageOption("tr", "Türkçe"),

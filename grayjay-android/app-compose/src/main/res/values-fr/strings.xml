@@ -687,4 +687,12 @@
     <string name="setup_player_layout">Disposition du lecteur</string>
     <string name="setup_player_standard">Standard</string>
     <string name="setup_player_one_handed">Une main</string>
+    <string name="music_tracks">Titres</string>
+    <string name="playlist_reorder_lock">Verrouiller le réordonnancement</string>
+    <plurals name="active_sources_short">
+        <item quantity="many">%d actives</item>
+        <item quantity="one">%d active</item>
+        <item quantity="other">%d actives</item>
+    </plurals>
+    <string name="setup_diagnostics_body">Enregistre des journaux techniques de plantage et d’erreur sur cet appareil pour faciliter le diagnostic. Activé par défaut ; désactivable ici ou dans les paramètres. Rien n’est envoyé automatiquement : vous décidez si vous partagez un rapport.</string>
 </resources>

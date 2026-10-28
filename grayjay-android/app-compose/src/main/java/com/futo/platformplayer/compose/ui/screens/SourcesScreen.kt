@@ -118,6 +118,7 @@ fun SourcesScreen(
     onRefreshSourceAccount: (String) -> Unit = {},
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    val lean = com.futo.platformplayer.compose.rememberDevicePerformanceProfile().isLowEnd && compactUi()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var selectedSourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var youtubeImportSourceId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -129,59 +130,9 @@ fun SourcesScreen(
 
     LazyColumn(
         modifier = Modifier.testTag("sources-list"),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(if (lean) 12.dp else 16.dp),
+        verticalArrangement = Arrangement.spacedBy(if (lean) 10.dp else 14.dp),
     ) {
-        item {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        val activeSourceCount = sources.count {
-                            it.isEnabled && it.availability != SourceAvailability.MissingPlugin
-                        }
-                        Text(
-                            pluralStringResource(
-                                R.plurals.active_sources,
-                                activeSourceCount,
-                                activeSourceCount,
-                            ),
-                            style = MaterialTheme.typography.titleLarge,
-                        )
-                        Text(
-                            pluralStringResource(
-                                R.plurals.installed_sources,
-                                sources.size,
-                                sources.size,
-                            ),
-                        )
-                    }
-                    FilledTonalButton(
-                        onClick = { showAddDialog = true },
-                        enabled = !isOperationInProgress && sources.none(SourceUiModel::isLocked),
-                        modifier = Modifier
-                            .widthIn(min = 132.dp)
-                            .testTag("add-source"),
-                    ) {
-                        Icon(Icons.Outlined.Add, contentDescription = null)
-                        Text(stringResource(R.string.add))
-                    }
-                }
-            }
-        }
         if (isOperationInProgress || operationMessage != null) {
             item {
                 Row(
@@ -200,7 +151,7 @@ fun SourcesScreen(
             }
         }
         item {
-            OutlinedTextField(
+            GrayjoySearchField(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
@@ -222,8 +173,25 @@ fun SourcesScreen(
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(stringResource(R.string.engine_sources), style = MaterialTheme.typography.titleLarge)
-                Text(
+                val activeCount = sources.count { it.isEnabled && it.availability != SourceAvailability.MissingPlugin }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.engine_sources), modifier = Modifier.weight(1f, fill = false),
+                        style = if (lean) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                        maxLines = 2)
+                    Text(pluralStringResource(R.plurals.active_sources_short, activeCount, activeCount),
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("source-active-count"))
+                    }
+                    androidx.compose.material3.FilledTonalIconButton(
+                        onClick = { showAddDialog = true }, enabled = !isOperationInProgress && sources.none(SourceUiModel::isLocked),
+                        modifier = Modifier.testTag("add-source")) {
+                        Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.add))
+                    }
+                }
+                if (!lean) Text(
                     stringResource(R.string.engine_sources_description),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -383,7 +351,7 @@ private fun SourceCard(
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
-            Switch(
+            AdaptiveSwitch(
                 checked = source.isEnabled && canEnable,
                 onCheckedChange = onEnabledChange,
                 enabled = canEnable && !source.isLocked,
@@ -418,7 +386,7 @@ private fun AddSourceDialog(
                 Text(
                     stringResource(R.string.add_source_description),
                 )
-                OutlinedButton(
+                AdaptiveOutlinedButton(
                     onClick = onScanQr,
                     enabled = !isBusy,
                     modifier = Modifier
@@ -444,7 +412,7 @@ private fun AddSourceDialog(
             }
         },
         confirmButton = {
-            Button(
+            AdaptiveButton(
                 onClick = { onInstall(url.trim()) },
                 enabled = isValid && !isBusy,
                 modifier = Modifier.testTag("install-source"),
@@ -509,7 +477,7 @@ private fun SourceOptionsSheet(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Switch(
+                AdaptiveSwitch(
                     checked = source.isEnabled,
                     onCheckedChange = onEnabledChange,
                     enabled = source.availability != SourceAvailability.MissingPlugin && !isBusy && !source.isLocked,
@@ -724,7 +692,7 @@ private fun YoutubeImportSheet(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     YoutubeImportInterval.entries.forEach { interval ->
-                        FilterChip(
+                        AdaptiveFilterChip(
                             selected = intervalName == interval.name,
                             onClick = { intervalName = interval.name },
                             enabled = !state.isRunning,
@@ -744,7 +712,7 @@ private fun YoutubeImportSheet(
                         )
                     }
                 }
-                OutlinedButton(
+                AdaptiveOutlinedButton(
                     onClick = {
                         onScheduleChange(
                             com.futo.platformplayer.compose.ui.restoredEnumValue(intervalName, YoutubeImportInterval.Off),
@@ -802,7 +770,7 @@ private fun YoutubeImportSheet(
                     )
                 }
                 if (state.resultMessage == null && state.errorMessage == null) {
-                    Button(
+                    AdaptiveButton(
                         onClick = {
                             onStart(
                                 YoutubeImportSelection(

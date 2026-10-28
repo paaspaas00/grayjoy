@@ -80,9 +80,11 @@ fun HomeScreen(
     home: HomeUiState,
     sources: List<SourceUiModel> = emptyList(),
     recentPlaylists: List<PlaylistUiModel> = emptyList(),
+    favoriteVideos: List<VideoUiModel> = emptyList(),
     shuffledPlaylistIds: Set<String> = emptySet(),
     onPlaylistShuffleChange: (String, Boolean) -> Unit = { _, _ -> },
     onPlaylistClick: (PlaylistUiModel) -> Unit = {},
+    onChannelClick: (com.futo.platformplayer.compose.ui.ChannelUiModel) -> Unit = {},
     onFeedSelected: (HomeFeedType) -> Unit,
     onBrowseTabSelected: (String, String) -> Unit = { _, _ -> },
     onBrowseOptionSelected: (String, String, String) -> Unit = { _, _, _ -> },
@@ -104,14 +106,14 @@ fun HomeScreen(
 ) {
     val performance = rememberDevicePerformanceProfile()
     val compact = compactUi()
-    val musicProfile = sources.isSpotifyOnly()
+    val musicProfile = LocalMusicPresentation.current || sources.isSpotifyOnly()
     var updateDetailsVisible by rememberSaveable { mutableStateOf(false) }
     val youtubeEnabled = sources.any { source ->
         source.id.equals("youtube", ignoreCase = true) && source.isEnabled &&
             source.availability != SourceAvailability.MissingPlugin
     }
-    val feeds = remember(youtubeEnabled) {
-        HomeFeedType.entries.filter { feed ->
+    val feeds = remember(youtubeEnabled, musicProfile) {
+        if (musicProfile) listOf(HomeFeedType.ForYou) else HomeFeedType.entries.filter { feed ->
             feed != HomeFeedType.Shorts || youtubeEnabled
         }
     }
@@ -224,7 +226,7 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
-                    FilledTonalButton(onClick = { updateDetailsVisible = true }) {
+                    AdaptiveFilledTonalButton(onClick = { updateDetailsVisible = true }) {
                         Text(stringResource(R.string.details))
                     }
                 }
@@ -242,6 +244,10 @@ fun HomeScreen(
                 },
             )
         }
+        if (musicProfile) {
+            MusicHomeScreen(home, recentPlaylists, onRefresh, onVideoClick, onPlaylistClick, onChannelClick,
+                modifier = Modifier.weight(1f), onVideoLongClick = onVideoLongClick, favorites = favoriteVideos)
+        } else {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -258,7 +264,7 @@ fun HomeScreen(
                 LaunchedEffect(selected) {
                     if (selected) bringIntoViewRequester.bringIntoView()
                 }
-                FilterChip(
+                AdaptiveFilterChip(
                     selected = selected,
                     onClick = {
                         if (home.browseSourceId != null || home.selectedFeed != feed) {
@@ -280,7 +286,7 @@ fun HomeScreen(
                 LaunchedEffect(selected) {
                     if (selected) bringIntoViewRequester.bringIntoView()
                 }
-                FilterChip(
+                AdaptiveFilterChip(
                     selected = selected,
                     onClick = {
                         if (!selected || home.browseOptionValue != null) {
@@ -470,7 +476,7 @@ fun HomeScreen(
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
-                                Button(onClick = onRefresh) {
+                                AdaptiveButton(onClick = onRefresh) {
                                     Text(stringResource(R.string.try_again))
                                 }
                             }
@@ -532,6 +538,7 @@ fun HomeScreen(
         }
     }
 
+    }
     if (updateDetailsVisible && availableUpdate != null) {
         val activeDownload = updateDownload?.takeIf {
             it.versionName == availableUpdate.versionName
@@ -590,7 +597,7 @@ fun HomeScreen(
                 }
             },
             dismissButton = {
-                FilledTonalButton(
+                AdaptiveFilledTonalButton(
                     onClick = {
                         if (activeDownload != null) onCancelUpdateDownload()
                         else updateDetailsVisible = false
@@ -606,7 +613,7 @@ fun HomeScreen(
             },
             confirmButton = {
                 if (activeDownload == null) {
-                    Button(
+                    AdaptiveButton(
                         onClick = { onInstallUpdate(availableUpdate) },
                         enabled = availableUpdate.releaseApkUrl != null,
                     ) {

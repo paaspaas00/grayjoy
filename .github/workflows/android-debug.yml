@@ -185,6 +185,42 @@ jobs:
           done
           echo "All debug and release APKs use certificate ${expected_digest}."
 
+      - name: Verify public APK identities and version metadata
+        shell: bash
+        run: |
+          aapt="$(find "${ANDROID_SDK_ROOT}/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "${aapt}"
+          expected_version="${RELEASE_TAG#v}"
+          expected_code=""
+          for module in app-compose voice-companion; do
+            if [[ "${module}" == "app-compose" ]]; then
+              package="com.futo.platformplayer.compose"
+              label="Grayjoy"
+            else
+              package="com.futo.platformplayer.voice"
+              label="Grayjoy Voice"
+            fi
+            for variant in debug release; do
+              for apk in grayjay-android/${module}/build/outputs/apk/${variant}/*.apk; do
+                [[ "${apk}" == *-unsigned.apk ]] && continue
+                metadata="$("${aapt}" dump badging "${apk}")"
+                header="$(head -n 1 <<<"${metadata}")"
+                [[ "${header}" == *"name='${package}'"* ]] || exit 1
+                if [[ -n "${expected_version}" ]]; then
+                  [[ "${header}" == *"versionName='${expected_version}'"* ]] || exit 1
+                fi
+                code="$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" <<<"${header}")"
+                test -n "${code}"
+                if [[ -z "${expected_code}" ]]; then expected_code="${code}"; fi
+                [[ "${code}" == "${expected_code}" ]] || exit 1
+                grep -Fqx "application-label:'${label}'" <<<"${metadata}"
+                if [[ "${variant}" == "release" ]]; then
+                  ! grep -q '^application-debuggable' <<<"${metadata}"
+                fi
+              done
+            done
+          done
+
       - name: Prepare APKs and checksums
         id: package
         shell: bash

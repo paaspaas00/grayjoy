@@ -411,6 +411,7 @@ interface GrayjayEngine {
         forceCompleteSubscriptions: Boolean = false,
     ): EngineVideoPage
     suspend fun loadMoreHome(feed: HomeFeedType, continuationId: String): EngineVideoPage
+    suspend fun loadMusicHome(forceRefresh: Boolean): List<com.futo.platformplayer.compose.ui.MusicHomeSection> = emptyList()
     suspend fun suggestions(query: String, enabledSourceIds: Set<String>): List<String>
     suspend fun loadChannel(channel: ChannelUiModel): EngineChannelDetails
     suspend fun loadChannelPage(
@@ -449,6 +450,8 @@ interface GrayjayEngine {
     fun replaceCurrent(video: VideoUiModel, positionMs: Long, playWhenReady: Boolean)
     fun appendToQueue(videos: List<VideoUiModel>, orderedVideoIds: List<String> = emptyList())
     fun moveQueueItemNext(videoId: String)
+    fun setAudioVisualizationVisible(visible: Boolean) = Unit
+    fun reorderPreparedQueue(orderedVideoIds: List<String>) = Unit
     fun togglePlayback()
     fun resumePlayback()
     fun currentPlaybackVideo(): VideoUiModel?
@@ -459,6 +462,7 @@ interface GrayjayEngine {
     fun seekToFraction(fraction: Float)
     fun setPlaybackSpeed(speed: Float)
     fun setAudioNormalizationEnabled(enabled: Boolean) = Unit
+    fun setMusicPlaybackMode(enabled: Boolean) = Unit
     fun setOtherAudioDucking(enabled: Boolean, volumePercent: Int)
     fun setVoiceListeningVolume(owner: String, percent: Int?)
     fun setVideoQuality(height: Int?)
@@ -475,11 +479,16 @@ interface GrayjayEngine {
 @SuppressLint("UnsafeOptInUsageError")
 class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private val appContext = context.applicationContext
+    private val musicHome by lazy { SpotifyHomeRepository(appContext) }
+    override suspend fun loadMusicHome(forceRefresh: Boolean) = musicHome.load(forceRefresh)
     private val _playback = MutableStateFlow(EnginePlaybackState())
     private val _backendNotices = MutableSharedFlow<EngineBackendNotice>(extraBufferCapacity = 8)
     @Volatile
     private var latestAudioSpectrum: List<Float> = emptyList()
-    private val audioSpectrumAnalyzer = AudioSpectrumAnalyzer { spectrum ->
+    private var audioVisualizationVisible = false
+    private val audioSpectrumAnalyzer = AudioSpectrumAnalyzer(
+        minimumAnalysisIntervalMs = if (com.futo.platformplayer.compose.devicePerformanceProfile(appContext).isLowEnd) 120L else 0L,
+    ) { spectrum ->
         latestAudioSpectrum = spectrum
         _playback.value = _playback.value.copy(audioSpectrum = spectrum)
     }
@@ -641,7 +650,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private val previouslyApprovedPluginIds = ConcurrentHashMap.newKeySet<String>()
     private val pluginBackendDelegate = lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         Log.i(TAG, "Starting Grayjay JavaScript plugin backend on demand.")
-        GrayjayPluginBackend(appContext).also { backend ->
+        GrayjayPluginBackend(appContext, constrainedResources = com.futo.platformplayer.compose.devicePerformanceProfile(appContext).isLowEnd).also { backend ->
             backend.setProfile(pluginProfileId)
             backend.configureVideoTitleLanguage(
                 preferOriginalVideoTitles,
@@ -654,6 +663,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private val newPipeYoutubeBackend = NewPipeYoutubePlaybackBackend()
     private val newPipeYoutubeContentBackend = NewPipeYoutubeContentBackend(
         newPipeYoutubeBackend::ensureInitialized,
+        constrainedResources = com.futo.platformplayer.compose.devicePerformanceProfile(appContext).isLowEnd,
     )
     private val pluginEndpoints = ConcurrentHashMap<String, PluginEndpoint>().apply {
         putAll(officialPluginEndpoints)
@@ -665,6 +675,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private var lastError: String? = null
     private var captionsEnabled = false
     private var selectedVideoQuality: Int? = null
+    private var musicPlaybackMode = false
     private var selectedSubtitleLanguage: String? = null
     private var selectedSubtitleTrackIndex: Int? = null
     private var selectedAudioLanguage: String? = null
@@ -768,6 +779,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     playbackRecoveryGuard.reset()
                     updateAudioSpectrumAnalysis(mediaItem?.mediaId)
                     val video = openedVideos.firstOrNull { it.id == mediaItem?.mediaId }
+                    val audioPresentation = musicPlaybackMode || video?.sourceId?.equals("spotify", true) == true
+                    exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, audioPresentation)
+                        .setMaxVideoSize(Int.MAX_VALUE, if (audioPresentation) 480 else selectedVideoQuality ?: Int.MAX_VALUE)
+                        .build()
                     switchPlaybackTracker(video)
                     audioLanguageAutomatic = true
                     selectedAudioLanguage = video?.resolvedAudioLanguage
@@ -1184,6 +1200,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun invalidateContentCaches() {
+        musicHome.invalidate()
         mixedContinuations.clear()
         newPipeYoutubeContentBackend.resetTransientSessions()
         if (pluginBackendDelegate.isInitialized()) pluginBackend.invalidateContentCaches()
@@ -1278,7 +1295,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             videos = allVideos,
             playlists = result.playlists.map { details ->
                 details.playlist.toPlaylistUiModel(appContext).copy(
-                    id = "account:${details.playlist.url}",
+                    id = if (isYoutubeLikedPlaylistUrl(details.playlist.url)) com.futo.platformplayer.compose.data.YOUTUBE_LIKED_LOCAL_ID else "account:${details.playlist.url}",
+                    title = if (isYoutubeLikedPlaylistUrl(details.playlist.url)) appContext.getString(R.string.liked_videos) else details.playlist.title,
                     videoIds = details.videos.map { it.url }.distinct(),
                     sourceId = "",
                     videoCount = details.videos.size,
@@ -2087,7 +2105,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             thumbnailUrl = catalog.thumbnailUrl.ifBlank { source.thumbnailUrl.orEmpty() },
             description = catalog.description,
             isMusic = true,
-        )
+        ).preferMusicAudioSource()
     }
 
     private fun VideoUiModel.withCatalogMetadata(source: GrayjayPlaybackSource): VideoUiModel = copy(
@@ -2309,9 +2327,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val trackParameters = exoPlayer.trackSelectionParameters
             .buildUpon()
             .clearVideoSizeConstraints()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, musicPlaybackMode || playableVideos[currentIndex].sourceId.equals("spotify", true))
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+        if (musicPlaybackMode || playableVideos[currentIndex].sourceId.equals("spotify", true)) trackParameters.setMaxVideoSize(Int.MAX_VALUE, 480)
         if (selectedAudioLanguage.isNullOrBlank()) {
             trackParameters.setPreferredAudioLanguages()
         } else {
@@ -2388,6 +2408,31 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         PlaybackNotificationService.refresh(appContext, exoPlayer)
     }
 
+    override fun reorderPreparedQueue(orderedVideoIds: List<String>) {
+        val current = exoPlayer.currentMediaItem?.mediaId ?: return
+        val from = orderedVideoIds.indexOf(current)
+        if (from < 0) return
+        val known = queueIds.toSet()
+        val retained = orderedVideoIds.drop(from).takeWhile(known::contains).distinct()
+        if (retained.firstOrNull() != current) return
+        for (index in queueIds.indices.reversed()) {
+            if (queueIds[index] !in retained) {
+                exoPlayer.removeMediaItem(index)
+                queueIds = queueIds.toMutableList().apply { removeAt(index) }
+                openedVideos = openedVideos.toMutableList().apply { removeAt(index) }
+            }
+        }
+        retained.forEachIndexed { target, id ->
+            val index = queueIds.indexOf(id)
+            if (index != target && index >= 0) {
+                exoPlayer.moveMediaItem(index, target)
+                queueIds = queueIds.toMutableList().apply { add(target, removeAt(index)) }
+                openedVideos = openedVideos.toMutableList().apply { add(target, removeAt(index)) }
+            }
+        }
+        syncPlayback()
+    }
+
     override fun moveQueueItemNext(videoId: String) {
         val fromIndex = queueIds.indexOf(videoId)
         val currentIndex = exoPlayer.currentMediaItemIndex
@@ -2407,7 +2452,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
 
     private fun VideoUiModel.nearestQualityVariantHeight(targetHeight: Int): Int? =
         qualityVariants.minWithOrNull(
-            compareBy<VideoQualityUiModel> { kotlin.math.abs(it.height - targetHeight) }
+            compareBy<VideoQualityUiModel> { kotlin.math.abs(it.height - playbackVideoHeightTarget(sourceId, targetHeight, musicPlaybackMode)) }
                 .thenBy(VideoQualityUiModel::height),
         )?.height
 
@@ -2756,6 +2801,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         }
     }
 
+    override fun setMusicPlaybackMode(enabled: Boolean) { musicPlaybackMode = enabled }
+
     override fun setVoiceListeningVolume(owner: String, percent: Int?) {
         otherAudioDuckingController.setVoiceVolume(owner, percent)
     }
@@ -2764,7 +2811,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val requestedHeight = height?.takeIf { it > 0 }
         val currentVideoId = exoPlayer.currentMediaItem?.mediaId
         val currentVideoIndex = openedVideos.indexOfFirst { it.id == currentVideoId }
-        val targetHeight = requestedHeight ?: AUTOMATIC_VIDEO_HEIGHT
+        val targetHeight = playbackVideoHeightTarget(openedVideos.getOrNull(currentVideoIndex)?.sourceId.orEmpty(), requestedHeight ?: AUTOMATIC_VIDEO_HEIGHT, musicPlaybackMode)
         val nextVariantHeight = currentVideoIndex
             .takeIf { it >= 0 }
             ?.let { openedVideos[it].nearestQualityVariantHeight(targetHeight) }
@@ -2794,7 +2841,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             activeQualityVariantVideoId = nextVariantVideoId
         }
 
-        selectedVideoQuality = requestedHeight
+        selectedVideoQuality = requestedHeight?.let { targetHeight }
 
         Log.i(
             TAG,
@@ -2803,7 +2850,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         )
 
         val parameters = exoPlayer.trackSelectionParameters.buildUpon()
-        if (hasPluginVariant) {
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, musicPlaybackMode || openedVideos.getOrNull(currentVideoIndex)?.sourceId?.equals("spotify", true) == true)
+        if (hasPluginVariant && !musicPlaybackMode && openedVideos.getOrNull(currentVideoIndex)?.sourceId?.equals("spotify", true) != true) {
             parameters.clearVideoSizeConstraints()
         } else {
             parameters.setMaxVideoSize(Int.MAX_VALUE, targetHeight)
@@ -3052,9 +3100,14 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         }
     }
 
+    override fun setAudioVisualizationVisible(visible: Boolean) {
+        audioVisualizationVisible = visible
+        updateAudioSpectrumAnalysis(exoPlayer.currentMediaItem?.mediaId)
+    }
+
     private fun updateAudioSpectrumAnalysis(videoId: String?) {
         val audioOnly = openedVideos.firstOrNull { it.id == videoId }?.playbackAudioOnly == true
-        audioSpectrumAnalyzer.setEnabled(audioOnly)
+        audioSpectrumAnalyzer.setEnabled(audioOnly && audioVisualizationVisible)
     }
 
     private fun syncPlayback(fallbackVideoId: String? = null) {

@@ -687,4 +687,11 @@
     <string name="setup_player_layout">播放器布局</string>
     <string name="setup_player_standard">标准</string>
     <string name="setup_player_one_handed">单手</string>
+    <string name="music_tracks">曲目</string>
+    <string name="playlist_reorder_lock">锁定排序</string>
+    <plurals name="active_sources_short">
+        <item quantity="one">%d 个已启用</item>
+        <item quantity="other">%d 个已启用</item>
+    </plurals>
+    <string name="setup_diagnostics_body">在此设备上保存崩溃和错误的技术日志，以帮助诊断问题。默认开启，可在此处或设置中关闭。不会自动发送任何内容，是否分享报告由你决定。</string>
 </resources>

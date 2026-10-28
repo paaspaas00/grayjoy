@@ -275,7 +275,7 @@ fun ProfileSwitcherDialogs(
                 }
             },
             confirmButton = {
-                Button(
+                AdaptiveButton(
                     onClick = {
                         if (onVerifyPin(profileId, pin)) {
                             pinProfileId = null
@@ -376,7 +376,7 @@ private fun ManageProfileDialog(
                         Text(stringResource(R.string.protect_profile_with_device_description))
                     },
                     trailingContent = {
-                        Switch(
+                        AdaptiveSwitch(
                             checked = deviceProtected,
                             enabled = deviceProtectionAvailable,
                             onCheckedChange = { enabled ->
@@ -421,7 +421,7 @@ private fun ManageProfileDialog(
             }
         },
         confirmButton = {
-            Button(
+            AdaptiveButton(
                 onClick = {
                     if (normalizedName != profile.name) onRename(normalizedName)
                     if (protectionChanged) {
@@ -443,7 +443,7 @@ private fun ManageProfileDialog(
             title = { Text(stringResource(R.string.delete_profile)) },
             text = { Text(stringResource(R.string.delete_profile_confirmation, profile.name)) },
             confirmButton = {
-                Button(onClick = onDelete) { Text(stringResource(R.string.delete_profile)) }
+                AdaptiveButton(onClick = onDelete) { Text(stringResource(R.string.delete_profile)) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDelete = false }) {
@@ -488,7 +488,7 @@ private fun CreateProfileDialog(
                     headlineContent = { Text(stringResource(R.string.protect_with_pin)) },
                     supportingContent = { Text(stringResource(R.string.protect_with_pin_description)) },
                     trailingContent = {
-                        Switch(
+                        AdaptiveSwitch(
                             checked = protectWithPin,
                             onCheckedChange = { protectWithPin = it },
                         )
@@ -515,7 +515,7 @@ private fun CreateProfileDialog(
             }
         },
         confirmButton = {
-            Button(
+            AdaptiveButton(
                 onClick = { onCreate(name, pin.takeIf { protectWithPin }.orEmpty()) },
                 enabled = valid,
             ) { Text(stringResource(R.string.create)) }

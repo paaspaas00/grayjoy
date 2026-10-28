@@ -1,5 +1,12 @@
 package com.futo.platformplayer.compose.ui.screens
 
+/** Keep the playing item first when entering shuffled order; never drop or duplicate tracks. */
+internal fun shuffledReorderIds(ids: List<String>, currentId: String?, random: kotlin.random.Random = kotlin.random.Random.Default): List<String> {
+    val unique = ids.distinct()
+    val first = currentId?.takeIf(unique::contains)
+    return listOfNotNull(first) + unique.filterNot { it == first }.shuffled(random)
+}
+
 internal fun reconcileReorderDraft(draft: List<String>, current: List<String>): List<String> {
     val currentIds = current.toSet()
     val retained = draft.filter { it in currentIds }.distinct()

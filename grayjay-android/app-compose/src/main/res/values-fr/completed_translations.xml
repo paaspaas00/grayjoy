@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s de %2$s</string>
     <string name="update_downloaded_amount">%1$s téléchargé</string>
     <string name="save_crash_logs">Enregistrer les journaux de crash</string>
-    <string name="save_crash_logs_description">Conserve les 1 000 derniers événements techniques et jusqu’à 10 journaux de plantage locaux. Les rapports partagés excluent les messages d’exception et identifiants de contenu. Les nouveaux journaux sont aussi copiés dans Downloads/Grayjoy. Aucun envoi automatique.</string>
+    <string name="save_crash_logs_description">Conserve les 1 000 derniers événements techniques et jusqu’à 10 journaux de plantage locaux. Les rapports partagés excluent les messages d’exception et identifiants de contenu. Aucun envoi automatique.</string>
     <string name="open_navigation_menu">Ouvrir le menu de navigation</string>
     <string name="close_navigation_menu">Fermer le menu de navigation</string>
     <string name="comment_replies">Réponses</string>

@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">Esta playlist já está sendo baixada</string>
+    <string name="playlist_shuffle_order">Aleatório e ordem</string>
+    <string name="play_in_this_order">Nesta ordem</string>
+    <string name="discard_order_title">Salvar a nova ordem?</string>
+    <string name="discard_order_body">A playlist ainda não foi alterada. Salve a ordem ou descarte as alterações.</string>
+    <string name="discard_changes">Descartar alterações</string>
+    <string name="music_favorites">Favoritos</string>
+    <string name="add_music_favorite">Adicionar aos favoritos</string>
+    <string name="remove_music_favorite">Remover dos favoritos</string>
+    <string name="favorites_empty">Suas músicas favoritas aparecerão aqui.</string>
+    <string name="crash_logs_downloads">Salvar também os registros de falhas em Downloads</string>
+    <string name="crash_logs_downloads_description">Cópia pública opcional. O ZIP compartilhado é sempre preparado a partir dos registros privados do aplicativo.</string>
+    <string name="youtube_sync_direction">A sincronização copia dados apenas do YouTube para o Grayjoy. Alterações locais não são enviadas ao YouTube. A sincronização bidirecional está em desenvolvimento.</string>
+    <string name="help_spotify_favorites">Guardar suas músicas favoritas</string>
+    <string name="help_spotify_favorites_body">Toque na estrela do player ou no menu da música. Os favoritos também estão no Início e na Biblioteca.</string>
+    <string name="help_spotify_offline">Baixar uma playlist para ouvir offline</string>
+    <string name="help_spotify_offline_body">Abra uma playlist ou álbum e toque em Baixar áudio. O indicador giratório significa que o download já está em andamento; tocá-lo não cancela a tarefa.</string>
+    <string name="help_spotify_order">Escolher a ordem de reprodução</string>
+    <string name="help_spotify_order_body">Abra Aleatório e ordem. Arraste ou embaralhe as músicas e escolha Nesta ordem para reproduzir sem salvar, ou Salvar para manter a ordem. Playlists remotas são salvas como cópias locais.</string>
+    <string name="help_music_home_step">Escolha uma música, artista, álbum ou playlist recente no Início.</string>
+    <string name="help_music_star_step">Toque na estrela para adicionar ou remover a música atual dos favoritos.</string>
+    <string name="help_music_download_step">Toque em Baixar áudio. Acompanhe o progresso no painel de tarefas.</string>
+    <string name="help_music_order_step">Abra Aleatório e ordem para escolher uma ordem personalizada ou aleatória.</string>
+    <string name="help_music_play_order_step">Reproduza nesta ordem ou salve a nova ordem da playlist.</string>
+</resources>

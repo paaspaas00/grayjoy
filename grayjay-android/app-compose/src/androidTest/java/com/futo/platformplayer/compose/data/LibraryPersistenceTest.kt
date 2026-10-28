@@ -98,6 +98,34 @@ class LibraryPersistenceTest {
         assertEquals(listOf(video.id), reloaded.loadPlaylists().single().videoIds)
     }
 
+    @Test fun youtubeLikesAndAccountImportUseTheSamePersistentPlaylist() {
+        val repository = SharedPreferencesLibraryRepository(context, profileId)
+        val first = VideoUiModel("liked-1", "First", "Creator", "", "1:00", sourceId = "youtube")
+        val second = first.copy(id = "liked-2", title = "Second", isLiked = true)
+        repository.saveVideo(first)
+        repository.setLiked(first.id, true)
+        repository.setLiked(first.id, true)
+        assertEquals(listOf(first.id), repository.loadPlaylists().single().videoIds)
+        repository.mergeImportedData(listOf(second), listOf(com.futo.platformplayer.compose.ui.PlaylistUiModel(
+            "account:https://m.youtube.com/playlist?list=LL", "A differently localized title", "", listOf(second.id))))
+        val fresh = SharedPreferencesLibraryRepository(context, profileId)
+        assertEquals(1, fresh.loadPlaylists().size)
+        assertEquals(listOf(first.id, second.id), fresh.loadPlaylists().single().videoIds)
+        fresh.setLiked(first.id, false)
+        assertEquals(listOf(second.id), fresh.loadPlaylists().single().videoIds)
+        org.junit.Assert.assertFalse(fresh.loadSavedVideos().first { it.id == first.id }.isLiked)
+        assertTrue(fresh.loadSavedVideos().first { it.id == second.id }.isLiked)
+    }
+
+    @Test fun spotifyFavoritesNeverCreateYoutubeLikedPlaylist() {
+        val repository = SharedPreferencesLibraryRepository(context, profileId)
+        val song = VideoUiModel("song", "Song", "Artist", "", "3:00", sourceId = "spotify")
+        repository.saveVideo(song)
+        repository.setWatchLater(song.id, true)
+        assertTrue(repository.loadSavedVideos().single().isWatchLater)
+        assertTrue(repository.loadPlaylists().isEmpty())
+    }
+
     @Test
     fun duplicatePlaylistNamesAreRejectedAndSelectedPlaylistsCanBeRemoved() {
         val repository = SharedPreferencesLibraryRepository(context, profileId)

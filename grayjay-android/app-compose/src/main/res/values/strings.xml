@@ -671,7 +671,7 @@
     <string name="update_download_progress">%1$s of %2$s</string>
     <string name="update_downloaded_amount">%1$s downloaded</string>
     <string name="save_crash_logs">Save crash logs</string>
-    <string name="save_crash_logs_description">Keep the latest 1,000 technical events and up to 10 crash logs locally. Exception messages and content identifiers are excluded from shared reports. New crash logs are also copied to Downloads/Grayjoy. Nothing is uploaded.</string>
+    <string name="save_crash_logs_description">Keep the latest 1,000 technical events and up to 10 crash logs privately on this device. Exception messages and content identifiers are excluded from shared reports. Nothing is uploaded automatically.</string>
     <string name="open_navigation_menu">Open navigation menu</string>
     <string name="close_navigation_menu">Close navigation menu</string>
     <string name="comment_replies">Replies</string>
@@ -862,4 +862,11 @@
     <string name="setup_player_layout">Player layout</string>
     <string name="setup_player_standard">Standard</string>
     <string name="setup_player_one_handed">One-handed</string>
+    <string name="music_tracks">Tracks</string>
+    <string name="playlist_reorder_lock">Lock reordering</string>
+    <plurals name="active_sources_short">
+        <item quantity="one">%d active</item>
+        <item quantity="other">%d active</item>
+    </plurals>
+    <string name="setup_diagnostics_body">Save technical crash and error logs on this device to help diagnose problems. Enabled by default; you can turn this off here or in Settings. Nothing is sent automatically: you decide whether to share a report.</string>
 </resources>

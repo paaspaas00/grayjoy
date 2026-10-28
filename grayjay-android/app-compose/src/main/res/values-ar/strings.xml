@@ -771,4 +771,15 @@
     <string name="setup_player_layout">تخطيط المشغّل</string>
     <string name="setup_player_standard">عادي</string>
     <string name="setup_player_one_handed">بيد واحدة</string>
+    <string name="music_tracks">المقاطع</string>
+    <string name="playlist_reorder_lock">قفل إعادة الترتيب</string>
+    <plurals name="active_sources_short">
+        <item quantity="zero">%d نشطة</item>
+        <item quantity="two">%d نشطة</item>
+        <item quantity="few">%d نشطة</item>
+        <item quantity="many">%d نشطة</item>
+        <item quantity="one">%d نشطة</item>
+        <item quantity="other">%d نشطة</item>
+    </plurals>
+    <string name="setup_diagnostics_body">يحفظ سجلات تقنية للأعطال والأخطاء على هذا الجهاز للمساعدة في تشخيص المشكلات. مفعّل افتراضيًا ويمكن تعطيله هنا أو في الإعدادات. لا يُرسل شيء تلقائيًا: أنت تقرر مشاركة التقرير.</string>
 </resources>

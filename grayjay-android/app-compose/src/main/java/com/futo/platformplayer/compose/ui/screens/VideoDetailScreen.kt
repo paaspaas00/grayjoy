@@ -376,6 +376,30 @@ private data class VideoDetailParameters(
 
 @Composable
 private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(parameters) {
+    if (LocalMusicPresentation.current) {
+        var musicSettingsVisible by rememberSaveable { mutableStateOf(false) }
+        var musicSettingsPage by remember { mutableStateOf(PlayerSettingsPage.Main) }
+        MusicNowPlaying(video, player, playback, nowPlaying, queueVideos,
+            onTogglePlayback, onSkipPrevious, onSkipNext, onSeek,
+            onToggleWatchLater, onToggleAudioDownload, onAddToPlaylist, onRetryPlayback,
+            onVideoClick, onQueueVideoLongClick, onSpeedChange, onPlayerBoundsChanged,
+            onFullscreen = onFullscreen,
+            onOpenSettings = { musicSettingsPage = PlayerSettingsPage.Main; musicSettingsVisible = true })
+        PlayerSettingsSheet(visible = musicSettingsVisible, anchorBounds = null,
+            page = musicSettingsPage, video = video, playback = playback,
+            isFullscreen = false, isPortraitFullscreen = false,
+            perChannelPlaybackSpeedEnabled = perChannelPlaybackSpeedEnabled,
+            videoPlaybackSpeedOverride = videoPlaybackSpeedOverride, channelPlaybackSpeed = channelPlaybackSpeed,
+            sponsorBlockInheritedRule = sponsorBlockInheritedRule, sponsorBlockVideoOverride = sponsorBlockVideoOverride,
+            defaultPlaybackSpeed = defaultPlaybackSpeed, preferredAudioLanguage = preferredAudioLanguage,
+            preferOriginalAudio = preferOriginalAudio, onPageChange = { musicSettingsPage = it },
+            onDismiss = { musicSettingsVisible = false }, onQualityChange = onQualityChange,
+            onSpeedChange = onSpeedChange, onUseChannelSpeed = onUseChannelSpeed,
+            onChannelSpeedChange = onChannelSpeedChange, onSponsorBlockVideoOverrideChange = onSponsorBlockVideoOverrideChange,
+            onAudioLanguageChange = onAudioLanguageChange, onCaptionsEnabledChange = onCaptionsEnabledChange,
+            onSubtitleLanguageChange = onSubtitleLanguageChange, onLockControls = {})
+        return@with
+    }
     var selectedSectionName by rememberSaveable(video.id) {
         mutableStateOf(DetailSection.UpNext.name)
     }
@@ -765,7 +789,29 @@ fun FullscreenPlayerScreen(
     onExitFullscreen: () -> Unit,
     portraitFullscreen: Boolean,
     modifier: Modifier = Modifier,
+    musicContent: (@Composable (() -> Unit) -> Unit)? = null,
 ) {
+    if (musicContent != null) {
+        var settingsVisible by rememberSaveable { mutableStateOf(false) }
+        var settingsPage by remember { mutableStateOf(PlayerSettingsPage.Main) }
+        Surface(modifier.fillMaxSize().testTag("music-fullscreen-player")) {
+            musicContent { settingsPage = PlayerSettingsPage.Main; settingsVisible = true }
+        }
+        PlayerSettingsSheet(visible = settingsVisible, anchorBounds = null,
+            page = settingsPage, video = video, playback = playback,
+            isFullscreen = false, isPortraitFullscreen = false,
+            perChannelPlaybackSpeedEnabled = perChannelPlaybackSpeedEnabled,
+            videoPlaybackSpeedOverride = videoPlaybackSpeedOverride, channelPlaybackSpeed = channelPlaybackSpeed,
+            sponsorBlockInheritedRule = sponsorBlockInheritedRule, sponsorBlockVideoOverride = sponsorBlockVideoOverride,
+            defaultPlaybackSpeed = defaultPlaybackSpeed, preferredAudioLanguage = preferredAudioLanguage,
+            preferOriginalAudio = preferOriginalAudio, onPageChange = { settingsPage = it },
+            onDismiss = { settingsVisible = false }, onQualityChange = onQualityChange,
+            onSpeedChange = onSpeedChange, onUseChannelSpeed = onUseChannelSpeed,
+            onChannelSpeedChange = onChannelSpeedChange, onSponsorBlockVideoOverrideChange = onSponsorBlockVideoOverrideChange,
+            onAudioLanguageChange = onAudioLanguageChange, onCaptionsEnabledChange = onCaptionsEnabledChange,
+            onSubtitleLanguageChange = onSubtitleLanguageChange, onLockControls = {})
+        return
+    }
     val queueIndex = playback.queueVideoIds.indexOf(playback.currentVideoId)
     val canGoPrevious = queueIndex > 0 || player.currentPosition > 5_000L
     val canGoNext = queueIndex >= 0 && queueIndex < playback.queueVideoIds.lastIndex
@@ -1340,7 +1386,7 @@ internal fun PlayerSurface(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(message, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    Button(
+                    AdaptiveButton(
                         onClick = onRetryPlayback,
                         modifier = Modifier.testTag("player-retry"),
                     ) { Text(stringResource(R.string.retry)) }
@@ -1383,7 +1429,8 @@ internal fun PlayerSurface(
         }
 
         AnimatedVisibility(
-            visible = resumePositionFraction != null && playback.durationMs > 0L &&
+            visible = !LocalMusicPresentation.current && !video.sourceId.equals("spotify", true) &&
+                resumePositionFraction != null && playback.durationMs > 0L &&
                 playback.errorMessage == null,
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -1427,7 +1474,7 @@ internal fun PlayerSurface(
         if (!isFullscreen && controlsAlpha > 0.5f) com.futo.platformplayer.compose.ui.YoutubeAutoplayPrompt(Modifier.align(Alignment.Center).zIndex(10f))
         val manualSponsor = com.futo.platformplayer.compose.ui.LocalManualSponsorSkip.current
         if (manualSponsor.segment != null && (isFullscreen || controlsAlpha > 0.5f)) {
-            Button(
+            AdaptiveButton(
                 onClick = manualSponsor.skip,
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).zIndex(10f)
                     .testTag("sponsorblock-manual-skip"),
@@ -1590,6 +1637,7 @@ internal fun PlayerTimelineRow(
     onStoryboardLoadFailure: () -> Unit = {},
     modifier: Modifier = Modifier,
     seekTouchTargetHeight: androidx.compose.ui.unit.Dp = 48.dp,
+    labelColor: Color = Color.White,
 ) {
     val touchHeight = if (isFullscreen) seekTouchTargetHeight.coerceAtLeast(48.dp) else 48.dp
     // Grow the input area upwards; retain the existing visible track, thumb and label baseline.
@@ -1683,7 +1731,7 @@ internal fun PlayerTimelineRow(
         Text(
             text = if (video.isLive) stringResource(R.string.live)
             else formatPlaybackTime(displayedPositionMs),
-            color = Color.White,
+            color = labelColor,
             textAlign = TextAlign.Start,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier
@@ -1751,6 +1799,8 @@ internal fun PlayerTimelineRow(
                         durationMs = durationMs,
                         segments = sponsorBlockSegments,
                         progressColor = progressColor,
+                        unplayedColor = if (LocalMusicPresentation.current) MaterialTheme.colorScheme.primary.copy(alpha = .15f) else Color.White.copy(alpha = .22f),
+                        bufferedColor = if (LocalMusicPresentation.current) MaterialTheme.colorScheme.primary.copy(alpha = .35f) else Color.White.copy(alpha = .52f),
                         modifier = Modifier.offset(y = visualOffset),
                     )
                 },
@@ -1817,7 +1867,7 @@ internal fun PlayerTimelineRow(
         }
         Text(
             text = if (video.isLive) "" else formatPlaybackTime(durationMs),
-            color = Color.White,
+            color = labelColor,
             textAlign = TextAlign.End,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.widthIn(min = if (isFullscreen) 58.dp else 46.dp).offset(y = visualOffset),
@@ -2464,7 +2514,7 @@ private fun PlayerSheetOptions(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             options.forEach { option ->
-                FilterChip(
+                AdaptiveFilterChip(
                     selected = option.selected,
                     onClick = option.onClick,
                     label = {
@@ -2649,13 +2699,13 @@ private fun LazyListScope.videoDetails(
                 .padding(horizontal = horizontalPadding),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FilterChip(
+            AdaptiveFilterChip(
                 selected = selectedSection == DetailSection.UpNext,
                 onClick = { onSectionChange(DetailSection.UpNext) },
                 modifier = Modifier.testTag("now-playing-section-up-next"),
                 label = { Text(stringResource(R.string.up_next)) },
             )
-            FilterChip(
+            AdaptiveFilterChip(
                 selected = selectedSection == DetailSection.Comments,
                 onClick = { onSectionChange(DetailSection.Comments) },
                 modifier = Modifier.testTag("now-playing-section-comments"),
@@ -2862,21 +2912,25 @@ private fun VideoActions(
             .padding(horizontal = horizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        video.likeCount?.let { likes ->
+        val likeAction = LocalVideoLike.current
+        if (video.sourceId.equals("youtube", true) || video.likeCount != null) {
             NowPlayingActionButton(
                 icon = Icons.Outlined.ThumbUp,
-                label = formatCount(likes),
+                label = video.likeCount?.let(::formatCount) ?: stringResource(R.string.like),
+                onClick = { if (video.sourceId.equals("youtube", true)) likeAction(video.id) },
+                modifier = Modifier.testTag("toggle-liked"),
+                progress = if (video.isLiked) 1f else 0f,
             )
         }
         NowPlayingActionButton(
-            icon = Icons.Outlined.BookmarkBorder,
-            label = stringResource(if (video.isWatchLater) R.string.saved else R.string.watch_later),
+            icon = watchLaterIcon(video.isWatchLater),
+            label = sourceStringResource(if (video.isWatchLater) R.string.saved else R.string.watch_later),
             onClick = onToggleWatchLater,
             modifier = Modifier.testTag("toggle-watch-later"),
             iconContentDescription = if (video.isWatchLater) {
-                stringResource(R.string.remove_watch_later)
+                sourceStringResource(R.string.remove_watch_later)
             } else {
-                stringResource(R.string.add_watch_later)
+                sourceStringResource(R.string.add_watch_later)
             },
             progress = if (video.isWatchLater) 1f else 0f,
         )
@@ -2985,14 +3039,14 @@ private fun DownloadOptionsSheet(
                 style = MaterialTheme.typography.bodyMedium,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+                AdaptiveFilterChip(
                     selected = mediaType == DownloadMediaType.Video,
                     onClick = { mediaTypeName = DownloadMediaType.Video.name },
                     label = { Text(stringResource(R.string.video)) },
                     leadingIcon = { Icon(Icons.Outlined.VideoLibrary, contentDescription = null) },
                     modifier = Modifier.testTag("download-format-video"),
                 )
-                FilterChip(
+                AdaptiveFilterChip(
                     selected = mediaType == DownloadMediaType.Audio,
                     onClick = { mediaTypeName = DownloadMediaType.Audio.name },
                     label = { Text(stringResource(R.string.audio_only)) },
@@ -3029,7 +3083,7 @@ private fun DownloadOptionsSheet(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         availableVideoQualities.forEach { height ->
-                            FilterChip(
+                            AdaptiveFilterChip(
                                 selected = selectedHeight == height,
                                 onClick = { selectedHeight = height },
                                 label = { Text("${height}p") },
@@ -3068,7 +3122,7 @@ private fun DownloadOptionsSheet(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         availableAudioBitrates.forEach { bitrate ->
-                            FilterChip(
+                            AdaptiveFilterChip(
                                 selected = selectedAudioBitrate == bitrate,
                                 onClick = { selectedAudioBitrate = bitrate },
                                 label = { Text(formatAudioBitrate(bitrate)) },
@@ -3087,7 +3141,7 @@ private fun DownloadOptionsSheet(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Button(
+            AdaptiveButton(
                 onClick = {
                     when {
                         mediaType == DownloadMediaType.Audio && (isComplete || isActive) ->
@@ -3276,6 +3330,7 @@ private fun CreatorCard(
     modifier: Modifier,
 ) {
     var followShimmerSequence by remember(video.id) { mutableIntStateOf(0) }
+    val lean = com.futo.platformplayer.compose.rememberDevicePerformanceProfile().isLowEnd && compactUi()
     Card(
         onClick = onClick,
         modifier = modifier
@@ -3284,14 +3339,14 @@ private fun CreatorCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(if (lean) 12.dp else 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             ChannelAvatarImage(
                 name = video.creator,
                 thumbnailUrl = video.authorThumbnailUrl,
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier.size(if (lean) 36.dp else 48.dp),
             )
             Column(Modifier.weight(1f)) {
                 CreatorNameShimmer(
@@ -3310,7 +3365,7 @@ private fun CreatorCard(
                     )
                 }
             }
-            Button(
+            AdaptiveButton(
                 onClick = {
                     val subscribing = !isFollowing
                     onToggleFollowing()
@@ -3409,7 +3464,7 @@ private fun CreatorInfoSheet(
                 ) {
                     Text(stringResource(if (isFollowing) R.string.following else R.string.follow))
                 }
-                Button(
+                AdaptiveButton(
                     onClick = onOpenChannel,
                     modifier = Modifier
                         .weight(1f)
@@ -3424,6 +3479,7 @@ private fun CreatorInfoSheet(
 
 @Composable
 private fun VideoDescriptionCard(description: String, modifier: Modifier) {
+    val lean = com.futo.platformplayer.compose.rememberDevicePerformanceProfile().isLowEnd && compactUi()
     var expanded by rememberSaveable(description) { mutableStateOf(false) }
     Box(
         modifier = modifier.fillMaxWidth()
@@ -3432,14 +3488,14 @@ private fun VideoDescriptionCard(description: String, modifier: Modifier) {
             .testTag("video-description-card"),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(if (lean) 12.dp else 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(stringResource(R.string.about_video), style = MaterialTheme.typography.titleMedium)
             Text(
                 description,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = if (expanded) Int.MAX_VALUE else 4,
+                maxLines = if (expanded) Int.MAX_VALUE else if (lean) 2 else 4,
                 overflow = TextOverflow.Ellipsis,
             )
             TextButton(

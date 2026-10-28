@@ -687,4 +687,12 @@
     <string name="setup_player_layout">Disposição do leitor</string>
     <string name="setup_player_standard">Normal</string>
     <string name="setup_player_one_handed">Uma mão</string>
+    <string name="music_tracks">Faixas</string>
+    <string name="playlist_reorder_lock">Bloquear reordenação</string>
+    <plurals name="active_sources_short">
+        <item quantity="many">%d ativas</item>
+        <item quantity="one">%d ativa</item>
+        <item quantity="other">%d ativas</item>
+    </plurals>
+    <string name="setup_diagnostics_body">Guarda registos técnicos de falhas e erros neste dispositivo para ajudar no diagnóstico. Ativado por predefinição; podes desativá-lo aqui ou nas Definições. Nada é enviado automaticamente: tu decides se partilhas um relatório.</string>
 </resources>

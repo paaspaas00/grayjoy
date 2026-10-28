@@ -32,6 +32,8 @@ internal fun PlayerSeekTrack(
     segments: List<SponsorBlockSegment>,
     progressColor: Color,
     modifier: Modifier = Modifier,
+    unplayedColor: Color = Color.White.copy(alpha = .22f),
+    bufferedColor: Color = Color.White.copy(alpha = .52f),
 ) {
     val outline = remember { Path() }
     Canvas(modifier.fillMaxWidth().height(12.dp).testTag("player-buffered-track")) {
@@ -57,8 +59,8 @@ internal fun PlayerSeekTrack(
             if (isRtl) scale(-1f, 1f, center)
         }) {
             clipPath(outline) {
-                drawRect(Color.White.copy(alpha = 0.22f))
-                drawRect(Color.White.copy(alpha = 0.52f),
+                drawRect(unplayedColor)
+                drawRect(bufferedColor,
                     size = Size(size.width * bufferedProgress.coerceIn(0f, 1f), size.height))
                 drawRect(progressColor, size = Size(thumb, size.height))
                 if (durationMs > 0L) segments.forEach { segment ->

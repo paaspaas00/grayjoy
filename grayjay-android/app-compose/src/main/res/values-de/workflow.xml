@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">Diese Playlist wird bereits heruntergeladen</string>
+    <string name="playlist_shuffle_order">Zufall &amp; Reihenfolge</string>
+    <string name="play_in_this_order">In dieser Reihenfolge</string>
+    <string name="discard_order_title">Neue Reihenfolge speichern?</string>
+    <string name="discard_order_body">Die Playlist wurde noch nicht geändert. Speichere die Reihenfolge oder verwirf die Änderungen.</string>
+    <string name="discard_changes">Änderungen verwerfen</string>
+    <string name="music_favorites">Favoriten</string>
+    <string name="add_music_favorite">Zu Favoriten hinzufügen</string>
+    <string name="remove_music_favorite">Aus Favoriten entfernen</string>
+    <string name="favorites_empty">Deine Lieblingssongs erscheinen hier.</string>
+    <string name="crash_logs_downloads">Absturzprotokolle auch in Downloads speichern</string>
+    <string name="crash_logs_downloads_description">Optionale öffentliche Kopie. Die geteilte ZIP wird immer aus den privaten App-Protokollen erstellt.</string>
+    <string name="youtube_sync_direction">Die Synchronisierung kopiert Daten nur von YouTube nach Grayjoy. Lokale Änderungen werden nicht an YouTube gesendet. Synchronisierung in beide Richtungen ist in Arbeit.</string>
+    <string name="help_spotify_favorites">Lieblingsmusik speichern</string>
+    <string name="help_spotify_favorites_body">Tippe auf den Stern im Player oder im Titelmenü. Favoriten findest du auch auf der Startseite und in der Bibliothek.</string>
+    <string name="help_spotify_offline">Playlist zum Offline-Hören herunterladen</string>
+    <string name="help_spotify_offline_body">Öffne eine Playlist oder ein Album und tippe auf Audio herunterladen. Ein Ladesymbol bedeutet, dass der Download bereits läuft; Antippen bricht ihn nicht ab.</string>
+    <string name="help_spotify_order">Wiedergabereihenfolge wählen</string>
+    <string name="help_spotify_order_body">Öffne Zufall &amp; Reihenfolge. Verschiebe oder mische Titel und wähle In dieser Reihenfolge zum Abspielen ohne Speichern oder Speichern zum Behalten. Online-Playlisten werden als lokale Kopien gespeichert.</string>
+    <string name="help_music_home_step">Wähle auf der Startseite einen Titel, Interpreten, ein Album oder eine zuletzt gehörte Playlist.</string>
+    <string name="help_music_star_step">Tippe auf den Stern, um den aktuellen Titel zu den Favoriten hinzuzufügen oder daraus zu entfernen.</string>
+    <string name="help_music_download_step">Tippe auf Audio herunterladen. Den Fortschritt siehst du im Aufgabenbereich.</string>
+    <string name="help_music_order_step">Öffne Zufall &amp; Reihenfolge, um die Titel selbst zu ordnen oder zu mischen.</string>
+    <string name="help_music_play_order_step">Spiele in dieser Reihenfolge ab oder speichere die neue Reihenfolge.</string>
+</resources>

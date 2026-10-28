@@ -48,7 +48,7 @@ internal fun LazyListScope.settingsGroup(
         item(key = row.key, contentType = row.type) {
             val lowEnd = rememberDevicePerformanceProfile().isLowEnd
             val corner = CornerSize(0.dp)
-            val shape = if (lowEnd) RectangleShape else MaterialTheme.shapes.medium.copy(
+            val shape = MaterialTheme.shapes.medium.copy(
                 topStart = if (index == 0) MaterialTheme.shapes.medium.topStart else corner,
                 topEnd = if (index == 0) MaterialTheme.shapes.medium.topEnd else corner,
                 bottomStart = if (index == rows.lastIndex) MaterialTheme.shapes.medium.bottomStart else corner,

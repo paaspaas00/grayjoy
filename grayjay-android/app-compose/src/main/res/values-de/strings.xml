@@ -687,4 +687,11 @@
     <string name="setup_player_layout">Player-Layout</string>
     <string name="setup_player_standard">Standard</string>
     <string name="setup_player_one_handed">Einhand</string>
+    <string name="music_tracks">Titel</string>
+    <string name="playlist_reorder_lock">Neuordnen sperren</string>
+    <plurals name="active_sources_short">
+        <item quantity="one">%d aktiv</item>
+        <item quantity="other">%d aktiv</item>
+    </plurals>
+    <string name="setup_diagnostics_body">Speichert technische Absturz- und Fehlerprotokolle auf diesem Gerät zur Fehlerdiagnose. Standardmäßig aktiviert; hier oder in den Einstellungen abschaltbar. Es wird nichts automatisch gesendet: Du entscheidest, ob du einen Bericht teilst.</string>
 </resources>

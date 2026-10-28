@@ -98,7 +98,7 @@ class GrayjayAppTest {
             val audit = androidx.test.platform.app.InstrumentationRegistry.getArguments().containsKey("layoutAuditName")
             GrayjayTheme(dynamicColor = false, darkTheme = if (audit) androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("layoutAuditDark") == "true" else androidx.compose.foundation.isSystemInDarkTheme()) {
             androidx.compose.runtime.CompositionLocalProvider(
-                LocalDevicePerformanceProfile provides if (audit) DevicePerformanceProfile(false, false, true) else null,
+                LocalDevicePerformanceProfile provides if (audit && androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("layoutAuditModern") == "true") DevicePerformanceProfile(false, false, true) else null,
             ) {
                 val appActions = androidx.compose.runtime.remember {
                     GrayjayAppActions().apply {
@@ -759,7 +759,7 @@ class GrayjayAppTest {
             composeRule.waitForIdle()
             composeRule.mainClock.advanceTimeBy(350)
             // System window/IME animations use real time, not the Compose test clock.
-            android.os.SystemClock.sleep(250L)
+            android.os.SystemClock.sleep(if (configuration.screenWidthDp < 390) 750L else 250L)
             val bitmap = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
             requireNotNull(bitmap)
             java.io.File(directory, "$screen.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
@@ -823,7 +823,7 @@ class GrayjayAppTest {
         }
         composeRule.onNodeWithTag("playlist-detail-${playlist.id}").performScrollToNode(hasTestTag("playlist-open-reorder"))
         composeRule.onNodeWithTag("playlist-open-reorder").performClick(); capture("10-reorder")
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.cancel)).performClick()
+        composeRule.onNodeWithTag("reorder-confirm").performClick()
         composeRule.onNodeWithTag("video-card-audit-1").performScrollTo().performTouchInput { longClick() }; capture("11-selection")
         composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
         composeRule.onNodeWithTag("playlist-detail-${playlist.id}").performScrollToNode(hasTestTag("video-card-audit-1"))

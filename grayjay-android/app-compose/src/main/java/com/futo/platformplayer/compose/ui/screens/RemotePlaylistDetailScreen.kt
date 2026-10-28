@@ -1,4 +1,5 @@
 package com.futo.platformplayer.compose.ui.screens
+import androidx.compose.material.icons.outlined.Shuffle
 
 import com.futo.platformplayer.compose.onboarding.helpAnchor
 
@@ -80,6 +81,7 @@ fun RemotePlaylistDetailScreen(
     localPlaylists: List<PlaylistUiModel> = emptyList(),
     onVideoClick: (VideoUiModel) -> Unit,
     onPlayFromHere: (String) -> Unit = {},
+    onPlayOrder: (List<String>) -> Unit = {},
     onVideoLongClick: (VideoUiModel) -> Unit,
     onPlayAll: () -> Unit,
     onDownloadAll: (DownloadMediaType) -> Unit,
@@ -90,12 +92,18 @@ fun RemotePlaylistDetailScreen(
     isPlaying: Boolean = false,
     shuffled: Boolean = false,
     onShuffleChange: (Boolean) -> Unit = {},
+    onReorder: (List<String>) -> Unit = {},
+    onPlaybackOrderChange: (List<String>) -> Unit = {},
 ) {
     val compactLayout = compactUi()
+    val musicLayout = LocalMusicPresentation.current
     val playlist = detail.playlist ?: return
     val listState = rememberContentListState()
     var showCreateSheet by rememberSaveable(playlist.id) { mutableStateOf(false) }
+    var pendingLocalOrder by rememberSaveable(playlist.id) { mutableStateOf<List<String>?>(null) }
     var showSortSheet by rememberSaveable(playlist.id) { mutableStateOf(false) }
+    var showReorder by rememberSaveable(playlist.id) { mutableStateOf(false) }
+    var showMusicActions by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var sortModeName by rememberSaveable(playlist.id) {
         mutableStateOf(RemotePlaylistSortMode.PlaylistOrder.name)
     }
@@ -130,15 +138,20 @@ fun RemotePlaylistDetailScreen(
     val displayedVideoCount = playlist.videoCount.takeIf { it > 0 } ?: detail.videos.size
     val audioBatchActive = DownloadMediaType.Audio in detail.activeDownloadMediaTypes
     val videoBatchActive = DownloadMediaType.Video in detail.activeDownloadMediaTypes
+    val startAudioDownload = playlistDownloadAction(audioBatchActive) { onDownloadAll(DownloadMediaType.Audio) }
+    val startVideoDownload = playlistDownloadAction(videoBatchActive) { onDownloadAll(DownloadMediaType.Video) }
 
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize().testTag("remote-playlist-${playlist.id}"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(if (compactLayout) 12.dp else 16.dp),
-        verticalArrangement = Arrangement.spacedBy(if (compactLayout) 8.dp else 16.dp),
+        verticalArrangement = Arrangement.spacedBy(if (musicLayout) 2.dp else if (compactLayout) 8.dp else 16.dp),
     ) {
         item {
-            if (compactLayout) CompactPlaylistHeader(
+            if (musicLayout) MusicPlaylistHeader(playlist, detail.videos, onPlayAll,
+                onDownload = { startAudioDownload() },
+                onMore = { showMusicActions = true }, isBusy = detail.isLoadingAll, downloadActive = audioBatchActive)
+            else if (compactLayout) CompactPlaylistHeader(
                 shuffleId = playlist.id, shuffled = shuffled, onShuffleChange = onShuffleChange,
                 title = playlist.title, description = playlist.description,
                 playEnabled = detail.videos.isNotEmpty() && !detail.isLoadingAll,
@@ -146,14 +159,14 @@ fun RemotePlaylistDetailScreen(
                 actions = listOf(
                     PlaylistMenuAction(stringResource(R.string.download_all_audio), Icons.Outlined.Download,
                         enabled = audioBatchActive || (downloadableVideos.isNotEmpty() && !detail.isLoadingAll),
-                        subtitle = if (audioBatchActive) stringResource(R.string.cancel_download) else null,
+                        isBusy = audioBatchActive, subtitle = if (audioBatchActive) stringResource(R.string.playlist_already_downloading) else null,
                         tag = "remote-playlist-download-audio",
-                        onClick = { if (audioBatchActive) onCancelDownloadAll(DownloadMediaType.Audio) else onDownloadAll(DownloadMediaType.Audio) }),
+                        onClick = { startAudioDownload() }),
                     PlaylistMenuAction(stringResource(R.string.download_all_video), Icons.Outlined.Download,
                         enabled = videoBatchActive || (downloadableVideos.isNotEmpty() && !detail.isLoadingAll),
-                        subtitle = if (videoBatchActive) stringResource(R.string.cancel_download) else null,
+                        isBusy = videoBatchActive, subtitle = if (videoBatchActive) stringResource(R.string.playlist_already_downloading) else null,
                         tag = "remote-playlist-download-video",
-                        onClick = { if (videoBatchActive) onCancelDownloadAll(DownloadMediaType.Video) else onDownloadAll(DownloadMediaType.Video) }),
+                        onClick = { startVideoDownload() }),
                     PlaylistMenuAction(stringResource(R.string.make_local_playlist), Icons.AutoMirrored.Outlined.PlaylistAdd,
                         enabled = detail.videos.isNotEmpty() && !detail.isLoadingAll,
                         tag = "remote-playlist-create-local", onClick = { showCreateSheet = true }),
@@ -173,7 +186,6 @@ fun RemotePlaylistDetailScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(playlist.title, modifier = Modifier.weight(1f),
                             style = if (compactLayout) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium)
-                        PlaylistShuffleButton(playlist.id, shuffled, onShuffleChange)
                     }
                     if (playlist.description.isNotBlank()) {
                         Text(playlist.description, style = MaterialTheme.typography.bodyLarge)
@@ -182,46 +194,34 @@ fun RemotePlaylistDetailScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        OutlinedButton(
+                        AdaptiveOutlinedButton(
                             onClick = {
-                                if (audioBatchActive) onCancelDownloadAll(DownloadMediaType.Audio)
-                                else onDownloadAll(DownloadMediaType.Audio)
+                                startAudioDownload()
                             },
                             enabled = audioBatchActive ||
                                 (downloadableVideos.isNotEmpty() && !detail.isLoadingAll),
                             modifier = Modifier.weight(1f).testTag("remote-playlist-download-audio"),
                         ) {
-                            Icon(
-                                if (audioBatchActive) Icons.Outlined.Close
-                                else Icons.Outlined.Download,
-                                contentDescription = null,
-                            )
+                            if (audioBatchActive) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.Download, contentDescription = null)
                             Text(
-                                if (audioBatchActive) {
-                                    stringResource(R.string.cancel)
+                                if (audioBatchActive) { stringResource(R.string.download_in_progress)
                                 } else if (audioDownloaded > 0) {
                                     "${stringResource(R.string.download_all_audio)} $audioDownloaded/${downloadableVideos.size}"
                                 } else stringResource(R.string.download_all_audio),
                                 maxLines = 1,
                             )
                         }
-                        OutlinedButton(
+                        AdaptiveOutlinedButton(
                             onClick = {
-                                if (videoBatchActive) onCancelDownloadAll(DownloadMediaType.Video)
-                                else onDownloadAll(DownloadMediaType.Video)
+                                startVideoDownload()
                             },
                             enabled = videoBatchActive ||
                                 (downloadableVideos.isNotEmpty() && !detail.isLoadingAll),
                             modifier = Modifier.weight(1f).testTag("remote-playlist-download-video"),
                         ) {
-                            Icon(
-                                if (videoBatchActive) Icons.Outlined.Close
-                                else Icons.Outlined.Download,
-                                contentDescription = null,
-                            )
+                            if (videoBatchActive) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.Download, contentDescription = null)
                             Text(
-                                if (videoBatchActive) {
-                                    stringResource(R.string.cancel)
+                                if (videoBatchActive) { stringResource(R.string.download_in_progress)
                                 } else if (videoDownloaded > 0) {
                                     "${stringResource(R.string.download_all_video)} $videoDownloaded/${downloadableVideos.size}"
                                 } else stringResource(R.string.download_all_video),
@@ -229,7 +229,7 @@ fun RemotePlaylistDetailScreen(
                             )
                         }
                     }
-                    OutlinedButton(
+                    AdaptiveOutlinedButton(
                         onClick = { showCreateSheet = true },
                         enabled = detail.videos.isNotEmpty() && !detail.isLoadingAll,
                         modifier = Modifier.fillMaxWidth().testTag("remote-playlist-create-local"),
@@ -249,7 +249,7 @@ fun RemotePlaylistDetailScreen(
                             ),
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        Button(
+                        AdaptiveButton(
                             onClick = onPlayAll,
                             enabled = detail.videos.isNotEmpty() && !detail.isLoadingAll,
                             modifier = Modifier.testTag("remote-playlist-play-all").helpAnchor("playlist-play-all"),
@@ -280,12 +280,12 @@ fun RemotePlaylistDetailScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    if (compactLayout) pluralStringResource(R.plurals.video_count, displayedVideoCount, displayedVideoCount) else stringResource(R.string.videos),
+                    if (musicLayout) stringResource(R.string.music_tracks) else if (compactLayout) pluralStringResource(R.plurals.video_count, displayedVideoCount, displayedVideoCount) else stringResource(R.string.videos),
                     style = if (compactLayout) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall,
                 )
-                OutlinedButton(onClick = { showSortSheet = true }) {
-                    Icon(Icons.Outlined.Sort, contentDescription = null)
-                    Text(stringResource(R.string.sort))
+                AdaptiveOutlinedButton(onClick = { showReorder = true }, modifier = Modifier.testTag("playlist-open-reorder").helpAnchor("playlist-open-reorder")) {
+                    Icon(Icons.Outlined.Shuffle, contentDescription = null)
+                    Text(stringResource(R.string.playlist_shuffle_order))
                 }
             }
         }
@@ -297,7 +297,9 @@ fun RemotePlaylistDetailScreen(
                 key = { _, video -> video.id },
                 contentType = { _, _ -> "video" },
             ) { index, video ->
-            VideoCard(
+            if (musicLayout) MusicTrackRow(video, index, video.id == currentVideoId, isPlaying,
+                onClick = { onPlayFromHere(video.id) }, onLongClick = { onVideoLongClick(video) })
+            else VideoCard(
                 video = video,
                 isCurrent = video.id == currentVideoId,
                 isPlaying = isPlaying,
@@ -313,6 +315,20 @@ fun RemotePlaylistDetailScreen(
         }
     }
 
+    if (showReorder) ReorderPlaylistDialog(videos = sortedVideos,
+        onPlayOrder = { ids -> onPlayOrder(ids); showReorder = false },
+        hasMore = detail.hasMore, isLoadingMore = detail.isLoadingMore || detail.isLoadingAll, onLoadMore = onLoadMore,
+        currentVideoId = currentVideoId, isPlaying = isPlaying, shuffled = shuffled, onShuffleChange = onShuffleChange,
+        onDismiss = { showReorder = false }, onConfirm = { pendingLocalOrder = it; showReorder = false; showCreateSheet = true })
+    if (showMusicActions) CompactActionsSheet(playlist.title, playlist.description, listOf(
+        PlaylistMenuAction(stringResource(R.string.make_local_playlist), Icons.AutoMirrored.Outlined.PlaylistAdd,
+            enabled = detail.videos.isNotEmpty() && !detail.isLoadingAll,
+            tag = "remote-playlist-create-local", onClick = { showCreateSheet = true }),
+        PlaylistMenuAction(stringResource(R.string.download_all_audio), Icons.Outlined.Download,
+            isBusy = audioBatchActive, tag = "remote-playlist-download-audio", onClick = { startAudioDownload() }),
+        PlaylistMenuAction(stringResource(R.string.playlist_shuffle_order), Icons.Outlined.Shuffle,
+            tag = "remote-playlist-reorder", onClick = { showReorder = true }),
+    ), onDismiss = { showMusicActions = false })
     if (showSortSheet) {
         ModalBottomSheet(
             onDismissRequest = { showSortSheet = false },
@@ -349,7 +365,7 @@ fun RemotePlaylistDetailScreen(
                     RadioButton(selected = !sortAscending, onClick = { sortAscending = false })
                     Text(stringResource(R.string.descending))
                 }
-                Button(
+                AdaptiveButton(
                     onClick = { showSortSheet = false },
                     modifier = Modifier.align(Alignment.End),
                 ) { Text(stringResource(R.string.done)) }
@@ -359,7 +375,7 @@ fun RemotePlaylistDetailScreen(
 
     if (showCreateSheet) {
         ModalBottomSheet(
-            onDismissRequest = { showCreateSheet = false },
+            onDismissRequest = { showCreateSheet = false; pendingLocalOrder = null },
             contentWindowInsets = { grayjoySheetInsets() },
         ) {
             Column(
@@ -385,12 +401,14 @@ fun RemotePlaylistDetailScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    TextButton(onClick = { showCreateSheet = false }) {
+                    TextButton(onClick = { showCreateSheet = false; pendingLocalOrder = null }) {
                         Text(stringResource(R.string.cancel))
                     }
-                    Button(
+                    AdaptiveButton(
                         onClick = {
                             showCreateSheet = false
+                            pendingLocalOrder?.let(onReorder)
+                            pendingLocalOrder = null
                             onCreateLocalPlaylist(localTitle)
                         },
                         enabled = localTitle.isNotBlank() && !duplicateLocalTitle,

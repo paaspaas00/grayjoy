@@ -177,9 +177,7 @@ class MainActivity : FragmentActivity() {
             }
             val crashStoragePermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission(),
-            ) { granted ->
-                viewModel.setCrashLoggingEnabled(granted)
-            }
+            ) { granted -> viewModel.setCrashLogsDownloadsCopy(granted) }
 
             LaunchedEffect(uiState.keepScreenAwake) {
                 if (uiState.keepScreenAwake) {
@@ -309,7 +307,7 @@ class MainActivity : FragmentActivity() {
                     onPrivateSessionChange = viewModel::setPrivateSessionEnabled
                     onOpenVideo = viewModel::openVideo
                     onPlaySearchResults = viewModel::playSearchResults
-                    onPlayerExpandedChange = { playerExpanded = it }
+                    onPlayerExpandedChange = { playerExpanded = it; viewModel.setPlaybackVisualizationVisible(it) }
                     onDismissVideoOpenDialog = viewModel::dismissVideoOpenDialog
                     onLoadChannel = viewModel::loadChannel
                     onChannelTabSelected = viewModel::selectChannelTab
@@ -360,9 +358,11 @@ class MainActivity : FragmentActivity() {
                     onCreatePlaylist = viewModel::createPlaylist
                     onRenamePlaylist = viewModel::renamePlaylist
                     onPlaylistShuffleChange = viewModel::setPlaylistShuffled
+                    onPlaylistPlaybackOrderChange = viewModel::updatePlaylistPlaybackOrder
                     onAddVideosToPlaylist = viewModel::addVideosToPlaylist
                     onRemoveVideosFromPlaylist = viewModel::removeVideosFromPlaylist
                     onReorderPlaylist = viewModel::reorderPlaylist
+                    onPlayPlaylistOrder = viewModel::playPlaylistOrder
                     onRemoveVideosFromHistory = viewModel::removeVideosFromHistory
                     onRequestHistoryMusicClassification = viewModel::requestHistoryMusicClassification
                     onShortsPrefetchWindowChanged = viewModel::updateShortsPrefetchWindow
@@ -463,7 +463,9 @@ class MainActivity : FragmentActivity() {
                     onShowRecommendationsChange = viewModel::setShowRecommendations
                     onSearchHistoryChange = viewModel::setSearchHistoryEnabled
                     onGroupHistoryByPlaylistChange = viewModel::setGroupHistoryByPlaylist
-                    onCrashLoggingChange = { enabled ->
+                    onToggleLiked = viewModel::toggleLiked
+                    onCrashLoggingChange = viewModel::setCrashLoggingEnabled
+                    onCrashLogsDownloadsCopyChange = { enabled ->
                         if (
                             enabled && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
                             ContextCompat.checkSelfPermission(
@@ -474,9 +476,7 @@ class MainActivity : FragmentActivity() {
                             crashStoragePermissionLauncher.launch(
                                 Manifest.permission.WRITE_EXTERNAL_STORAGE,
                             )
-                        } else {
-                            viewModel.setCrashLoggingEnabled(enabled)
-                        }
+                        } else viewModel.setCrashLogsDownloadsCopy(enabled)
                     }
                     onKeepScreenAwakeChange = viewModel::setKeepScreenAwake
                     onPictureInPictureChange = viewModel::setPictureInPictureEnabled
@@ -594,6 +594,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        ForegroundWorkBudget.enter(devicePerformanceProfile(applicationContext).isLowEnd)
         pictureInPictureEntryPending = false
         if (!isInPictureInPictureMode) pictureInPictureMode = false
         applyPlayerStatusBarVisibility()
@@ -620,12 +621,18 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onPause() {
+        ForegroundWorkBudget.leave()
         grayjayViewModel.setAppForeground(false)
         if (!pictureInPictureEntryPending && !pictureInPictureMode && !isInPictureInPictureMode) {
             WindowCompat.getInsetsController(window, window.decorView)
                 .show(WindowInsetsCompat.Type.statusBars())
         }
         super.onPause()
+    }
+
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        ForegroundWorkBudget.touch()
+        return super.dispatchTouchEvent(event)
     }
 
     override fun onUserLeaveHint() {

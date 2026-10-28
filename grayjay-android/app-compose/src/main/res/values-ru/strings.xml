@@ -729,4 +729,13 @@
     <string name="setup_player_layout">Расположение плеера</string>
     <string name="setup_player_standard">Обычное</string>
     <string name="setup_player_one_handed">Одной рукой</string>
+    <string name="music_tracks">Треки</string>
+    <string name="playlist_reorder_lock">Заблокировать изменение порядка</string>
+    <plurals name="active_sources_short">
+        <item quantity="few">%d активных</item>
+        <item quantity="many">%d активных</item>
+        <item quantity="one">%d активный</item>
+        <item quantity="other">%d активных</item>
+    </plurals>
+    <string name="setup_diagnostics_body">Сохраняет технические журналы сбоев и ошибок на этом устройстве для диагностики проблем. Включено по умолчанию; можно отключить здесь или в настройках. Ничего не отправляется автоматически: вы решаете, делиться ли отчётом.</string>
 </resources>

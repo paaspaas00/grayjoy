@@ -36,6 +36,9 @@ private val LocalShimmerOffset = staticCompositionLocalOf<State<Float>?> { null 
 
 @Composable
 private fun rememberShimmerOffset(): State<Float> {
+    if (com.futo.platformplayer.compose.rememberDevicePerformanceProfile().isLowEnd) {
+        return remember { androidx.compose.runtime.mutableFloatStateOf(900f) }
+    }
     val transition = rememberInfiniteTransition(label = "skeleton-shimmer")
     return transition.animateFloat(
         initialValue = -900f,

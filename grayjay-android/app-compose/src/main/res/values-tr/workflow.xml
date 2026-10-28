@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">Bu oynatma listesi zaten indiriliyor</string>
+    <string name="playlist_shuffle_order">Karıştır ve sırala</string>
+    <string name="play_in_this_order">Bu sırayla</string>
+    <string name="discard_order_title">Yeni sıra kaydedilsin mi?</string>
+    <string name="discard_order_body">Oynatma listesi henüz değiştirilmedi. Sırayı kaydedin veya değişiklikleri silin.</string>
+    <string name="discard_changes">Değişiklikleri sil</string>
+    <string name="music_favorites">Favoriler</string>
+    <string name="add_music_favorite">Favorilere ekle</string>
+    <string name="remove_music_favorite">Favorilerden kaldır</string>
+    <string name="favorites_empty">Favori parçalarınız burada görünür.</string>
+    <string name="crash_logs_downloads">Çökme günlüklerini İndirilenler klasörüne de kaydet</string>
+    <string name="crash_logs_downloads_description">İsteğe bağlı herkese açık kopya. Paylaşılan ZIP her zaman uygulamanın özel günlüklerinden hazırlanır.</string>
+    <string name="youtube_sync_direction">Eşitleme yalnızca YouTube’dan Grayjoy’a veri kopyalar. Yerel değişiklikler YouTube’a gönderilmez. Çift yönlü eşitleme geliştirme aşamasındadır.</string>
+    <string name="help_spotify_favorites">Favori müzikleri sakla</string>
+    <string name="help_spotify_favorites_body">Oynatıcıdaki veya parça menüsündeki yıldıza dokunun. Favoriler Ana sayfa ve Kitaplıkta da bulunur.</string>
+    <string name="help_spotify_offline">Çevrimdışı dinlemek için liste indir</string>
+    <string name="help_spotify_offline_body">Bir liste veya albüm açıp Sesi indir’e dokunun. Dönen gösterge indirme sürdüğünü belirtir; dokunmak işlemi iptal etmez.</string>
+    <string name="help_spotify_order">Dinleme sırasını seç</string>
+    <string name="help_spotify_order_body">Karıştır ve sırala’yı açın. Parçaları sürükleyin veya karıştırın; kaydetmeden dinlemek için Bu sırayla, sırayı korumak için Kaydet’i seçin. Uzak listeler yerel kopya olarak kaydedilir.</string>
+    <string name="help_music_home_step">Ana sayfadan bir parça, sanatçı, albüm veya son çalınan liste seçin.</string>
+    <string name="help_music_star_step">Geçerli parçayı favorilere eklemek veya kaldırmak için yıldıza dokunun.</string>
+    <string name="help_music_download_step">Sesi indir’e dokunun. İlerlemeyi görev panelinden izleyebilirsiniz.</string>
+    <string name="help_music_order_step">Özel veya rastgele sıra seçmek için Karıştır ve sırala’yı açın.</string>
+    <string name="help_music_play_order_step">Bu sırayla çalın veya listenin yeni sırasını kaydedin.</string>
+</resources>

@@ -372,7 +372,7 @@ internal fun PairedComputersDialog(
                     stringResource(R.string.paired_computers_description),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Button(
+                AdaptiveButton(
                     onClick = onScanQr,
                     modifier = Modifier
                         .fillMaxWidth()

@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">このプレイリストはすでにダウンロード中です</string>
+    <string name="playlist_shuffle_order">シャッフルと順序</string>
+    <string name="play_in_this_order">この順序で再生</string>
+    <string name="discard_order_title">新しい順序を保存しますか？</string>
+    <string name="discard_order_body">プレイリストはまだ変更されていません。順序を保存するか、変更を破棄してください。</string>
+    <string name="discard_changes">変更を破棄</string>
+    <string name="music_favorites">お気に入り</string>
+    <string name="add_music_favorite">お気に入りに追加</string>
+    <string name="remove_music_favorite">お気に入りから削除</string>
+    <string name="favorites_empty">お気に入りの曲がここに表示されます。</string>
+    <string name="crash_logs_downloads">クラッシュログをダウンロードフォルダにも保存</string>
+    <string name="crash_logs_downloads_description">任意の公開コピーです。共有用ZIPは常にアプリの非公開ログから作成されます。</string>
+    <string name="youtube_sync_direction">同期はYouTubeからGrayjoyへの一方向です。ローカルの変更はYouTubeに送信されません。双方向同期は開発中です。</string>
+    <string name="help_spotify_favorites">お気に入りの音楽を保存する</string>
+    <string name="help_spotify_favorites_body">プレーヤーまたは曲メニューの星をタップします。お気に入りはホームとライブラリからも開けます。</string>
+    <string name="help_spotify_offline">プレイリストをダウンロードしてオフラインで聴く</string>
+    <string name="help_spotify_offline_body">プレイリストやアルバムを開き、音声をダウンロードをタップします。回転する表示はダウンロード中を示し、タップしてもキャンセルされません。</string>
+    <string name="help_spotify_order">再生順序を選ぶ</string>
+    <string name="help_spotify_order_body">シャッフルと順序を開きます。曲をドラッグまたはシャッフルし、保存せずに聴くにはこの順序で再生、順序を残すには保存を選びます。オンラインのプレイリストはローカルコピーとして保存されます。</string>
+    <string name="help_music_home_step">ホームで曲、アーティスト、アルバム、最近のプレイリストを選びます。</string>
+    <string name="help_music_star_step">星をタップして現在の曲をお気に入りに追加または削除します。</string>
+    <string name="help_music_download_step">音声をダウンロードをタップします。タスクパネルで進行状況を確認できます。</string>
+    <string name="help_music_order_step">シャッフルと順序を開いて、自由な順序またはランダムな順序を選びます。</string>
+    <string name="help_music_play_order_step">この順序で再生するか、プレイリストの新しい順序を保存します。</string>
+</resources>

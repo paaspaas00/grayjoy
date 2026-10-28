@@ -336,8 +336,27 @@ internal class SharedPreferencesLibraryRepository(
     override fun setDownloaded(videoId: String, enabled: Boolean) =
         updateVideo(videoId) { it.copy(isDownloaded = enabled) }
 
-    override fun setLiked(videoId: String, enabled: Boolean) =
-        updateVideo(videoId) { it.copy(isLiked = enabled) }
+    override fun setLiked(videoId: String, enabled: Boolean) {
+        synchronized(transactionLock) {
+            importJournal.ensureWritable()
+            val videos = readVideos()
+            val video = videos.firstOrNull { it.id == videoId } ?: return
+            if (!video.sourceId.equals("youtube", true)) {
+                updateVideo(videoId) { it.copy(isLiked = enabled) }
+                return
+            }
+            val title = appContext.getString(R.string.liked_videos)
+            val playlists = readPlaylists().toMutableList()
+            val index = playlists.indexOfFirst { isYoutubeLikedPlaylist(it, title) }
+            if (index < 0 && !enabled) { updateVideo(videoId) { it.copy(isLiked = false) }; return }
+            val previous = playlists.getOrNull(index) ?: PlaylistUiModel(YOUTUBE_LIKED_LOCAL_ID, title, "",
+                videos.filter { it.isLiked && it.sourceId.equals("youtube", true) }.map(VideoUiModel::id))
+            val ids = if (enabled) (previous.videoIds + videoId).distinct() else previous.videoIds - videoId
+            val updated = previous.copy(videoIds = ids, videoCount = ids.size)
+            if (index < 0) playlists += updated else playlists[index] = updated
+            persistPlaylistMutation(playlists, likedUpdates = mapOf(videoId to enabled))
+        }
+    }
 
     override fun setAvailable(videoId: String, available: Boolean) =
         updateVideo(videoId) { it.copy(isAvailable = available) }
@@ -529,7 +548,8 @@ internal class SharedPreferencesLibraryRepository(
             val mergedPlaylists = readPlaylists().toMutableList()
             playlists.forEach { imported ->
                 val index = mergedPlaylists.indexOfFirst {
-                    it.id == imported.id || it.title.equals(imported.title, ignoreCase = true)
+                    it.id == imported.id || it.title.equals(imported.title, ignoreCase = true) ||
+                        (isYoutubeLikedPlaylistKey(imported.id) && isYoutubeLikedPlaylist(it, appContext.getString(R.string.liked_videos)))
                 }
                 if (index < 0) {
                     mergedPlaylists += imported
@@ -586,6 +606,7 @@ internal class SharedPreferencesLibraryRepository(
     private fun persistPlaylistMutation(
         playlists: List<PlaylistUiModel>,
         incomingVideos: Collection<VideoUiModel> = emptyList(),
+        likedUpdates: Map<String, Boolean> = emptyMap(),
     ) {
         val playlistNamesByVideoId = buildMap<String, MutableList<String>> {
             playlists.forEach { playlist ->
@@ -599,6 +620,7 @@ internal class SharedPreferencesLibraryRepository(
         val videos = savedVideos.values.map { video ->
             video.copy(
                 playlistNames = playlistNamesByVideoId[video.id].orEmpty(),
+                isLiked = likedUpdates[video.id] ?: video.isLiked,
             )
         }
         // Persist both halves in one editor: process death must not leave a playlist pointing

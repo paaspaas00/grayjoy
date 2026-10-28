@@ -687,4 +687,11 @@
     <string name="setup_player_layout">プレーヤーの配置</string>
     <string name="setup_player_standard">標準</string>
     <string name="setup_player_one_handed">片手操作</string>
+    <string name="music_tracks">曲</string>
+    <string name="playlist_reorder_lock">並べ替えをロック</string>
+    <plurals name="active_sources_short">
+        <item quantity="one">%d 件有効</item>
+        <item quantity="other">%d 件有効</item>
+    </plurals>
+    <string name="setup_diagnostics_body">問題の原因を調べるため、クラッシュやエラーの技術ログをこの端末に保存します。既定で有効ですが、ここや設定で無効にできます。自動送信は行いません。レポートを共有するかどうかは自分で選べます。</string>
 </resources>

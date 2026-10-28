@@ -687,4 +687,12 @@
     <string name="setup_player_layout">Diseño del reproductor</string>
     <string name="setup_player_standard">Normal</string>
     <string name="setup_player_one_handed">Una mano</string>
+    <string name="music_tracks">Canciones</string>
+    <string name="playlist_reorder_lock">Bloquear reordenación</string>
+    <plurals name="active_sources_short">
+        <item quantity="many">%d activas</item>
+        <item quantity="one">%d activa</item>
+        <item quantity="other">%d activas</item>
+    </plurals>
+    <string name="setup_diagnostics_body">Guarda registros técnicos de fallos y errores en este dispositivo para ayudar a diagnosticar problemas. Activado de forma predeterminada; puedes desactivarlo aquí o en Ajustes. No se envía nada automáticamente: tú decides si compartes un informe.</string>
 </resources>

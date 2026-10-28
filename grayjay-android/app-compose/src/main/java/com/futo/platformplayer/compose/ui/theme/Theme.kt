@@ -74,12 +74,13 @@ fun GrayjayTheme(
         if (sourceAccentColor == null || musicProfile) base
         else sourceProfileColorScheme(base, sourceAccentColor, darkTheme)
     }
-    val performance = remember(context) { devicePerformanceProfile(context) }
+    val performance = LocalDevicePerformanceProfile.current ?: remember(context) { devicePerformanceProfile(context) }
 
     CompositionLocalProvider(LocalDevicePerformanceProfile provides performance) {
         MaterialTheme(
             colorScheme = colors,
-            typography = GrayjayTypography,
+            typography = if (com.futo.platformplayer.compose.useSmallPhoneTypography(performance.isLowEnd,
+                configuration.screenWidthDp, configuration.fontScale)) SmallPhoneTypography else GrayjayTypography,
             shapes = GrayjayShapes,
             content = content,
         )

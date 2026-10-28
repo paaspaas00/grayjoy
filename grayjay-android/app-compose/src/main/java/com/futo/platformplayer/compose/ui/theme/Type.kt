@@ -32,3 +32,15 @@ val GrayjayTypography = Typography(
         lineHeight = 24.sp,
     ),
 )
+
+/** Compact rhythm only on constrained, narrow phones. System font enlargement stays respected. */
+internal val SmallPhoneTypography = GrayjayTypography.copy(
+    headlineMedium = GrayjayTypography.headlineMedium.copy(fontSize = 24.sp, lineHeight = 29.sp),
+    headlineSmall = GrayjayTypography.headlineSmall.copy(fontSize = 21.sp, lineHeight = 27.sp),
+    titleLarge = GrayjayTypography.titleLarge.copy(fontSize = 20.sp, lineHeight = 25.sp),
+    titleMedium = GrayjayTypography.titleMedium.copy(fontSize = 15.sp, lineHeight = 20.sp),
+    titleSmall = GrayjayTypography.titleSmall.copy(fontSize = 13.sp, lineHeight = 18.sp),
+    bodyLarge = GrayjayTypography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 21.sp),
+    bodyMedium = GrayjayTypography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 18.sp),
+    bodySmall = GrayjayTypography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+)

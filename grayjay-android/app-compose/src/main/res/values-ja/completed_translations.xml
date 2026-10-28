@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s/%2$s</string>
     <string name="update_downloaded_amount">%1$s ダウンロードされました</string>
     <string name="save_crash_logs">クラッシュログを保存する</string>
-    <string name="save_crash_logs_description">最新1,000件の技術イベントと最大10件のクラッシュログを端末に保存します。共有レポートには例外メッセージやコンテンツIDを含めません。新しいログはDownloads/Grayjoyにもコピーされます。自動送信は行いません。</string>
+    <string name="save_crash_logs_description">最新1,000件の技術イベントと最大10件のクラッシュログを端末に保存します。共有レポートには例外メッセージやコンテンツIDを含めません。自動送信は行いません。</string>
     <string name="open_navigation_menu">ナビゲーションメニューを開く</string>
     <string name="close_navigation_menu">ナビゲーションメニューを閉じる</string>
     <string name="comment_replies">返信</string>

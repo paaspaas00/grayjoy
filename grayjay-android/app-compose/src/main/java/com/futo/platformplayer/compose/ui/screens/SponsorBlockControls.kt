@@ -70,7 +70,7 @@ internal fun SponsorBlockRuleEditor(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Switch(
+                AdaptiveSwitch(
                     checked = rule.enabled,
                     onCheckedChange = { onRuleChange(rule.copy(enabled = it)) },
                     modifier = Modifier.testTag("sponsorblock-enabled"),
@@ -98,7 +98,7 @@ internal fun SponsorBlockRuleEditor(
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
-                    Switch(
+                    AdaptiveSwitch(
                         checked = skipNoticesEnabled,
                         onCheckedChange = onSkipNoticesEnabledChange,
                         modifier = Modifier.testTag("sponsorblock-skip-notices"),

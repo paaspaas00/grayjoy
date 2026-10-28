@@ -17,6 +17,7 @@ import androidx.work.WorkManager
 import com.futo.platformplayer.compose.background.YoutubeImportScheduler
 import com.futo.platformplayer.compose.data.ContentRepository
 import com.futo.platformplayer.compose.data.CachedHomePage
+import com.futo.platformplayer.compose.ui.usesMusicPresentation
 import com.futo.platformplayer.compose.data.CachedHomeSnapshot
 import com.futo.platformplayer.compose.data.HomeCacheRepository
 import com.futo.platformplayer.compose.data.forPagerSession
@@ -145,6 +146,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.withTimeout
@@ -224,7 +226,10 @@ internal fun activePlaylistDownloadBatches(
 ): Set<PlaylistDownloadBatchUiModel> = descriptors.mapNotNullTo(mutableSetOf()) { descriptor ->
     PlaylistDownloadBatchUiModel(descriptor.playlistId, descriptor.mediaType).takeIf {
         (descriptor.managedVideoIds - descriptor.excludedVideoIds).any { videoId ->
-            downloads[videoId]?.isComplete(descriptor.mediaType) != true
+            val download = downloads[videoId]
+            download?.isComplete(descriptor.mediaType) != true &&
+                descriptor.mediaType !in download?.failedMediaTypes.orEmpty() &&
+                !(download?.status == DownloadStatus.Failed && download.mediaType == descriptor.mediaType)
         }
     }
 }
@@ -667,6 +672,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }) }
         }
     private var appIsForeground = false
+    private var playbackVisualizationVisible = false
     private var externalNavigationRequestId = 0L
     private var suppressChromecastHandoff = false
     private var resumeLocalAfterFailedCast = false
@@ -703,6 +709,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     )
     private val _uiState = MutableStateFlow(
         GrayjayUiState(
+            isLibraryLoading = true,
+            home = HomeUiState(isLoading = true),
             videos = initialContent.videos,
             libraryVideos = allVideos,
             channels = initialContent.channels,
@@ -749,6 +757,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             searchHistoryEnabled = preferences.searchHistoryEnabled,
             groupHistoryByPlaylist = preferences.groupHistoryByPlaylist,
             crashLoggingEnabled = CrashLogStore.isEnabled(application),
+            crashLogsDownloadsCopy = CrashLogStore.isDownloadsCopyEnabled(application),
             keepScreenAwake = preferences.keepScreenAwake,
             pictureInPictureEnabled = preferences.pictureInPictureEnabled,
             automaticPlaylistDownloadsEnabled = preferences.automaticPlaylistDownloadsEnabled,
@@ -778,8 +787,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         configureYoutubeBackend()
         val initialLibraryRepository = libraryRepository
         val initialProfileId = activeProfileId
+        val initialPreferences = preferences
         libraryLoadJob = viewModelScope.launch(Dispatchers.IO) {
             val snapshot = initialLibraryRepository.snapshot()
+            val importedChannels = initialPreferences.loadImportedChannels()
             val savedArtwork = channelArtworkStore.load()
             val profileSources = loadSourceProfileCatalog()
             withContext(Dispatchers.Main.immediate) {
@@ -787,13 +798,17 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     initialProfileId == activeProfileId &&
                     initialLibraryRepository === libraryRepository
                 ) {
+                    importedChannels.forEach { channel ->
+                        registerRemoteChannel(channel.copy(thumbnailUrl =
+                            remoteChannels[channel.id]?.thumbnailUrl?.takeIf(String::isNotBlank) ?: channel.thumbnailUrl))
+                    }
                     savedArtwork.forEach { (channel, time) ->
                         registerRemoteChannel(channel)
                         channelArtworkChecks["${channel.sourceId}|${channel.id}"] = time
                     }
                     snapshot.videos.forEach(::registerRemoteChannel)
                     applyLibrarySnapshot(snapshot)
-                    _uiState.update { it.copy(channels = visibleKnownChannels(), sourceProfileCatalog = profileSources) }
+                    _uiState.update { it.copy(isLibraryLoading = false, channels = visibleKnownChannels(), sourceProfileCatalog = profileSources) }
                 }
             }
         }
@@ -816,7 +831,6 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         chromecastManager.onMediaEnded = {
             viewModelScope.launch(Dispatchers.Main.immediate) { skipToNext() }
         }
-        preferences.loadImportedChannels().forEach { remoteChannels[it.id] = it }
         observeScheduledYoutubeImports()
         allVideos.forEach(::registerRemoteChannel)
         _uiState.update { it.copy(channels = visibleKnownChannels()) }
@@ -1298,6 +1312,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(crashLoggingEnabled = enabled) }
     }
 
+    fun setCrashLogsDownloadsCopy(enabled: Boolean) {
+        CrashLogStore.setDownloadsCopyEnabled(getApplication(), enabled)
+        _uiState.update { it.copy(crashLogsDownloadsCopy = enabled) }
+    }
+
     fun setKeepScreenAwake(enabled: Boolean) {
         preferences.keepScreenAwake = enabled
         _uiState.update { it.copy(keepScreenAwake = enabled) }
@@ -1606,6 +1625,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun selectHomeFeed(feed: HomeFeedType) {
+        if (_uiState.value.usesMusicPresentation()) {
+            if (_uiState.value.home.musicSections.isEmpty() && !_uiState.value.home.isLoading) loadMusicHome(false)
+            return
+        }
         homeRestoreJob?.cancel()
         if (_uiState.value.home.selectedFeed == feed && _uiState.value.home.browseSourceId == null &&
             !_uiState.value.home.isLoading && _uiState.value.home.videos.isNotEmpty()) return
@@ -1816,6 +1839,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         mapValues { (_, values) -> values.toMap() }
 
     private fun loadHome(feed: HomeFeedType, forceRefresh: Boolean, preserveCachedItems: Boolean = false) {
+        if (_uiState.value.usesMusicPresentation()) {
+            loadMusicHome(forceRefresh)
+            return
+        }
         homeRestoreJob?.cancel()
         if (forceRefresh) {
             HomeSessionCache.removeFeed(activeProfileId, feed)
@@ -1962,6 +1989,30 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun loadMusicHome(forceRefresh: Boolean) {
+        homeRestoreJob?.cancel()
+        homeJob?.cancel()
+        homePagingJob?.cancel()
+        val generation = ++homeLoadGeneration
+        _uiState.update { it.copy(home = it.home.copy(selectedFeed = HomeFeedType.ForYou,
+            isLoading = it.home.musicSections.isEmpty(), isRefreshing = forceRefresh, errorMessage = null)) }
+        homeJob = viewModelScope.launch {
+            try {
+                val sections = engine.loadMusicHome(forceRefresh)
+                currentCoroutineContext().ensureActive()
+                if (generation != homeLoadGeneration) return@launch
+                val tracks = sections.flatMap { it.items }.filter { it.type == "track" }.map { it.asVideo() }.distinctBy(VideoUiModel::id)
+                tracks.forEach { remoteVideos[it.id] = it }
+                _uiState.update { state -> if (generation != homeLoadGeneration) state else state.copy(home = HomeUiState(
+                    selectedFeed = HomeFeedType.ForYou, musicSections = sections, videos = tracks)) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (generation == homeLoadGeneration) _uiState.update { it.copy(home = it.home.copy(
+                    isLoading = false, isRefreshing = false, errorMessage = text(R.string.home_feed_refresh_failed))) }
+            }
+        }
+    }
+
     private fun loadHomeBrowse(
         sourceId: String,
         groupId: String,
@@ -2073,14 +2124,23 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val browseSourceId = current.browseSourceId
         val browseGroupId = current.browseGroupId
         val browseOptionValue = current.browseOptionValue
+        val requestProfile = activeProfileId
+        val requestGeneration = homeLoadGeneration
         homePagingJob?.cancel()
         _uiState.update { it.copy(home = it.home.copy(isLoadingMore = true)) }
         homePagingJob = viewModelScope.launch {
             try {
                 val page = engine.loadMoreHome(feed, continuationId)
-                val newFeedVideos = page.videos
-                    .map { it.withPersistedLibraryState() }
-                    .withKnownChannelPresentation()
+                val savedSnapshot = savedVideosById
+                val channelSnapshot = remoteChannels.values.toList() + content.channels
+                val preparedVideos = withContext(Dispatchers.Default) {
+                    page.videos.map { it.withPersistedLibraryState(savedSnapshot) }
+                        .withKnownChannelPresentation(knownChannelsSnapshot = channelSnapshot)
+                }
+                currentCoroutineContext().ensureActive()
+                if (requestProfile != activeProfileId || requestGeneration != homeLoadGeneration) return@launch
+                val newFeedVideos = if (savedSnapshot === savedVideosById) preparedVideos
+                    else preparedVideos.map { it.withPersistedLibraryState() }
                 val newVideos = videosForHomeFeed(feed, newFeedVideos)
                 newFeedVideos.forEach { remoteVideos[it.id] = it }
                 newFeedVideos.forEach(::registerRemoteChannel)
@@ -2419,6 +2479,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             searchHistoryEnabled = preferences.searchHistoryEnabled,
             groupHistoryByPlaylist = preferences.groupHistoryByPlaylist,
             crashLoggingEnabled = CrashLogStore.isEnabled(getApplication()),
+            crashLogsDownloadsCopy = CrashLogStore.isDownloadsCopyEnabled(getApplication()),
             keepScreenAwake = preferences.keepScreenAwake,
             pictureInPictureEnabled = preferences.pictureInPictureEnabled,
             automaticPlaylistDownloadsEnabled = preferences.automaticPlaylistDownloadsEnabled,
@@ -2480,6 +2541,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     fun setAppForeground(foreground: Boolean) {
         appIsForeground = foreground
+        engine.setAudioVisualizationVisible(foreground && playbackVisualizationVisible && !_uiState.value.usesMusicPresentation())
         if (foreground) {
             if (jobsNeedRestoration) {
                 jobsNeedRestoration = false
@@ -2749,6 +2811,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         metadataHydrationPublishJob = viewModelScope.launch {
             delay(120L)
             while (pendingMetadataPresentations.isNotEmpty() && publishGeneration == metadataHydrationGeneration) {
+                // Thumbnails/times can wait for a fling to settle; playback and paging cannot.
+                while (devicePerformanceProfile(getApplication()).isLowEnd && ForegroundWorkBudget.shouldYield()) delay(120L)
+                if (publishGeneration != metadataHydrationGeneration) break
                 val currentProfileId = activeProfileId
                 val prefix = "$currentProfileId|"
                 val pendingBatch = pendingMetadataPresentations.toMap()
@@ -2758,17 +2823,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     .filter { (key, _) -> key.startsWith(prefix) }
                     .associate { (key, value) -> key.removePrefix(prefix) to value }
                 if (presentations.isNotEmpty()) {
-                    homeFeedCache.replaceAll { _, videos ->
-                        videos.applyMetadataPresentations(presentations)
-                    }
-                    remoteVideos.replaceAll { id, video ->
-                        presentations[id]?.let { video.applyMetadataPresentation(it) } ?: video
-                    }
                     _uiState.update { state ->
-                        presentations.entries.fold(state) { current, (id, value) ->
-                            updateVideoEverywhere(current, id) {
-                                it.applyMetadataPresentation(value)
-                            }
+                        updateVideosEverywhere(state, presentations.keys) { video ->
+                            presentations[video.id]?.let { video.applyMetadataPresentation(it) } ?: video
                         }
                     }
                     presentations.forEach { (id, value) -> metadataPersistenceBuffer.put(currentProfileId, id, value) }
@@ -3759,14 +3816,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun playPlaylist(playlistId: String) {
-        val playlist = libraryRepository.loadPlaylists().firstOrNull { it.id == playlistId } ?: return
+        val playlist = _uiState.value.playlists.firstOrNull { it.id == playlistId } ?: return
         activePlaylistId = playlistId
         startQueue(playlistPlaybackOrder(playlist.videoIds, shuffle = playlistId in _uiState.value.shuffledPlaylistIds))
         rememberPlayedPlaylist(playlist)
     }
 
     fun playPlaylistFrom(playlistId: String, videoId: String) {
-        val playlist = libraryRepository.loadPlaylists().firstOrNull { it.id == playlistId } ?: return
+        val playlist = _uiState.value.playlists.firstOrNull { it.id == playlistId } ?: return
         val queueIds = playlistPlaybackOrder(playlist.videoIds, videoId, playlistId in _uiState.value.shuffledPlaylistIds)
         if (queueIds.isEmpty()) return
         activePlaylistId = playlistId
@@ -3774,9 +3831,50 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         rememberPlayedPlaylist(playlist)
     }
 
+    fun playPlaylistOrder(playlistId: String, draft: List<String>) {
+        fun play(playlist: PlaylistUiModel, available: List<String>) {
+            val ids = com.futo.platformplayer.compose.ui.screens.reconcileReorderDraft(draft, available)
+            if (ids.isEmpty()) return
+            activePlaylistId = playlist.id.takeIf { playlist.sourceId.isBlank() }
+            _uiState.update { it.copy(playbackPlaylist = playlist) }
+            startQueue(ids)
+            rememberPlayedPlaylist(playlist)
+            publishExternalNavigation(ExternalNavigationKind.Video, ids.first())
+        }
+        val remote = _uiState.value.remotePlaylistDetail.playlist
+        if (remote?.id == playlistId && remote.sourceId.isNotBlank()) {
+            launchRemotePlaylistFullLoad { playlist, videos ->
+                if (playlist.id == playlistId) play(playlist, videos.map(VideoUiModel::id))
+            }
+        } else {
+            val playlist = _uiState.value.playlists.firstOrNull { it.id == playlistId } ?: return
+            play(playlist, playlist.videoIds)
+        }
+    }
+
     fun setPlaylistShuffled(playlistId: String, shuffled: Boolean) {
         playlistPlaybackPreferences.setShuffled(playlistId, shuffled)
         _uiState.update { it.copy(shuffledPlaylistIds = playlistPlaybackPreferences.shuffledIds()) }
+    }
+
+    fun updatePlaylistPlaybackOrder(playlistId: String, orderedIds: List<String>) {
+        val session = playbackQueueSession ?: return
+        if (activePlaylistId != playlistId && _uiState.value.playbackPlaylist?.id != playlistId) return
+        if (session.profileId != activeProfileId || session.generation != playbackGeneration || _uiState.value.playback.isCasting) return
+        val current = engine.playback.value.currentVideoId ?: return
+        val ids = orderedIds.distinct().filter { findVideo(it) != null }
+        if (current !in ids) return
+        queuePreparation.cancel()
+        session.knownVideoIds.clear()
+        session.knownVideoIds.addAll(ids)
+        session.orderedVideoIds.clear()
+        session.orderedVideoIds.addAll(ids)
+        engine.reorderPreparedQueue(ids)
+        val prepared = engine.playback.value.queueVideoIds.toSet()
+        session.pendingVideos.clear()
+        session.pendingVideos.addAll(ids.drop(ids.indexOf(current) + 1).filterNot(prepared::contains).mapNotNull(::findVideo))
+        publishLogicalQueue()
+        prepareQueueLookAhead()
     }
 
     private fun rememberPlayedPlaylist(playlist: PlaylistUiModel) {
@@ -3836,6 +3934,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 )
                 playbackQueueSession = null
                 recordHistory(queue.first())
+                engine.setMusicPlaybackMode(_uiState.value.usesMusicPresentation())
                 engine.open(listOf(queue.first()), queue.first().id, playWhenReady = false)
                 if (pendingPlaybackVideoId == queue.first().id) pendingPlaybackVideoId = null
                 _uiState.update { state ->
@@ -4420,6 +4519,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (voiceRequest != null) pendingVoicePlayback = null
         val requestedPlayback = voiceRequest?.second ?: playWhenReady
         val casting = chromecastManager.state.value.isConnected
+        engine.setMusicPlaybackMode(_uiState.value.usesMusicPresentation())
         engine.open(listOf(video), video.id, playWhenReady = requestedPlayback && !casting)
         if (casting) {
             chromecastManager.cast(
@@ -5275,8 +5375,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun downloadRemotePlaylist(mediaType: DownloadMediaType) = launchRemotePlaylistFullLoad(mediaType) { _, videos ->
-        downloadVideos(videos.filter(VideoUiModel::supportsOfflineDownload).map(VideoUiModel::id), mediaType)
+    fun downloadRemotePlaylist(mediaType: DownloadMediaType) {
+        if (mediaType in _uiState.value.remotePlaylistDetail.activeDownloadMediaTypes) {
+            Toast.makeText(getApplication(), R.string.playlist_already_downloading, Toast.LENGTH_SHORT).show()
+            return
+        }
+        launchRemotePlaylistFullLoad(mediaType) { _, videos ->
+            downloadVideos(videos.filter(VideoUiModel::supportsOfflineDownload).map(VideoUiModel::id), mediaType)
+        }
     }
 
     fun cancelRemotePlaylistDownload(mediaType: DownloadMediaType) {
@@ -5935,6 +6041,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun downloadPlaylist(playlistId: String, mediaType: DownloadMediaType) {
+        val pendingKey = playlistDownloadPreparationKey(activeProfileId, playlistId, mediaType)
+        if (downloadBatchPreparationJobs[pendingKey]?.isActive == true ||
+            _uiState.value.activePlaylistDownloads.any { it.playlistId == playlistId && it.mediaType == mediaType }) {
+            Toast.makeText(getApplication(), R.string.playlist_already_downloading, Toast.LENGTH_SHORT).show()
+            return
+        }
         val playlist = _uiState.value.playlists.firstOrNull { it.id == playlistId }
             ?: return
         val downloadableIds = playlist.videoIds.filter {
@@ -6559,16 +6671,36 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private val likeMutations = kotlinx.coroutines.sync.Mutex()
+    private var likeMutationSequence = 0L
     fun toggleLiked(videoId: String) {
         val video = findVideo(videoId) ?: return
         val enabled = !video.isLiked
-        tryLibraryMutation {
-            libraryRepository.saveVideo(video)
-            libraryRepository.setLiked(videoId, enabled)
-        } ?: return
-        _uiState.update { state ->
-            updateVideoEverywhere(state, videoId) { it.copy(isLiked = enabled) }
-                .copy(libraryVideos = libraryRepository.loadSavedVideos())
+        val repository = libraryRepository
+        val profile = activeProfileId
+        val sequence = ++likeMutationSequence
+        remoteVideos[videoId] = video.copy(isLiked = enabled)
+        _uiState.update { state -> updateVideoEverywhere(state, videoId) { it.copy(isLiked = enabled) } }
+        viewModelScope.launch {
+            likeMutations.withLock {
+                try {
+                    val snapshot = withContext(Dispatchers.IO) {
+                        repository.saveVideo(video)
+                        repository.setLiked(videoId, enabled)
+                        repository.snapshot()
+                    }
+                    if (sequence == likeMutationSequence && profile == activeProfileId && repository === libraryRepository && findVideo(videoId)?.isLiked == enabled) {
+                        applyLibrarySnapshot(snapshot)
+                    }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (error: Exception) {
+                    Log.e("GrayjayViewModel", "Could not save local like", error)
+                    if (profile == activeProfileId && findVideo(videoId)?.isLiked == enabled) {
+                        remoteVideos[videoId] = video
+                        _uiState.update { state -> updateVideoEverywhere(state, videoId) { it.copy(isLiked = video.isLiked) } }
+                    }
+                }
+            }
         }
     }
 
@@ -6658,8 +6790,32 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun reorderPlaylist(playlistId: String, orderedVideoIds: List<String>) {
-        tryLibraryMutation { libraryRepository.reorderPlaylist(playlistId, orderedVideoIds) } ?: return
-        reloadLibrary()
+        val remote = _uiState.value.remotePlaylistDetail
+        if (remote.playlist?.id == playlistId && remote.playlist.sourceId.isNotBlank()) {
+            val byId = remote.videos.associateBy(VideoUiModel::id)
+            val ids = com.futo.platformplayer.compose.ui.screens.reconcileReorderDraft(orderedVideoIds, remote.videos.map(VideoUiModel::id))
+            _uiState.update { state ->
+                if (state.remotePlaylistDetail.playlist?.id != playlistId) state else state.copy(
+                    remotePlaylistDetail = state.remotePlaylistDetail.copy(videos = ids.mapNotNull(byId::get)))
+            }
+            rememberRemotePlaylistNavigation()
+            return
+        }
+        val profile = activeProfileId
+        val repository = libraryRepository
+        _uiState.update { state -> state.copy(playlists = state.playlists.map { playlist ->
+            if (playlist.id != playlistId) playlist else playlist.copy(videoIds =
+                com.futo.platformplayer.compose.ui.screens.reconcileReorderDraft(orderedVideoIds, playlist.videoIds))
+        }) }
+        viewModelScope.launch {
+            val snapshot = tryLibraryMutation { withContext(Dispatchers.IO) {
+                repository.reorderPlaylist(playlistId, orderedVideoIds) ?: return@withContext null
+                repository.snapshot()
+            } }
+            if (profile == activeProfileId && repository === libraryRepository) {
+                if (snapshot != null) applyLibrarySnapshot(snapshot) else reloadLibrary()
+            }
+        }
     }
 
     fun requestHistoryMusicClassification(videoIds: List<String>) {
@@ -6674,6 +6830,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val classifier = com.futo.platformplayer.compose.background.HistoryMusicClassifier
         classifier.schedule(getApplication(), profile)
         historyMusicScanJob = viewModelScope.launch {
+            var lastLibraryCheckpoint: Triple<UUID?, Long, Boolean>? = null
             WorkManager.getInstance(getApplication<Application>()).getWorkInfosForUniqueWorkFlow(classifier.tag(profile))
                 .collect { infos ->
                     if (profile != activeProfileId || repository !== libraryRepository) return@collect
@@ -6685,6 +6842,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         completed = progress.getInt(classifier.COMPLETED, 0),
                         total = progress.getInt(classifier.TOTAL, 0),
                     )) }
+                    val checkpoint = Triple(work?.id, progress.getLong(classifier.PERSISTED, 0L), work?.state?.isFinished == true)
+                    if (checkpoint == lastLibraryCheckpoint) return@collect
+                    lastLibraryCheckpoint = checkpoint
+                    while (ForegroundWorkBudget.shouldYield()) delay(250L)
                     val snapshot = withContext(Dispatchers.IO) {
                         repository.snapshot()
                     }
@@ -7884,12 +8045,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun VideoUiModel.withPersistedLibraryState(): VideoUiModel {
+    private fun VideoUiModel.withPersistedLibraryState(savedState: Map<String, VideoUiModel> = savedVideosById): VideoUiModel {
         // allVideos is the in-memory mirror of the active profile's library. The former helper
         // called LibraryRepository.load() here, which reparsed the complete history JSON once per
         // search/home/channel result (80 full parses after a typical subscription refresh) and
         // twice while opening a video.
-        val saved = savedVideosById[id] ?: return this
+        val saved = savedState[id] ?: return this
         if (
             isWatchLater == saved.isWatchLater && isDownloaded == saved.isDownloaded &&
             watchProgress == saved.watchProgress && isLiked == saved.isLiked &&
@@ -7930,13 +8091,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
      */
     private fun List<VideoUiModel>.withKnownChannelPresentation(
         extraChannels: List<ChannelUiModel> = emptyList(),
+        knownChannelsSnapshot: List<ChannelUiModel>? = null,
     ): List<VideoUiModel> {
         if (isEmpty() || all { it.authorThumbnailUrl.isNotBlank() }) return this
-        val knownChannels = sequenceOf(
+        val knownChannels = (knownChannelsSnapshot?.asSequence() ?: sequenceOf(
             extraChannels.asSequence(),
             remoteChannels.values.asSequence(),
             content.channels.asSequence(),
-        ).flatten().filter { it.thumbnailUrl.isNotBlank() }.distinctBy(ChannelUiModel::id).toList()
+        ).flatten()).filter { it.thumbnailUrl.isNotBlank() }.distinctBy(ChannelUiModel::id).toList()
         if (knownChannels.isEmpty()) return this
 
         val byReference = HashMap<String, ChannelUiModel>(knownChannels.size * 2)
@@ -8155,7 +8317,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 state.remotePlaylistDetail.activeDownloadMediaTypes.filterTo(mutableSetOf()) { type ->
                     state.remotePlaylistDetail.videos
                         .filter(VideoUiModel::supportsOfflineDownload)
-                        .any { video -> visibleDownloads[video.id]?.isComplete(type) != true }
+                        .any { video ->
+                            val download = visibleDownloads[video.id]
+                            download?.isComplete(type) != true && type !in download?.failedMediaTypes.orEmpty() &&
+                                !(download?.status == DownloadStatus.Failed && download.mediaType == type)
+                        }
                 }
             }
             if (
@@ -8277,6 +8443,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         applyLibrarySnapshot(libraryRepository.snapshot())
     }
 
+    fun setPlaybackVisualizationVisible(visible: Boolean) {
+        playbackVisualizationVisible = visible
+        engine.setAudioVisualizationVisible(appIsForeground && visible && !_uiState.value.usesMusicPresentation())
+    }
+
     private fun applyLibrarySnapshot(
         snapshot: com.futo.platformplayer.compose.data.LibrarySnapshot,
     ) {
@@ -8352,58 +8523,65 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         state: GrayjayUiState,
         videoId: String,
         transform: (VideoUiModel) -> VideoUiModel,
+    ): GrayjayUiState = updateVideosEverywhere(state, setOf(videoId), transform)
+
+    private fun updateVideosEverywhere(
+        state: GrayjayUiState,
+        videoIds: Set<String>,
+        transform: (VideoUiModel) -> VideoUiModel,
     ): GrayjayUiState {
-        allVideos = allVideos.mapIfChanged { if (it.id == videoId) transform(it) else it }
-        savedVideosById = allVideos.associateBy(VideoUiModel::id)
-        remoteVideos[videoId]?.let { remoteVideos[videoId] = transform(it) }
+        val previousLibrary = allVideos
+        allVideos = allVideos.mapIfChanged { if (it.id in videoIds) transform(it) else it }
+        if (allVideos !== previousLibrary) savedVideosById = allVideos.associateBy(VideoUiModel::id)
+        videoIds.forEach { id -> remoteVideos[id]?.let { remoteVideos[id] = transform(it) } }
         homeFeedCache.replaceAll { _, videos ->
-            videos.mapIfChanged { if (it.id == videoId) transform(it) else it }
+            videos.mapIfChanged { if (it.id in videoIds) transform(it) else it }
         }
         return state.copy(
-            videos = state.videos.mapIfChanged { if (it.id == videoId) transform(it) else it },
+            videos = state.videos.mapIfChanged { if (it.id in videoIds) transform(it) else it },
             subscriptionVideos = state.subscriptionVideos.mapIfChanged {
-                if (it.id == videoId) transform(it) else it
+                if (it.id in videoIds) transform(it) else it
             },
             followingVideos = state.followingVideos.mapIfChanged {
-                if (it.id == videoId) transform(it) else it
+                if (it.id in videoIds) transform(it) else it
             },
             home = state.home.copy(
                 videos = state.home.videos.mapIfChanged {
-                    if (it.id == videoId) transform(it) else it
+                    if (it.id in videoIds) transform(it) else it
                 },
             ),
             libraryVideos = state.libraryVideos.mapIfChanged {
-                if (it.id == videoId) transform(it) else it
+                if (it.id in videoIds) transform(it) else it
             },
             playbackQueueVideos = state.playbackQueueVideos.mapIfChanged {
-                if (it.id == videoId) transform(it) else it
+                if (it.id in videoIds) transform(it) else it
             },
             search = state.search.copy(
-                videos = state.search.videos.mapIfChanged { if (it.id == videoId) transform(it) else it },
+                videos = state.search.videos.mapIfChanged { if (it.id in videoIds) transform(it) else it },
             ),
             channelDetail = state.channelDetail.copy(
                 videos = state.channelDetail.videos.mapIfChanged {
-                    if (it.id == videoId) transform(it) else it
+                    if (it.id in videoIds) transform(it) else it
                 },
                 shorts = state.channelDetail.shorts.mapIfChanged {
-                    if (it.id == videoId) transform(it) else it
+                    if (it.id in videoIds) transform(it) else it
                 },
                 liveStreams = state.channelDetail.liveStreams.mapIfChanged {
-                    if (it.id == videoId) transform(it) else it
+                    if (it.id in videoIds) transform(it) else it
                 },
                 searchVideos = state.channelDetail.searchVideos.mapIfChanged {
-                    if (it.id == videoId) transform(it) else it
+                    if (it.id in videoIds) transform(it) else it
                 },
             ),
             remotePlaylistDetail = state.remotePlaylistDetail.copy(
                 videos = state.remotePlaylistDetail.videos.mapIfChanged {
-                    if (it.id == videoId) transform(it) else it
+                    if (it.id in videoIds) transform(it) else it
                 },
             ),
             nowPlaying = state.nowPlaying.copy(
-                video = state.nowPlaying.video?.let { if (it.id == videoId) transform(it) else it },
+                video = state.nowPlaying.video?.let { if (it.id in videoIds) transform(it) else it },
                 recommendations = state.nowPlaying.recommendations.mapIfChanged {
-                    if (it.id == videoId) transform(it) else it
+                    if (it.id in videoIds) transform(it) else it
                 },
             ),
         )
@@ -8565,6 +8743,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun applyPlaybackPreferences() {
+        engine.setMusicPlaybackMode(_uiState.value.usesMusicPresentation())
         engine.setAudioNormalizationEnabled(preferences.audioNormalizationEnabled)
         applyPlaybackSpeed(_uiState.value.nowPlaying.video)
         engine.setOtherAudioDucking(

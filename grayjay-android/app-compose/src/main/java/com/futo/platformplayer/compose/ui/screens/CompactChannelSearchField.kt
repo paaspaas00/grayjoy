@@ -31,7 +31,7 @@ internal fun CompactChannelSearchField(value: String, onValueChange: (String) ->
     var focused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    val shape = RoundedCornerShape(12.dp)
+    val shape = SearchFieldShape
     val searchLabel = stringResource(R.string.search_channel_videos)
     val countLabel = pluralStringResource(R.plurals.video_count, count, count)
     BasicTextField(
@@ -48,7 +48,6 @@ internal fun CompactChannelSearchField(value: String, onValueChange: (String) ->
             Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape)
-                    .then(if (focused) Modifier.border(1.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
                     .padding(start = 12.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

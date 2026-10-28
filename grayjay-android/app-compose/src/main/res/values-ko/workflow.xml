@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">이미 다운로드 중인 재생목록입니다</string>
+    <string name="playlist_shuffle_order">셔플 및 순서</string>
+    <string name="play_in_this_order">이 순서로 재생</string>
+    <string name="discard_order_title">새 순서를 저장할까요?</string>
+    <string name="discard_order_body">재생목록은 아직 변경되지 않았습니다. 순서를 저장하거나 변경사항을 버리세요.</string>
+    <string name="discard_changes">변경사항 버리기</string>
+    <string name="music_favorites">즐겨찾기</string>
+    <string name="add_music_favorite">즐겨찾기에 추가</string>
+    <string name="remove_music_favorite">즐겨찾기에서 삭제</string>
+    <string name="favorites_empty">즐겨찾는 곡이 여기에 표시됩니다.</string>
+    <string name="crash_logs_downloads">다운로드 폴더에도 오류 로그 저장</string>
+    <string name="crash_logs_downloads_description">선택적인 공개 사본입니다. 공유용 ZIP은 항상 앱의 비공개 로그에서 생성됩니다.</string>
+    <string name="youtube_sync_direction">동기화는 YouTube에서 Grayjoy로만 데이터를 복사합니다. 로컬 변경사항은 YouTube로 전송되지 않습니다. 양방향 동기화는 개발 중입니다.</string>
+    <string name="help_spotify_favorites">좋아하는 음악 저장하기</string>
+    <string name="help_spotify_favorites_body">플레이어나 곡 메뉴의 별을 누르세요. 즐겨찾기는 홈과 라이브러리에서도 볼 수 있습니다.</string>
+    <string name="help_spotify_offline">오프라인 감상용 재생목록 다운로드</string>
+    <string name="help_spotify_offline_body">재생목록이나 앨범을 열고 오디오 다운로드를 누르세요. 회전 표시가 보이면 이미 다운로드 중이며, 눌러도 취소되지 않습니다.</string>
+    <string name="help_spotify_order">재생 순서 선택하기</string>
+    <string name="help_spotify_order_body">셔플 및 순서를 여세요. 곡을 드래그하거나 섞은 뒤, 저장 없이 들으려면 이 순서로 재생을, 순서를 유지하려면 저장을 선택하세요. 온라인 재생목록은 로컬 사본으로 저장됩니다.</string>
+    <string name="help_music_home_step">홈에서 곡, 아티스트, 앨범 또는 최근 재생목록을 선택하세요.</string>
+    <string name="help_music_star_step">별을 눌러 현재 곡을 즐겨찾기에 추가하거나 삭제하세요.</string>
+    <string name="help_music_download_step">오디오 다운로드를 누르세요. 작업 패널에서 진행 상황을 확인할 수 있습니다.</string>
+    <string name="help_music_order_step">셔플 및 순서를 열어 원하는 순서나 무작위 순서를 선택하세요.</string>
+    <string name="help_music_play_order_step">이 순서로 재생하거나 재생목록의 새 순서를 저장하세요.</string>
+</resources>

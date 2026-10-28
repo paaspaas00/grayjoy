@@ -160,7 +160,7 @@
     <string name="update_download_progress">%2$s 的 %1$s</string>
     <string name="update_downloaded_amount">%1$s 下载</string>
     <string name="save_crash_logs">保存崩溃日志</string>
-    <string name="save_crash_logs_description">在本地保留最近 1,000 条技术事件和最多 10 份崩溃日志。分享报告不包含异常消息或内容标识符。新日志也会复制到 Downloads/Grayjoy。不会自动上传。</string>
+    <string name="save_crash_logs_description">在本地保留最近 1,000 条技术事件和最多 10 份崩溃日志。分享报告不包含异常消息或内容标识符。不会自动上传。</string>
     <string name="open_navigation_menu">打开导航菜单</string>
     <string name="close_navigation_menu">关闭导航菜单</string>
     <string name="comment_replies">回复</string>

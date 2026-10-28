@@ -12,6 +12,8 @@ class GuidedSetupFlowTest {
             assertEquals(SetupStep.Done, steps.last())
             assertEquals(steps.size, steps.distinct().size)
             assertTrue(SetupStep.PlayerLayout in steps)
+            assertTrue(SetupStep.Diagnostics in steps)
+            assertTrue(steps.indexOf(SetupStep.Diagnostics) < steps.indexOf(SetupStep.Done))
             assertTrue(steps.indexOf(SetupStep.PlayerLayout) < steps.indexOf(SetupStep.Done))
             val choice = steps.indexOf(SetupStep.ImportChoice)
             assertEquals(if (youtube || files) SetupStep.ImportDetails else SetupStep.Shorts, steps[choice + 1])

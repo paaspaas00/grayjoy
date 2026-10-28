@@ -56,7 +56,7 @@ internal class ChromecastManager(context: Context) {
 
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val castContext = CastContext()
+    private val castContext by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { CastContext() }
     private val devices = ConcurrentHashMap<String, DeviceInfo>()
     private val server = CastHttpServer()
     private val _state = MutableStateFlow(ChromecastUiState())

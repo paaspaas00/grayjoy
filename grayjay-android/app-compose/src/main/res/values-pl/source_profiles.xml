@@ -1,0 +1,41 @@
+<resources>
+    <string name="setup_welcome_channels_body">Filmy, muzyka i ulubione kanały w jednej aplikacji. Szukaj, obserwuj kanały, zapisuj playlisty i pobieraj treści offline. Skonfigurujmy wszystko razem — wiedza techniczna nie jest potrzebna.</string>
+    <string name="setup_tour_following_channels">Obserwuj kanał, aby widzieć tutaj jego nowe filmy. Możesz odświeżać listę, filtrować kanały i zarządzać subskrypcjami.</string>
+    <string name="channel_label">Kanał</string>
+    <string name="channels_label">Kanały</string>
+    <string name="your_channels">Twoje kanały</string>
+    <string name="home_empty_channels">Obserwuj kanały, aby widzieć tutaj ich najnowsze filmy.</string>
+    <string name="no_followed_channels">Nie obserwujesz kanałów z włączonych źródeł.</string>
+    <string name="channel_load_failed">Nie udało się wczytać kanału.</string>
+    <string name="imported_channel">Zaimportowany kanał</string>
+    <string name="unknown_channel">Nieznany kanał</string>
+    <string name="search_channels_hint">Szukaj filmów, kanałów i playlist</string>
+    <string name="help_choose_channel_filter">Dotknij karty „%1$s” pod polem wyszukiwania, aby zobaczyć pasujące kanały. Jeśli nie ma wyników, wpisz dokładniejszą nazwę.</string>
+    <string name="help_open_channel_result">Dotknij kanału, który chcesz obserwować. Otworzy się jego strona.</string>
+    <string name="profile_split_title">Osobny profil dla każdego źródła?</string>
+    <string name="profile_split_body">Możesz oddzielić YouTube i Spotify, każde z własną historią, playlistami i kolorem. Profil główny zostanie ukryty, nie usunięty. Treści z kwalifikujących się profili zostaną skopiowane do profilu odpowiedniego źródła. Profili YouTube i Spotify nie można usunąć; każdy używa tylko własnego źródła.</string>
+    <string name="profile_split_privacy">Profile prywatne oraz chronione kodem PIN lub uwierzytelnianiem urządzenia są pomijane. Ich dane pozostają na miejscu. Dostępne logowania z niechronionych profili są używane ponownie; bieżący profil ma pierwszeństwo.</string>
+    <string name="profile_split_yes">Tak, oddziel YouTube i Spotify</string>
+    <string name="profile_split_no">Nie, zachowaj obecne profile</string>
+    <string name="profile_split_choose">Wybierz inne profile źródeł</string>
+    <string name="profile_split_choose_body">YouTube i Spotify są uwzględnione. Możesz też utworzyć profile dla poniższych źródeł. Istniejące profile źródeł są już zaznaczone.</string>
+    <string name="profile_split_offline">Ukończone pobrania są używane ponownie bez pobierania plików. Oryginały pozostają w swoich profilach.</string>
+    <string name="profile_split_apply">Utwórz profile i uporządkuj bibliotekę</string>
+    <string name="profile_split_enabled">Oddzielne profile źródeł są gotowe.</string>
+    <string name="profile_split_progress">Przygotowywanie profili: %1$d/%2$d</string>
+    <string name="profile_split_busy">Zakończ lub anuluj bieżące importy i pobrania przed porządkowaniem profili.</string>
+    <string name="profile_split_failed">Nie udało się przygotować profili. Oryginalne dane nie zostały usunięte.</string>
+    <string name="profile_split_install_sources">Najpierw zainstaluj wybrane źródła w Ustawienia → Źródła, potem spróbuj ponownie.</string>
+    <string name="profile_split_unlock_target">Profile docelowe są chronione. Otwórz niechroniony profil przed kontynuowaniem.</string>
+    <string name="profile_split_scope_changed">Podczas przygotowywania profil źródłowy został zabezpieczony lub usunięty. Oczekujące kopie nie zostały aktywowane; oryginalne dane są bezpieczne.</string>
+    <string name="source_profile_locked">Ten profil jest przeznaczony dla jednego źródła. Możesz się zalogować lub je zaktualizować, ale nie możesz go usunąć ani dodać innych źródeł.</string>
+    <string name="setup_help_title">Pomoc jest zawsze pod ręką</string>
+    <string name="setup_help_body">Na stronie głównej dotknij znaku zapytania u góry po lewej, aby otworzyć pomoc interaktywną. Przycisk Konfiguracja z przewodnikiem ponownie otwiera kreator.</string>
+    <string name="help_profiles">Zmień profil źródła</string>
+    <string name="help_profiles_body">Przełączaj się między profilami źródeł. Każdy ma własną bibliotekę, logowanie i kolor.</string>
+    <string name="help_profiles_open">Dotknij ikony profilu u góry po prawej na stronie głównej, aby zobaczyć dostępne profile.</string>
+    <string name="help_profiles_choose">Wybierz profil źródła. Przeciągnij w górę lub w dół po ikonie profilu na stronie głównej, aby szybko zmienić profil; chronione profile są pomijane. Chroniony profil wybierz i odblokuj tutaj.</string>
+    <plurals name="followed_channels"><item quantity="one">%d obserwowany kanał</item><item quantity="few">%d obserwowane kanały</item><item quantity="many">%d obserwowanych kanałów</item><item quantity="other">%d obserwowanego kanału</item></plurals>
+    <string name="source_logged_in_as">Zalogowano jako %1$s</string>
+    <string name="source_logged_in_identity_pending">Zalogowano · nazwa konta niedostępna</string>
+</resources>

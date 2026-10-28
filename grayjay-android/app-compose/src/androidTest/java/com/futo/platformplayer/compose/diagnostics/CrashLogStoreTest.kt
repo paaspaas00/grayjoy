@@ -11,7 +11,10 @@ import org.junit.runner.RunWith
 class CrashLogStoreTest {
     @Test
     fun crashLogIsAlsoWrittenToDownloadsWithReadableTimestamp() {
+        org.junit.Assume.assumeTrue(android.os.Build.VERSION.SDK_INT >= 29)
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val previous = CrashLogStore.isDownloadsCopyEnabled(context)
+        CrashLogStore.setDownloadsCopyEnabled(context, true)
         val internal = CrashLogStore.writeCrash(
             context,
             Thread.currentThread(),
@@ -35,6 +38,7 @@ class CrashLogStoreTest {
         } finally {
             uri?.let { resolver.delete(it, null, null) }
             internal.delete()
+            CrashLogStore.setDownloadsCopyEnabled(context, previous)
         }
     }
 }

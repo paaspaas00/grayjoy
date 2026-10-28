@@ -31,6 +31,7 @@ internal object HistoryMusicClassifier {
     const val PROFILE = "profile"
     const val COMPLETED = "completed"
     const val TOTAL = "total"
+    const val PERSISTED = "persisted"
     fun tag(profile: String) = "history-music-$profile"
     fun schedule(context: Context, profile: String) {
         enqueue(context, profile, ExistingWorkPolicy.KEEP)
@@ -74,6 +75,9 @@ class HistoryMusicWorker(context: Context, parameters: WorkerParameters) : Corou
         setProgress(workDataOf(HistoryMusicClassifier.COMPLETED to completed, HistoryMusicClassifier.TOTAL to history.size))
         val started = android.os.SystemClock.elapsedRealtime()
         val pending = linkedMapOf<String, Boolean>()
+        var persisted = 0L
+        var progressPublishedAt = 0L
+        val constrained = com.futo.platformplayer.compose.devicePerformanceProfile(applicationContext).isLowEnd
         fun flush() {
             if (pending.isEmpty()) return
             synchronized(repository.transactionLock) {
@@ -82,6 +86,7 @@ class HistoryMusicWorker(context: Context, parameters: WorkerParameters) : Corou
                     pending[video.id]?.takeIf { video.isMusic == null }?.let { video.copy(isMusic = it) }
                 }
                 repository.saveVideos(patches)
+                if (patches.isNotEmpty()) persisted++
             }
             pending.clear()
         }
@@ -89,7 +94,7 @@ class HistoryMusicWorker(context: Context, parameters: WorkerParameters) : Corou
             for ((index, video) in candidates.withIndex()) {
                 coroutineContext.ensureActive()
                 if (wasProfileDeleted(applicationContext, profile)) return@withContext Result.success()
-                while (HistoryMusicClassifier.deferForPlaybackBuffering) delay(1000L)
+                while (HistoryMusicClassifier.deferForPlaybackBuffering || com.futo.platformplayer.compose.ForegroundWorkBudget.shouldYield()) delay(300L)
                 if (android.os.SystemClock.elapsedRealtime() - started > TimeUnit.MINUTES.toMillis(8)) {
                     continueImmediately = true
                     break
@@ -112,9 +117,14 @@ class HistoryMusicWorker(context: Context, parameters: WorkerParameters) : Corou
                     retryNeeded = retryNeeded || result.retryable
                     if (!result.retryable) completed++
                 }
+                while (com.futo.platformplayer.compose.ForegroundWorkBudget.shouldYield()) delay(300L)
                 if (pending.size >= 16 || index == candidates.lastIndex) flush()
-                setProgress(workDataOf(HistoryMusicClassifier.COMPLETED to completed,
-                    HistoryMusicClassifier.TOTAL to history.size))
+                val progressNow = android.os.SystemClock.elapsedRealtime()
+                if (!constrained || progressNow - progressPublishedAt >= 1_500L || index == candidates.lastIndex) {
+                    setProgress(workDataOf(HistoryMusicClassifier.COMPLETED to completed,
+                        HistoryMusicClassifier.TOTAL to history.size, HistoryMusicClassifier.PERSISTED to persisted))
+                    progressPublishedAt = progressNow
+                }
                 delay(150L)
             }
             flush()

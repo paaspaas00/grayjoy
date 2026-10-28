@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">Cette playlist est déjà en cours de téléchargement</string>
+    <string name="playlist_shuffle_order">Aléatoire et ordre</string>
+    <string name="play_in_this_order">Dans cet ordre</string>
+    <string name="discard_order_title">Enregistrer le nouvel ordre ?</string>
+    <string name="discard_order_body">La playlist n’a pas encore été modifiée. Enregistrez cet ordre ou abandonnez les modifications.</string>
+    <string name="discard_changes">Abandonner les modifications</string>
+    <string name="music_favorites">Favoris</string>
+    <string name="add_music_favorite">Ajouter aux favoris</string>
+    <string name="remove_music_favorite">Retirer des favoris</string>
+    <string name="favorites_empty">Vos morceaux favoris apparaîtront ici.</string>
+    <string name="crash_logs_downloads">Enregistrer aussi les journaux de plantage dans Téléchargements</string>
+    <string name="crash_logs_downloads_description">Copie publique facultative. Le ZIP partagé est toujours préparé à partir des journaux privés de l’application.</string>
+    <string name="youtube_sync_direction">La synchronisation copie les données uniquement de YouTube vers Grayjoy. Les modifications locales ne sont pas envoyées à YouTube. La synchronisation bidirectionnelle est en développement.</string>
+    <string name="help_spotify_favorites">Conserver sa musique préférée</string>
+    <string name="help_spotify_favorites_body">Touchez l’étoile du lecteur ou du menu du morceau. Les favoris sont aussi disponibles dans Accueil et Bibliothèque.</string>
+    <string name="help_spotify_offline">Télécharger une playlist pour l’écouter hors connexion</string>
+    <string name="help_spotify_offline_body">Ouvrez une playlist ou un album et touchez Télécharger l’audio. Une roue indique que le téléchargement est en cours ; la toucher ne l’annule pas.</string>
+    <string name="help_spotify_order">Choisir l’ordre d’écoute</string>
+    <string name="help_spotify_order_body">Ouvrez Aléatoire et ordre. Déplacez ou mélangez les morceaux, puis choisissez Dans cet ordre pour lire sans enregistrer, ou Enregistrer pour conserver l’ordre. Les playlists distantes sont enregistrées comme copies locales.</string>
+    <string name="help_music_home_step">Choisissez un morceau, un artiste, un album ou une playlist récente dans Accueil.</string>
+    <string name="help_music_star_step">Touchez l’étoile pour ajouter le morceau actuel aux favoris ou l’en retirer.</string>
+    <string name="help_music_download_step">Touchez Télécharger l’audio. Suivez la progression dans le panneau des tâches.</string>
+    <string name="help_music_order_step">Ouvrez Aléatoire et ordre pour choisir un ordre personnalisé ou aléatoire.</string>
+    <string name="help_music_play_order_step">Lisez dans cet ordre ou enregistrez le nouvel ordre de la playlist.</string>
+</resources>

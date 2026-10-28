@@ -72,4 +72,23 @@ class NavigationPerformanceTest {
         rule.onNodeWithTag("list").performScrollToNode(hasTestTag("row-0"))
         rule.onNodeWithTag("row-0").assertIsDisplayed()
     }
+
+    @Test fun followedCreatorStripDoesNotComposeHundredsOfOffscreenChannels() {
+        val channels = List(600) { ChannelUiModel("creator-$it", "Creator $it", "youtube", "YouTube", 0, "", "") }
+        lateinit var player: androidx.media3.exoplayer.ExoPlayer
+        rule.runOnUiThread { player = androidx.media3.exoplayer.ExoPlayer.Builder(rule.activity).build() }
+        try {
+            rule.setContent { GrayjayTheme(dynamicColor = false) { GrayjayApp(
+                GrayjayUiState(channels = channels, followedCreatorIds = channels.mapTo(mutableSetOf()) { it.id }, followingFeedLoaded = true),
+                player, GrayjayAppActions()) } }
+            rule.onNodeWithTag("nav-subscriptions").performClick()
+            val avatar = SemanticsMatcher("creator tile") {
+                it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.TestTag) { "" }.startsWith("channel-avatar-")
+            }
+            assertTrue(rule.onAllNodes(avatar).fetchSemanticsNodes().size < 12)
+            rule.onNodeWithTag("followed-creators-strip").performScrollToIndex(599)
+            rule.onNodeWithTag("channel-avatar-creator-599").assertIsDisplayed()
+            assertTrue(rule.onAllNodes(avatar).fetchSemanticsNodes().size < 12)
+        } finally { rule.runOnUiThread { player.release() } }
+    }
 }

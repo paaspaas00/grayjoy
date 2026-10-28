@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s из %2$s</string>
     <string name="update_downloaded_amount">%1$s загружено</string>
     <string name="save_crash_logs">Сохранять журналы сбоев</string>
-    <string name="save_crash_logs_description">Хранит последние 1 000 технических событий и до 10 журналов сбоев. Отправляемые отчёты не содержат сообщений исключений и идентификаторов контента. Новые журналы также копируются в Downloads/Grayjoy. Автоматической отправки нет.</string>
+    <string name="save_crash_logs_description">Хранит последние 1 000 технических событий и до 10 журналов сбоев. Отправляемые отчёты не содержат сообщений исключений и идентификаторов контента. Автоматической отправки нет.</string>
     <string name="open_navigation_menu">Открыть меню навигации</string>
     <string name="close_navigation_menu">Закрыть меню навигации</string>
     <string name="comment_replies">Ответы</string>

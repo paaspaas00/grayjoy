@@ -21,8 +21,10 @@ import kotlin.math.sqrt
  */
 @UnstableApi
 internal class AudioSpectrumAnalyzer(
+    private val minimumAnalysisIntervalMs: Long,
     private val onSpectrum: (List<Float>) -> Unit,
 ) : TeeAudioProcessor.AudioBufferSink {
+    constructor(onSpectrum: (List<Float>) -> Unit) : this(0L, onSpectrum)
     @Volatile
     private var enabled = false
     private var sampleRateHz = 0
@@ -31,11 +33,13 @@ internal class AudioSpectrumAnalyzer(
     private val sampleWindow = FloatArray(WINDOW_SIZE)
     private var sampleCount = 0
     private var smoothedSpectrum = FloatArray(BAND_COUNT)
+    private var lastAnalysisAtNs = 0L
 
     @Synchronized
     fun setEnabled(enabled: Boolean) {
         if (this.enabled == enabled) return
         this.enabled = enabled
+        lastAnalysisAtNs = 0L
         sampleCount = 0
         smoothedSpectrum.fill(0f)
         onSpectrum(EMPTY_SPECTRUM)
@@ -54,6 +58,7 @@ internal class AudioSpectrumAnalyzer(
     @Synchronized
     override fun handleBuffer(buffer: ByteBuffer) {
         if (!enabled) return
+        if (minimumAnalysisIntervalMs > 0L && System.nanoTime() - lastAnalysisAtNs < minimumAnalysisIntervalMs * 1_000_000L) return
         val bytesPerSample = bytesPerSample(encoding)
         if (sampleRateHz <= 0 || channelCount <= 0 || bytesPerSample == 0) return
 
@@ -77,6 +82,8 @@ internal class AudioSpectrumAnalyzer(
                 }
                 onSpectrum(smoothedSpectrum.toList())
                 sampleCount = 0
+                lastAnalysisAtNs = System.nanoTime()
+                if (minimumAnalysisIntervalMs > 0L) break
             }
         }
     }

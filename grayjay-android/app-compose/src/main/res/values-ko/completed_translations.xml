@@ -160,7 +160,7 @@
     <string name="update_download_progress">%2$s 중 %1$s</string>
     <string name="update_downloaded_amount">%1$s 다운로드됨</string>
     <string name="save_crash_logs">충돌 로그 저장</string>
-    <string name="save_crash_logs_description">최근 기술 이벤트 1,000개와 최대 10개의 비정상 종료 로그를 기기에 저장합니다. 공유 보고서에는 예외 메시지와 콘텐츠 식별자가 포함되지 않습니다. 새 로그는 Downloads/Grayjoy에도 복사됩니다. 자동 업로드되지 않습니다.</string>
+    <string name="save_crash_logs_description">최근 기술 이벤트 1,000개와 최대 10개의 비정상 종료 로그를 기기에 저장합니다. 공유 보고서에는 예외 메시지와 콘텐츠 식별자가 포함되지 않습니다. 자동 업로드되지 않습니다.</string>
     <string name="open_navigation_menu">탐색 메뉴 열기</string>
     <string name="close_navigation_menu">탐색 메뉴 닫기</string>
     <string name="comment_replies">답글</string>

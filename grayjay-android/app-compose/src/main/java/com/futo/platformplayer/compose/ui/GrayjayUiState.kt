@@ -7,6 +7,7 @@ import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
 import com.futo.platformplayer.compose.sponsorblock.SponsorBlockSegment
 
 data class GrayjayUiState(
+    val isLibraryLoading: Boolean = false,
     val videos: List<VideoUiModel> = emptyList(),
     val libraryVideos: List<VideoUiModel> = emptyList(),
     val historyMusicScan: HistoryMusicScanUiState = HistoryMusicScanUiState(),
@@ -52,7 +53,8 @@ data class GrayjayUiState(
     val showRecommendations: Boolean = true,
     val searchHistoryEnabled: Boolean = true,
     val groupHistoryByPlaylist: Boolean = false,
-    val crashLoggingEnabled: Boolean = false,
+    val crashLoggingEnabled: Boolean = true,
+    val crashLogsDownloadsCopy: Boolean = false,
     val keepScreenAwake: Boolean = true,
     val pictureInPictureEnabled: Boolean = true,
     val automaticPlaylistDownloadsEnabled: Boolean = true,
@@ -290,7 +292,13 @@ enum class HomeFeedType(@param:StringRes val labelRes: Int) {
 internal fun List<SourceUiModel>.isSpotifyOnly(): Boolean =
     filter { it.isEnabled }.map { it.id.lowercase(java.util.Locale.ROOT) }.toSet() == setOf("spotify")
 
+internal fun GrayjayUiState.usesMusicPresentation(): Boolean = sources.isSpotifyOnly() ||
+    profiles.firstOrNull { it.id == activeProfileId }?.let {
+        it.sourceId.equals("spotify", ignoreCase = true) || it.name.trim().equals("spotify", ignoreCase = true)
+    } == true
+
 data class HomeUiState(
+    val musicSections: List<MusicHomeSection> = emptyList(),
     val selectedFeed: HomeFeedType = HomeFeedType.Subscriptions,
     val browseSourceId: String? = null,
     val browseGroupId: String? = null,
@@ -306,6 +314,16 @@ data class HomeUiState(
     val subscriptionsLoaded: Int = 0,
     val subscriptionsTotal: Int = 0,
 )
+
+data class MusicHomeSection(val id: String, val title: String, val items: List<MusicHomeItem>)
+data class MusicHomeItem(val url: String, val title: String, val type: String, val thumbnailUrl: String) {
+    fun asVideo() = VideoUiModel(id = url, title = title, creator = "Spotify", metadata = "", duration = "",
+        sourceId = "spotify", contentUrl = url, thumbnailUrl = thumbnailUrl, isMusic = true)
+    fun asPlaylist() = PlaylistUiModel(id = url, title = title, description = "", videoIds = emptyList(),
+        sourceId = "spotify", thumbnailUrl = thumbnailUrl, videoCount = -1)
+    fun asChannel() = ChannelUiModel(id = url, name = title, sourceId = "spotify", source = "Spotify",
+        unreadCount = 0, followerCount = "", description = "", thumbnailUrl = thumbnailUrl)
+}
 
 enum class ChannelContentTab(@param:StringRes val labelRes: Int) {
     Videos(R.string.videos),

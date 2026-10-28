@@ -70,13 +70,13 @@ internal fun ChromecastSheet(
                 modifier = Modifier.padding(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilterChip(
+                AdaptiveFilterChip(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
                     label = { Text("Chromecast") },
                     modifier = Modifier.testTag("cast-tab-chromecast"),
                 )
-                FilterChip(
+                AdaptiveFilterChip(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                     label = { Text("FCast") },
@@ -113,7 +113,7 @@ internal fun ChromecastSheet(
                     if (state.isConnecting) {
                         CircularProgressIndicator()
                     } else {
-                        Button(
+                        AdaptiveButton(
                             onClick = onDisconnect,
                             modifier = Modifier.testTag("chromecast-disconnect"),
                         ) {

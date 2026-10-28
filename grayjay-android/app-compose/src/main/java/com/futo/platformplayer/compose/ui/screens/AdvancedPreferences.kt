@@ -50,7 +50,7 @@ internal fun AdvancedPreferencesDialog(sources: List<SourceUiModel>, onDismiss: 
                 item {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text(stringResource(R.string.show_backend_change_notices), Modifier.weight(1f))
-                        Switch(checked = backendNotices, onCheckedChange = {
+                        AdaptiveSwitch(checked = backendNotices, onCheckedChange = {
                             backendNotices = it
                             com.futo.platformplayer.compose.diagnostics.AdvancedOptions.setShowBackendChanges(context, it)
                         }, modifier = Modifier.testTag("backend-change-notices"))
@@ -59,7 +59,7 @@ internal fun AdvancedPreferencesDialog(sources: List<SourceUiModel>, onDismiss: 
                 item {
                     Text(stringResource(R.string.rebuild_cache_description), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = { confirmClear = true }, enabled = !options.rebuildingCaches, modifier = Modifier.testTag("rebuild-content-caches")) {
+                    AdaptiveOutlinedButton(onClick = { confirmClear = true }, enabled = !options.rebuildingCaches, modifier = Modifier.testTag("rebuild-content-caches")) {
                         Text(stringResource(R.string.rebuild_content_caches))
                     }
                     if (options.rebuildingCaches) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
@@ -86,7 +86,7 @@ internal fun AdvancedPreferencesDialog(sources: List<SourceUiModel>, onDismiss: 
         title = { Text(stringResource(R.string.rebuild_content_caches)) },
         text = { Text(stringResource(R.string.rebuild_cache_description)) },
         dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.cancel)) } },
-        confirmButton = { Button(onClick = { confirmClear = false; options.onRebuildCaches() }) { Text(stringResource(R.string.ok)) } },
+        confirmButton = { AdaptiveButton(onClick = { confirmClear = false; options.onRebuildCaches() }) { Text(stringResource(R.string.ok)) } },
     )
 }
 

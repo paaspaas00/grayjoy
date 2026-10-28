@@ -34,7 +34,11 @@ internal class ChannelArtworkIndex(channels: List<ChannelUiModel>) {
     companion object {
         internal fun key(source: String, reference: String): String {
             val value = reference.trim().trimEnd('/')
-            val uri = runCatching { java.net.URI(value) }.getOrNull()
+            // Names and bare channel IDs are not URIs. Parsing them generated an exception and
+            // stack trace for every ordinary name containing spaces while restoring the library.
+            val uri = if (value.startsWith("https://", true) || value.startsWith("http://", true)) {
+                runCatching { java.net.URI(value) }.getOrNull()
+            } else null
             val segments = uri?.path.orEmpty().split('/').filter(String::isNotEmpty)
             val index = segments.indexOf("channel")
             val canonical = when {

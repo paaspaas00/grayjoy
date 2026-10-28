@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">This playlist is already downloading</string>
+    <string name="playlist_shuffle_order">Shuffle &amp; order</string>
+    <string name="play_in_this_order">In this order</string>
+    <string name="discard_order_title">Save the new order?</string>
+    <string name="discard_order_body">The playlist has not been changed yet. Save your order or discard these edits.</string>
+    <string name="discard_changes">Discard changes</string>
+    <string name="music_favorites">Favorites</string>
+    <string name="add_music_favorite">Add to favorites</string>
+    <string name="remove_music_favorite">Remove from favorites</string>
+    <string name="favorites_empty">Your favorite tracks will appear here.</string>
+    <string name="crash_logs_downloads">Also save crash logs in Downloads</string>
+    <string name="crash_logs_downloads_description">Optional public copy. The ZIP you share is always prepared from the private app logs.</string>
+    <string name="youtube_sync_direction">Sync only copies data from YouTube to Grayjoy. Local changes are not sent to YouTube. Two-way sync is work in progress.</string>
+    <string name="help_spotify_favorites">Keep your favorite music</string>
+    <string name="help_spotify_favorites_body">Tap the star in Now Playing or the track menu. Favorites are also available on Home and in Library.</string>
+    <string name="help_spotify_offline">Download a playlist for offline listening</string>
+    <string name="help_spotify_offline_body">Open a playlist or album and tap Download audio. A spinner means the playlist is already downloading; tapping it will not cancel the job.</string>
+    <string name="help_spotify_order">Choose the listening order</string>
+    <string name="help_spotify_order_body">Open Shuffle &amp; order. Drag tracks or shuffle them, then choose In this order to play without saving, or Save to keep the order. Remote playlists are saved as local copies.</string>
+    <string name="help_music_home_step">Choose a track, artist, album or recent playlist on Home.</string>
+    <string name="help_music_star_step">Tap the star to add or remove the current track from favorites.</string>
+    <string name="help_music_download_step">Tap Download audio. You can follow the job in the jobs panel.</string>
+    <string name="help_music_order_step">Open Shuffle &amp; order to choose a custom or shuffled track order.</string>
+    <string name="help_music_play_order_step">Play in this order, or save the new playlist order.</string>
+</resources>

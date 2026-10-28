@@ -134,6 +134,8 @@ fun SettingsScreen(
     searchHistoryEnabled: Boolean,
     onSearchHistoryChange: (Boolean) -> Unit,
     crashLoggingEnabled: Boolean,
+    crashLogsDownloadsCopy: Boolean = false,
+    onCrashLogsDownloadsCopyChange: (Boolean) -> Unit = {},
     onCrashLoggingChange: (Boolean) -> Unit,
     keepScreenAwake: Boolean,
     onKeepScreenAwakeChange: (Boolean) -> Unit,
@@ -506,6 +508,16 @@ fun SettingsScreen(
             }
             setting("share-diagnostics", "link") {
                 com.futo.platformplayer.compose.diagnostics.ShareDiagnosticsButton()
+            }
+            setting("crash-downloads-copy", "toggle") {
+                ToggleSetting(
+                    title = stringResource(R.string.crash_logs_downloads),
+                    description = stringResource(R.string.crash_logs_downloads_description),
+                    icon = Icons.Outlined.Download,
+                    checked = crashLogsDownloadsCopy,
+                    onCheckedChange = onCrashLogsDownloadsCopyChange,
+                    testTag = "crash-downloads-copy",
+                )
             }
         }
         settingsGroup("settings-group-7", R.string.settings_sources, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
@@ -909,7 +921,7 @@ private fun ToggleSetting(
 ) {
     if (compactUi()) {
         CompactSettingRow(title, description, onClick = { onCheckedChange(!checked) }) {
-            Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.testTag(testTag))
+            AdaptiveSwitch(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.testTag(testTag))
         }
         return
     }
@@ -933,7 +945,7 @@ private fun ToggleSetting(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Switch(
+            AdaptiveSwitch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
                 modifier = Modifier.testTag(testTag),
@@ -946,7 +958,7 @@ private fun ToggleSetting(
         description = description,
         leading = { Icon(icon, contentDescription = null) },
         trailing = {
-            Switch(
+            AdaptiveSwitch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
                 modifier = Modifier.testTag(testTag),

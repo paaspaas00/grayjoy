@@ -95,6 +95,7 @@ fun SearchScreen(
     val resultChannels = remember(search.channels) { search.channels.distinctBy(ChannelUiModel::id) }
     val resultPlaylists = remember(search.playlists) { search.playlists.distinctBy(PlaylistUiModel::id) }
     val compactLayout = compactUi()
+    val leanSearch = compactLayout && com.futo.platformplayer.compose.rememberDevicePerformanceProfile().isLowEnd
     val suggestions = remember(search.suggestions) { uniqueSearchSuggestions(search.suggestions) }
     var typeName by rememberSaveable { mutableStateOf(SearchContentType.Videos.name) }
     val help = LocalHelpGuide.current
@@ -241,7 +242,7 @@ fun SearchScreen(
                     )
                 }
             }
-            OutlinedTextField(
+            GrayjoySearchField(
                 value = queryFieldValue,
                 onValueChange = { value ->
                     queryFieldValue = value
@@ -293,7 +294,7 @@ fun SearchScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 SearchContentType.entries.forEach { filter ->
-                    FilterChip(
+                    AdaptiveFilterChip(
                         selected = type == filter,
                         onClick = {
                             typeName = filter.name
@@ -305,7 +306,7 @@ fun SearchScreen(
                         label = { Text(sourceStringResource(filter.labelRes)) },
                     )
                 }
-                FilterChip(
+                AdaptiveFilterChip(
                     selected = showSourcePicker,
                     onClick = { showSourcePicker = true },
                     leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
@@ -313,7 +314,7 @@ fun SearchScreen(
                     modifier = Modifier.testTag("search-source-picker"),
                 )
                 if (filterSources.isNotEmpty()) {
-                    FilterChip(
+                    AdaptiveFilterChip(
                         selected = showFilterPicker || activeFilterLabels.isNotEmpty(),
                         onClick = { showFilterPicker = true },
                         leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
@@ -378,6 +379,7 @@ fun SearchScreen(
             if (search.errorMessage == null) {
                 item {
                     Row(
+                        modifier = if (leanSearch) Modifier.fillMaxWidth() else Modifier,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -387,10 +389,11 @@ fun SearchScreen(
                             } else {
                                 pluralStringResource(R.plurals.result_count, resultCount, resultCount)
                             },
-                            style = MaterialTheme.typography.titleLarge,
+                            style = if (leanSearch) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                            modifier = if (leanSearch) Modifier.weight(1f) else Modifier,
                         )
                         if (activeFilterLabels.isNotEmpty()) {
-                            FilterChip(
+                            AdaptiveFilterChip(
                                 selected = true,
                                 onClick = { showFilterPicker = true },
                                 leadingIcon = {
@@ -416,6 +419,12 @@ fun SearchScreen(
                                 },
                                 modifier = Modifier.testTag("search-active-filter-badge"),
                             )
+                        }
+                        if (leanSearch && type == SearchContentType.Videos && !search.isLoading && playableResultIds.isNotEmpty()) {
+                            androidx.compose.material3.FilledTonalIconButton(
+                                onClick = { leaveSearch(); onPlayAll(playableResultIds) }, modifier = Modifier.testTag("search-play-all")) {
+                                Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.play_all))
+                            }
                         }
                     }
                 }
@@ -463,8 +472,8 @@ fun SearchScreen(
                         )
                     }
                     SearchContentType.Videos -> {
-                        if (!search.isLoading && playableResultIds.isNotEmpty()) item {
-                            androidx.compose.material3.FilledTonalButton(
+                        if (!leanSearch && !search.isLoading && playableResultIds.isNotEmpty()) item {
+                            AdaptiveFilledTonalButton(
                                 onClick = { leaveSearch(); onPlayAll(playableResultIds) },
                                 modifier = Modifier.testTag("search-play-all"),
                             ) {
@@ -525,7 +534,7 @@ fun SearchScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 activeSources.forEach { source ->
-                    FilterChip(
+                    AdaptiveFilterChip(
                         selected = source.id in selectedSources,
                         onClick = {
                             selectedSourceIds = if (source.id in selectedSources) {
@@ -546,7 +555,7 @@ fun SearchScreen(
                         label = { Text(source.name) },
                     )
                 }
-                Button(
+                AdaptiveButton(
                     onClick = {
                         selectedSourceIds = activeSources.map(SourceUiModel::id)
                     },
@@ -624,7 +633,7 @@ private fun SourceFilterSheet(
                         items = group.options,
                         key = { option -> "${source.id}-${group.id}-${option.id}" },
                     ) { option ->
-                        FilterChip(
+                        AdaptiveFilterChip(
                             selected = selections[source.id]?.get(group.id)
                                 ?.let { it == option.value }
                                 ?: (group.defaultValue == option.value),

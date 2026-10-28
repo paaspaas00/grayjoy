@@ -25,6 +25,7 @@ internal data class PlaylistMenuAction(
     val enabled: Boolean = true,
     val subtitle: String? = null,
     val tag: String,
+    val isBusy: Boolean = false,
     val onClick: () -> Unit,
 )
 
@@ -43,11 +44,10 @@ internal fun CompactPlaylistHeader(
 ) {
     var expanded by rememberSaveable(title) { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = onPlayAll, enabled = playEnabled, modifier = Modifier.weight(1f).testTag(playTag).helpAnchor("playlist-play-all")) {
+        AdaptiveButton(onClick = onPlayAll, enabled = playEnabled, modifier = Modifier.weight(1f).testTag(playTag).helpAnchor("playlist-play-all")) {
             Icon(Icons.Filled.PlayArrow, contentDescription = null)
             Text(stringResource(R.string.play_all), modifier = Modifier.padding(start = 6.dp), maxLines = 1)
         }
-        onShuffleChange?.let { PlaylistShuffleButton(shuffleId, shuffled, it) }
         FilledTonalIconButton(onClick = { expanded = true }, modifier = Modifier.size(48.dp).testTag("playlist-more-actions")) {
             Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.details))
         }
@@ -73,7 +73,8 @@ internal fun CompactActionsSheet(title: String, description: String, actions: Li
                         },
                         headlineContent = { Text(action.title) },
                         supportingContent = action.subtitle?.let { subtitle -> { Text(subtitle) } },
-                        leadingContent = { Icon(action.icon, contentDescription = null) },
+                        leadingContent = { if (action.isBusy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            else Icon(action.icon, contentDescription = null) },
                         colors = ListItemDefaults.colors(
                             headlineColor = if (action.enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                         ),

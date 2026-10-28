@@ -1,4 +1,10 @@
 package com.futo.platformplayer.compose.ui.screens
+import androidx.compose.material.icons.outlined.Shuffle
+import androidx.compose.material.icons.outlined.Close
+
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 
 import com.futo.platformplayer.compose.onboarding.helpAnchor
 
@@ -89,6 +95,7 @@ fun PlaylistDetailScreen(
     onVideoLongClick: (VideoUiModel) -> Unit,
     onPlayAll: () -> Unit,
     onPlayFromHere: (String) -> Unit = {},
+    onPlayOrder: (List<String>) -> Unit = {},
     onDownloadAllAsAudio: (List<String>) -> Unit = {},
     onDownloadAllAsVideo: (List<String>) -> Unit = {},
     onCancelDownloadAllAsAudio: () -> Unit = {},
@@ -102,8 +109,11 @@ fun PlaylistDetailScreen(
     isPlaying: Boolean = false,
     shuffled: Boolean = false,
     onShuffleChange: (Boolean) -> Unit = {},
+    onPlaybackOrderChange: (List<String>) -> Unit = {},
 ) {
     val compactLayout = compactUi()
+    val musicLayout = LocalMusicPresentation.current
+    var showMusicActions by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var showRenameDialog by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var showReorderDialog by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var showAutomaticDownloads by rememberSaveable(playlist.id) { mutableStateOf(false) }
@@ -129,6 +139,8 @@ fun PlaylistDetailScreen(
     }
     val audioBatchActive = DownloadMediaType.Audio in activeDownloadMediaTypes
     val videoBatchActive = DownloadMediaType.Video in activeDownloadMediaTypes
+    val startAudioDownload = playlistDownloadAction(audioBatchActive) { onDownloadAllAsAudio(downloadableIds) }
+    val startVideoDownload = playlistDownloadAction(videoBatchActive) { onDownloadAllAsVideo(downloadableIds) }
 
     fun leaveSelectionMode() {
         selectionMode = false
@@ -141,22 +153,24 @@ fun PlaylistDetailScreen(
     }
     val listState = rememberContentListState()
 
-    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth().weight(1f)
                 .testTag("playlist-detail-${playlist.id}"),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
                 start = if (compactLayout) 12.dp else 16.dp,
                 top = if (compactLayout) 8.dp else 16.dp,
                 end = if (compactLayout) 12.dp else 16.dp,
-                bottom = if (selectionMode) 88.dp else 16.dp,
+                bottom = 16.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(if (compactLayout) 8.dp else 16.dp),
+            verticalArrangement = Arrangement.spacedBy(if (musicLayout) 2.dp else if (compactLayout) 8.dp else 16.dp),
         ) {
             item {
-                if (compactLayout) CompactPlaylistHeader(
+                if (musicLayout) MusicPlaylistHeader(playlist, playlistVideos, onPlayAll,
+                    onDownload = startAudioDownload, onMore = { showMusicActions = true }, downloadActive = audioBatchActive)
+                else if (compactLayout) CompactPlaylistHeader(
                     shuffleId = playlist.id, shuffled = shuffled, onShuffleChange = onShuffleChange,
                     title = playlist.title,
                     description = playlist.description,
@@ -166,14 +180,14 @@ fun PlaylistDetailScreen(
                     actions = listOf(
                         PlaylistMenuAction(stringResource(R.string.download_all_audio), Icons.Outlined.Download,
                             enabled = audioBatchActive || downloadableIds.any { downloads[it]?.isComplete(DownloadMediaType.Audio) != true && downloads[it]?.isActive(DownloadMediaType.Audio) != true },
-                            subtitle = if (audioBatchActive) stringResource(R.string.cancel_download) else null,
+                            isBusy = audioBatchActive, subtitle = if (audioBatchActive) stringResource(R.string.playlist_already_downloading) else null,
                             tag = "playlist-download-audio",
-                            onClick = { if (audioBatchActive) onCancelDownloadAllAsAudio() else onDownloadAllAsAudio(downloadableIds) }),
+                            onClick = { startAudioDownload() }),
                         PlaylistMenuAction(stringResource(R.string.download_all_video), Icons.Outlined.Download,
                             enabled = videoBatchActive || downloadableIds.any { downloads[it]?.isComplete(DownloadMediaType.Video) != true && downloads[it]?.isActive(DownloadMediaType.Video) != true },
-                            subtitle = if (videoBatchActive) stringResource(R.string.cancel_download) else null,
+                            isBusy = videoBatchActive, subtitle = if (videoBatchActive) stringResource(R.string.playlist_already_downloading) else null,
                             tag = "playlist-download-video",
-                            onClick = { if (videoBatchActive) onCancelDownloadAllAsVideo() else onDownloadAllAsVideo(downloadableIds) }),
+                            onClick = { startVideoDownload() }),
                         PlaylistMenuAction(stringResource(R.string.rename_playlist), Icons.Outlined.Edit,
                             tag = "rename-current-playlist", onClick = { showRenameDialog = true }),
                         PlaylistMenuAction(
@@ -205,7 +219,6 @@ fun PlaylistDetailScreen(
                                 modifier = Modifier.weight(1f),
                                 style = if (compactLayout) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium,
                             )
-                            PlaylistShuffleButton(playlist.id, shuffled, onShuffleChange)
                             IconButton(
                                 onClick = { showAutomaticDownloads = true },
                                 modifier = Modifier.testTag("playlist-automatic-downloads"),
@@ -230,10 +243,9 @@ fun PlaylistDetailScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            OutlinedButton(
+                            AdaptiveOutlinedButton(
                                 onClick = {
-                                    if (audioBatchActive) onCancelDownloadAllAsAudio()
-                                    else onDownloadAllAsAudio(downloadableIds)
+                                    startAudioDownload()
                                 },
                                 enabled = audioBatchActive ||
                                     (downloadableIds.isNotEmpty() && downloadableIds.any {
@@ -244,14 +256,9 @@ fun PlaylistDetailScreen(
                                     .weight(1f)
                                     .testTag("playlist-download-audio"),
                             ) {
-                                Icon(
-                                    if (audioBatchActive) Icons.Outlined.Close
-                                    else Icons.Outlined.Download,
-                                    contentDescription = null,
-                                )
+                                if (audioBatchActive) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.Download, contentDescription = null)
                                 Text(
-                                    if (audioBatchActive) {
-                                        stringResource(R.string.cancel)
+                                    if (audioBatchActive) { stringResource(R.string.download_in_progress)
                                     } else if (audioDownloadCount > 0) {
                                         "${stringResource(R.string.download_all_audio)} $audioDownloadCount/${downloadableIds.size}"
                                     } else {
@@ -260,10 +267,9 @@ fun PlaylistDetailScreen(
                                     maxLines = 1,
                                 )
                             }
-                            OutlinedButton(
+                            AdaptiveOutlinedButton(
                                 onClick = {
-                                    if (videoBatchActive) onCancelDownloadAllAsVideo()
-                                    else onDownloadAllAsVideo(downloadableIds)
+                                    startVideoDownload()
                                 },
                                 enabled = videoBatchActive ||
                                     (downloadableIds.isNotEmpty() && downloadableIds.any {
@@ -274,14 +280,9 @@ fun PlaylistDetailScreen(
                                     .weight(1f)
                                     .testTag("playlist-download-video"),
                             ) {
-                                Icon(
-                                    if (videoBatchActive) Icons.Outlined.Close
-                                    else Icons.Outlined.Download,
-                                    contentDescription = null,
-                                )
+                                if (videoBatchActive) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.Download, contentDescription = null)
                                 Text(
-                                    if (videoBatchActive) {
-                                        stringResource(R.string.cancel)
+                                    if (videoBatchActive) { stringResource(R.string.download_in_progress)
                                     } else if (videoDownloadCount > 0) {
                                         "${stringResource(R.string.download_all_video)} $videoDownloadCount/${downloadableIds.size}"
                                     } else {
@@ -303,7 +304,7 @@ fun PlaylistDetailScreen(
                                 ),
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                            Button(
+                            AdaptiveButton(
                                 onClick = onPlayAll,
                                 enabled = playlist.videoIds.isNotEmpty(),
                                 modifier = Modifier.testTag("playlist-play-all").helpAnchor("playlist-play-all"),
@@ -318,11 +319,11 @@ fun PlaylistDetailScreen(
             }
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        if (compactLayout && !selectionMode) pluralStringResource(R.plurals.video_count, playlistVideos.size, playlistVideos.size) else stringResource(R.string.videos),
+                        if (musicLayout) stringResource(R.string.music_tracks) else if (compactLayout && !selectionMode) pluralStringResource(R.plurals.video_count, playlistVideos.size, playlistVideos.size) else stringResource(R.string.videos),
                         style = if (compactLayout) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                     )
                     if (selectionMode) {
@@ -338,22 +339,18 @@ fun PlaylistDetailScreen(
                         )
                     }
                     Spacer(Modifier.weight(1f))
-                    if (selectionMode) {
-                        TextButton(onClick = ::leaveSelectionMode) {
-                            Text(stringResource(R.string.cancel))
-                        }
-                    } else {
-                        OutlinedButton(
+                    if (!selectionMode) {
+                        AdaptiveOutlinedButton(
                             onClick = { showReorderDialog = true },
                             enabled = playlistVideos.size > 1,
-                            modifier = Modifier.testTag("playlist-open-reorder"),
+                            modifier = Modifier.testTag("playlist-open-reorder").helpAnchor("playlist-open-reorder"),
                         ) {
                             Icon(
-                                Icons.Outlined.Reorder,
+                                Icons.Outlined.Shuffle,
                                 contentDescription = stringResource(R.string.reorder_playlist),
                             )
                             Text(
-                                stringResource(R.string.reorder),
+                                stringResource(R.string.playlist_shuffle_order),
                                 modifier = Modifier.padding(start = 8.dp),
                             )
                         }
@@ -365,7 +362,16 @@ fun PlaylistDetailScreen(
                 key = { _, video -> video.id },
                 contentType = { _, _ -> "video" },
             ) { index, video ->
-                VideoCard(
+                if (musicLayout) MusicTrackRow(video, index, video.id == currentVideoId, isPlaying,
+                    selected = video.id in selectedVideoIds,
+                    onMore = if (!selectionMode) ({ onVideoLongClick(video) }) else null,
+                    onClick = {
+                        if (selectionMode) {
+                            if (video.id in selectedVideoIds) selectedVideoIds.remove(video.id) else selectedVideoIds.add(video.id)
+                            if (selectedVideoIds.isEmpty()) leaveSelectionMode()
+                        } else onPlayFromHere(video.id)
+                    }, onLongClick = { selectionMode = true; if (video.id !in selectedVideoIds) selectedVideoIds.add(video.id) })
+                else VideoCard(
                     video = video,
                     isCurrent = video.id == currentVideoId,
                     isPlaying = isPlaying,
@@ -393,7 +399,6 @@ fun PlaylistDetailScreen(
         if (selectionMode) {
             Surface(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .testTag("playlist-selection-bar"),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -404,16 +409,17 @@ fun PlaylistDetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        if (compactLayout) selectedVideoIds.size.toString() else pluralStringResource(
-                            R.plurals.selected_count,
-                            selectedVideoIds.size,
-                            selectedVideoIds.size,
-                        ),
+                        selectedVideoIds.size.toString(),
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium,
                     )
+                    SelectionTooltip(stringResource(R.string.cancel)) {
+                        IconButton(onClick = ::leaveSelectionMode, modifier = Modifier.testTag("playlist-selection-cancel")) {
+                            Icon(Icons.Outlined.Close, stringResource(R.string.cancel))
+                        }
+                    }
                     selectedVideoIds.singleOrNull()?.let { selectedVideoId ->
                         if (compactLayout) IconButton(
                             onClick = { leaveSelectionMode(); onPlayFromHere(selectedVideoId) },
@@ -421,7 +427,7 @@ fun PlaylistDetailScreen(
                         ) {
                             Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.play_from_here))
                         } else
-                        Button(
+                        AdaptiveButton(
                             onClick = {
                                 leaveSelectionMode()
                                 onPlayFromHere(selectedVideoId)
@@ -465,8 +471,11 @@ fun PlaylistDetailScreen(
     if (showReorderDialog) {
         ReorderPlaylistDialog(
             videos = playlistVideos,
+            currentVideoId = currentVideoId, isPlaying = isPlaying, shuffled = shuffled, onShuffleChange = onShuffleChange,
+            onPlayOrder = { ids -> onPlayOrder(ids); showReorderDialog = false },
             onDismiss = { showReorderDialog = false },
             onConfirm = { orderedIds ->
+                onShuffleChange(false)
                 onReorder(orderedIds)
                 showReorderDialog = false
             },
@@ -493,6 +502,15 @@ fun PlaylistDetailScreen(
             },
         )
     }
+    if (showMusicActions) CompactActionsSheet(playlist.title, playlist.description,
+        actions = listOf(
+            PlaylistMenuAction(stringResource(R.string.rename_playlist), Icons.Outlined.Edit,
+                tag = "rename-current-playlist", onClick = { showRenameDialog = true }),
+            PlaylistMenuAction(stringResource(R.string.automatic_downloads), Icons.Outlined.Settings,
+                tag = "playlist-automatic-downloads", onClick = { showAutomaticDownloads = true }),
+            PlaylistMenuAction(stringResource(R.string.download_all_audio), Icons.Outlined.Download,
+                isBusy = audioBatchActive, tag = "playlist-download-audio", onClick = { startAudioDownload() }),
+        ), onDismiss = { showMusicActions = false })
     if (showAutomaticDownloads) {
         ModalBottomSheet(
             onDismissRequest = { showAutomaticDownloads = false },
@@ -562,7 +580,7 @@ private fun PlaylistAutomaticDownloadRow(
     ) {
         Icon(icon, contentDescription = null)
         Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-        Switch(
+        AdaptiveSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             enabled = enabled,

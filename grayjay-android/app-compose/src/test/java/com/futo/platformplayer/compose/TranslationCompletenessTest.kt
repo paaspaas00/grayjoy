@@ -7,6 +7,23 @@ import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 
 class TranslationCompletenessTest {
+    @Test fun languagePickerAndAndroidLocaleConfigurationAgree() {
+        val xml = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(File("src/main/res/xml/locales_config.xml"))
+        val nodes = xml.getElementsByTagName("locale")
+        val declared = (0 until nodes.length).map { (nodes.item(it) as Element).getAttribute("android:name") }.toSet()
+        assertEquals(AppLanguageManager.supportedLanguages.map { it.tag }.toSet(), declared)
+    }
+
+    @Test fun polishPluralsHaveAllPolishFormsAndPreserveArguments() {
+        val base = resources("values")
+        resources("values-pl").filterKeys { it.startsWith("plurals:") }.forEach { (key, element) ->
+            val nodes = element.getElementsByTagName("item")
+            val forms = (0 until nodes.length).map { nodes.item(it) as Element }
+            assertTrue("$key: missing Polish plural forms", forms.map { it.getAttribute("quantity") }.containsAll(listOf("one", "few", "many", "other")))
+            val source = base.getValue(key).getElementsByTagName("item").item(0).textContent
+            forms.forEach { form -> assertEquals(key, formats.findAll(source).map { it.value }.toList(), formats.findAll(form.textContent).map { it.value }.toList()) }
+        }
+    }
     private val formats = Regex("%(?:\\d+\\$)?(?:\\.\\d+)?[a-zA-Z]")
     private fun resources(directory: String): Map<String, Element> {
         val factory = DocumentBuilderFactory.newInstance().apply {

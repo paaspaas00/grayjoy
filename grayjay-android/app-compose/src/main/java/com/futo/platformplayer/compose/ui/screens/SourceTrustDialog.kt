@@ -57,7 +57,7 @@ fun SourceTrustDialog(
             ) { Text(stringResource(R.string.no)) }
         },
         confirmButton = {
-            Button(
+            AdaptiveButton(
                 onClick = onTrust,
                 modifier = Modifier.testTag("trust-unverified-source"),
             ) { Text(stringResource(R.string.yes)) }

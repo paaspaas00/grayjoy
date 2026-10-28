@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">Ta playlista jest już pobierana</string>
+    <string name="playlist_shuffle_order">Losowanie i kolejność</string>
+    <string name="play_in_this_order">W tej kolejności</string>
+    <string name="discard_order_title">Zapisać nową kolejność?</string>
+    <string name="discard_order_body">Playlista nie została jeszcze zmieniona. Zapisz nową kolejność lub odrzuć zmiany.</string>
+    <string name="discard_changes">Odrzuć zmiany</string>
+    <string name="music_favorites">Ulubione</string>
+    <string name="add_music_favorite">Dodaj do ulubionych</string>
+    <string name="remove_music_favorite">Usuń z ulubionych</string>
+    <string name="favorites_empty">Tutaj pojawią się Twoje ulubione utwory.</string>
+    <string name="crash_logs_downloads">Zapisuj dzienniki awarii również w folderze Pobrane</string>
+    <string name="crash_logs_downloads_description">Opcjonalna kopia publiczna. Udostępniany plik ZIP zawsze powstaje z prywatnych dzienników aplikacji.</string>
+    <string name="youtube_sync_direction">Synchronizacja kopiuje dane tylko z YouTube do Grayjoy. Zmiany lokalne nie są wysyłane do YouTube. Synchronizacja dwukierunkowa jest w trakcie opracowywania.</string>
+    <string name="help_spotify_favorites">Zapisywanie ulubionej muzyki</string>
+    <string name="help_spotify_favorites_body">Dotknij gwiazdki na ekranie odtwarzania lub w menu utworu. Ulubione są też dostępne na stronie głównej i w bibliotece.</string>
+    <string name="help_spotify_offline">Pobieranie playlisty do słuchania offline</string>
+    <string name="help_spotify_offline_body">Otwórz playlistę lub album i wybierz pobieranie dźwięku. Wskaźnik postępu oznacza, że pobieranie trwa. Dotknięcie go nie anuluje zadania.</string>
+    <string name="help_spotify_order">Wybieranie kolejności odtwarzania</string>
+    <string name="help_spotify_order_body">Otwórz Losowanie i kolejność. Przeciągaj utwory lub je przetasuj, a następnie wybierz W tej kolejności, aby odtworzyć bez zapisywania, albo Zapisz. Zdalne playlisty są zapisywane jako kopie lokalne.</string>
+    <string name="help_music_home_step">Wybierz utwór, wykonawcę, album lub ostatnią playlistę na stronie głównej.</string>
+    <string name="help_music_star_step">Dotknij gwiazdki, aby dodać bieżący utwór do ulubionych lub go usunąć.</string>
+    <string name="help_music_download_step">Wybierz pobieranie dźwięku. Postęp znajdziesz w panelu zadań.</string>
+    <string name="help_music_order_step">Otwórz Losowanie i kolejność, aby ustawić własną lub losową kolejność utworów.</string>
+    <string name="help_music_play_order_step">Odtwórz w tej kolejności lub zapisz nową kolejność playlisty.</string>
+</resources>

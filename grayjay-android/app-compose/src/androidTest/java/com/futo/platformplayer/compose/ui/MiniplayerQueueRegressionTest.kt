@@ -42,7 +42,7 @@ class MiniplayerQueueRegressionTest {
         }
         rule.runOnUiThread { player = ExoPlayer.Builder(rule.activity).build() }
         rule.setContent { GrayjayTheme(dynamicColor = false) { GrayjayApp(state.value, player, actions) } }
-        rule.onNodeWithTag("video-card-${opening.id}").performClick()
+        rule.onNodeWithTag("video-title-${opening.id}", useUnmergedTree = true).performClick()
         rule.onNodeWithTag("now-playing-close").assertIsDisplayed()
         rule.onNodeWithTag("media-player").performTouchInput { swipe(center, center + Offset(0f, 1300f), 700) }
         rule.onNodeWithTag("mini-player").assertIsDisplayed()

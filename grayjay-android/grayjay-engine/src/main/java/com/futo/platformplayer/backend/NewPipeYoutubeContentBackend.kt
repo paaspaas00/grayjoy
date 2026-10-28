@@ -49,7 +49,9 @@ enum class YoutubeSubscriptionFetchMode { Fast, Complete }
 /** Full YouTube content adapter backed by NewPipeExtractor and no V8 runtime. */
 class NewPipeYoutubeContentBackend(
     private val initializeNewPipe: () -> Unit,
+    private val constrainedResources: Boolean,
 ) {
+    constructor(initializeNewPipe: () -> Unit) : this(initializeNewPipe, false)
     private val service: StreamingService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         initializeNewPipe()
         ServiceList.YouTube
@@ -128,7 +130,7 @@ class NewPipeYoutubeContentBackend(
         if (requests.isEmpty()) return@withContext GrayjayVideoPage()
         onProgress(0, requests.size)
         val completed = java.util.concurrent.atomic.AtomicInteger(0)
-        val slots = Semaphore(if (mode == YoutubeSubscriptionFetchMode.Fast) 6 else 3)
+        val slots = Semaphore(if (constrainedResources) 2 else if (mode == YoutubeSubscriptionFetchMode.Fast) 6 else 3)
         val outcomes = coroutineScope {
             requests.map { request ->
                 async {

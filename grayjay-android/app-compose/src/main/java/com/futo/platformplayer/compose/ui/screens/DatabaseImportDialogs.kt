@@ -115,7 +115,7 @@ private fun PasswordDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
         confirmButton = {
-            Button(
+            AdaptiveButton(
                 onClick = { onSubmit(password) },
                 enabled = password.toByteArray().size in 4..32,
                 modifier = Modifier.testTag("database-import-unlock"),
@@ -186,7 +186,7 @@ private fun ImportPreviewDialog(
                     { subscriptions = it }, "import-subscriptions",
                 )
                 if (preview.watchLaterCount > 0) ImportChoice(
-                    stringResource(R.string.watch_later),
+                    com.futo.platformplayer.compose.ui.sourceStringResource(R.string.watch_later),
                     pluralStringResource(
                         R.plurals.video_count,
                         preview.watchLaterCount,
@@ -239,7 +239,7 @@ private fun ImportPreviewDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
         confirmButton = {
-            Button(
+            AdaptiveButton(
                 onClick = {
                     onConfirm(
                         DatabaseImportSelection(

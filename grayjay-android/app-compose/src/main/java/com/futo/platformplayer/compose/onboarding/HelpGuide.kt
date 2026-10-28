@@ -46,8 +46,9 @@ internal enum class HelpTopic(val title: Int, val description: Int, val steps: L
         HelpStep(R.string.help_music_playing, "player-actions"))),
     Random(R.string.help_random, R.string.help_random_body, listOf(
         HelpStep(R.string.help_choose_playlist, "playlist-row"),
-        HelpStep(R.string.help_shuffle_playlist, "playlist-shuffle"),
-        HelpStep(R.string.help_start_playlist, "playlist-play-all"))),
+        HelpStep(R.string.help_music_order_step, "playlist-open-reorder"),
+        HelpStep(R.string.help_shuffle_playlist, "reorder-shuffle"),
+        HelpStep(R.string.help_music_play_order_step, "reorder-play"))),
     Album(R.string.help_album, R.string.help_album_body, listOf(
         HelpStep(R.string.help_find_album, "search-field"),
         HelpStep(R.string.help_album_filter, "search-filter-playlists"),
@@ -66,7 +67,22 @@ internal enum class HelpTopic(val title: Int, val description: Int, val steps: L
     Profiles(R.string.help_profiles, R.string.help_profiles_body, listOf(
         HelpStep(R.string.help_profiles_open, "profile-menu"),
         HelpStep(R.string.help_profiles_choose, "profile-picker"))),
+    SpotifyFavorites(R.string.help_spotify_favorites, R.string.help_spotify_favorites_body, listOf(
+        HelpStep(R.string.help_music_home_step, "music-home"),
+        HelpStep(R.string.help_music_star_step, "music-favorite"))),
+    SpotifyOffline(R.string.help_spotify_offline, R.string.help_spotify_offline_body, listOf(
+        HelpStep(R.string.help_choose_playlist, "playlist-row"),
+        HelpStep(R.string.help_music_download_step, "playlist-download-audio"))),
+    SpotifyOrder(R.string.help_spotify_order, R.string.help_spotify_order_body, listOf(
+        HelpStep(R.string.help_choose_playlist, "playlist-row"),
+        HelpStep(R.string.help_music_order_step, "playlist-open-reorder"),
+        HelpStep(R.string.help_music_play_order_step, "reorder-play"))),
 }
+
+internal fun applicableHelpTopics(musicMode: Boolean, profiles: Boolean, youtube: Boolean): List<HelpTopic> =
+    (if (musicMode) listOf(HelpTopic.Album, HelpTopic.SpotifyFavorites, HelpTopic.SpotifyOffline, HelpTopic.SpotifyOrder, HelpTopic.Profiles)
+     else HelpTopic.entries.filterNot { it.name.startsWith("Spotify") })
+        .filter { (it != HelpTopic.Profiles || profiles) && (it != HelpTopic.Follow || youtube) }
 
 @Stable
 internal class HelpGuideState {
@@ -177,7 +193,7 @@ internal fun HelpButton(
 }
 
 @Composable
-internal fun HelpScreen(guide: HelpGuideState, sourceProfilesEnabled: Boolean = false, canUseYoutube: Boolean = true) {
+internal fun HelpScreen(guide: HelpGuideState, sourceProfilesEnabled: Boolean = false, canUseYoutube: Boolean = true, musicMode: Boolean = false) {
     var expanded by rememberSaveable { mutableStateOf<String?>(null) }
     val setup = LocalGuidedSetup.current
     Dialog(onDismissRequest = { guide.visible = false }, properties =
@@ -201,8 +217,7 @@ internal fun HelpScreen(guide: HelpGuideState, sourceProfilesEnabled: Boolean = 
                                 Text(stringResource(R.string.guided_setup_action))
                             }
                         }
-                        items(HelpTopic.entries.filter { (it != HelpTopic.Profiles || sourceProfilesEnabled) &&
-                            (it != HelpTopic.Follow || canUseYoutube) }, key = { it.name }) { topic ->
+                        items(applicableHelpTopics(musicMode, sourceProfilesEnabled, canUseYoutube), key = { it.name }) { topic ->
                             val open = expanded == topic.name
                             OutlinedCard(onClick = { expanded = if (open) null else topic.name },
                                 modifier = Modifier.fillMaxWidth().testTag("help-topic-${topic.name}")) {

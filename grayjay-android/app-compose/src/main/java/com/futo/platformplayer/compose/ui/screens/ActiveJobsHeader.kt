@@ -460,7 +460,7 @@ internal fun ActiveJobsPanel(
             title = { Text(stringResource(R.string.cancel_active_downloads_title)) },
             text = { Text(stringResource(R.string.cancel_active_downloads_body)) },
             confirmButton = {
-                Button(
+                AdaptiveButton(
                     onClick = {
                         confirmDownloadCancellation = false
                         onCancelDownloads()
@@ -480,7 +480,7 @@ internal fun ActiveJobsPanel(
             title = { Text(stringResource(R.string.cancel_youtube_import_title)) },
             text = { Text(stringResource(R.string.cancel_youtube_import_body)) },
             confirmButton = {
-                Button(
+                AdaptiveButton(
                     onClick = {
                         confirmYoutubeCancellation = false
                         onCancelYoutubeImports()

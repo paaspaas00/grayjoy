@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ChannelArtworkIndexTest {
+    @Test fun ordinaryNamesAndBareReferencesKeepTheirKeysWithoutUriParsing() {
+        assertEquals("youtube|a creator with spaces", ChannelArtworkIndex.key("YouTube", "a creator with spaces"))
+        assertEquals("other|catalog:artist", ChannelArtworkIndex.key("other", "catalog:artist"))
+        assertEquals("youtube|channel:UCtest", ChannelArtworkIndex.key("youtube", "UCtest"))
+        assertEquals("youtube|channel:UCtest", ChannelArtworkIndex.key("youtube", "https://www.youtube.com/channel/UCtest"))
+    }
     private fun channel(id: String, source: String, image: String) = ChannelUiModel(id, "Creator", source, "", 0, "", "", image)
     @Test fun blankAvatarCannotHideKnownArtworkAndSourcesStayIsolated() {
         val index = ChannelArtworkIndex(listOf(channel("https://example/channel", "one", ""), channel("https://example/channel", "one", "image"), channel("https://other/channel", "two", "other")))

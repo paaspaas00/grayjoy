@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s / %2$s</string>
     <string name="update_downloaded_amount">%1$s indirildi</string>
     <string name="save_crash_logs">Kilitlenme günlüklerini kaydet</string>
-    <string name="save_crash_logs_description">Son 1.000 teknik olayı ve en fazla 10 çökme günlüğünü yerel olarak saklar. Paylaşılan raporlara hata mesajları ve içerik kimlikleri eklenmez. Yeni günlükler Downloads/Grayjoy klasörüne de kopyalanır. Otomatik yükleme yapılmaz.</string>
+    <string name="save_crash_logs_description">Son 1.000 teknik olayı ve en fazla 10 çökme günlüğünü yerel olarak saklar. Paylaşılan raporlara hata mesajları ve içerik kimlikleri eklenmez. Otomatik yükleme yapılmaz.</string>
     <string name="open_navigation_menu">Gezinme menüsünü aç</string>
     <string name="close_navigation_menu">Gezinme menüsünü kapat</string>
     <string name="comment_replies">Yanıtlar</string>

@@ -29,7 +29,7 @@ internal fun VoiceControlPreferences(onDismiss: () -> Unit) {
             if (!installed) Text(stringResource(R.string.voice_companion_missing))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(R.string.voice_control_enable))
-                Switch(checked = enabled, enabled = installed, onCheckedChange = {
+                AdaptiveSwitch(checked = enabled, enabled = installed, onCheckedChange = {
                     VoiceAccess.setEnabled(context, it); enabled = it
                 })
             }

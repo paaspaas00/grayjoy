@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">Этот плейлист уже скачивается</string>
+    <string name="playlist_shuffle_order">Перемешать и упорядочить</string>
+    <string name="play_in_this_order">В этом порядке</string>
+    <string name="discard_order_title">Сохранить новый порядок?</string>
+    <string name="discard_order_body">Плейлист ещё не изменён. Сохраните порядок или отмените изменения.</string>
+    <string name="discard_changes">Отменить изменения</string>
+    <string name="music_favorites">Избранное</string>
+    <string name="add_music_favorite">Добавить в избранное</string>
+    <string name="remove_music_favorite">Удалить из избранного</string>
+    <string name="favorites_empty">Здесь появятся ваши любимые треки.</string>
+    <string name="crash_logs_downloads">Также сохранять журналы сбоев в Загрузки</string>
+    <string name="crash_logs_downloads_description">Необязательная общедоступная копия. ZIP для отправки всегда создаётся из приватных журналов приложения.</string>
+    <string name="youtube_sync_direction">Синхронизация копирует данные только из YouTube в Grayjoy. Локальные изменения не отправляются в YouTube. Двусторонняя синхронизация разрабатывается.</string>
+    <string name="help_spotify_favorites">Сохранить любимую музыку</string>
+    <string name="help_spotify_favorites_body">Нажмите звезду в плеере или меню трека. Избранное также доступно на главной и в библиотеке.</string>
+    <string name="help_spotify_offline">Скачать плейлист для прослушивания офлайн</string>
+    <string name="help_spotify_offline_body">Откройте плейлист или альбом и нажмите Скачать аудио. Вращающийся индикатор означает, что загрузка уже идёт; нажатие её не отменяет.</string>
+    <string name="help_spotify_order">Выбрать порядок воспроизведения</string>
+    <string name="help_spotify_order_body">Откройте Перемешать и упорядочить. Перетаскивайте или перемешивайте треки, затем выберите В этом порядке для воспроизведения без сохранения либо Сохранить. Удалённые плейлисты сохраняются как локальные копии.</string>
+    <string name="help_music_home_step">Выберите трек, исполнителя, альбом или недавний плейлист на главной.</string>
+    <string name="help_music_star_step">Нажмите звезду, чтобы добавить текущий трек в избранное или удалить его.</string>
+    <string name="help_music_download_step">Нажмите Скачать аудио. Ход загрузки виден на панели задач.</string>
+    <string name="help_music_order_step">Откройте Перемешать и упорядочить, чтобы выбрать свой или случайный порядок.</string>
+    <string name="help_music_play_order_step">Воспроизведите в этом порядке или сохраните новый порядок плейлиста.</string>
+</resources>

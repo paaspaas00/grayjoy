@@ -20,7 +20,7 @@ import com.futo.platformplayer.compose.R
 @Composable
 internal fun PreferencesSearchField(value: String, onValueChange: (String) -> Unit) {
     val focus = LocalFocusManager.current
-    OutlinedTextField(value, onValueChange,
+    GrayjoySearchField(value, onValueChange,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("settings-search"),
         shape = RoundedCornerShape(28.dp), singleLine = true,
         placeholder = { Text(stringResource(R.string.settings_search)) },

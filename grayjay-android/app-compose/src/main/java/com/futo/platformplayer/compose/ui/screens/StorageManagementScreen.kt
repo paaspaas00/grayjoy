@@ -294,13 +294,13 @@ internal fun StorageManagementScreen(
             ) {
                 Text(stringResource(R.string.export_downloads), style = MaterialTheme.typography.headlineSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
+                    AdaptiveFilterChip(
                         selected = exportMediaTypeName == DownloadMediaType.Video.name,
                         onClick = { exportMediaTypeName = DownloadMediaType.Video.name },
                         enabled = videoAvailable,
                         label = { Text(stringResource(R.string.video)) },
                     )
-                    FilterChip(
+                    AdaptiveFilterChip(
                         selected = exportMediaTypeName == DownloadMediaType.Audio.name,
                         onClick = { exportMediaTypeName = DownloadMediaType.Audio.name },
                         enabled = audioAvailable,
@@ -314,7 +314,7 @@ internal fun StorageManagementScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Button(
+                AdaptiveButton(
                     onClick = { directoryPicker.launch(null) },
                     enabled = when (com.futo.platformplayer.compose.ui.restoredEnumValue(exportMediaTypeName, DownloadMediaType.Video)) {
                         DownloadMediaType.Video -> videoAvailable

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -256,14 +257,15 @@ fun SubscriptionsScreen(
             onDone = ::leaveManagement,
         )
     } else {
-        Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
             LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 state = rememberContentListState(),
                 contentPadding = PaddingValues(
                     start = if (performance.compactContent) 8.dp else 16.dp,
                     top = if (performance.compactContent) 8.dp else 16.dp,
                     end = if (performance.compactContent) 8.dp else 16.dp,
-                    bottom = if (videoSelectionMode) 88.dp else 16.dp,
+                    bottom = 16.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(
                     if (performance.compactContent) 8.dp else 16.dp,
@@ -286,11 +288,11 @@ fun SubscriptionsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().testTag("followed-creators-strip"),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            followedChannels.forEach { channel ->
+                            items(followedChannels, key = ChannelUiModel::id, contentType = { "creator" }) { channel ->
                                 ChannelAvatar(
                                     channel = channel,
                                     onClick = { onChannelClick(channel) },
@@ -302,7 +304,7 @@ fun SubscriptionsScreen(
                 item {
                     UploadsHeading(
                         selectedCount = selectedVideoIds.size,
-                        selectionMode = videoSelectionMode,
+                        selectionMode = false,
                         selectedChannel = followedChannels.firstOrNull {
                             it.id == selectedUploadChannelId
                         },
@@ -393,7 +395,6 @@ fun SubscriptionsScreen(
             if (videoSelectionMode) {
                 Surface(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .testTag("subscriptions-selection-bar"),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -413,6 +414,7 @@ fun SubscriptionsScreen(
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
                         )
+                        TextButton(onClick = ::leaveVideoSelectionMode) { Text(stringResource(R.string.cancel)) }
                         IconButton(
                             onClick = {
                                 onQueueSelection(selectedVideoIds.toList())
@@ -461,7 +463,7 @@ fun SubscriptionsScreen(
             title = { Text(stringResource(R.string.remove_subscriptions_title)) },
             text = { Text(stringResource(R.string.remove_subscriptions_body)) },
             confirmButton = {
-                Button(
+                AdaptiveButton(
                     onClick = {
                         selectedChannelIds.toList().forEach { onFollowedChange(it, false) }
                         selectedChannelIds.clear()
@@ -516,7 +518,7 @@ private fun UploadsHeading(
                 if (refreshing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.refresh_following_videos))
             }
-            FilterChip(
+            AdaptiveFilterChip(
                 selected = selectedChannel != null,
                 onClick = onOpenFilter,
                 modifier = Modifier
@@ -568,7 +570,7 @@ private fun ManageSubscriptionsPane(
             action = stringResource(R.string.done),
             onAction = onDone,
         )
-        OutlinedTextField(
+        GrayjoySearchField(
             value = query,
             shape = SearchFieldShape,
             onValueChange = onQueryChange,
@@ -597,21 +599,21 @@ private fun ManageSubscriptionsPane(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val selectedSourceLabel = sourceOptions.firstOrNull { it.id == selectedSourceId }?.label
-            FilterChip(
+            AdaptiveFilterChip(
                 selected = selectedSourceId != null,
                 onClick = onOpenSourceFilter,
                 leadingIcon = { Icon(Icons.Outlined.FilterAlt, contentDescription = null) },
                 label = { Text(selectedSourceLabel ?: stringResource(R.string.all_sources)) },
                 modifier = Modifier.testTag("manage-subscriptions-source-filter"),
             )
-            FilterChip(
+            AdaptiveFilterChip(
                 selected = !ascending,
                 onClick = onToggleSort,
                 leadingIcon = { Icon(Icons.Outlined.SortByAlpha, contentDescription = null) },
                 label = { Text(if (ascending) "A–Z" else "Z–A") },
                 modifier = Modifier.testTag("manage-subscriptions-sort"),
             )
-            FilterChip(
+            AdaptiveFilterChip(
                 selected = asGrid,
                 onClick = onToggleLayout,
                 leadingIcon = {
@@ -696,7 +698,7 @@ private fun ManageSubscriptionsPane(
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(pluralStringResource(R.plurals.selected_count, selectedChannelIds.size, selectedChannelIds.size),
                     Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                Button(onClick = onRemoveSelected, modifier = Modifier.testTag("remove-selected-subscriptions")) {
+                AdaptiveButton(onClick = onRemoveSelected, modifier = Modifier.testTag("remove-selected-subscriptions")) {
                     Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
                     Text(stringResource(R.string.remove))
                 }
@@ -801,10 +803,11 @@ private fun ChannelAvatar(
     channel: ChannelUiModel,
     onClick: () -> Unit,
 ) {
+    val lean = rememberDevicePerformanceProfile().isLowEnd && compactUi()
     Surface(
         onClick = onClick,
         modifier = Modifier
-            .size(width = 84.dp, height = 116.dp)
+            .size(width = if (lean) 72.dp else 84.dp, height = if (lean) 82.dp else 116.dp)
             .testTag("channel-avatar-${channel.id}"),
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface,
@@ -817,7 +820,7 @@ private fun ChannelAvatar(
             ChannelAvatarImage(
                 name = channel.name,
                 thumbnailUrl = channel.thumbnailUrl,
-                modifier = Modifier.size(64.dp),
+                modifier = Modifier.size(if (lean) 44.dp else 64.dp),
             )
             Text(
                 channel.name,
@@ -826,7 +829,7 @@ private fun ChannelAvatar(
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.labelLarge,
             )
-            Text(
+            if (!lean) Text(
                 channel.source,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
@@ -852,7 +855,7 @@ private fun UploadChannelFilterDialog(
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedButton(
+                AdaptiveOutlinedButton(
                     onClick = { onSelect(null) },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -918,7 +921,7 @@ private fun UploadChannelFilterDialog(
             }
         },
         confirmButton = {
-            Button(
+            AdaptiveButton(
                 onClick = { pendingChannelId?.let(onSelect) },
                 enabled = pendingChannelId != null,
                 modifier = Modifier.testTag("confirm-uploads-channel-filter"),

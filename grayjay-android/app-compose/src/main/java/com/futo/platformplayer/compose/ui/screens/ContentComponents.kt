@@ -152,7 +152,7 @@ internal fun SectionHeading(
     ) {
         Text(title, style = if (compactUi()) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
         if (action != null) {
-            AssistChip(onClick = onAction ?: {}, label = { Text(action) })
+            AdaptiveAssistChip(onClick = onAction ?: {}, label = { Text(action) })
         }
     }
 }
@@ -210,7 +210,7 @@ internal fun CompactVideoCard(
     val performance = rememberDevicePerformanceProfile()
     val dense = compactUi()
     val compactCard = performance.compactContent || dense
-    val cardShape = if (performance.isLowEnd) RectangleShape else if (dense) RoundedCornerShape(16.dp) else MaterialTheme.shapes.medium
+    val cardShape = if (performance.isLowEnd) RoundedCornerShape(12.dp) else if (dense) RoundedCornerShape(16.dp) else MaterialTheme.shapes.medium
     val now = LocalDisplayClock.current.value
     val currentMetadata = remember(video.publishedAtMs, video.metadata, metadataText, now) { refreshedVideoMetadata(video, metadataText, now) }
     val displayMetadata = if (dense && (currentMetadata.contains("·") || currentMetadata.contains("•"))) currentMetadata.substringAfterLast('·').substringAfterLast('•').trim() else currentMetadata
@@ -235,8 +235,8 @@ internal fun CompactVideoCard(
         modifier = Modifier
             .fillMaxWidth()
             .then(entranceModifier)
-            .clip(cardShape)
-            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else containerColor ?: MaterialTheme.colorScheme.surfaceContainerLow)
+            .then(if (performance.isLowEnd) Modifier else Modifier.clip(cardShape))
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else containerColor ?: MaterialTheme.colorScheme.surfaceContainerLow, cardShape)
             .then(if (isCurrent) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, cardShape) else Modifier)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .testTag("video-card-${video.id}").helpAnchor("video-card"),
@@ -256,7 +256,7 @@ internal fun CompactVideoCard(
                         .width(thumbnailWidth)
                         .height(thumbnailHeight)
                         .then(
-                            if (performance.isLowEnd) Modifier
+                            if (performance.isLowEnd) Modifier.clip(RoundedCornerShape(8.dp))
                             else Modifier.clip(if (dense) RoundedCornerShape(12.dp) else MaterialTheme.shapes.medium),
                         ),
                 )
@@ -327,6 +327,7 @@ internal fun CompactVideoCard(
                                 thumbnailUrl = channelArtwork,
                                 onLoadFailure = { requestChannelArtwork(video.id, channelArtwork) },
                                 requestHeaders = video.thumbnailRequestHeaders,
+                                requestSize = with(density) { (if (dense) 18.dp else if (compactCard) 20.dp else 24.dp).roundToPx().let { androidx.compose.ui.unit.IntSize(it, it) } },
                                 modifier = Modifier.size(
                                     if (dense) 18.dp else if (compactCard) 20.dp else 24.dp,
                                 ),
@@ -442,8 +443,9 @@ private fun CompactVideoThumbnail(
 ) {
     val placeholderColor = MaterialTheme.colorScheme.surfaceVariant.toArgb()
     val density = LocalDensity.current
-    val targetWidthPx = remember(targetWidth, density) {
-        with(density) { targetWidth.roundToPx().coerceIn(1, 384) }
+    val maximumPixels = if (rememberDevicePerformanceProfile().isLowEnd) 320 else 384
+    val targetWidthPx = remember(targetWidth, density, maximumPixels) {
+        with(density) { targetWidth.roundToPx().coerceIn(1, maximumPixels) }
     }
     val targetHeightPx = remember(targetWidthPx) { (targetWidthPx * 9 / 16).coerceAtLeast(1) }
     val placeholderBrush = remember(index) {
@@ -480,6 +482,7 @@ private fun CompactVideoThumbnail(
             name = video.sourceName.ifBlank { video.sourceId },
             iconUrl = video.sourceIconUrl,
             accentColor = stableSourceColor(video.sourceId),
+            requestSize = with(density) { 22.dp.roundToPx().let { androidx.compose.ui.unit.IntSize(it, it) } },
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(6.dp)
@@ -562,6 +565,7 @@ internal fun SourceIconImage(
     iconUrl: String,
     accentColor: Color,
     modifier: Modifier,
+    requestSize: androidx.compose.ui.unit.IntSize? = null,
 ) {
     val performance = rememberDevicePerformanceProfile()
     val placeholderColor = accentColor.toArgb()
@@ -583,6 +587,7 @@ internal fun SourceIconImage(
         if (iconUrl.isNotBlank()) {
             RemoteBitmapImage(
                 url = iconUrl, placeholderColor = Color(placeholderColor),
+                requestSize = requestSize,
                 modifier = Modifier.matchParentSize(),
                 showParentPlaceholderWhileLoading = true,
             )
@@ -638,12 +643,13 @@ internal fun ChannelAvatarImage(
     modifier: Modifier,
     requestHeaders: Map<String, String> = emptyMap(),
     onLoadFailure: () -> Unit = {},
+    requestSize: androidx.compose.ui.unit.IntSize? = null,
 ) {
     val performance = rememberDevicePerformanceProfile()
     val placeholderColor = MaterialTheme.colorScheme.tertiaryContainer.toArgb()
     Box(
         modifier = modifier
-            .then(if (performance.isLowEnd) Modifier else Modifier.clip(CircleShape))
+            .clip(CircleShape)
             .background(MaterialTheme.colorScheme.tertiaryContainer),
         contentAlignment = Alignment.Center,
     ) {
@@ -657,6 +663,7 @@ internal fun ChannelAvatarImage(
             RemoteBitmapImage(
                 url = thumbnailUrl, placeholderColor = Color(placeholderColor),
                 circleCrop = true, requestHeaders = requestHeaders,
+                requestSize = requestSize,
                 modifier = Modifier.matchParentSize(),
                 showParentPlaceholderWhileLoading = true,
                 onLoadFailure = onLoadFailure,
@@ -729,7 +736,6 @@ internal fun PlaylistRow(
                     )
                 }
             }
-            onShuffleChange?.let { PlaylistShuffleButton(playlist.id, shuffled, it) }
             if (playlist.sourceId.isBlank() && onRename != null) {
                 IconButton(
                     onClick = onRename,

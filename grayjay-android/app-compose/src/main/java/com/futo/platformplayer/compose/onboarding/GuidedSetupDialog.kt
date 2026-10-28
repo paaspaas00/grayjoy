@@ -9,7 +9,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material3.*
+import com.futo.platformplayer.compose.ui.screens.AdaptiveButton as Button
+import com.futo.platformplayer.compose.ui.screens.AdaptiveOutlinedButton as OutlinedButton
+import com.futo.platformplayer.compose.ui.screens.AdaptiveFilledTonalButton as FilledTonalButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -137,6 +141,7 @@ internal fun GuidedSetupDialog(
                                 Text(stringResource(if (importYoutube) R.string.setup_import_body else R.string.setup_import_files_body), style = MaterialTheme.typography.bodyLarge)
                                 if (importYoutube) Text(stringResource(R.string.setup_skip_import), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (importYoutube) {
+                                Text(stringResource(R.string.youtube_sync_direction), style = MaterialTheme.typography.bodyMedium)
                                 SetupToggle(stringResource(R.string.setup_import_subscriptions), importSubscriptions, { importSubscriptions = it }, !state.youtubeImport.isRunning)
                                 SetupToggle(stringResource(R.string.setup_import_history), importHistory, { importHistory = it }, !state.youtubeImport.isRunning)
                                 SetupToggle(stringResource(R.string.setup_import_playlists), importPlaylists, { importPlaylists = it }, !state.youtubeImport.isRunning)
@@ -223,6 +228,14 @@ internal fun GuidedSetupDialog(
                                 Text(stringResource(R.string.profile_split_offline), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (profilesReady) Text(stringResource(R.string.profile_split_enabled), color = MaterialTheme.colorScheme.primary)
                             }
+                            SetupStep.Diagnostics -> {
+                                Icon(Icons.Outlined.BugReport, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+                                Text(stringResource(R.string.setup_diagnostics_body), style = MaterialTheme.typography.bodyLarge)
+                                SetupToggle(stringResource(R.string.save_crash_logs), state.crashLoggingEnabled, actions.onCrashLoggingChange)
+                                SetupToggle(stringResource(R.string.crash_logs_downloads), state.crashLogsDownloadsCopy,
+                                    actions.onCrashLogsDownloadsCopyChange, state.crashLoggingEnabled)
+                                Text(stringResource(R.string.crash_logs_downloads_description), style = MaterialTheme.typography.bodyMedium)
+                            }
                             SetupStep.Help -> {
                                 Icon(Icons.Outlined.HelpOutline, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
                                 Text(stringResource(R.string.setup_help_body), style = MaterialTheme.typography.bodyLarge)
@@ -305,7 +318,7 @@ internal fun SetupToggle(label: String, checked: Boolean, change: (Boolean) -> U
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(checked, enabled = enabled, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = change).padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Switch(checked, onCheckedChange = null, enabled = enabled)
+        com.futo.platformplayer.compose.ui.screens.AdaptiveSwitch(checked, onCheckedChange = null, enabled = enabled)
     }
 }
 

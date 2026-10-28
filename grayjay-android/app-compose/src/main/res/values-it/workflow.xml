@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">Questa playlist è già in download</string>
+    <string name="playlist_shuffle_order">e ordine</string>
+    <string name="play_in_this_order">In quest’ordine</string>
+    <string name="discard_order_title">Salvare il nuovo ordine?</string>
+    <string name="discard_order_body">La playlist non è stata ancora modificata. Salva il nuovo ordine oppure scarta le modifiche.</string>
+    <string name="discard_changes">Scarta modifiche</string>
+    <string name="music_favorites">Preferiti</string>
+    <string name="add_music_favorite">Aggiungi ai preferiti</string>
+    <string name="remove_music_favorite">Rimuovi dai preferiti</string>
+    <string name="favorites_empty">I tuoi brani preferiti appariranno qui.</string>
+    <string name="crash_logs_downloads">Salva i crashlog anche in Download</string>
+    <string name="crash_logs_downloads_description">Copia pubblica facoltativa. Lo ZIP da condividere viene sempre preparato dai log privati dell’app.</string>
+    <string name="youtube_sync_direction">La sincronizzazione copia i dati solo da YouTube a Grayjoy. Le modifiche locali non vengono inviate a YouTube. La sincronizzazione bidirezionale è in lavorazione.</string>
+    <string name="help_spotify_favorites">Conservare la musica preferita</string>
+    <string name="help_spotify_favorites_body">Tocca la stella in In riproduzione o nel menu del brano. I preferiti sono disponibili anche nella Home e in Raccolta.</string>
+    <string name="help_spotify_offline">Scaricare una playlist per ascoltarla offline</string>
+    <string name="help_spotify_offline_body">Apri una playlist o un album e tocca Scarica audio. Lo spinner indica che la playlist è già in download: toccarlo non annulla il lavoro.</string>
+    <string name="help_spotify_order">Scegliere l’ordine di ascolto</string>
+    <string name="help_spotify_order_body">Apri Shuffle e ordine. Trascina i brani o mescolali, poi scegli In quest’ordine per riprodurre senza salvare oppure Salva per conservare l’ordine. Le playlist remote vengono salvate come copie locali.</string>
+    <string name="help_music_home_step">Scegli un brano, artista, album o una playlist recente nella Home.</string>
+    <string name="help_music_star_step">Tocca la stella per aggiungere o rimuovere il brano corrente dai preferiti.</string>
+    <string name="help_music_download_step">Tocca Scarica audio. Puoi seguire il lavoro nel pannello dei job.</string>
+    <string name="help_music_order_step">Apri Shuffle e ordine per scegliere un ordine personalizzato o casuale.</string>
+    <string name="help_music_play_order_step">Riproduci in quest’ordine oppure salva il nuovo ordine della playlist.</string>
+</resources>

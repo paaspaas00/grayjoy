@@ -22,7 +22,9 @@ internal fun sourceTerminologyResource(id: Int, youtubeOnly: Boolean): Int = if 
     else -> id
 }
 @Composable internal fun sourceStringResource(id: Int): String =
-    stringResource(sourceTerminologyResource(id, LocalYoutubeOnly.current))
+    stringResource(com.futo.platformplayer.compose.ui.screens.musicTerminologyResource(
+        sourceTerminologyResource(id, LocalYoutubeOnly.current),
+        com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation.current))
 @Composable internal fun sourcePluralStringResource(id: Int, quantity: Int, vararg args: Any): String =
     pluralStringResource(sourceTerminologyResource(id, LocalYoutubeOnly.current), quantity, *args)
 

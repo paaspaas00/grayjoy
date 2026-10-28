@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">قائمة التشغيل هذه قيد التنزيل بالفعل</string>
+    <string name="playlist_shuffle_order">خلط وترتيب</string>
+    <string name="play_in_this_order">بهذا الترتيب</string>
+    <string name="discard_order_title">حفظ الترتيب الجديد؟</string>
+    <string name="discard_order_body">لم تتغير قائمة التشغيل بعد. احفظ الترتيب أو تجاهل هذه التعديلات.</string>
+    <string name="discard_changes">تجاهل التعديلات</string>
+    <string name="music_favorites">المفضلة</string>
+    <string name="add_music_favorite">إضافة إلى المفضلة</string>
+    <string name="remove_music_favorite">إزالة من المفضلة</string>
+    <string name="favorites_empty">ستظهر مقاطعك المفضلة هنا.</string>
+    <string name="crash_logs_downloads">حفظ سجلات الأعطال أيضًا في التنزيلات</string>
+    <string name="crash_logs_downloads_description">نسخة عامة اختيارية. يُنشأ ملف ZIP للمشاركة دائمًا من سجلات التطبيق الخاصة.</string>
+    <string name="youtube_sync_direction">تنسخ المزامنة البيانات من YouTube إلى Grayjoy فقط. لا تُرسل التغييرات المحلية إلى YouTube. المزامنة ثنائية الاتجاه قيد التطوير.</string>
+    <string name="help_spotify_favorites">حفظ الموسيقى المفضلة</string>
+    <string name="help_spotify_favorites_body">اضغط على النجمة في المشغّل أو قائمة المقطع. تتوفر المفضلة أيضًا في الرئيسية والمكتبة.</string>
+    <string name="help_spotify_offline">تنزيل قائمة للاستماع دون اتصال</string>
+    <string name="help_spotify_offline_body">افتح قائمة تشغيل أو ألبومًا واضغط تنزيل الصوت. المؤشر الدوار يعني أن التنزيل جارٍ؛ الضغط عليه لا يلغيه.</string>
+    <string name="help_spotify_order">اختيار ترتيب الاستماع</string>
+    <string name="help_spotify_order_body">افتح خلط وترتيب. اسحب المقاطع أو اخلطها، ثم اختر بهذا الترتيب للتشغيل دون حفظ، أو حفظ للاحتفاظ بالترتيب. تُحفظ القوائم البعيدة كنسخ محلية.</string>
+    <string name="help_music_home_step">اختر مقطعًا أو فنانًا أو ألبومًا أو قائمة حديثة في الرئيسية.</string>
+    <string name="help_music_star_step">اضغط النجمة لإضافة المقطع الحالي إلى المفضلة أو إزالته منها.</string>
+    <string name="help_music_download_step">اضغط تنزيل الصوت. يمكنك متابعة التقدم في لوحة المهام.</string>
+    <string name="help_music_order_step">افتح خلط وترتيب لاختيار ترتيب مخصص أو عشوائي.</string>
+    <string name="help_music_play_order_step">شغّل بهذا الترتيب أو احفظ الترتيب الجديد لقائمة التشغيل.</string>
+</resources>

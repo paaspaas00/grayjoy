@@ -52,6 +52,7 @@ class GrayjayAppActions {
     var onStoryboardLoadFailure: (String) -> Unit = {}
     var onClosePlayback: () -> Unit = {}
     var onToggleWatchLater: (String) -> Unit = { _ -> }
+    var onToggleLiked: (String) -> Unit = {}
     var onToggleDownloaded: (String) -> Unit = { _ -> }
     var onToggleAudioDownloaded: (String) -> Unit = { _ -> }
     var onDownloadVideo: (String, Int?) -> Unit = { _, _ -> }
@@ -66,9 +67,11 @@ class GrayjayAppActions {
     var onCreatePlaylist: (String, List<String>) -> Unit = { _, _ -> }
     var onRenamePlaylist: (String, String) -> Unit = { _, _ -> }
     var onPlaylistShuffleChange: (String, Boolean) -> Unit = { _, _ -> }
+    var onPlaylistPlaybackOrderChange: (String, List<String>) -> Unit = { _, _ -> }
     var onAddVideosToPlaylist: (String, List<String>) -> Unit = { _, _ -> }
     var onRemoveVideosFromPlaylist: (String, List<String>) -> Unit = { _, _ -> }
     var onReorderPlaylist: (String, List<String>) -> Unit = { _, _ -> }
+    var onPlayPlaylistOrder: (String, List<String>) -> Unit = { _, _ -> }
     var onRemoveVideosFromHistory: (List<String>) -> Unit = { _ -> }
     var onRequestHistoryMusicClassification: (List<String>) -> Unit = {}
     var onShortsPrefetchWindowChanged: (List<String>) -> Unit = {}
@@ -154,6 +157,7 @@ class GrayjayAppActions {
     var onSearchHistoryChange: (Boolean) -> Unit = { _ -> }
     var onGroupHistoryByPlaylistChange: (Boolean) -> Unit = {}
     var onCrashLoggingChange: (Boolean) -> Unit = {}
+    var onCrashLogsDownloadsCopyChange: (Boolean) -> Unit = {}
     var onKeepScreenAwakeChange: (Boolean) -> Unit = { _ -> }
     var onPictureInPictureChange: (Boolean) -> Unit = {}
     var onAutomaticPlaylistDownloadsChange: (Boolean) -> Unit = {}

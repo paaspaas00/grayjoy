@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">此播放列表已在下载中</string>
+    <string name="playlist_shuffle_order">随机与顺序</string>
+    <string name="play_in_this_order">按此顺序播放</string>
+    <string name="discard_order_title">保存新顺序？</string>
+    <string name="discard_order_body">播放列表尚未更改。请保存顺序或放弃修改。</string>
+    <string name="discard_changes">放弃修改</string>
+    <string name="music_favorites">收藏</string>
+    <string name="add_music_favorite">添加到收藏</string>
+    <string name="remove_music_favorite">从收藏中移除</string>
+    <string name="favorites_empty">你收藏的歌曲将显示在这里。</string>
+    <string name="crash_logs_downloads">同时将崩溃日志保存到下载文件夹</string>
+    <string name="crash_logs_downloads_description">可选的公开副本。分享的 ZIP 始终从应用的私有日志生成。</string>
+    <string name="youtube_sync_direction">同步仅将数据从 YouTube 复制到 Grayjoy。本地更改不会发送到 YouTube。双向同步仍在开发中。</string>
+    <string name="help_spotify_favorites">收藏喜爱的音乐</string>
+    <string name="help_spotify_favorites_body">点击播放器或歌曲菜单中的星标。主页和媒体库中也能找到收藏。</string>
+    <string name="help_spotify_offline">下载播放列表以离线收听</string>
+    <string name="help_spotify_offline_body">打开播放列表或专辑，点击下载音频。旋转指示器表示已在下载，再次点击不会取消任务。</string>
+    <string name="help_spotify_order">选择播放顺序</string>
+    <string name="help_spotify_order_body">打开随机与顺序。拖动或打乱歌曲，然后选择按此顺序播放以直接播放而不保存，或选择保存以保留顺序。远程播放列表会保存为本地副本。</string>
+    <string name="help_music_home_step">在主页选择歌曲、艺人、专辑或最近播放的列表。</string>
+    <string name="help_music_star_step">点击星标，将当前歌曲添加到收藏或移除。</string>
+    <string name="help_music_download_step">点击下载音频。可在任务面板查看进度。</string>
+    <string name="help_music_order_step">打开随机与顺序，选择自定义或随机播放顺序。</string>
+    <string name="help_music_play_order_step">按此顺序播放，或保存播放列表的新顺序。</string>
+</resources>

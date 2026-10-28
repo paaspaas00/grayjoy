@@ -12,6 +12,16 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DragHandle
+import androidx.compose.material.icons.outlined.Shuffle
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.automirrored.outlined.Sort
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.filled.PlayArrow
+import com.futo.platformplayer.compose.onboarding.helpAnchor
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -22,6 +32,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,10 +52,30 @@ internal fun ReorderPlaylistDialog(
     videos: List<VideoUiModel>,
     onDismiss: () -> Unit,
     onConfirm: (List<String>) -> Unit,
+    currentVideoId: String? = null,
+    isPlaying: Boolean = false,
+    shuffled: Boolean = false,
+    onShuffleChange: (Boolean) -> Unit = {},
+    onOrderChange: (List<String>) -> Unit = {},
+    onPlaybackOrderChange: (List<String>) -> Unit = {},
+    onPlayOrder: (List<String>) -> Unit = {},
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
 ) {
-    var orderedIds by rememberSaveable { mutableStateOf(videos.map(VideoUiModel::id).distinct()) }
+    val currentIds = remember(videos) { videos.map(VideoUiModel::id).distinct() }
+    val totalDuration = remember(videos) { musicDuration(videos) }
+    var normalOrder by rememberSaveable { mutableStateOf(videos.map(VideoUiModel::id).distinct()) }
+    var orderedIds by rememberSaveable { mutableStateOf(if (shuffled) shuffledReorderIds(normalOrder, currentVideoId) else normalOrder) }
+    var shuffleEnabled by rememberSaveable { mutableStateOf(shuffled) }
+    var locked by rememberSaveable { mutableStateOf(false) }
+    var shuffleScrollJob by remember { mutableStateOf<Job?>(null) }
+    var confirmDiscard by rememberSaveable { mutableStateOf(false) }
+    var sortMenu by remember { mutableStateOf(false) }
+    var ascending by rememberSaveable { mutableStateOf(true) }
     val videosById = remember(videos) { videos.associateBy(VideoUiModel::id) }
     val listState = rememberLazyListState()
+    RequestNextPageEffect(listState, canLoadMore = hasMore && !isLoadingMore, onLoadMore = onLoadMore)
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val edgePx = with(density) { 48.dp.toPx() }
@@ -61,13 +93,23 @@ internal fun ReorderPlaylistDialog(
             .apply { add(slotIndex.coerceIn(0, size), null) }
     }
 
+    fun finish() {
+        if (draggedId != null || dropping) return
+        onConfirm(reconcileReorderDraft(orderedIds, currentIds))
+    }
+
+    fun dismiss() {
+        if (orderedIds != currentIds) confirmDiscard = true else onDismiss()
+    }
+
     fun cancelDrag() {
         dropJob?.cancel()
         draggedId = null
         dropping = false
     }
-    LaunchedEffect(videos.map(VideoUiModel::id)) {
+    LaunchedEffect(currentIds) {
         orderedIds = reconcileReorderDraft(orderedIds, videos.map(VideoUiModel::id))
+        normalOrder = reconcileReorderDraft(normalOrder, videos.map(VideoUiModel::id))
         if (draggedId != null && draggedId !in orderedIds) cancelDrag()
         slotIndex = slotIndex.coerceIn(0, (orderedIds.size - 1).coerceAtLeast(0))
     }
@@ -104,6 +146,8 @@ internal fun ReorderPlaylistDialog(
             }
             if (draggedId == id) {
                 orderedIds = commitReorderSlot(orderedIds, id, slotIndex)
+                normalOrder = orderedIds
+                shuffleEnabled = false
                 draggedId = null
                 dropping = false
             }
@@ -127,14 +171,56 @@ internal fun ReorderPlaylistDialog(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.reorder_playlist)) },
-        text = {
-            Box(Modifier.fillMaxWidth().heightIn(max = 420.dp).clipToBounds()) {
+    Dialog(
+        onDismissRequest = { cancelDrag(); dismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+      val view = LocalView.current
+      val lightBars = MaterialTheme.colorScheme.surface.luminance() > .5f
+      DisposableEffect(view, lightBars) {
+          val window = (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+          val applyBars = Runnable {
+              window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view).apply {
+                  isAppearanceLightStatusBars = lightBars
+                  isAppearanceLightNavigationBars = lightBars
+              } }
+          }
+          view.post(applyBars)
+          onDispose { view.removeCallbacks(applyBars) }
+      }
+      Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+            com.futo.platformplayer.compose.onboarding.HelpGuideWindow("reorder-shuffle")
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${videos.size} · $totalDuration", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Box {
+                    IconButton(onClick = { sortMenu = true }, enabled = !locked && draggedId == null) {
+                        Icon(Icons.AutoMirrored.Outlined.Sort, stringResource(R.string.sort))
+                    }
+                    DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.ascending)) },
+                            leadingIcon = { if (ascending) Icon(Icons.Outlined.Check, null) }, onClick = { ascending = !ascending })
+                        val options = listOf(R.string.playlist_order, R.string.sort_name) +
+                            (if (videos.any { it.viewCount > 0 }) listOf(R.string.sort_popularity) else emptyList()) +
+                            (if (videos.any { it.publishedAtMs > 0 }) listOf(R.string.sort_upload_date) else emptyList())
+                        options.forEach { option -> DropdownMenuItem(text = { Text(stringResource(option)) }, onClick = {
+                            val sorted = when (option) {
+                                R.string.sort_name -> videos.sortedBy { it.title.lowercase(java.util.Locale.ROOT) }
+                                R.string.sort_popularity -> sortedRemotePlaylistVideos(videos, RemotePlaylistSortMode.Popularity, ascending)
+                                R.string.sort_upload_date -> sortedRemotePlaylistVideos(videos, RemotePlaylistSortMode.UploadDate, ascending)
+                                else -> videos
+                            }.let { if (!ascending && option != R.string.sort_popularity && option != R.string.sort_upload_date) it.asReversed() else it }
+                            orderedIds = sorted.map(VideoUiModel::id).distinct(); normalOrder = orderedIds
+                            shuffleEnabled = false; sortMenu = false
+                        }) }
+                    }
+                }
+                TextButton(modifier = Modifier.testTag("reorder-confirm"), enabled = draggedId == null && !dropping, onClick = ::finish) { Text(stringResource(R.string.save)) }
+            }
+            Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
                 LazyColumn(
                     state = listState,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                     contentPadding = PaddingValues(vertical = 4.dp),
                     modifier = Modifier.fillMaxWidth().testTag("playlist-reorder-list")
                         // Gesture ownership is on the stable list, not on a row that moves or
@@ -142,7 +228,7 @@ internal fun ReorderPlaylistDialog(
                         .pointerInput(listState, edgePx) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                                if (dropping || down.position.x < size.width - edgePx) return@awaitEachGesture
+                                if (locked || dropping || down.position.x < size.width - edgePx) return@awaitEachGesture
                                 val row = listState.layoutInfo.visibleItemsInfo.firstOrNull {
                                     down.position.y >= it.offset && down.position.y < it.offset + it.size
                                 } ?: return@awaitEachGesture
@@ -180,7 +266,10 @@ internal fun ReorderPlaylistDialog(
                                 .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.65f), MaterialTheme.shapes.medium))
                         } else {
                             ReorderTitleRow(
-                                title = videosById[id]?.title.orEmpty(),
+                                video = videosById[id],
+                                index = index,
+                                current = id == currentVideoId,
+                                playing = isPlaying,
                                 handleTag = "playlist-reorder-handle-$id",
                                 modifier = Modifier.testTag("playlist-reorder-$index").animateItem(
                                     fadeInSpec = null, fadeOutSpec = null,
@@ -190,37 +279,67 @@ internal fun ReorderPlaylistDialog(
                         }
                     }
                 }
+                if (isLoadingMore) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.BottomCenter))
                 draggedId?.let { id ->
                     ReorderTitleRow(
-                        title = videosById[id]?.title.orEmpty(),
+                        video = videosById[id],
+                        index = slotIndex,
+                        current = id == currentVideoId,
+                        playing = isPlaying,
                         lifted = true,
                         modifier = Modifier.offset { IntOffset(0, dragTop.roundToInt()) }
                             .height(with(density) { dragHeight.toDp() }).testTag("playlist-reorder-dragged"),
                     )
                 }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = draggedId == null && !dropping,
-                onClick = { if (draggedId == null && !dropping) onConfirm(reconcileReorderDraft(orderedIds, videos.map(VideoUiModel::id))) }) {
-                Text(stringResource(R.string.ok))
+            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .9f))
+                .navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                IconToggleButton(checked = shuffleEnabled, enabled = draggedId == null && !dropping && !locked,
+                    onCheckedChange = { enabled ->
+                        if (enabled) { normalOrder = orderedIds; orderedIds = shuffledReorderIds(orderedIds, currentVideoId) }
+                        else orderedIds = reconcileReorderDraft(normalOrder, videos.map(VideoUiModel::id))
+                        shuffleEnabled = enabled
+                        shuffleScrollJob?.cancel()
+                        shuffleScrollJob = scope.launch {
+                            listState.animateScrollToItem(if (enabled) 0 else normalOrder.indexOf(currentVideoId).coerceAtLeast(0))
+                        }
+                    }, modifier = Modifier.testTag("reorder-shuffle").helpAnchor("reorder-shuffle")) {
+                    Icon(Icons.Outlined.Shuffle, stringResource(R.string.shuffle_playlist))
+                }
+                AdaptiveButton(onClick = { onPlayOrder(reconcileReorderDraft(orderedIds, currentIds)) },
+                    enabled = orderedIds.isNotEmpty() && draggedId == null && !dropping,
+                    modifier = Modifier.testTag("reorder-play").helpAnchor("reorder-play")) {
+                    Icon(Icons.Filled.PlayArrow, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.play_in_this_order))
+                }
+                IconToggleButton(checked = locked, onCheckedChange = { locked = it }, modifier = Modifier.testTag("reorder-lock")) {
+                    Icon(if (locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, stringResource(R.string.playlist_reorder_lock))
+                }
             }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        }
+      }
+    }
+    if (confirmDiscard) AlertDialog(
+        onDismissRequest = { confirmDiscard = false },
+        title = { Text(stringResource(R.string.discard_order_title)) },
+        text = { Text(stringResource(R.string.discard_order_body)) },
+        confirmButton = { TextButton(onClick = { confirmDiscard = false; finish() }) { Text(stringResource(R.string.save)) } },
+        dismissButton = { TextButton(onClick = { confirmDiscard = false; onDismiss() }) { Text(stringResource(R.string.discard_changes)) } },
     )
 }
 
 @Composable
-private fun ReorderTitleRow(title: String, modifier: Modifier = Modifier, handleTag: String? = null, lifted: Boolean = false) {
+private fun ReorderTitleRow(video: VideoUiModel?, index: Int, current: Boolean, playing: Boolean,
+    modifier: Modifier = Modifier, handleTag: String? = null, lifted: Boolean = false) {
     Surface(
         modifier = modifier.fillMaxWidth().heightIn(min = 56.dp),
         shape = MaterialTheme.shapes.medium,
-        color = if (lifted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = if (lifted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
         shadowElevation = if (lifted) 8.dp else 0.dp,
     ) {
-        Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(title, modifier = Modifier.weight(1f).padding(vertical = 8.dp), maxLines = 3,
-                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+        if (video != null) MusicTrackRow(video, index, current, playing, onClick = {}, onLongClick = {}, artwork = true) {
             Box(Modifier.size(48.dp).then(handleTag?.let { Modifier.testTag(it) } ?: Modifier), contentAlignment = Alignment.Center) {
                 Icon(Icons.Outlined.DragHandle, contentDescription = stringResource(R.string.reorder_video))
             }

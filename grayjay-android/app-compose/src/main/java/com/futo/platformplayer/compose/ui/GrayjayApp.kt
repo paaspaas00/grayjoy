@@ -1,4 +1,5 @@
 package com.futo.platformplayer.compose.ui
+import androidx.compose.material3.Surface
 
 import com.futo.platformplayer.compose.onboarding.*
 import androidx.compose.runtime.SideEffect
@@ -85,6 +86,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.MutableFloatState
@@ -373,14 +375,17 @@ private data class PlaybackPresentation(
     val onRenamePlaylist: (String, String) -> Unit,
     val shuffledPlaylistIds: Set<String>,
     val onPlaylistShuffleChange: (String, Boolean) -> Unit,
+    val onPlaylistPlaybackOrderChange: (String, List<String>) -> Unit,
     val libraryFilter: LibraryFilter,
     val onLibraryFilterChange: (LibraryFilter) -> Unit,
     val libraryPlaylistListState: LazyListState,
     val onRemoveVideosFromPlaylist: (String, List<String>) -> Unit,
     val onReorderPlaylist: (String, List<String>) -> Unit,
+    val onPlayPlaylistOrder: (String, List<String>) -> Unit,
     val onSeek: (Float) -> Unit,
     val onResumeFromHistory: () -> Unit,
     val libraryVideos: List<VideoUiModel>,
+    val isLibraryLoading: Boolean,
     val onOpenProfiles: () -> Unit,
     val defaultPlaybackSpeed: Float,
     val perChannelPlaybackSpeedEnabled: Boolean,
@@ -404,6 +409,7 @@ private data class PlaybackPresentation(
     val searchHistoryEnabled: Boolean,
     val groupHistoryByPlaylist: Boolean,
     val crashLoggingEnabled: Boolean,
+    val crashLogsDownloadsCopy: Boolean,
     val keepScreenAwake: Boolean,
     val pictureInPictureEnabled: Boolean,
     val onAutomaticPlaylistDownloadsChange: (Boolean) -> Unit,
@@ -433,6 +439,7 @@ private data class PlaybackPresentation(
     val onSearchHistoryChange: (Boolean) -> Unit,
     val onGroupHistoryByPlaylistChange: (Boolean) -> Unit,
     val onCrashLoggingChange: (Boolean) -> Unit,
+    val onCrashLogsDownloadsCopyChange: (Boolean) -> Unit,
     val onKeepScreenAwakeChange: (Boolean) -> Unit,
     val onPictureInPictureChange: (Boolean) -> Unit,
     val onOtherAudioDuckingChange: (Boolean) -> Unit,
@@ -588,6 +595,8 @@ fun GrayjayApp(
     com.futo.platformplayer.compose.ui.screens.CreatorSheetTransitionHost(
         uiState.activeProfileId, actions.onLoadChannel, uiState.channelDetail.channel, uiState.channelDetail.isLoading) {
     CompositionLocalProvider(LocalHelpGuide provides help, LocalYoutubeOnly provides uiState.sources.isYoutubeOnly(),
+        com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation provides uiState.usesMusicPresentation(),
+        com.futo.platformplayer.compose.ui.screens.LocalVideoLike provides actions.onToggleLiked,
         com.futo.platformplayer.compose.playback.LocalSeekPreviewPlayback provides actions.onSeekPreviewChange,
         LocalProfileNavigation provides ProfileNavigation(uiState.profiles, uiState.activeProfileId,
             !uiState.isSwitchingProfile && !uiState.sourceProfileSetup.isRunning, actions.onSwitchProfile)) {
@@ -852,8 +861,8 @@ private fun GrayjayAppContent(
             navigatedHelpSession = help.session
             transientUi.actionVideoId = null
             transientUi.playlistPickerVideoIds = emptyList()
-            if (help.topic == HelpTopic.Profiles) onSelect(GrayjayDestination.Home)
-            else if (help.topic == HelpTopic.Random) {
+            if (help.topic in setOf(HelpTopic.Profiles, HelpTopic.SpotifyFavorites)) onSelect(GrayjayDestination.Home)
+            else if (help.topic in setOf(HelpTopic.Random, HelpTopic.SpotifyOffline, HelpTopic.SpotifyOrder)) {
                 onSelect(GrayjayDestination.Library)
                 libraryFilterName = LibraryFilter.Playlists.name
             } else onSelect(GrayjayDestination.Search)
@@ -1295,6 +1304,7 @@ private fun GrayjayAppContent(
         onRenamePlaylist = actions.onRenamePlaylist,
         shuffledPlaylistIds = uiState.shuffledPlaylistIds,
         onPlaylistShuffleChange = actions.onPlaylistShuffleChange,
+        onPlaylistPlaybackOrderChange = actions.onPlaylistPlaybackOrderChange,
         libraryFilter = restoredEnumValue(libraryFilterName, LibraryFilter.History),
         onLibraryFilterChange = {
             focusManager.clearFocus(force = true)
@@ -1304,9 +1314,11 @@ private fun GrayjayAppContent(
         libraryPlaylistListState = libraryPlaylistListState,
         onRemoveVideosFromPlaylist = actions.onRemoveVideosFromPlaylist,
         onReorderPlaylist = actions.onReorderPlaylist,
+        onPlayPlaylistOrder = actions.onPlayPlaylistOrder,
         onSeek = actions.onSeekPlayback,
         onResumeFromHistory = actions.onResumeFromHistory,
         libraryVideos = uiState.libraryVideos,
+        isLibraryLoading = uiState.isLibraryLoading,
         onOpenProfiles = { transientUi.profileDialogVisible = true },
         defaultPlaybackSpeed = uiState.defaultPlaybackSpeed,
         perChannelPlaybackSpeedEnabled = uiState.perChannelPlaybackSpeedEnabled,
@@ -1330,6 +1342,7 @@ private fun GrayjayAppContent(
         searchHistoryEnabled = uiState.searchHistoryEnabled,
         groupHistoryByPlaylist = uiState.groupHistoryByPlaylist,
         crashLoggingEnabled = uiState.crashLoggingEnabled,
+        crashLogsDownloadsCopy = uiState.crashLogsDownloadsCopy,
         keepScreenAwake = uiState.keepScreenAwake,
         pictureInPictureEnabled = uiState.pictureInPictureEnabled,
         onAutomaticPlaylistDownloadsChange = actions.onAutomaticPlaylistDownloadsChange,
@@ -1359,6 +1372,7 @@ private fun GrayjayAppContent(
         onSearchHistoryChange = actions.onSearchHistoryChange,
         onGroupHistoryByPlaylistChange = actions.onGroupHistoryByPlaylistChange,
         onCrashLoggingChange = actions.onCrashLoggingChange,
+        onCrashLogsDownloadsCopyChange = actions.onCrashLogsDownloadsCopyChange,
         onKeepScreenAwakeChange = actions.onKeepScreenAwakeChange,
         onPictureInPictureChange = actions.onPictureInPictureChange,
         onOtherAudioDuckingChange = actions.onOtherAudioDuckingChange,
@@ -1438,7 +1452,7 @@ private fun GrayjayAppContent(
         onFilterSelectionChange = actions.onSourceFilterSelectionChange,
         home = uiState.home,
         recentPlaylists = remember(uiState.sources, uiState.recentPlaylists, uiState.playlists, uiState.libraryVideos) {
-            if (!uiState.sources.isSpotifyOnly()) return@remember emptyList()
+            if (!uiState.usesMusicPresentation()) return@remember emptyList()
             val locals = uiState.playlists.associateBy(PlaylistUiModel::id)
             val watchedAt = uiState.libraryVideos.associate { it.id to it.lastWatchedAt }
             val historical = uiState.playlists.map { playlist ->
@@ -1492,7 +1506,7 @@ private fun GrayjayAppContent(
     }
 
     val fullscreenVideo = selectedVideo ?: playbackVideo
-    val portraitFullscreen = (shortsModeActive && shortsPhone) || usePortraitPlayerFullscreen(fullscreenVideo, uiState.playback)
+    val portraitFullscreen = !uiState.usesMusicPresentation() && ((shortsModeActive && shortsPhone) || usePortraitPlayerFullscreen(fullscreenVideo, uiState.playback))
     val currentConfiguration = LocalConfiguration.current
     val windowOrientation = currentConfiguration.orientation
     val automaticFullscreenAllowed = automaticFullscreenAllowedForViewport(
@@ -1600,7 +1614,26 @@ private fun GrayjayAppContent(
 
     if (isFullscreen && fullscreenVideo != null) {
         val fullscreenContent: @Composable () -> Unit = {
+        val musicContent: (@Composable (() -> Unit) -> Unit)? = if (uiState.usesMusicPresentation()) { openSettings ->
+            CompositionLocalProvider(com.futo.platformplayer.compose.ui.screens.LocalTemporaryQueue provides
+                com.futo.platformplayer.compose.ui.screens.TemporaryQueueActions(
+                    uiState.temporaryPlaybackQueue, remember(uiState.playlists) { uiState.playlists.map { it.title } },
+                    actions.onCreatePlaylist, actions.onPlayQueuedVideo)) {
+            com.futo.platformplayer.compose.ui.screens.MusicNowPlaying(
+                video = fullscreenVideo, player = playback.player, playback = playback.state, nowPlaying = playback.nowPlaying,
+                queue = playback.queue, onToggle = playback.onToggle, onPrevious = playback.onPrevious, onNext = playback.onNext,
+                onSeek = playback.onSeek, onWatchLater = { actions.onToggleWatchLater(fullscreenVideo.id) },
+                onDownload = { actions.onToggleAudioDownloaded(fullscreenVideo.id) },
+                onAddToPlaylist = { transientUi.playlistPickerVideoIds = listOf(fullscreenVideo.id) },
+                onRetry = playback.onRetry, onPlay = onVideoClick,
+                onMore = { transientUi.actionIsQueueVideo = true; transientUi.actionVideoId = it.id },
+                onSpeed = playback.onSpeedChange, onArtworkBounds = {}, fullscreen = true, onFullscreen = playback.onExitFullscreen,
+                onOpenSettings = openSettings,
+            )
+            }
+        } else null
         FullscreenPlayerScreen(
+            musicContent = musicContent,
             video = fullscreenVideo,
             player = playback.player,
             playback = playback.state,
@@ -1799,6 +1832,7 @@ private fun GrayjayAppContent(
             },
             onToggleDownload = { actions.onToggleDownloaded(video.id) },
             onDownloadAudio = { actions.onToggleAudioDownloaded(video.id) },
+            onToggleWatchLater = { actions.onToggleWatchLater(video.id) },
             onShare = {
                 val shareUrl = video.shareUrl.ifBlank { video.contentUrl.ifBlank { video.id } }
                 context.startActivity(
@@ -1895,7 +1929,8 @@ private fun GrayjayAppContent(
         )
     }
     if (help.visible) HelpScreen(help, uiState.sourceProfilesEnabled,
-        uiState.profiles.firstOrNull { it.id == uiState.activeProfileId }?.sourceId.let { it.isNullOrBlank() || it == "youtube" })
+        uiState.profiles.firstOrNull { it.id == uiState.activeProfileId }?.sourceId.let { it.isNullOrBlank() || it == "youtube" },
+        musicMode = uiState.usesMusicPresentation())
     if (!isFullscreen && !pictureInPictureMode && !uiState.isSwitchingProfile) {
         val topic = help.topic
         val finalStep = topic != null && help.step == topic.steps.lastIndex
@@ -1905,11 +1940,9 @@ private fun GrayjayAppContent(
             topic == HelpTopic.Playlist && help.step == 2 -> transientUi.playlistPickerVideoIds.isNotEmpty()
             topic in setOf(HelpTopic.Album, HelpTopic.Follow) && help.step == 0 ->
                 uiState.search.hasSearched && !uiState.search.isLoading
-            topic == HelpTopic.Random && help.step == 1 ->
-                selectedPlaylistId in uiState.shuffledPlaylistIds
             nextTarget == "player-actions" || nextTarget == "toggle-download" -> selectedVideo != null
             nextTarget == "channel-follow" -> selectedChannel != null
-            nextTarget == "playlist-shuffle" || nextTarget == "playlist-play-all" -> selectedPlaylist != null
+            nextTarget == "playlist-open-reorder" || nextTarget == "playlist-play-all" || nextTarget == "playlist-download-audio" -> selectedPlaylist != null
             else -> nextTarget != null && help.bounds(nextTarget) != null
         }
         SideEffect { help.ready = ready }
@@ -1986,7 +2019,7 @@ private fun BottomNavigationLayout(
         playlists = playlists,
         bottomNavigationProvidesInset = true,
         bottomBar = {
-            NavigationBar(modifier = if (compactLayout) Modifier.height(64.dp + navInset) else Modifier) {
+            NavigationBar(modifier = Modifier.testTag("bottom-navigation-bar").then(if (compactLayout) Modifier.height(64.dp + navInset) else Modifier)) {
                 GrayjayDestination.entries.filter { it.showInCompactNavigation }.forEach { destination ->
                     NavigationBarItem(
                         alwaysShowLabel = !compactLayout,
@@ -2366,7 +2399,7 @@ private fun GrayjayScaffold(
                             Text(selectedChannel.name, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 style = if (compactChrome) MaterialTheme.typography.titleMedium else androidx.compose.material3.LocalTextStyle.current)
                         } else if (selectedPlaylist != null) {
-                            Text(selectedPlaylist.title, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            if (!com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation.current) Text(selectedPlaylist.title, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 style = if (compactChrome) MaterialTheme.typography.titleMedium else androidx.compose.material3.LocalTextStyle.current)
                         } else if (selected == GrayjayDestination.Home) {
                             if (drawerVisible) Text(stringResource(R.string.nav_home)) else Row(
@@ -2570,8 +2603,10 @@ private fun GrayjayScaffold(
                 )
                 } else if (animatedPlaylist != null) {
                 if (animatedPlaylist.sourceId.isBlank()) PlaylistDetailScreen(
+                    onPlayOrder = { playback.onPlayPlaylistOrder(animatedPlaylist.id, it) },
                     shuffled = animatedPlaylist.id in playback.shuffledPlaylistIds,
                     onShuffleChange = { playback.onPlaylistShuffleChange(animatedPlaylist.id, it) },
+                    onPlaybackOrderChange = { playback.onPlaylistPlaybackOrderChange(animatedPlaylist.id, it) },
                     playlist = animatedPlaylist,
                     currentVideoId = playback.state.currentVideoId,
                     isPlaying = playback.isPlaying,
@@ -2629,6 +2664,9 @@ private fun GrayjayScaffold(
                     },
                 )
                 else RemotePlaylistDetailScreen(
+                    onPlayOrder = { playback.onPlayPlaylistOrder(animatedPlaylist.id, it) },
+                    onPlaybackOrderChange = { playback.onPlaylistPlaybackOrderChange(animatedPlaylist.id, it) },
+                    onReorder = { playback.onReorderPlaylist(animatedPlaylist.id, it) },
                     shuffled = animatedPlaylist.id in playback.shuffledPlaylistIds,
                     onShuffleChange = { playback.onPlaylistShuffleChange(animatedPlaylist.id, it) },
                     detail = playback.remotePlaylistDetail,
@@ -2648,6 +2686,8 @@ private fun GrayjayScaffold(
                 } else {
                     when (animatedDestination) {
                     GrayjayDestination.Home -> HomeScreen(
+                        favoriteVideos = remember(playback.libraryVideos) { playback.libraryVideos.filter(VideoUiModel::isWatchLater) },
+                        onChannelClick = onChannelClick,
                         home = sourcePresentation.home,
                         recentPlaylists = sourcePresentation.recentPlaylists,
                         shuffledPlaylistIds = playback.shuffledPlaylistIds,
@@ -2719,6 +2759,7 @@ private fun GrayjayScaffold(
                         onNavigationMenuClick = onToggleDrawer ?: {},
                     )
                     GrayjayDestination.Library -> LibraryScreen(
+                        isLoading = playback.isLibraryLoading,
                         historyEntryGeneration = LocalLibraryEntryGeneration.current,
                         groupHistoryByPlaylist = playback.groupHistoryByPlaylist,
                         onGroupHistoryByPlaylistChange = playback.onGroupHistoryByPlaylistChange,
@@ -2807,6 +2848,8 @@ private fun GrayjayScaffold(
                         searchHistoryEnabled = playback.searchHistoryEnabled,
                         onSearchHistoryChange = playback.onSearchHistoryChange,
                         crashLoggingEnabled = playback.crashLoggingEnabled,
+                        crashLogsDownloadsCopy = playback.crashLogsDownloadsCopy,
+                        onCrashLogsDownloadsCopyChange = playback.onCrashLogsDownloadsCopyChange,
                         onCrashLoggingChange = playback.onCrashLoggingChange,
                         keepScreenAwake = playback.keepScreenAwake,
                         onKeepScreenAwakeChange = playback.onKeepScreenAwakeChange,
@@ -2984,6 +3027,7 @@ private fun GrayjayScaffold(
                                         .coerceIn(0f, 1f)
                                 },
                         ) {
+                            CompositionLocalProvider(com.futo.platformplayer.compose.ui.screens.LocalMusicPlayerDrag provides transitionDragModifier) {
                             VideoDetailScreen(
                                 video = transitionVideo,
                                 download = playback.downloads[transitionVideo.id],
@@ -3102,6 +3146,7 @@ private fun GrayjayScaffold(
                                     }
                                 },
                             )
+                            }
                         }
                     }
                     if (transitionActive && minimized != null) {
@@ -3120,7 +3165,8 @@ private fun GrayjayScaffold(
             val start = expanded ?: minimized!!
             val end = minimized ?: expanded!!
             val queueIndex = playback.state.queueVideoIds.indexOf(playback.state.currentVideoId)
-            if (!transitionVideo.playbackAudioOnly || transitionActive) PlayerSurface(
+            if (!com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation.current &&
+                (!transitionVideo.playbackAudioOnly || transitionActive)) PlayerSurface(
                 video = transitionVideo,
                 player = playback.player,
                 playback = playback.state,
@@ -3226,6 +3272,7 @@ private fun KeyboardAwarePlayerBar(
 ) {
     val ime = WindowInsets.ime
     val navigationBars = WindowInsets.navigationBars
+    val legacyKeyboard = rememberLegacyKeyboardInsets()
     Layout(content = {
         Box(Modifier.fillMaxWidth().clipToBounds().onGloballyPositioned {
             onMiniatureBottomChanged(it.positionInRoot().y + it.size.height)
@@ -3237,11 +3284,15 @@ private fun KeyboardAwarePlayerBar(
         val nav = measurables[1].measure(loose)
         // Read animated IME insets during measurement, avoiding whole-screen recomposition.
         // The inset is a sibling of the miniature, never part of its touch target.
-        val lowerSpace = searchMiniplayerBottomInsetPx(ime.getBottom(this), navigationBars.getBottom(this), nav.height)
+        val legacy = legacyKeyboard.value
+        val lowerSpace = if (legacy.visible) legacy.occlusion else
+            searchMiniplayerBottomInsetPx(ime.getBottom(this), navigationBars.getBottom(this), nav.height)
         val height = (mini.height + lowerSpace).coerceIn(constraints.minHeight, constraints.maxHeight)
         layout(constraints.maxWidth, height) {
             mini.placeRelative(0, 0)
-            nav.placeRelative(0, height - nav.height)
+            // A resized legacy window already ends at the keyboard; its navigation must not
+            // overlap the miniature. In an unresized window it remains behind the keyboard.
+            if (!legacy.visible || lowerSpace >= nav.height) nav.placeRelative(0, height - nav.height)
         }
     }
 }

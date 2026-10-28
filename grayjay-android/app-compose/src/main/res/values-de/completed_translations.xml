@@ -160,7 +160,7 @@
     <string name="update_download_progress">%1$s von %2$s</string>
     <string name="update_downloaded_amount">%1$s heruntergeladen</string>
     <string name="save_crash_logs">Absturzprotokolle speichern</string>
-    <string name="save_crash_logs_description">Speichert die letzten 1.000 technischen Ereignisse und bis zu 10 Absturzprotokolle lokal. Geteilte Berichte enthalten keine Ausnahmemeldungen oder Inhaltskennungen. Neue Absturzprotokolle werden auch nach Downloads/Grayjoy kopiert. Kein automatischer Upload.</string>
+    <string name="save_crash_logs_description">Speichert die letzten 1.000 technischen Ereignisse und bis zu 10 Absturzprotokolle lokal. Geteilte Berichte enthalten keine Ausnahmemeldungen oder Inhaltskennungen. Kein automatischer Upload.</string>
     <string name="open_navigation_menu">Navigationsmenü öffnen</string>
     <string name="close_navigation_menu">Navigationsmenü schließen</string>
     <string name="comment_replies">Antworten</string>

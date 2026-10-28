@@ -49,6 +49,7 @@ private data class SeekBlurFrame(val bitmap: Bitmap, val image: ImageBitmap, val
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 internal fun SeekVideoBlur(playerView: PlayerView?, seeking: Boolean, protectedContent: Boolean) {
+    val constrained = com.futo.platformplayer.compose.rememberDevicePerformanceProfile().isLowEnd
     val amount = animateFloatAsState(if (seeking) 1f else 0f, tween(160), label = "seek-video-blur")
     val seekingNow by rememberUpdatedState(seeking)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -85,7 +86,7 @@ internal fun SeekVideoBlur(playerView: PlayerView?, seeking: Boolean, protectedC
             var failures = 0
             try {
                 while (isActive) {
-                    val next = captureSeekFrame(playerView, surface)
+                    val next = captureSeekFrame(playerView, surface, if (constrained) 192 else 320)
                     if (next != null) {
                         if (Build.VERSION.SDK_INT < 31) withContext(Dispatchers.Default) {
                             val pixels = IntArray(next.bitmap.width * next.bitmap.height)
@@ -95,6 +96,7 @@ internal fun SeekVideoBlur(playerView: PlayerView?, seeking: Boolean, protectedC
                         }
                         value = next
                         failures = 0
+                        if (constrained) kotlinx.coroutines.awaitCancellation()
                     } else if (++failures >= 3) break
                     // Keep at most one asynchronous copy in flight, only during this gesture.
                     delay(80)
@@ -130,11 +132,11 @@ private fun setTextureBlur(view: View, radius: Float) {
     view.setRenderEffect(if (radius > .05f) RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP) else null)
 }
 
-private suspend fun captureSeekFrame(parent: PlayerView, surface: View): SeekBlurFrame? {
+private suspend fun captureSeekFrame(parent: PlayerView, surface: View, maxPixels: Int): SeekBlurFrame? {
     if (!surface.isAttachedToWindow || surface.width <= 0 || surface.height <= 0) return null
     if (surface is SurfaceView && !surface.holder.surface.isValid) return null
     if (surface is TextureView && !surface.isAvailable) return null
-    val scale = minOf(1f, 320f / max(surface.width, surface.height))
+    val scale = minOf(1f, maxPixels.toFloat() / max(surface.width, surface.height))
     val width = (surface.width * scale).roundToInt().coerceAtLeast(1)
     val height = (surface.height * scale).roundToInt().coerceAtLeast(1)
     var x = 0f

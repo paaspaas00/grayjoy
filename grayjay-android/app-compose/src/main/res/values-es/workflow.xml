@@ -1,0 +1,26 @@
+<resources>
+    <string name="playlist_already_downloading">Esta lista ya se está descargando</string>
+    <string name="playlist_shuffle_order">Aleatorio y orden</string>
+    <string name="play_in_this_order">En este orden</string>
+    <string name="discard_order_title">¿Guardar el nuevo orden?</string>
+    <string name="discard_order_body">La lista aún no se ha modificado. Guarda el orden o descarta estos cambios.</string>
+    <string name="discard_changes">Descartar cambios</string>
+    <string name="music_favorites">Favoritos</string>
+    <string name="add_music_favorite">Añadir a favoritos</string>
+    <string name="remove_music_favorite">Quitar de favoritos</string>
+    <string name="favorites_empty">Tus canciones favoritas aparecerán aquí.</string>
+    <string name="crash_logs_downloads">Guardar también los registros de fallos en Descargas</string>
+    <string name="crash_logs_downloads_description">Copia pública opcional. El ZIP compartido siempre se prepara a partir de los registros privados de la app.</string>
+    <string name="youtube_sync_direction">La sincronización solo copia datos de YouTube a Grayjoy. Los cambios locales no se envían a YouTube. La sincronización bidireccional está en desarrollo.</string>
+    <string name="help_spotify_favorites">Guardar tu música favorita</string>
+    <string name="help_spotify_favorites_body">Toca la estrella del reproductor o del menú de la canción. Los favoritos también están en Inicio y Biblioteca.</string>
+    <string name="help_spotify_offline">Descargar una lista para escuchar sin conexión</string>
+    <string name="help_spotify_offline_body">Abre una lista o álbum y toca Descargar audio. El indicador giratorio significa que la descarga ya está en curso; tocarlo no la cancela.</string>
+    <string name="help_spotify_order">Elegir el orden de escucha</string>
+    <string name="help_spotify_order_body">Abre Aleatorio y orden. Arrastra o mezcla canciones y elige En este orden para reproducir sin guardar, o Guardar para conservarlo. Las listas remotas se guardan como copias locales.</string>
+    <string name="help_music_home_step">Elige una canción, artista, álbum o lista reciente en Inicio.</string>
+    <string name="help_music_star_step">Toca la estrella para añadir o quitar la canción actual de favoritos.</string>
+    <string name="help_music_download_step">Toca Descargar audio. Puedes seguir el progreso en el panel de tareas.</string>
+    <string name="help_music_order_step">Abre Aleatorio y orden para elegir un orden personalizado o aleatorio.</string>
+    <string name="help_music_play_order_step">Reproduce en este orden o guarda el nuevo orden de la lista.</string>
+</resources>

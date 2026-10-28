@@ -60,7 +60,7 @@ class PlaylistNavigationTest {
         rule.onNodeWithTag("playlist-reorder-handle-v1", useUnmergedTree = true).performTouchInput {
             swipe(center, center + Offset(0f, 240f), durationMillis = 600)
         }
-        rule.onNodeWithText(rule.activity.getString(R.string.ok)).performClick()
+        rule.onNodeWithTag("reorder-confirm").performClick()
         rule.runOnIdle {
             assertNotNull(confirmed)
             assertEquals(videos.map { it.id }.toSet(), confirmed!!.toSet())

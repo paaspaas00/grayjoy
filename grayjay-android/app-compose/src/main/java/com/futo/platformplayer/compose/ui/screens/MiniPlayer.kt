@@ -78,6 +78,7 @@ fun MiniPlayer(
             ),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 3.dp,
+        shape = androidx.compose.ui.graphics.RectangleShape,
     ) {
         MiniPlayerChrome(
             video = video,
@@ -139,9 +140,10 @@ internal fun MiniPlayerChrome(
         ) {
             Box(
                 modifier = Modifier
-                    .width(112.dp)
+                    .width(if (LocalMusicPresentation.current) 76.dp else 112.dp)
                     .height(72.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                    .background(if (LocalMusicPresentation.current) androidx.compose.ui.graphics.Color.Transparent
+                        else MaterialTheme.colorScheme.surfaceContainerLowest)
                     .then(
                         if (onVideoBoundsChanged != null) {
                             Modifier.onGloballyPositioned { coordinates ->
@@ -161,7 +163,9 @@ internal fun MiniPlayerChrome(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                if (video.playbackAudioOnly) {
+                if (LocalMusicPresentation.current) {
+                    MusicArtwork(video.thumbnailUrl, Modifier.size(56.dp))
+                } else if (video.playbackAudioOnly) {
                     Column(
                         modifier = Modifier.testTag("mini-player-audio-only"),
                         horizontalAlignment = Alignment.CenterHorizontally,

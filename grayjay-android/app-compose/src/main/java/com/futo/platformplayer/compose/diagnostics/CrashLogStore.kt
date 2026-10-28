@@ -33,6 +33,7 @@ import kotlin.system.exitProcess
 internal object CrashLogStore {
     private const val PREFERENCES = "grayjoy_diagnostics"
     private const val KEY_ENABLED = "crash_logging_enabled"
+    private const val KEY_DOWNLOADS_COPY = "crash_logs_downloads_copy"
     private const val DIRECTORY = "diagnostics"
     private const val MAX_LOG_FILES = 10
     private const val MAX_STACK_CHARS = 256_000
@@ -78,7 +79,7 @@ internal object CrashLogStore {
 
     fun isEnabled(context: Context): Boolean = try {
         context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-            .getBoolean(KEY_ENABLED, false)
+            .getBoolean(KEY_ENABLED, true)
     } catch (_: ClassCastException) {
         // Called synchronously at startup and again from the uncaught-exception handler.
         false
@@ -91,6 +92,15 @@ internal object CrashLogStore {
             .putBoolean(KEY_ENABLED, enabled)
             .apply()
         if (enabled) collectHistoricalExits(context.applicationContext)
+    }
+
+    fun isDownloadsCopyEnabled(context: Context): Boolean = runCatching {
+        context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).getBoolean(KEY_DOWNLOADS_COPY, false)
+    }.getOrDefault(false)
+
+    fun setDownloadsCopyEnabled(context: Context, enabled: Boolean) {
+        context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_DOWNLOADS_COPY, enabled).apply()
     }
 
     fun install(context: Context) {
@@ -155,7 +165,7 @@ internal object CrashLogStore {
             append(stack)
         }
         destination.writeText(contents)
-        runCatching { writePublicCrashLog(context, destination.name, contents) }
+        if (isDownloadsCopyEnabled(context)) runCatching { writePublicCrashLog(context, destination.name, contents) }
         trimPrivateLogs(directory)
         return destination
     }
@@ -228,7 +238,7 @@ internal object CrashLogStore {
                 markCrash(context, id)
                 pending.value = id
             }
-            runCatching { writePublicCrashLog(context, output.name, contents) }
+            if (isDownloadsCopyEnabled(context)) runCatching { writePublicCrashLog(context, output.name, contents) }
             trimPrivateLogs(directory)
             seen += key
             // Keep only identifiers Android can still return; no accumulating per-session list.

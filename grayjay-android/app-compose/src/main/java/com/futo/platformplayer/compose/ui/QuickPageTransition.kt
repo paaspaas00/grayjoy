@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.unit.dp
 
 /** Navigation replaces the outgoing composition immediately, retaining only the incoming layer. */
 @Composable
@@ -22,11 +23,12 @@ internal fun QuickPageTransition(
     animate: Boolean = true,
     content: @Composable (String) -> Unit,
 ) {
+    val constrained = com.futo.platformplayer.compose.rememberDevicePerformanceProfile().isLowEnd
     key(targetKey) {
         // Capture the one-shot navigation request. Its caller can clear the pending direction
         // immediately without snapping a transition that is already being drawn.
         val slideDirection = remember(animationRequest) { horizontalSlideDirection.coerceIn(-1, 1) }
-        val animateThisPage = remember { animate }
+        val animateThisPage = remember { animate && (!constrained || slideDirection != 0) }
         val progress = remember { Animatable(if (animateThisPage) 0f else 1f) }
         LaunchedEffect(animationRequest) {
             if (!animateThisPage) return@LaunchedEffect
@@ -42,9 +44,9 @@ internal fun QuickPageTransition(
         Box(modifier.graphicsLayer {
             transformOrigin = TransformOrigin(0.5f, 0f)
             // Read animation state during drawing, not composition or measurement.
-            alpha = if (slideDirection == 0) progress.value else 0.78f + 0.22f * progress.value
-            translationX = size.width * slideDirection * (1f - progress.value)
-            val scale = if (slideDirection == 0) {
+            alpha = if (constrained) 1f else if (slideDirection == 0) progress.value else 0.78f + 0.22f * progress.value
+            translationX = if (slideDirection == 0) 0f else size.width * slideDirection * (1f - progress.value)
+            val scale = if (slideDirection == 0 && !constrained) {
                 0.985f + 0.015f * progress.value
             } else {
                 1f

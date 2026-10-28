@@ -13,7 +13,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.Lifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -52,10 +53,20 @@ internal fun RemoteBitmapImage(
     onLoadFailure: () -> Unit = {},
 ) {
     val context = LocalContext.current.applicationContext
+    val maxPreviewPixels = if (com.futo.platformplayer.compose.rememberDevicePerformanceProfile().isLowEnd) 320f else 384f
     val cache = remember(context) { ArtworkCache.get(context) }
     val generation by cache.generation.collectAsStateWithLifecycle()
     var resumeGeneration by remember { mutableIntStateOf(0) }
-    LifecycleEventEffect(Lifecycle.Event.ON_START) { resumeGeneration++ }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        var stopped = false
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) stopped = true
+            else if (event == Lifecycle.Event.ON_START && stopped) { stopped = false; resumeGeneration++ }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     val web = url.startsWith("https://") || url.startsWith("http://")
     val cachedFlow = remember(url, requestHeaders, artworkKind, generation, resumeGeneration) {
         if (web) cache.observe(url, requestHeaders, artworkKind) else MutableStateFlow<CachedArtwork?>(null)
@@ -80,6 +91,7 @@ internal fun RemoteBitmapImage(
     val bitmap = remember(url, fallbackUrl, requestHeaders, circleCrop, targetSize, generation) {
         mutableStateOf<ImageBitmap?>(null)
     }
+    if (model != null && url.isNotBlank() && targetSize.width > 0 && targetSize.height > 0) {
     DisposableEffect(context, model, artwork?.revision, requestHeaders, circleCrop, targetSize, generation) {
         var active = true
         val manager = Glide.with(context)
@@ -92,7 +104,7 @@ internal fun RemoteBitmapImage(
                 if (active) { bitmap.value = null; reportFailure() }
             }
         }
-        if (model != null && url.isNotBlank() && targetSize.width > 0 && targetSize.height > 0) {
+        run {
             fun request(address: String) = manager.asBitmap()
                 .load(if (requestHeaders.isEmpty()) address else GlideUrl(address, LazyHeaders.Builder().apply {
                     requestHeaders.forEach { (name, value) -> addHeader(name, value) }
@@ -112,8 +124,9 @@ internal fun RemoteBitmapImage(
             manager.clear(target)
         }
     }
+    }
     Canvas(modifier.then(if (requestSize == null) Modifier.onSizeChanged { size ->
-        val scale = (384f / maxOf(size.width, size.height).coerceAtLeast(1)).coerceAtMost(1f)
+        val scale = (maxPreviewPixels / maxOf(size.width, size.height).coerceAtLeast(1)).coerceAtMost(1f)
         measuredSize.value = IntSize((size.width * scale).roundToInt(), (size.height * scale).roundToInt())
     } else Modifier)) {
         if (bitmap.value != null || !showParentPlaceholderWhileLoading) drawRect(placeholderColor)

@@ -8,6 +8,9 @@ private val spotifyTrackUrl = Regex("https?://open\\.spotify\\.com/(?:intl-[a-z-
 private val noiseWords = setOf("official", "audio", "video", "lyrics", "lyric", "topic", "vevo", "hd", "hq")
 private val variantWords = setOf("cover", "karaoke", "reaction", "remix", "live", "slowed", "reverb", "sped", "nightcore", "instrumental")
 
+internal fun playbackVideoHeightTarget(sourceId: String, requested: Int, musicProfile: Boolean = false): Int =
+    if (musicProfile || sourceId.equals("spotify", true)) requested.coerceAtMost(480) else requested
+
 internal fun isSpotifyYoutubeBridgeTrack(video: VideoUiModel): Boolean =
     video.sourceId.equals("spotify", ignoreCase = true) &&
         spotifyTrackUrl.matches(video.contentUrl.ifBlank { video.id }.substringBefore('?'))
@@ -16,6 +19,22 @@ internal fun spotifyYoutubeSearchQuery(video: VideoUiModel): String =
     listOf(video.creator, video.title, "official audio")
         .filter(String::isNotBlank)
         .joinToString(" ")
+
+/** The music presentation needs no video decoder or video CDN traffic when separate audio exists. */
+internal fun VideoUiModel.preferMusicAudioSource(): VideoUiModel {
+    val useDownload = audioDownloadUrl.isNotBlank() || audioDownloadManifest.isNotBlank()
+    if (!useDownload && audioUrl.isBlank()) return this
+    return copy(
+        playbackUrl = if (useDownload) audioDownloadUrl else audioUrl,
+        playbackMimeType = if (useDownload) audioDownloadMimeType else "",
+        playbackManifest = if (useDownload) audioDownloadManifest else "",
+        playbackRequestHeaders = if (useDownload) audioDownloadRequestHeaders else audioRequestHeaders,
+        playbackDataSourceFactory = if (useDownload) audioDownloadDataSourceFactory else audioDataSourceFactory,
+        playbackAudioOnly = true, playbackHasMuxedAudio = false,
+        audioUrl = "", audioRequestHeaders = emptyMap(), audioDataSourceFactory = null,
+        qualityVariants = emptyList(), subtitleTracks = emptyList(), storyboard = null,
+    )
+}
 
 internal fun spotifyYoutubeSearchQueries(video: VideoUiModel): List<String> = listOf(
     spotifyYoutubeSearchQuery(video), listOf(video.creator, video.title).filter(String::isNotBlank).joinToString(" "),
@@ -73,7 +92,7 @@ private fun normalizedWords(value: String): Set<String> = Normalizer.normalize(v
     .lowercase(Locale.ROOT)
     .split(Regex("[^\\p{L}\\p{N}]+"))
     .asSequence()
-    .filter { it.length > 1 && it !in noiseWords }
+    .filter { (it.length > 1 || it.any(Char::isDigit)) && it !in noiseWords }
     .toSet()
 
 private fun parseDurationSeconds(value: String): Long {

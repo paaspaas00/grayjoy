@@ -73,7 +73,7 @@ internal fun PlaylistSearchField(
     onQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    OutlinedTextField(
+    GrayjoySearchField(
         value = query,
         shape = SearchFieldShape,
         onValueChange = { onQueryChange(it.take(80)) },
@@ -109,6 +109,7 @@ internal fun VideoActionsSheet(
     onAddToQueue: (() -> Unit)? = null,
     onPlayNext: (() -> Unit)? = null,
     onPlayFromHere: (() -> Unit)? = null,
+    onToggleWatchLater: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(
         sheetState = androidx.compose.material3.rememberModalBottomSheetState(
@@ -138,6 +139,13 @@ internal fun VideoActionsSheet(
                 )
             }
             HorizontalDivider()
+            if (LocalMusicPresentation.current && onToggleWatchLater != null) VideoAction(
+                title = stringResource(if (video.isWatchLater) R.string.remove_music_favorite else R.string.add_music_favorite),
+                subtitle = stringResource(R.string.stored_locally_library),
+                icon = { Icon(watchLaterIcon(video.isWatchLater), null) },
+                tag = "video-action-favorite",
+                onClick = { onToggleWatchLater(); onDismiss() },
+            )
             onAddToQueue?.let { addToQueue ->
                 VideoAction(
                     title = stringResource(R.string.enqueue),
@@ -444,7 +452,7 @@ internal fun PlaylistPickerDialog(
         },
         confirmButton = {
             if (creatingNew) {
-                Button(
+                AdaptiveButton(
                     onClick = {
                         onCreate(title.trim(), videoIds)
                         onDismiss()
@@ -491,7 +499,7 @@ internal fun RenamePlaylistDialog(
             )
         },
         confirmButton = {
-            Button(
+            AdaptiveButton(
                 onClick = {
                     onRename(title.trim())
                     onDismiss()

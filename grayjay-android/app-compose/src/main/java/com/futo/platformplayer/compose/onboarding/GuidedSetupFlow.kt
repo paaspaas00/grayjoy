@@ -17,6 +17,7 @@ internal enum class SetupStep(val title: Int, val tag: String) {
     Autoplay(R.string.youtube_autoplay, "autoplay"),
     SourceProfiles(R.string.profile_split_title, "source-profiles"),
     ExtraSourceProfiles(R.string.profile_split_choose, "extra-source-profiles"),
+    Diagnostics(R.string.save_crash_logs, "diagnostics"),
     Help(R.string.setup_help_title, "help"),
     Done(R.string.setup_ready, "done"),
 }

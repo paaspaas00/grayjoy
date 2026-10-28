@@ -641,6 +641,7 @@ private data class CommentHandle(
 class GrayjayPluginBackend(
     context: Context,
     private val enforcePluginSignatures: Boolean = false,
+    private val constrainedResources: Boolean = false,
 ) {
     private val appContext = context.applicationContext
     private val client = OkHttpClient.Builder().build()
@@ -655,7 +656,7 @@ class GrayjayPluginBackend(
     // actually progress concurrently without making the plugin runtime unsafe.
     private val subscriptionClientPool = PlatformMultiClientPool(
         "Compose subscriptions",
-        SUBSCRIPTION_CONCURRENCY,
+        if (constrainedResources) 2 else SUBSCRIPTION_CONCURRENCY,
     )
     // Match StatePlatform's user-critical pool. A plugin call is synchronous once it enters V8,
     // so cancelling its coroutine cannot necessarily stop an in-flight browser/network promise.
@@ -855,7 +856,7 @@ class GrayjayPluginBackend(
         endpoints: Map<String, PluginEndpoint>,
     ): GrayjayPluginUpdateSummary = withContext(Dispatchers.IO) {
         val candidates = endpoints.filterValues { it.configUrl.startsWith("https://", true) }
-        val slots = Semaphore(PLUGIN_UPDATE_CONCURRENCY)
+        val slots = Semaphore(if (constrainedResources) 2 else PLUGIN_UPDATE_CONCURRENCY)
         val outcomes = coroutineScope {
             candidates.map { (alias, endpoint) ->
                 async {
@@ -1064,15 +1065,15 @@ class GrayjayPluginBackend(
         val fullRequests = AtomicInteger(0)
         val peekRequests = AtomicInteger(0)
         val directRequests = AtomicInteger(0)
-        val completeConcurrency = (
+        val completeConcurrency = if (constrainedResources) 2 else (
             Runtime.getRuntime().availableProcessors().coerceAtLeast(2) / 2
             ).coerceIn(2, 4)
-        val networkConcurrency = if (forceComplete) {
+        val networkConcurrency = if (constrainedResources) 3 else if (forceComplete) {
             completeConcurrency
         } else {
             SUBSCRIPTION_NETWORK_CONCURRENCY
         }
-        val clientConcurrency = if (forceComplete) {
+        val clientConcurrency = if (constrainedResources) 2 else if (forceComplete) {
             completeConcurrency
         } else {
             SUBSCRIPTION_CONCURRENCY
