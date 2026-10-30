@@ -67,7 +67,10 @@ internal class BoundedSocketServer(
         val socket = listener
         listener = null
         runCatching { socket?.close() }
-        clients.toList().forEach(::close)
+        // Kotlin toList() special-cases size == 1 and then calls iterator.next(). A worker
+        // may remove that last socket between those operations. Use the concurrent set's
+        // weakly consistent iteration directly; clients accepted after stop close themselves.
+        clients.forEach(::close)
         workers?.shutdownNow()
         workers = null
     }

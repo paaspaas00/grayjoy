@@ -9,6 +9,29 @@ import org.junit.Test
 
 class BoundedSocketServerTest {
     @Test
+    fun workersCanDisconnectConcurrentlyWithServerStop() {
+        repeat(200) {
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val server = BoundedSocketServer("concurrent-stop-test", workerCount = 2, pendingCount = 2) {
+                entered.countDown()
+                release.await()
+            }
+            val sockets = mutableListOf<Socket>()
+            try {
+                server.start()
+                repeat(3) { sockets += Socket(InetAddress.getLoopbackAddress(), server.port) }
+                assertTrue(entered.await(2, TimeUnit.SECONDS))
+                release.countDown()
+                server.stop()
+            } finally {
+                release.countDown()
+                server.stop()
+                sockets.forEach(Socket::close)
+            }
+        }
+    }
+    @Test
     fun serverCanStopAndRestartWithoutReusingShutdownExecutor() {
         val server = BoundedSocketServer("restart-test") { it.getOutputStream().write(42) }
         try {
@@ -30,7 +53,9 @@ class BoundedSocketServerTest {
         val release = CountDownLatch(1)
         val server = BoundedSocketServer("limit-test", workerCount = 1, pendingCount = 1) {
             entered.countDown()
-            release.await(3, TimeUnit.SECONDS)
+            // Keep the worker occupied until the assertion finishes, not for a wall-clock
+            // interval that can elapse while a loaded CI runner is compiling other modules.
+            release.await()
         }
         val clients = mutableListOf<Socket>()
         try {
