@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTubeが応じてくれません</string>
+    <string name="friendly_youtube_body">YouTubeがリクエストを拒否し、ログイン確認を求めている可能性があります。ソース → YouTube、またはSpotifyに連携したYouTubeアカウントを確認して再試行してください。ログインが正しい場合は数分待ってください。</string>
+    <string name="friendly_network_title">現在接続できません</string>
+    <string name="friendly_network_body">サービスに接続できません。Wi-Fiまたはモバイル通信を確認して再試行してください。</string>
+    <string name="friendly_timeout_title">サービスの応答が遅れています</string>
+    <string name="friendly_timeout_body">リクエストに時間がかかっています。しばらくしてから再試行してください。</string>
+    <string name="friendly_login_title">ログインが必要です</string>
+    <string name="friendly_login_body">このコンテンツにはアカウントが必要です。ソースを開いてサービスにログインし、アクセス権を確認してください。</string>
+    <string name="friendly_limit_title">サービスが休止を求めています</string>
+    <string name="friendly_limit_body">リクエストが多すぎます。数分待ってから再試行してください。</string>
+    <string name="friendly_source_title">ソースに問題があります</string>
+    <string name="friendly_source_body">コンテンツを読み込めませんでした。再試行しても解決しない場合は、設定 → ソースで更新してください。</string>
+    <string name="friendly_unavailable_title">このコンテンツは利用できません</string>
+    <string name="friendly_unavailable_body">サービスがこのコンテンツを提供していません。削除または非公開になった可能性があります。別の項目をお試しください。</string>
+    <string name="friendly_region_title">お住まいの地域では利用できません</string>
+    <string name="friendly_region_body">このサービスは現在の地域でこのコンテンツを提供していません。</string>
+    <string name="friendly_format_title">この形式を再生できません</string>
+    <string name="friendly_format_body">別の画質またはコンテンツをお試しください。解決しない場合はソースとアプリを更新してください。</string>
+    <string name="friendly_access_title">サービスがアクセスを拒否しました</string>
+    <string name="friendly_access_body">ログインを確認して再試行してください。解決しない場合は設定 → ソースで更新してください。</string>
+    <string name="friendly_drm_title">このコンテンツは保護されています</string>
+    <string name="friendly_drm_body">サービスが保護された再生を許可しませんでした。アカウントと契約を確認してください。ダウンロードは許可されていない場合があります。</string>
+</resources>

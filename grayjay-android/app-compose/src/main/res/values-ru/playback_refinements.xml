@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_audio_normalization_body">Уменьшает перепады громкости между видео и песнями, чтобы реже менять громкость. Исходные файлы не изменяются. Можно отключить в любой момент.</string>
+    <string name="audio_normalization_level">Уровень нормализации</string>
+    <string name="normalization_quieter">Более тихое звучание</string>
+    <string name="normalization_louder">Более громкое звучание</string>
+    <string name="setup_song_recognition_body">Удерживайте Поиск, чтобы распознать песню. Grayjoy использует Shazam и требует подключения к Интернету.</string>
+</resources>

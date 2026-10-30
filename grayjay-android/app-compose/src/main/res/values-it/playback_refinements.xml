@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_audio_normalization_body">Riduce gli sbalzi di volume tra video e brani, così devi regolare il volume meno spesso. Non modifica i file originali. Puoi disattivarla quando vuoi.</string>
+    <string name="audio_normalization_level">Livello di normalizzazione</string>
+    <string name="normalization_quieter">Volume più contenuto</string>
+    <string name="normalization_louder">Volume più presente</string>
+    <string name="setup_song_recognition_body">Tieni premuto Cerca per riconoscere una canzone. Grayjoy utilizza Shazam e richiede una connessione Internet.</string>
+</resources>

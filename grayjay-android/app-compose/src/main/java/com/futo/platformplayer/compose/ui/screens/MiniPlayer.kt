@@ -1,10 +1,14 @@
 package com.futo.platformplayer.compose.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,7 +36,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.customActions
@@ -59,13 +63,14 @@ fun MiniPlayer(
     onClose: () -> Unit,
     onVideoBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier,
+    interactionEnabled: Boolean = true,
 ) {
     val normalizedAlpha = chromeAlpha.coerceIn(0f, 1f)
     val expandLabel = stringResource(R.string.open_item, stringResource(R.string.now_playing))
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (normalizedAlpha > .95f) Modifier.semantics {
+            .then(if (normalizedAlpha > .95f && interactionEnabled) Modifier.semantics {
                 customActions = listOf(CustomAccessibilityAction(expandLabel) { onExpand(); true })
             } else Modifier)
             .then(
@@ -85,7 +90,7 @@ fun MiniPlayer(
             isPlaying = isPlaying,
             progress = progress,
             player = player.takeIf { normalizedAlpha > 0.001f },
-            controlsEnabled = normalizedAlpha > 0.95f,
+            controlsEnabled = normalizedAlpha > 0.95f && interactionEnabled,
             canSkip = canSkip,
             onTogglePlayback = onTogglePlayback,
             onSkipToNext = onSkipToNext,
@@ -109,6 +114,8 @@ internal fun MiniPlayerChrome(
     onVideoBoundsChanged: ((Rect) -> Unit)? = null,
     applyTestTags: Boolean = true,
     controlsEnabled: Boolean = true,
+    showArtwork: Boolean = false,
+    previewFrame: android.graphics.Bitmap? = null,
 ) {
     val displayedProgress by produceState(
         initialValue = progress.coerceIn(0f, 1f),
@@ -130,18 +137,15 @@ internal fun MiniPlayerChrome(
             delay(if (isPlaying) 500L else 1_500L)
         }
     }
-    Column(modifier) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(70.dp)
-                .padding(end = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.leftHanded
+    val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 360
+    val artwork: @Composable () -> Unit = {
             Box(
                 modifier = Modifier
-                    .width(if (LocalMusicPresentation.current) 76.dp else 112.dp)
-                    .height(72.dp)
+                    .width(if (LocalMusicPresentation.current) { if (narrow) 64.dp else 76.dp }
+                        else if (narrow) 84.dp else 112.dp)
+                    .height(70.dp)
+                    .then(if (applyTestTags) Modifier.testTag("mini-player-artwork") else Modifier)
                     .background(if (LocalMusicPresentation.current) androidx.compose.ui.graphics.Color.Transparent
                         else MaterialTheme.colorScheme.surfaceContainerLowest)
                     .then(
@@ -183,12 +187,21 @@ internal fun MiniPlayerChrome(
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
+                } else if (previewFrame != null) {
+                    Image(previewFrame.asImageBitmap(), null, Modifier.fillMaxWidth().height(70.dp), contentScale = ContentScale.Fit)
+                } else if (showArtwork && video.thumbnailUrl.isNotBlank()) {
+                    RemoteBitmapImage(video.thumbnailUrl, MaterialTheme.colorScheme.surfaceContainerLowest,
+                        Modifier.fillMaxWidth().height(70.dp), requestHeaders = video.thumbnailRequestHeaders,
+                        cropToBounds = true, requestSize = androidx.compose.ui.unit.IntSize(320, 180))
                 }
             }
+    }
+    val title: @Composable RowScope.() -> Unit = {
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 12.dp),
+                    .then(if (applyTestTags) Modifier.testTag("mini-player-title") else Modifier)
+                    .padding(horizontal = if (narrow) 6.dp else 12.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
@@ -206,6 +219,8 @@ internal fun MiniPlayerChrome(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+    }
+    val play: @Composable () -> Unit = {
             IconButton(
                 onClick = onTogglePlayback,
                 enabled = controlsEnabled,
@@ -219,6 +234,8 @@ internal fun MiniPlayerChrome(
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
+    }
+    val next: @Composable () -> Unit = {
             if (canSkip) {
                 IconButton(
                     onClick = onSkipToNext,
@@ -232,6 +249,8 @@ internal fun MiniPlayerChrome(
                     )
                 }
             }
+    }
+    val close: @Composable () -> Unit = {
             IconButton(
                 onClick = onClose,
                 enabled = controlsEnabled,
@@ -243,12 +262,21 @@ internal fun MiniPlayerChrome(
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
+    }
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth().height(70.dp)
+            .padding(start = if (leftHanded) { if (narrow) 4.dp else 10.dp } else 0.dp,
+                end = if (leftHanded) 0.dp else if (narrow) 4.dp else 10.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            if (leftHanded) { close(); play(); next(); title(); artwork() }
+            else { artwork(); title(); play(); next(); close() }
         }
         LinearProgressIndicator(
             progress = { displayedProgress },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(2.dp),
+                .height(2.dp)
+                .then(if (applyTestTags) Modifier.testTag("mini-player-progress") else Modifier),
         )
     }
 }

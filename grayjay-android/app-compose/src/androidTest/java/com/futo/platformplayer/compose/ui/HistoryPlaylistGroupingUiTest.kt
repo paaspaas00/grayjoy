@@ -67,7 +67,7 @@ class HistoryPlaylistGroupingUiTest {
         rule.setContent { GrayjayTheme(dynamicColor = false, darkTheme = dark) { GrayjayApp(state, player, actions) } }
         rule.onNodeWithTag("nav-library").performClick()
         rule.onNodeWithTag("video-card-grouped-0").assertIsDisplayed()
-        rule.onNodeWithTag("history-group-toggle").performClick()
+        toggleGrouping()
         rule.runOnIdle { assertTrue(state.groupHistoryByPlaylist) }
         val group = "history-group:latest:grouped-2"
         rule.waitUntil(5_000) { rule.onAllNodesWithTag(group).fetchSemanticsNodes().isNotEmpty() }
@@ -75,7 +75,7 @@ class HistoryPlaylistGroupingUiTest {
         rule.onNodeWithTag("open-$group").assertIsDisplayed().performClick()
         rule.onNodeWithTag("history-group-toggle").assertDoesNotExist()
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
-        rule.onNodeWithTag("history-group-toggle").assertIsDisplayed().assertIsOn()
+        rule.onNodeWithTag("history-group-settings").assertIsDisplayed()
         rule.onNodeWithTag(group).assertIsDisplayed()
         rule.runOnIdle { state = state.copy(playlists = emptyList()) }
         rule.onNodeWithTag("open-$group").performClick()
@@ -114,10 +114,17 @@ class HistoryPlaylistGroupingUiTest {
         rule.onNodeWithText("Playlist no longer available").assertIsDisplayed()
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.onNodeWithTag("history-group:remote:grouped-7").assertIsDisplayed()
-        rule.onNodeWithTag("history-group-toggle").performClick()
+        rule.onNodeWithTag("library-list").performScrollToIndex(0)
+        toggleGrouping()
         rule.runOnIdle { assertFalse(state.groupHistoryByPlaylist) }
         rule.onNodeWithTag("library-list").performScrollToNode(hasTestTag("video-card-grouped-7"))
         rule.onNodeWithTag("video-card-grouped-7").assertIsDisplayed()
+    }
+
+    private fun toggleGrouping() {
+        rule.onNodeWithTag("history-group-settings").performClick()
+        rule.onNodeWithTag("history-group-toggle").performClick()
+        rule.onNodeWithText(rule.activity.getString(com.futo.platformplayer.compose.R.string.ok)).performClick()
     }
 
     private fun screenshot(name: String) {

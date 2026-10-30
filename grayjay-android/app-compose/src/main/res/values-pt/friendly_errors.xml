@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">O YouTube está dificultando</string>
+    <string name="friendly_youtube_body">O YouTube recusou a solicitação e pode pedir uma verificação de login. Confira Fontes → YouTube ou a conta vinculada ao Spotify e tente novamente. Se o login estiver correto, espere alguns minutos.</string>
+    <string name="friendly_network_title">Não foi possível conectar agora</string>
+    <string name="friendly_network_body">Não conseguimos acessar o serviço. Confira o Wi-Fi ou os dados móveis e tente novamente.</string>
+    <string name="friendly_timeout_title">O serviço está demorando</string>
+    <string name="friendly_timeout_body">A solicitação demorou mais que o esperado. Tente novamente daqui a pouco.</string>
+    <string name="friendly_login_title">É necessário entrar</string>
+    <string name="friendly_login_body">Este conteúdo exige uma conta. Abra Fontes, entre no serviço e confira se sua conta tem acesso.</string>
+    <string name="friendly_limit_title">O serviço precisa de uma pausa</string>
+    <string name="friendly_limit_body">Foram enviadas solicitações demais. Espere alguns minutos antes de tentar novamente.</string>
+    <string name="friendly_source_title">A fonte está com um problema</string>
+    <string name="friendly_source_body">Não conseguimos carregar este conteúdo. Tente novamente; se continuar, atualize a fonte em Configurações → Fontes.</string>
+    <string name="friendly_unavailable_title">Este conteúdo está indisponível</string>
+    <string name="friendly_unavailable_body">O serviço não está disponibilizando este conteúdo. Ele pode ter sido removido ou tornado privado. Tente outro item.</string>
+    <string name="friendly_region_title">Indisponível na sua região</string>
+    <string name="friendly_region_body">O serviço não oferece este conteúdo na sua região atual.</string>
+    <string name="friendly_format_title">Não foi possível reproduzir este formato</string>
+    <string name="friendly_format_body">Tente outra qualidade ou outro conteúdo. Se continuar, atualize a fonte e o aplicativo.</string>
+    <string name="friendly_access_title">O serviço recusou o acesso</string>
+    <string name="friendly_access_body">Confira seu login e tente novamente. Se continuar falhando, atualize a fonte em Configurações → Fontes.</string>
+    <string name="friendly_drm_title">Este conteúdo é protegido</string>
+    <string name="friendly_drm_body">O serviço não autorizou a reprodução protegida. Verifique conta e assinatura; o download pode não ser permitido.</string>
+</resources>

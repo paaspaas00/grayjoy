@@ -1,0 +1,8 @@
+<resources>
+    <string name="youtube_playback_account">YouTube account for playback</string>
+    <string name="youtube_playback_account_description">Use a signed-in, unprotected profile for YouTube playback and Spotify audio matching. Requests are associated with that account. Only a revocable reference is saved; cookies are not copied. NewPipe remains anonymous; signed-in playback uses Grayjay.</string>
+    <string name="youtube_playback_account_current">Only this profile’s own login</string>
+    <string name="youtube_playback_account_unavailable">The linked YouTube account is unavailable. Sign in again in its profile or remove this link.</string>
+    <string name="youtube_playback_account_empty">Sign in to YouTube in an unprotected profile, then return here to select it.</string>
+    <string name="youtube_login_verification_required">YouTube requires you to verify your login again. Open the YouTube profile, sign in to the source again and complete any verification on the website, then retry.</string>
+</resources>

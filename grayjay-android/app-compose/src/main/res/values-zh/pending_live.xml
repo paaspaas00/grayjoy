@@ -1,0 +1,3 @@
+<resources>
+    <string name="live_not_started_message">此直播尚未开始。请在开播后重试；内容并未被删除。</string>
+</resources>

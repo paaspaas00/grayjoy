@@ -1,0 +1,8 @@
+<resources>
+    <string name="youtube_playback_account">Oynatma için YouTube hesabı</string>
+    <string name="youtube_playback_account_description">YouTube ve Spotify ses araması için oturum açılmış, korumasız bir profil kullanın. İstekler bu hesapla ilişkilendirilir. Yalnızca kaldırılabilir bir bağlantı kaydedilir; çerezler kopyalanmaz. NewPipe anonim kalır; oturumlu oynatma Grayjay kullanır.</string>
+    <string name="youtube_playback_account_current">Yalnızca bu profilin oturumu</string>
+    <string name="youtube_playback_account_unavailable">Bağlı YouTube hesabı kullanılamıyor. Profilinde tekrar oturum açın veya bağlantıyı kaldırın.</string>
+    <string name="youtube_playback_account_empty">Korumasız bir profilde YouTube’a giriş yapın, ardından seçmek için buraya dönün.</string>
+    <string name="youtube_login_verification_required">YouTube oturumunuzu yeniden doğrulamanızı istiyor. YouTube profilini açın, kaynağa yeniden giriş yapın ve web sitesindeki doğrulamayı tamamlayıp tekrar deneyin.</string>
+</resources>

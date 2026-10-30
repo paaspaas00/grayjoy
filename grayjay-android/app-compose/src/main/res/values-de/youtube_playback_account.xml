@@ -1,0 +1,8 @@
+<resources>
+    <string name="youtube_playback_account">YouTube-Konto für die Wiedergabe</string>
+    <string name="youtube_playback_account_description">Nutze ein angemeldetes, ungeschütztes Profil für YouTube und die Spotify-Audiosuche. Anfragen werden diesem Konto zugeordnet. Es wird nur ein widerrufbarer Verweis gespeichert, keine Cookies kopiert. NewPipe bleibt anonym; angemeldete Wiedergabe nutzt Grayjay.</string>
+    <string name="youtube_playback_account_current">Nur die Anmeldung dieses Profils</string>
+    <string name="youtube_playback_account_unavailable">Das verknüpfte YouTube-Konto ist nicht verfügbar. Melde dich in seinem Profil erneut an oder entferne die Verknüpfung.</string>
+    <string name="youtube_playback_account_empty">Melde dich in einem ungeschützten Profil bei YouTube an und wähle es anschließend hier aus.</string>
+    <string name="youtube_login_verification_required">YouTube verlangt eine erneute Anmeldung. Öffne das YouTube-Profil, melde dich erneut bei der Quelle an und bestätige gegebenenfalls die Prüfung auf der Website. Versuche es danach erneut.</string>
+</resources>

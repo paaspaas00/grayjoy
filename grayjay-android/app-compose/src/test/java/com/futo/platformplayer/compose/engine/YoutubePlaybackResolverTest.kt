@@ -9,6 +9,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class YoutubePlaybackResolverTest {
+    @Test fun exhaustedHeapNeverStartsASecondEngine() = runBlocking {
+        var calls = 0
+        val failure = OutOfMemoryError("simulated")
+        try {
+            resolveYoutubePlaybackWithFallback(youtubePlaybackResolverOrder(true)) { calls++; throw failure }
+            error("Expected the fatal error")
+        } catch (error: OutOfMemoryError) { assertSame(failure, error) }
+        assertEquals(1, calls)
+    }
     @Test
     fun `preference only changes primary resolver and always keeps fallback`() {
         assertEquals(
@@ -76,8 +85,11 @@ class YoutubePlaybackResolverTest {
 
         assertSame(primaryFailure, thrown.cause)
         assertTrue(thrown.suppressed.contains(fallbackFailure))
-        assertTrue(thrown.message.orEmpty().contains("first"))
-        assertTrue(thrown.message.orEmpty().contains("second"))
+        val loggedDetails = com.futo.platformplayer.compose.diagnostics.privateExceptionMessages(thrown)
+        assertTrue(loggedDetails.contains("first"))
+        assertTrue(loggedDetails.contains("second"))
+        assertTrue(thrown.message.orEmpty().contains("Grayjay"))
+        assertTrue(thrown.message.orEmpty().contains("NewPipe"))
     }
 
     @Test

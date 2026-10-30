@@ -75,19 +75,23 @@ internal class DiagnosticEventRing(private val directory: File) {
     fun snapshot(): List<String> = buildList { forEachRecord(::add) }
 }
 
-/** Android's system logger remains unchanged; the private diagnostic stream contains no message text. */
+/** Keep technical wording in private logs, with authentication material removed before either sink. */
 internal object DiagnosticLog {
+    private fun safeText(message: String?, error: Throwable?): String = runCatching { buildString {
+        append(redactDiagnosticMessage(message))
+        if (error != null) { append('\n'); append(privateExceptionMessages(error)); append('\n'); append(technicalStackTrace(error)) }
+    } }.getOrDefault("[diagnostic unavailable]")
     fun d(tag: String, message: String?, error: Throwable? = null): Int {
-        CrashLogStore.recordEvent(tag, "debug", error); return android.util.Log.d(tag, message, error)
+        CrashLogStore.recordEvent(tag, "debug", error, message); return android.util.Log.d(tag, safeText(message, error))
     }
     fun i(tag: String, message: String?, error: Throwable? = null): Int {
-        CrashLogStore.recordEvent(tag, "info", error); return android.util.Log.i(tag, message, error)
+        CrashLogStore.recordEvent(tag, "info", error, message); return android.util.Log.i(tag, safeText(message, error))
     }
     fun w(tag: String, message: String?, error: Throwable? = null): Int {
-        CrashLogStore.recordEvent(tag, "warning", error); return android.util.Log.w(tag, message, error)
+        CrashLogStore.recordEvent(tag, "warning", error, message); return android.util.Log.w(tag, safeText(message, error))
     }
     fun w(tag: String, error: Throwable): Int = w(tag, null, error)
     fun e(tag: String, message: String?, error: Throwable? = null): Int {
-        CrashLogStore.recordEvent(tag, "error", error); return android.util.Log.e(tag, message, error)
+        CrashLogStore.recordEvent(tag, "error", error, message); return android.util.Log.e(tag, safeText(message, error))
     }
 }

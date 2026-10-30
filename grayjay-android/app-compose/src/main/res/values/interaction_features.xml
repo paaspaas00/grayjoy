@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recognition_swipe_open">Swipe up to open paused</string>
+    <string name="recognition_privacy_short">Listens briefly. Only a musical fingerprint is sent to Shazam, never the recording. Internet required.</string>
+    <string name="music_artists">Artists</string>
+    <string name="music_artist">Artist</string>
+    <string name="recognize_song">Recognize a song</string>
+    <string name="recognition_description">Hold Search in the navigation bar to identify music around you, then play the result.</string>
+    <string name="recognition_privacy">Only while this window is open: the microphone listens for a few seconds. A musical fingerprint, not recorded audio, is sent to Shazam. Internet is required.</string>
+    <string name="recognition_disabled">Song recognition is disabled. Enable it in Preferences.</string>
+    <string name="recognition_permission">Allow microphone access to recognize music.</string>
+    <string name="recognition_error">Recognition is unavailable right now. Check your connection and try again.</string>
+    <string name="recognition_no_match">No match yet. Move closer to the music and try again.</string>
+    <string name="recognition_listening">Listening to the music…</string>
+    <string name="recognition_searching">Looking for the song…</string>
+    <string name="recognition_play_failed">Could not start the song. Try again in a moment.</string>
+    <string name="left_handed_mode">Left-handed mode</string>
+    <string name="left_handed_description">Player buttons and menus move to the left. In fullscreen music, artwork moves to the right.</string>
+    <string name="library_shortcuts">Library shortcuts</string>
+    <string name="library_shortcuts_description">Hold Library in the navigation bar: a vertical menu opens. From top to bottom: History, Playlists, Watch later (Favorites for music), Downloads. Tap an icon to jump there; tap outside to close.</string>
+    <string name="history_group_explanation">Consecutive videos played from the same playlist can appear in a single expandable card. This only changes the history view; it does not move or delete anything.</string>
+    <string name="history_group_settings">Group history</string>
+    <string name="setup_handedness">Choose your comfortable side</string>
+    <string name="hand_right">Right-handed</string>
+    <string name="hand_left">Left-handed</string>
+</resources>

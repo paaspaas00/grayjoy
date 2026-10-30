@@ -1,4 +1,6 @@
 package com.futo.platformplayer.compose.engine
+import com.futo.platformplayer.compose.errors.BackendDiagnostics
+import com.futo.platformplayer.compose.errors.friendlyBackendMessage
 
 import com.futo.platformplayer.compose.shorts.withoutShortsPrefixCache
 
@@ -298,7 +300,8 @@ internal fun partitionSubscriptionChannels(
 
 internal fun youtubePlaybackResolverOrder(
     preferNewPipe: Boolean,
-): List<YoutubePlaybackResolver> = if (preferNewPipe) {
+    authenticated: Boolean = false,
+): List<YoutubePlaybackResolver> = if (preferNewPipe && !authenticated) {
     listOf(YoutubePlaybackResolver.NewPipe, YoutubePlaybackResolver.Grayjay)
 } else {
     listOf(YoutubePlaybackResolver.Grayjay, YoutubePlaybackResolver.NewPipe)
@@ -312,6 +315,7 @@ internal data class YoutubePlaybackResolverResult<T>(
 
 internal suspend fun <T> resolveYoutubePlaybackWithFallback(
     order: List<YoutubePlaybackResolver>,
+    onFallback: (YoutubePlaybackResolver, YoutubePlaybackResolver, Throwable) -> Unit = { _, _, _ -> },
     resolve: suspend (YoutubePlaybackResolver) -> T,
 ): YoutubePlaybackResolverResult<T> {
     require(order.size == 2 && order.distinct().size == 2)
@@ -326,13 +330,13 @@ internal suspend fun <T> resolveYoutubePlaybackWithFallback(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
+            if (error is VirtualMachineError || error is ThreadDeath) throw error
             if (firstError == null) {
                 firstError = error
+                runCatching { onFallback(resolver, order[1], error) }
             } else {
                 throw IllegalStateException(
-                    "Both YouTube playback engines failed. " +
-                        "${order.first().name}: ${firstError.localizedMessage}; " +
-                        "${resolver.name}: ${error.localizedMessage}",
+                    "Both YouTube playback engines failed (${order.first().name}, ${resolver.name}).",
                     firstError,
                 ).apply { addSuppressed(error) }
             }
@@ -374,6 +378,7 @@ interface GrayjayEngine {
     fun setProfile(profileId: String)
     fun clearProfileData(profileId: String)
     fun reloadSourceAuthentication(sourceId: String)
+    fun reloadYoutubePlaybackAccount() = Unit
     fun isSourceAuthenticated(sourceId: String): Boolean
     fun sourceAccountName(sourceId: String): String? = null
     suspend fun refreshSourceAccountName(sourceId: String): String? = null
@@ -462,6 +467,7 @@ interface GrayjayEngine {
     fun seekToFraction(fraction: Float)
     fun setPlaybackSpeed(speed: Float)
     fun setAudioNormalizationEnabled(enabled: Boolean) = Unit
+    fun setAudioNormalizationTarget(targetLufs: Int) = Unit
     fun setMusicPlaybackMode(enabled: Boolean) = Unit
     fun setOtherAudioDucking(enabled: Boolean, volumePercent: Int)
     fun setVoiceListeningVolume(owner: String, percent: Int?)
@@ -660,6 +666,17 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         }
     }
     private val pluginBackend: GrayjayPluginBackend get() = pluginBackendDelegate.value
+    private val authenticatedYoutubeDelegate = lazy {
+        AuthenticatedYoutubePlayback(appContext, { pluginProfileId }, playbackTrackerScope) {
+            GrayjayPluginBackend(appContext,
+                constrainedResources = com.futo.platformplayer.compose.devicePerformanceProfile(appContext).isLowEnd,
+                authenticatedYoutubePlayback = true).also { backend ->
+                backend.configureVideoTitleLanguage(preferOriginalVideoTitles, pluginVideoTitleLanguageTag)
+                previouslyApprovedPluginIds.forEach(backend::rememberPreviouslyApprovedPlugin)
+            }
+        }
+    }
+    private val authenticatedYoutube get() = authenticatedYoutubeDelegate.value
     private val newPipeYoutubeBackend = NewPipeYoutubePlaybackBackend()
     private val newPipeYoutubeContentBackend = NewPipeYoutubeContentBackend(
         newPipeYoutubeBackend::ensureInitialized,
@@ -803,6 +820,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     syncPlayback()
 
                 override fun onPlayerError(error: PlaybackException) {
+                    BackendDiagnostics.failure("playback", error)
                     val videoId = exoPlayer.currentMediaItem?.mediaId
                     if (videoId == youtubeFallbackVideoId && youtubeRuntimeFallbackJob?.isActive == true) {
                         syncPlayback()
@@ -828,12 +846,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     val rootCause = error.boundedCauses().last()
                     Log.e(
                         TAG,
-                        "Playback failed: ${rootCause.javaClass.simpleName}: ${rootCause.localizedMessage}",
+                        "Playback failed",
+                        error,
                     )
-                    lastError = rootCause.localizedMessage
-                        ?.takeIf(String::isNotBlank)
-                        ?: error.localizedMessage
-                        ?: appContext.getString(R.string.source_could_not_play)
+                    lastError = friendlyBackendMessage(appContext, error, source = if (onlineYoutube) "youtube" else "")
                     syncPlayback()
                 }
             },
@@ -946,8 +962,14 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             throw cancelled
         } catch (error: Throwable) {
             Log.w(TAG, "NewPipe YouTube $operation failed; falling back to Grayjay.", error)
-            _backendNotices.tryEmit(EngineBackendNotice(operation, error.localizedMessage))
-            grayjay()
+            BackendDiagnostics.fallback(operation, "NewPipe", "Grayjay", error, "attempt")
+            try {
+                grayjay().also { BackendDiagnostics.fallback(operation, "NewPipe", "Grayjay", error, "recovered") }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (fallbackError: Throwable) {
+                BackendDiagnostics.fallback(operation, "NewPipe", "Grayjay", fallbackError, "failed")
+                throw fallbackError
+            }
         }
     }
 
@@ -990,6 +1012,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val bufferedAtFailure = exoPlayer.bufferedPosition.coerceAtLeast(0L)
         val fallbackGeneration = ++youtubeFallbackGeneration
         val originalCause = error.boundedCauses().last()
+        BackendDiagnostics.fallback("playback", currentResolver.name, fallbackResolver.name, error, "attempt")
         Log.w(
             TAG,
             "YouTube ${currentResolver.name} stream failed during playback; " +
@@ -1017,6 +1040,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     exoPlayer.currentMediaItem?.mediaId != videoId) return@launch
                 if (primaryPlaybackRecovered(wasBuffering, exoPlayer.playbackState == Player.STATE_READY,
                         exoPlayer.playerError != null, bufferedAtFailure, exoPlayer.bufferedPosition.coerceAtLeast(0L))) {
+                    BackendDiagnostics.fallback("playback", currentResolver.name, fallbackResolver.name, error, "primary_recovered")
                     youtubeRuntimeFallbackAttempted.remove(videoId)
                     return@launch
                 }
@@ -1027,10 +1051,12 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     playWhenReady = exoPlayer.playWhenReady,
                 )
                 youtubeResolverByVideoId[videoId] = fallbackResolver
+                BackendDiagnostics.fallback("playback", currentResolver.name, fallbackResolver.name, error, "recovered")
                 _backendNotices.tryEmit(EngineBackendNotice("playback", null, currentResolver.name, fallbackResolver.name))
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (fallbackError: Throwable) {
+                BackendDiagnostics.fallback("playback", currentResolver.name, fallbackResolver.name, fallbackError, "failed")
                 Log.e(TAG, "Both YouTube playback engines failed for $videoId.", fallbackError)
                 if (fallbackGeneration == youtubeFallbackGeneration &&
                     exoPlayer.currentMediaItem?.mediaId == videoId) {
@@ -1042,13 +1068,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                         scheduleConnectivityRecovery(fallbackError)
                         return@launch
                     }
-                    lastError = buildString {
-                        append(originalCause.localizedMessage ?: error.localizedMessage)
-                        fallbackError.localizedMessage?.takeIf(String::isNotBlank)?.let {
-                            append(" • Fallback: ")
-                            append(it)
-                        }
-                    }
+                    lastError = friendlyBackendMessage(appContext, fallbackError, source = "youtube")
                     syncPlayback(videoId)
                 }
             } finally {
@@ -1090,6 +1110,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun setProfile(profileId: String) {
+        if (pluginProfileId != profileId && authenticatedYoutubeDelegate.isInitialized()) authenticatedYoutube.invalidate()
         if (pluginProfileId != profileId) mixedContinuations.clear()
         pluginProfileId = profileId
         if (pluginBackendDelegate.isInitialized()) pluginBackend.setProfile(profileId)
@@ -1100,8 +1121,13 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun reloadSourceAuthentication(sourceId: String) {
+        if (sourceId == "youtube" && authenticatedYoutubeDelegate.isInitialized()) authenticatedYoutube.invalidate()
         val endpoint = pluginEndpoints[sourceId] ?: return
         pluginBackend.reloadAuthentication(sourceId, endpoint.pluginId)
+    }
+
+    override fun reloadYoutubePlaybackAccount() {
+        if (authenticatedYoutubeDelegate.isInitialized()) authenticatedYoutube.invalidate()
     }
 
     override fun isSourceAuthenticated(sourceId: String): Boolean {
@@ -1114,6 +1140,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun clearSourceAuthentication(sourceId: String) {
+        if (sourceId == "youtube" && authenticatedYoutubeDelegate.isInitialized()) authenticatedYoutube.invalidate()
         val endpoint = pluginEndpoints[sourceId] ?: return
         pluginBackend.clearAuthentication(sourceId, endpoint.pluginId)
     }
@@ -1136,8 +1163,11 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         return registerInstalledSource(pluginBackend.installPlugin(normalizedUrl))
     }
 
-    override suspend fun updateSources(): GrayjayPluginUpdateSummary =
-        pluginBackend.updatePlugins(pluginEndpoints.toMap())
+    override suspend fun updateSources(): GrayjayPluginUpdateSummary {
+        val result = pluginBackend.updatePlugins(pluginEndpoints.toMap())
+        reloadYoutubePlaybackAccount()
+        return result
+    }
 
     override suspend fun trustInstallSource(token: String): SourceUiModel =
         registerInstalledSource(pluginBackend.trustInstallPlugin(token))
@@ -1195,11 +1225,13 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     }
 
     override fun clearSourceCache(sourceId: String) {
+        if (sourceId == "youtube") reloadYoutubePlaybackAccount()
         val endpoint = pluginEndpoints[sourceId] ?: return
         pluginBackend.clearPlugin(sourceId, endpoint.pluginId)
     }
 
     override fun invalidateContentCaches() {
+        reloadYoutubePlaybackAccount()
         musicHome.invalidate()
         mixedContinuations.clear()
         newPipeYoutubeContentBackend.resetTransientSessions()
@@ -1303,7 +1335,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 )
             },
             historyCount = historyVideos.size,
-            warnings = result.warnings,
+            warnings = result.warnings.map { friendlyBackendMessage(appContext, IllegalStateException(it), source = sourceId) }.distinct(),
         )
     }
 
@@ -1676,6 +1708,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             // capability fallback (not a failed request), but it still starts the JS backend and
             // therefore must be visible to users who selected the NewPipe-only path.
             youtubeChannelSearchFallbackNotified = true
+            BackendDiagnostics.fallback("channel search", "NewPipe", "Grayjay", null, "recovered")
             _backendNotices.tryEmit(EngineBackendNotice("channel search", null))
         }
         val type = when (tab) {
@@ -1847,23 +1880,32 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         val youtubeEndpoint = youtubePlaybackEndpoint()
         var selected: VideoUiModel? = null
         var lookupError: Exception? = null
-        val order = youtubePlaybackResolverOrder(useNewPipeYoutubeBackend)
+        val order = youtubePlaybackResolverOrder(useNewPipeYoutubeBackend, authenticatedYoutube.hasSession())
         lookup@ for (query in spotifyYoutubeSearchQueries(catalogVideo)) {
-            for (resolver in order) {
+            var primaryLookupError: Throwable? = null
+            for ((index, resolver) in order.withIndex()) {
                 try {
                     val search = when (resolver) {
                         YoutubePlaybackResolver.NewPipe -> newPipeYoutubeContentBackend.search(query, GrayjaySearchType.Videos)
-                        YoutubePlaybackResolver.Grayjay -> pluginBackend.search(query,
+                        YoutubePlaybackResolver.Grayjay -> authenticatedYoutube.request({ pluginBackend }) { backend -> backend.search(query,
                             mapOf("youtube" to requireNotNull(youtubeEndpoint) { "The YouTube source is unavailable." }),
-                            GrayjaySearchType.Videos, background = priority != EngineResolvePriority.UserPlayback)
+                            GrayjaySearchType.Videos, background = priority != EngineResolvePriority.UserPlayback) }
                     }
                     selected = selectSpotifyYoutubeCandidate(catalogVideo,
                         search.videos.take(20).map { it.toVideoUiModel(youtubeEndpoint, appContext) })
-                    if (selected != null) break@lookup
+                    if (selected != null) {
+                        if (index > 0) BackendDiagnostics.fallback("music lookup", order.first().name, resolver.name, primaryLookupError, "recovered")
+                        break@lookup
+                    }
+                    if (index == 0) BackendDiagnostics.fallback("music lookup", resolver.name, order[1].name, null, "attempt")
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (error: Exception) {
                     lookupError = error
                     Log.w(TAG, "Audio catalog lookup returned no usable match.", error)
+                    if (index == 0) {
+                        primaryLookupError = error
+                        BackendDiagnostics.fallback("music lookup", resolver.name, order[1].name, error, "attempt")
+                    } else BackendDiagnostics.fallback("music lookup", order.first().name, resolver.name, error, "failed")
                 }
             }
         }
@@ -1897,10 +1939,12 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         backgroundMetadata: Boolean = false,
         notifyUser: Boolean = false,
     ): ResolvedYoutubePlayback {
+        val authenticated = authenticatedYoutube.hasSession()
         val order = forcedFirst?.let { first ->
             listOf(first, YoutubePlaybackResolver.entries.first { it != first })
-        } ?: youtubePlaybackResolverOrder(preferNewPipeForYoutubePlayback)
-        val result = resolveYoutubePlaybackWithFallback(order) { resolver ->
+        } ?: youtubePlaybackResolverOrder(preferNewPipeForYoutubePlayback, authenticated)
+        val result = try { resolveYoutubePlaybackWithFallback(order,
+            onFallback = { from, to, error -> BackendDiagnostics.fallback("playback", from.name, to.name, error, "attempt") }) { resolver ->
             resolveYoutubeWith(
                     resolver = resolver,
                     video = video,
@@ -1912,8 +1956,16 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                         "${resolver.name} returned no playable YouTube stream."
                     }
                 }
+            } } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                BackendDiagnostics.fallback("playback", order.first().name, order.last().name, error, "failed")
+                if (authenticated && isYoutubeLoginChallenge(error)) {
+                    throw java.io.IOException(appContext.getString(R.string.youtube_login_verification_required), error)
+                }
+                throw error
             }
         if (result.primaryError != null) {
+            BackendDiagnostics.fallback("playback", order.first().name, result.resolver.name, result.primaryError, "recovered")
             Log.w(
                 TAG,
                 "YouTube ${order.first().name} resolver failed; " +
@@ -1954,14 +2006,15 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     ): GrayjayPlaybackSource {
         val endpoint = (if (video.sourceId == "youtube") youtubePlaybackEndpoint() else pluginEndpoints[video.sourceId])
             ?: error(appContext.getString(R.string.source_plugin_unavailable, video.sourceId))
-        return pluginBackend.resolve(
+        val resolve: suspend (GrayjayPluginBackend) -> GrayjayPlaybackSource = { backend -> backend.resolve(
             sourceId = video.sourceId,
             contentUrl = video.contentUrl.ifBlank { video.id },
             endpoint = endpoint,
             preferredAudioLanguage = preferredAudioLanguage,
             preferOriginalAudio = preferOriginalAudio,
             backgroundMetadata = backgroundMetadata,
-        )
+        ) }
+        return if (video.sourceId == "youtube") authenticatedYoutube.request({ pluginBackend }, resolve) else resolve(pluginBackend)
     }
 
     private fun youtubePlaybackEndpoint(): PluginEndpoint? {
@@ -2143,6 +2196,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         isYoutubeVideo() || youtubeResolverByVideoId.containsKey(id)
 
     override fun configureVideoTitleLanguage(preferOriginal: Boolean, languageTag: String) {
+        if (preferOriginalVideoTitles != preferOriginal || pluginVideoTitleLanguageTag != languageTag) reloadYoutubePlaybackAccount()
         preferOriginalVideoTitles = preferOriginal
         pluginVideoTitleLanguageTag = languageTag
         if (pluginBackendDelegate.isInitialized()) {
@@ -2290,7 +2344,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             openedVideos = emptyList()
             activeQualityVariantHeight = null
             activeQualityVariantVideoId = null
-            lastError = appContext.getString(R.string.no_playable_media)
+            lastError = friendlyBackendMessage(appContext, IllegalStateException("No playable media returned"))
             PlaybackNotificationService.dismiss(appContext, exoPlayer)
             exoPlayer.clearMediaItems()
             syncPlayback(currentVideoId)
@@ -2785,6 +2839,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         otherAudioDuckingController.configure(enabled, volumePercent)
     }
 
+    override fun setAudioNormalizationTarget(targetLufs: Int) {
+        if (targetLufs == -32 || targetLufs == -14) loudnessProcessor.targetLufs = targetLufs
+    }
+
     override fun setAudioNormalizationEnabled(enabled: Boolean) {
         if (loudnessProcessor.enabled == enabled) return
         loudnessProcessor.enabled = enabled
@@ -3058,6 +3116,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     runCatching { pluginBackend.release() }
                         .onFailure { Log.w(TAG, "Could not release the JS plugin backend.", it) }
                 }
+                if (authenticatedYoutubeDelegate.isInitialized()) authenticatedYoutube.release()
             } finally {
                 playbackTrackerScope.cancel()
             }

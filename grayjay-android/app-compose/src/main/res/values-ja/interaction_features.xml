@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recognition_swipe_open">上にスワイプして一時停止状態で開く</string>
+    <string name="recognition_privacy_short">数秒間だけ聴き取ります。Shazamに送るのは音楽の指紋情報だけで、録音ではありません。ネット接続が必要です。</string>
+    <string name="music_artists">アーティスト</string>
+    <string name="music_artist">アーティスト</string>
+    <string name="recognize_song">曲を認識</string>
+    <string name="recognition_description">ナビゲーションバーの検索を長押しすると、周囲の音楽を認識して見つかった曲を再生できます。</string>
+    <string name="recognition_privacy">このウィンドウを開いている間だけ、マイクで数秒間聴き取ります。Shazamに送るのは音楽の指紋情報で、録音データではありません。インターネット接続が必要です。</string>
+    <string name="recognition_disabled">音楽認識は無効です。設定で有効にしてください。</string>
+    <string name="recognition_permission">音楽を認識するにはマイクへのアクセスを許可してください。</string>
+    <string name="recognition_error">現在認識できません。接続を確認して再試行してください。</string>
+    <string name="recognition_no_match">曲が見つかりませんでした。音楽に近づいて再試行してください。</string>
+    <string name="recognition_listening">音楽を聴き取り中…</string>
+    <string name="recognition_searching">曲を検索中…</string>
+    <string name="recognition_play_failed">曲を再生できませんでした。しばらくしてから再試行してください。</string>
+    <string name="left_handed_mode">左利きモード</string>
+    <string name="left_handed_description">プレーヤーのボタンとメニューを左に移動します。音楽の全画面表示ではジャケットが右側になります。</string>
+    <string name="library_shortcuts">ライブラリのショートカット</string>
+    <string name="library_shortcuts_description">ナビゲーションバーのライブラリを長押しすると、上から履歴、プレイリスト、後で見る（音楽ではお気に入り）、ダウンロードの縦メニューが開きます。アイコンをタップして移動し、外側をタップして閉じます。</string>
+    <string name="history_group_explanation">同じプレイリストから続けて再生した動画を、1つの展開可能なカードにまとめられます。履歴の表示だけが変わり、移動や削除は行いません。</string>
+    <string name="history_group_settings">履歴のグループ化</string>
+    <string name="setup_handedness">使いやすい側を選択</string>
+    <string name="hand_right">右利き</string>
+    <string name="hand_left">左利き</string>
+</resources>

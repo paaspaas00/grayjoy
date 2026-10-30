@@ -65,8 +65,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourcePluralStringResource as pluralStringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -875,10 +875,10 @@ private fun UploadChannelFilterDialog(
                         .testTag("uploads-channel-filter-list"),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(
+                    itemsIndexed(
                         channels.sortedBy { it.name.lowercase() },
-                        key = ChannelUiModel::id,
-                    ) { channel ->
+                        key = { _, channel -> channel.id },
+                    ) { index, channel ->
                         val selected = channel.id == pendingChannelId
                         ListItem(
                             headlineContent = {
@@ -906,6 +906,7 @@ private fun UploadChannelFilterDialog(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .dialogChoiceRow(index, channels.size)
                                 .clickable { pendingChannelId = channel.id }
                                 .testTag("uploads-filter-channel-${channel.id}"),
                             colors = androidx.compose.material3.ListItemDefaults.colors(

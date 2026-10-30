@@ -49,11 +49,14 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -64,8 +67,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourcePluralStringResource as pluralStringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import com.futo.platformplayer.compose.R
@@ -124,9 +127,11 @@ internal fun RequestNextPageEffect(
     canLoadMore: Boolean,
     onLoadMore: () -> Unit,
     prefetchItems: Int = 4,
+    pageKey: Any? = null,
 ) {
     val preview = com.futo.platformplayer.compose.ui.LocalNavigationPreview.current
-    LaunchedEffect(listState, canLoadMore, prefetchItems, preview) {
+    val currentLoadMore by rememberUpdatedState(onLoadMore)
+    LaunchedEffect(listState, canLoadMore, prefetchItems, preview, pageKey) {
         if (!canLoadMore || preview) return@LaunchedEffect
         snapshotFlow {
             val layout = listState.layoutInfo
@@ -135,7 +140,7 @@ internal fun RequestNextPageEffect(
         }
             .distinctUntilChanged()
             .filter { it }
-            .collect { onLoadMore() }
+            .collect { currentLoadMore() }
     }
 }
 
@@ -231,14 +236,20 @@ internal fun CompactVideoCard(
     val thumbnailHeight = (thumbnailWidth.value * 9f / 16f).dp
     val adaptiveHeight = configuration.screenWidthDp < 390 || density.fontScale > 1.1f || compactCard
     val onCreatorClick = LocalVideoCreatorClick.current
+    val cardMotion = com.futo.platformplayer.compose.ui.LocalPlayerCardTransition.current
+    val musicPresentation = LocalMusicPresentation.current
+    val previewWidth = with(density) { thumbnailWidth.roundToPx().coerceIn(1, if (performance.isLowEnd) 320 else 384) }
+    val cardSource = remember(video, musicPresentation, previewWidth) { com.futo.platformplayer.compose.ui.CardMorphSource(video, musicPresentation,
+        androidx.compose.ui.unit.IntSize(previewWidth, (previewWidth * 9 / 16).coerceAtLeast(1))) }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .then(entranceModifier)
+            .onGloballyPositioned { cardSource.captureCoordinates("surface", it) }
             .then(if (performance.isLowEnd) Modifier else Modifier.clip(cardShape))
             .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else containerColor ?: MaterialTheme.colorScheme.surfaceContainerLow, cardShape)
             .then(if (isCurrent) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, cardShape) else Modifier)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(onClick = { if (!selectionMode) cardMotion?.arm(cardSource); onClick() }, onLongClick = onLongClick)
             .testTag("video-card-${video.id}").helpAnchor("video-card"),
     ) {
         Column {
@@ -246,7 +257,7 @@ internal fun CompactVideoCard(
                 modifier = Modifier.padding(if (compactCard) 6.dp else 10.dp),
                 verticalAlignment = if (adaptiveHeight) Alignment.CenterVertically else Alignment.Top,
             ) {
-                Box(Modifier.testTag("video-thumbnail-${video.id}")) {
+                Box(Modifier.testTag("video-thumbnail-${video.id}").onGloballyPositioned { cardSource.captureCoordinates("art", it) }) {
                 CompactVideoThumbnail(
                     video = video,
                     index = index,
@@ -282,7 +293,7 @@ internal fun CompactVideoCard(
                     ) {
                         Text(
                             text = video.title,
-                            modifier = Modifier.testTag("video-title-${video.id}"),
+                            modifier = Modifier.testTag("video-title-${video.id}").onGloballyPositioned { cardSource.captureCoordinates("title", it) },
                             style = MaterialTheme.typography.titleSmall,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -546,7 +557,7 @@ private fun CompactVideoThumbnail(
                 } else {
                     Color.Black.copy(alpha = 0.78f)
                 },
-                contentColor = Color.White,
+                contentColor = if (video.isLive) MaterialTheme.colorScheme.onError else Color.White,
                 shape = MaterialTheme.shapes.extraSmall,
             ) {
                 Text(
@@ -800,7 +811,7 @@ private fun VideoArtwork(
                 .align(Alignment.BottomEnd)
                 .padding(10.dp),
             color = if (isLive) MaterialTheme.colorScheme.error else Color.Black.copy(alpha = 0.78f),
-            contentColor = Color.White,
+            contentColor = if (isLive) MaterialTheme.colorScheme.onError else Color.White,
             shape = MaterialTheme.shapes.extraSmall,
         ) {
             Text(

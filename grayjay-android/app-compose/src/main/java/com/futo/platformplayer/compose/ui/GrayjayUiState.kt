@@ -27,6 +27,7 @@ data class GrayjayUiState(
     val perChannelPlaybackSpeedEnabled: Boolean = true,
     val holdToSpeedEnabled: Boolean = false,
     val audioNormalizationEnabled: Boolean = false,
+    val audioNormalizationTargetLufs: Int = -32,
     val oneHandedPlayerEnabled: Boolean = false,
     val brainrotShortsEnabled: Boolean = false,
     val youtubeAutoplayEnabled: Boolean = false,
@@ -117,6 +118,9 @@ data class VideoOpenDialogUiModel(
     val message: String,
     val permanentlyUnavailable: Boolean,
     val scheduledStartAtMs: Long = 0L,
+    @param:StringRes val headlineRes: Int? = null,
+    val showAsDialog: Boolean = true,
+    val noticeMessage: String? = null,
 )
 
 enum class VideoTitleLanguageMode {

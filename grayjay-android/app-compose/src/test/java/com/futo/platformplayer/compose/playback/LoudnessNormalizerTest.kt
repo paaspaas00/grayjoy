@@ -6,6 +6,24 @@ import kotlin.math.*
 import kotlin.random.Random
 
 class LoudnessNormalizerTest {
+    @Test fun bothSelectableTargetsAreReachedAndChangingTargetKeepsGainContinuous() {
+        val rate = 8_000
+        val normalizer = LoudnessNormalizer(rate, 2, -32.0)
+        val frame = DoubleArray(2)
+        for (target in listOf(-32.0, -14.0)) {
+            normalizer.targetLufs = target
+            val output = StreamingLoudnessMeter(rate, 2)
+            repeat(rate * 18) { i ->
+                frame[0] = .3 * sin(2 * PI * 997 * i / rate); frame[1] = frame[0] * .5
+                normalizer.processFrame(frame)
+                assertEquals(frame[0] * .5, frame[1], 1e-12)
+                if (i >= rate * 13) output.addFrame(frame)
+            }
+            assertEquals(target, output.integratedLufs!!, .35)
+        }
+        normalizer.targetLufs = Double.NaN
+        assertEquals(-14.0, normalizer.targetLufs, 0.0)
+    }
     @Test fun kWeightedReferenceToneMatchesMonoAndStereoAtCommonSampleRates() {
         for (rate in listOf(44_100, 48_000, 96_000)) for (channels in 1..2) {
             val meter = StreamingLoudnessMeter(rate, channels)

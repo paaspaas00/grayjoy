@@ -443,7 +443,7 @@ class GrayjoyDownloadStore private constructor(context: Context) {
                             }
                             if (finalException == null) failureMessages.remove(download.request.id)
                             else failureMessages[download.request.id] =
-                                finalException.localizedMessage ?: finalException.javaClass.simpleName
+                                com.futo.platformplayer.compose.errors.friendlyBackendMessage(appContext, finalException)
                             publishDownloads()
                         }
 

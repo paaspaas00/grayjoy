@@ -84,6 +84,10 @@ internal class GrayjayPreferences(context: Context, profileId: String = "main") 
         get() = preferences.getBoolean("audio_normalization_enabled", false)
         set(value) { preferences.edit().putBoolean("audio_normalization_enabled", value).apply() }
 
+    var audioNormalizationTargetLufs: Int
+        get() = preferences.getInt("audio_normalization_target_lufs", -32).takeIf { it == -32 || it == -14 } ?: -32
+        set(value) { if (value == -32 || value == -14) preferences.edit().putInt("audio_normalization_target_lufs", value).apply() }
+
     var oneHandedPlayerEnabled: Boolean
         get() = preferences.getBoolean("one_handed_player_enabled", false)
         set(value) { preferences.edit().putBoolean("one_handed_player_enabled", value).apply() }

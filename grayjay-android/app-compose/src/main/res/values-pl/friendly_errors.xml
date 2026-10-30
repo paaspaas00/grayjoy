@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTube robi trudności</string>
+    <string name="friendly_youtube_body">YouTube odrzuca żądanie i może wymagać weryfikacji logowania. Sprawdź Źródła → YouTube lub konto YouTube połączone ze Spotify i spróbuj ponownie. Jeśli logowanie jest poprawne, poczekaj kilka minut.</string>
+    <string name="friendly_network_title">Nie można teraz się połączyć</string>
+    <string name="friendly_network_body">Nie możemy połączyć się z usługą. Sprawdź Wi-Fi lub transmisję danych i spróbuj ponownie.</string>
+    <string name="friendly_timeout_title">Usługa odpowiada zbyt wolno</string>
+    <string name="friendly_timeout_body">Żądanie trwało dłużej niż oczekiwano. Spróbuj ponownie za chwilę.</string>
+    <string name="friendly_login_title">Wymagane logowanie</string>
+    <string name="friendly_login_body">Ta treść wymaga konta. Otwórz Źródła, zaloguj się do usługi i sprawdź, czy konto ma do niej dostęp.</string>
+    <string name="friendly_limit_title">Usługa potrzebuje przerwy</string>
+    <string name="friendly_limit_body">Wysłano zbyt wiele żądań. Poczekaj kilka minut przed ponowną próbą.</string>
+    <string name="friendly_source_title">Problem ze źródłem</string>
+    <string name="friendly_source_body">Nie udało się wczytać treści. Spróbuj ponownie. Jeśli problem się powtarza, zaktualizuj źródło w Ustawienia → Źródła.</string>
+    <string name="friendly_unavailable_title">Ta treść jest niedostępna</string>
+    <string name="friendly_unavailable_body">Usługa nie udostępnia tej treści. Mogła zostać usunięta lub ustawiona jako prywatna. Wybierz inną pozycję.</string>
+    <string name="friendly_region_title">Niedostępne w Twoim regionie</string>
+    <string name="friendly_region_body">Usługa nie udostępnia tej treści w regionie, w którym się znajdujesz.</string>
+    <string name="friendly_format_title">Nie można odtworzyć tego formatu</string>
+    <string name="friendly_format_body">Wybierz inną jakość lub treść. Jeśli problem się powtarza, zaktualizuj źródło i aplikację.</string>
+    <string name="friendly_access_title">Usługa odmówiła dostępu</string>
+    <string name="friendly_access_body">Sprawdź logowanie i spróbuj ponownie. Jeśli nadal nie działa, zaktualizuj źródło w Ustawienia → Źródła.</string>
+    <string name="friendly_drm_title">Ta treść jest chroniona</string>
+    <string name="friendly_drm_body">Usługa nie zezwoliła na chronione odtwarzanie. Sprawdź konto i subskrypcję. Pobieranie tej treści może być niedozwolone.</string>
+</resources>

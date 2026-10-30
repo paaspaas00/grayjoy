@@ -2,7 +2,7 @@ package com.futo.platformplayer.backend
 
 import android.content.Context
 import android.util.AtomicFile
-import android.util.Log
+import com.futo.platformplayer.backend.BackendLog as Log
 import androidx.media3.datasource.HttpDataSource
 import com.futo.platformplayer.api.media.models.contents.IPlatformContent
 import com.futo.platformplayer.api.media.models.IPlatformChannelContent
@@ -642,6 +642,7 @@ class GrayjayPluginBackend(
     context: Context,
     private val enforcePluginSignatures: Boolean = false,
     private val constrainedResources: Boolean = false,
+    private val authenticatedYoutubePlayback: Boolean = false,
 ) {
     private val appContext = context.applicationContext
     private val client = OkHttpClient.Builder().build()
@@ -2745,13 +2746,17 @@ class GrayjayPluginBackend(
             val (config, configText, scriptText) = loadPluginPayload(endpoint)
             currentCoroutineContext().ensureActive()
             cachePlugin(config.id, configText, scriptText)
+            val auth = GrayjayPluginAuthStore.load(appContext, currentProfile.second, config.id)
             val descriptor = SourcePluginDescriptor(
                 config,
-                auth = GrayjayPluginAuthStore.load(appContext, currentProfile.second, config.id),
+                auth = auth,
                 flags = listOf(SourcePluginDescriptor.FLAG_EMBEDDED),
-                settings = loadPluginSettings(config.id, currentProfile.second),
+                settings = youtubeAuthenticatedSettings(loadPluginSettings(config.id, currentProfile.second),
+                    authenticatedYoutubePlayback && config.id == YOUTUBE_PLUGIN_ID && auth != null),
             )
-            val runtimeScript = scriptText.withComposeCompatibility(endpoint.pluginId)
+            val runtimeScript = scriptText.withComposeCompatibility(endpoint.pluginId).let {
+                if (authenticatedYoutubePlayback && config.id == YOUTUBE_PLUGIN_ID && auth != null) it.withAuthenticatedYoutubeSearch() else it
+            }
             val plugin = JSClient(appContext, descriptor, null, runtimeScript)
             try {
                 clientEpoch.current(generation) { Unit }
@@ -3271,8 +3276,10 @@ private fun String.youtubePlaylistId(): String? = runCatching {
     android.net.Uri.parse(this).getQueryParameter("list")
 }.getOrNull()
 
-private fun Throwable.userImportMessage(): String =
-    localizedMessage?.takeIf(String::isNotBlank) ?: javaClass.simpleName
+private fun Throwable.userImportMessage(): String {
+    Log.w("AccountImport", "A source item could not be imported", this)
+    return localizedMessage?.takeIf(String::isNotBlank) ?: javaClass.simpleName
+}
 
 private inline fun <T> runUserImportCatching(block: () -> T): Result<T> = try {
     Result.success(block())

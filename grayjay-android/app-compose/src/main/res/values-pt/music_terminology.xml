@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="music_artist_tracks_search">Pesquisar faixas deste artista</string>
+    <string name="music_artist_tracks_no_match">Nenhuma faixa deste artista corresponde a «%1$s».</string>
+    <string name="music_track_title_language">Idioma dos títulos das faixas</string>
+    <string name="music_artist_playback_speed_description">Escolha a velocidade aplicada automaticamente às faixas deste artista.</string>
+    <string name="music_per_artist_playback_speed_description">Guarde uma velocidade preferida por artista. A velocidade escolhida para uma faixa tem prioridade.</string>
+    <string name="music_search_hint">Pesquisar faixas, artistas e listas</string>
+</resources>

@@ -1,0 +1,8 @@
+<resources>
+    <string name="youtube_playback_account">用于播放的 YouTube 账号</string>
+    <string name="youtube_playback_account_description">使用已登录且未受保护的个人资料播放 YouTube 并匹配 Spotify 音频。请求会关联到该账号。仅保存可撤销的引用，不复制 Cookie。NewPipe 仍匿名访问，登录后的播放使用 Grayjay。</string>
+    <string name="youtube_playback_account_current">仅使用当前个人资料的登录</string>
+    <string name="youtube_playback_account_unavailable">关联的 YouTube 账号不可用。请在其个人资料中重新登录，或移除关联。</string>
+    <string name="youtube_playback_account_empty">在未受保护的个人资料中登录 YouTube，然后返回此处选择它。</string>
+    <string name="youtube_login_verification_required">YouTube 要求重新验证登录。请打开 YouTube 个人资料，重新登录来源并在网站上完成必要验证，然后重试。</string>
+</resources>

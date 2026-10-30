@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTube يتعنت</string>
+    <string name="friendly_youtube_body">يرفض YouTube هذا الطلب وقد يطلب التحقق من تسجيل الدخول. راجع المصادر ← YouTube أو حساب YouTube المرتبط بـSpotify ثم أعد المحاولة. إذا كان الدخول صحيحًا، انتظر بضع دقائق.</string>
+    <string name="friendly_network_title">يتعذر الاتصال الآن</string>
+    <string name="friendly_network_body">لا يمكن الوصول إلى الخدمة. تحقق من شبكة Wi-Fi أو بيانات الهاتف ثم أعد المحاولة.</string>
+    <string name="friendly_timeout_title">الخدمة تستجيب ببطء</string>
+    <string name="friendly_timeout_body">استغرق الطلب وقتًا أطول من المتوقع. حاول مجددًا بعد قليل.</string>
+    <string name="friendly_login_title">تسجيل الدخول مطلوب</string>
+    <string name="friendly_login_body">يتطلب هذا المحتوى حسابًا. افتح المصادر وسجّل الدخول إلى الخدمة وتحقق من صلاحية حسابك للوصول إليه.</string>
+    <string name="friendly_limit_title">الخدمة تحتاج إلى استراحة</string>
+    <string name="friendly_limit_body">أُرسلت طلبات كثيرة جدًا. انتظر بضع دقائق قبل المحاولة مجددًا.</string>
+    <string name="friendly_source_title">هناك مشكلة في المصدر</string>
+    <string name="friendly_source_body">تعذر تحميل المحتوى. أعد المحاولة؛ وإذا استمرت المشكلة فحدّث المصدر من الإعدادات ← المصادر.</string>
+    <string name="friendly_unavailable_title">هذا المحتوى غير متاح</string>
+    <string name="friendly_unavailable_body">الخدمة لا تتيح هذا المحتوى. ربما حُذف أو أصبح خاصًا. جرّب محتوى آخر.</string>
+    <string name="friendly_region_title">غير متاح في منطقتك</string>
+    <string name="friendly_region_body">الخدمة لا تتيح هذا المحتوى في منطقتك الحالية.</string>
+    <string name="friendly_format_title">يتعذر تشغيل هذا التنسيق</string>
+    <string name="friendly_format_body">جرّب جودة أو محتوى آخر. إذا استمرت المشكلة، حدّث المصدر والتطبيق.</string>
+    <string name="friendly_access_title">الخدمة رفضت الوصول</string>
+    <string name="friendly_access_body">تحقق من تسجيل الدخول وأعد المحاولة. إذا استمرت المشكلة، حدّث المصدر من الإعدادات ← المصادر.</string>
+    <string name="friendly_drm_title">هذا المحتوى محمي</string>
+    <string name="friendly_drm_body">لم تسمح الخدمة بالتشغيل المحمي. تحقق من الحساب والاشتراك؛ قد لا يُسمح بتنزيل المحتوى.</string>
+</resources>

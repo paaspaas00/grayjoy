@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="music_artist_tracks_search">البحث في مقاطع هذا الفنان</string>
+    <string name="music_artist_tracks_no_match">لا توجد مقاطع لهذا الفنان تطابق «%1$s».</string>
+    <string name="music_track_title_language">لغة عناوين المقاطع</string>
+    <string name="music_artist_playback_speed_description">اختر السرعة التي تُطبّق تلقائيًا على مقاطع هذا الفنان.</string>
+    <string name="music_per_artist_playback_speed_description">احفظ سرعة مفضلة لكل فنان. تكون الأولوية للسرعة المختارة لمقطع معين.</string>
+    <string name="music_search_hint">ابحث عن مقاطع وفنانين وقوائم تشغيل</string>
+</resources>

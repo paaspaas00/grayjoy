@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">Grupuj elementy</string>
+    <string name="library_group_explanation">Uporządkuj tę listę w rozwijane foldery. Element może należeć do kilku playlist. Elementy bez grupy pozostają widoczne osobno.</string>
+    <string name="library_group_none">Bez grupowania</string>
+    <string name="library_group_playlist">Według playlisty</string>
+    <string name="library_group_channel">Według kanału lub wykonawcy</string>
+    <string name="search_downloads">Szukaj w pobranych</string>
+</resources>

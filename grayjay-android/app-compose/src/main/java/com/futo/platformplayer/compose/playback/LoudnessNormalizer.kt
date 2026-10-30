@@ -67,7 +67,9 @@ internal class StreamingLoudnessMeter(val sampleRate: Int, val channels: Int) {
 }
 
 /** Linked-channel gain avoids stereo-image shifts; silence is never used to increase gain. */
-internal class LoudnessNormalizer(sampleRate: Int, channels: Int) {
+internal class LoudnessNormalizer(sampleRate: Int, channels: Int, initialTargetLufs: Double = TARGET_LUFS) {
+    var targetLufs: Double = initialTargetLufs.takeIf(Double::isFinite)?.coerceIn(-70.0, -5.0) ?: TARGET_LUFS
+        set(value) { if (value.isFinite()) field = value.coerceIn(-70.0, -5.0) }
     private val meter = StreamingLoudnessMeter(sampleRate, channels)
     private val attenuationStep = 1.0 - exp(-1.0 / (sampleRate * .15))
     private val boostStep = 1.0 - exp(-1.0 / (sampleRate * 2.0))
@@ -87,7 +89,7 @@ internal class LoudnessNormalizer(sampleRate: Int, channels: Int) {
         if (meter.addFrame(samples)) meter.integratedLufs?.let { loudness ->
             // Limit amplification of quiet recordings/noise. This can intentionally prevent
             // reaching the target on very quiet or highly dynamic material.
-            targetGain = 10.0.pow((TARGET_LUFS - loudness).coerceIn(-40.0, 12.0) / 20.0)
+            targetGain = 10.0.pow((targetLufs - loudness).coerceIn(-40.0, 12.0) / 20.0)
         }
         smoothGain += (targetGain - smoothGain) * if (targetGain < smoothGain) attenuationStep else boostStep
         val safeGain = if (peak > 0.0) min(smoothGain, SAMPLE_PEAK_CEILING / peak) else smoothGain

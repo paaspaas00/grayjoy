@@ -15,16 +15,17 @@ internal fun historyOriginPlaylist(origin: HistoryPlaylistOrigin, playlists: Lis
 
 internal sealed interface HistoryListEntry {
     val key: String
-    data class Video(val video: VideoUiModel, val grouped: Boolean = false) : HistoryListEntry {
-        override val key: String get() = video.id
+    data class Video(val video: VideoUiModel, val grouped: Boolean = false, val parentKey: String = "") : HistoryListEntry {
+        override val key: String get() = if (parentKey.isEmpty()) video.id else "$parentKey:video:${video.id}"
     }
     data class Folder(val origin: HistoryPlaylistOrigin, val videos: List<VideoUiModel>, val expanded: Boolean,
-        override val key: String) : HistoryListEntry
+        override val key: String, val collectionGrouping: LibraryGrouping? = null) : HistoryListEntry
 }
 
 /** One metadata scan per history/filter change; no per-video rows are allocated on expand/collapse. */
 internal class HistoryPlaylistIndex internal constructor(private val sections: List<Section>) {
-    internal data class Section(val videos: List<VideoUiModel>, val origin: HistoryPlaylistOrigin?, val key: String)
+    internal data class Section(val videos: List<VideoUiModel>, val origin: HistoryPlaylistOrigin?, val key: String,
+        val collectionGrouping: LibraryGrouping? = null)
 
     fun entries(expandedGroups: Set<String>): List<HistoryListEntry> {
         val ends = IntArray(sections.size)
@@ -43,8 +44,9 @@ internal class HistoryPlaylistIndex internal constructor(private val sections: L
                 val section = sections[sectionIndex]
                 val position = index - if (sectionIndex == 0) 0 else ends[sectionIndex - 1]
                 return if (section.origin != null && position == 0)
-                    HistoryListEntry.Folder(section.origin, section.videos, section.key in expandedGroups, section.key)
-                else HistoryListEntry.Video(section.videos[position - if (section.origin == null) 0 else 1], section.origin != null)
+                    HistoryListEntry.Folder(section.origin, section.videos, section.key in expandedGroups, section.key, section.collectionGrouping)
+                else HistoryListEntry.Video(section.videos[position - if (section.origin == null) 0 else 1], section.origin != null,
+                    if (section.collectionGrouping != null) section.key else "")
             }
         }
     }

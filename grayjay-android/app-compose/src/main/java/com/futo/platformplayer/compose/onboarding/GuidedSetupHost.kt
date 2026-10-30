@@ -23,8 +23,13 @@ internal fun GuidedSetupHost(
 ) {
     val context = LocalContext.current
     val preferences = remember { GuidedSetupPreferences(context) }
+    var version6UpgradeGuide by remember {
+        mutableStateOf(preferences.requiresVersion6UpgradeGuide())
+    }
     val pendingCrash by com.futo.platformplayer.compose.diagnostics.CrashLogStore.pendingCrash.collectAsState()
-    var visible by rememberSaveable { mutableStateOf(allowStartupDialogs && preferences.showOnStartup) }
+    var visible by rememberSaveable {
+        mutableStateOf(allowStartupDialogs && (preferences.showOnStartup || version6UpgradeGuide))
+    }
     var page by rememberSaveable { mutableIntStateOf(0) }
     var session by rememberSaveable { mutableIntStateOf(0) }
     var handledLauncher by rememberSaveable { mutableIntStateOf(launcherRequest) }
@@ -34,10 +39,17 @@ internal fun GuidedSetupHost(
         session++
         visible = true
     }
+    LaunchedEffect(allowStartupDialogs, version6UpgradeGuide) {
+        // Saved Activity state from the previous version may restore visible=false. A pending
+        // migration wins until the user explicitly completes or closes the guide.
+        if (allowStartupDialogs && version6UpgradeGuide) startGuide()
+    }
     LaunchedEffect(launcherRequest) {
         if (launcherRequest != handledLauncher) {
             handledLauncher = launcherRequest
-            if (preferences.showOnStartup) startGuide() else visible = false
+            version6UpgradeGuide = preferences.requiresVersion6UpgradeGuide()
+            if (preferences.showOnStartup || version6UpgradeGuide) startGuide()
+            else visible = false
         }
     }
     LaunchedEffect(externalRequest) {
@@ -56,6 +68,10 @@ internal fun GuidedSetupHost(
             GuidedSetupDialog(
                 state, actions, page, { page = it },
                 onFinish = { neverAgain ->
+                    if (version6UpgradeGuide) {
+                        preferences.markVersion6UpgradeGuidePresented()
+                        version6UpgradeGuide = false
+                    }
                     preferences.showOnStartup = !neverAgain
                     visible = false
                 },

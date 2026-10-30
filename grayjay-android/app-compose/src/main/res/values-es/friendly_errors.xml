@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTube está poniendo pegas</string>
+    <string name="friendly_youtube_body">YouTube rechaza la solicitud y puede pedir que verifiques tu sesión. Revisa Fuentes → YouTube o la cuenta vinculada a Spotify y reinténtalo. Si la sesión es correcta, espera unos minutos.</string>
+    <string name="friendly_network_title">No se puede conectar ahora</string>
+    <string name="friendly_network_body">No podemos conectar con el servicio. Revisa el Wi-Fi o los datos móviles y vuelve a intentarlo.</string>
+    <string name="friendly_timeout_title">El servicio tarda demasiado</string>
+    <string name="friendly_timeout_body">La solicitud tardó más de lo previsto. Vuelve a intentarlo dentro de un rato.</string>
+    <string name="friendly_login_title">Debes iniciar sesión</string>
+    <string name="friendly_login_body">Este contenido requiere una cuenta. Abre Fuentes, inicia sesión y comprueba que tu cuenta tenga acceso.</string>
+    <string name="friendly_limit_title">El servicio necesita una pausa</string>
+    <string name="friendly_limit_body">Se enviaron demasiadas solicitudes. Espera unos minutos antes de volver a intentarlo.</string>
+    <string name="friendly_source_title">La fuente tiene un problema</string>
+    <string name="friendly_source_body">No pudimos cargar este contenido. Reinténtalo; si continúa, actualiza la fuente en Ajustes → Fuentes.</string>
+    <string name="friendly_unavailable_title">Este contenido no está disponible</string>
+    <string name="friendly_unavailable_body">El servicio no ofrece este contenido. Puede que se haya eliminado o hecho privado. Prueba otro.</string>
+    <string name="friendly_region_title">No disponible en tu región</string>
+    <string name="friendly_region_body">El servicio no ofrece este contenido en tu región actual.</string>
+    <string name="friendly_format_title">No se puede reproducir este formato</string>
+    <string name="friendly_format_body">Prueba otra calidad u otro contenido. Si continúa, actualiza la fuente y la aplicación.</string>
+    <string name="friendly_access_title">El servicio rechazó el acceso</string>
+    <string name="friendly_access_body">Revisa tu sesión y reinténtalo. Si sigue fallando, actualiza la fuente en Ajustes → Fuentes.</string>
+    <string name="friendly_drm_title">Este contenido está protegido</string>
+    <string name="friendly_drm_body">El servicio no autorizó la reproducción protegida. Revisa tu cuenta y suscripción; puede que no permita descargarlo.</string>
+</resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="music_artist_tracks_search">搜索此艺人的曲目</string>
+    <string name="music_artist_tracks_no_match">此艺人没有与“%1$s”匹配的曲目。</string>
+    <string name="music_track_title_language">曲目标题语言</string>
+    <string name="music_artist_playback_speed_description">选择自动用于此艺人曲目的播放速度。</string>
+    <string name="music_per_artist_playback_speed_description">记住每位艺人的首选速度。单独为曲目设置的速度优先。</string>
+    <string name="music_search_hint">搜索曲目、艺人和播放列表</string>
+</resources>

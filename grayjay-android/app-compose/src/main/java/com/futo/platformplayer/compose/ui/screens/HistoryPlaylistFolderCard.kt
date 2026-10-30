@@ -19,8 +19,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourcePluralStringResource as pluralStringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,9 +74,12 @@ internal fun HistoryPlaylistFolderCard(
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(pluralStringResource(R.plurals.history_playlist_video_count, entry.videos.size,
+            Text(if (entry.collectionGrouping != null) entry.origin.title else pluralStringResource(R.plurals.history_playlist_video_count, entry.videos.size,
                 entry.videos.size, entry.origin.title.ifBlank { stringResource(R.string.playlist) }),
                 style = MaterialTheme.typography.titleSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            if (entry.collectionGrouping != null) Text(pluralStringResource(R.plurals.video_count, entry.videos.size, entry.videos.size),
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (entry.collectionGrouping != LibraryGrouping.Channel) {
             Surface(shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
@@ -88,6 +91,7 @@ internal fun HistoryPlaylistFolderCard(
                     Text(stringResource(R.string.go_to_playlist), style = MaterialTheme.typography.labelMedium,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
+            }
             }
         }
     }

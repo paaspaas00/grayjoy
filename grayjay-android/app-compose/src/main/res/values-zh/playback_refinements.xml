@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_audio_normalization_body">减少视频和歌曲之间的音量差异，让你不必频繁调整音量。不会修改原始文件，可以随时关闭。</string>
+    <string name="audio_normalization_level">标准化级别</string>
+    <string name="normalization_quieter">较轻的音量</string>
+    <string name="normalization_louder">更响亮的音量</string>
+    <string name="setup_song_recognition_body">长按搜索即可识别歌曲。Grayjoy 使用 Shazam，需要连接互联网。</string>
+</resources>

@@ -10,8 +10,12 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +43,7 @@ import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.FolderCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -82,8 +87,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourcePluralStringResource as pluralStringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
@@ -218,6 +223,18 @@ internal fun LibraryScreen(
         return
     }
     val compactLayout = compactUi()
+    var showHistoryGrouping by rememberSaveable { mutableStateOf(false) }
+    if (showHistoryGrouping) AlertDialog(onDismissRequest = { showHistoryGrouping = false },
+        icon = { Icon(Icons.Outlined.FolderCopy, null) },
+        title = { Text(stringResource(R.string.history_group_settings)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.history_group_explanation))
+            Row(Modifier.fillMaxWidth().toggleable(groupHistoryByPlaylist,
+                onValueChange = onGroupHistoryByPlaylistChange).testTag("history-group-toggle"), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.group_history_by_playlist), Modifier.weight(1f))
+                AdaptiveSwitch(groupHistoryByPlaylist, onCheckedChange = null)
+            }
+        } }, confirmButton = { TextButton(onClick = { showHistoryGrouping = false }) { Text(stringResource(R.string.ok)) } })
     var selectionMode by rememberSaveable { mutableStateOf(false) }
     var confirmRemoval by rememberSaveable { mutableStateOf(false) }
     var showExportSheet by rememberSaveable { mutableStateOf(false) }
@@ -227,6 +244,33 @@ internal fun LibraryScreen(
     var historyQuery by rememberSaveable { mutableStateOf("") }
     var historyMusicFilter by rememberSaveable { mutableStateOf(HistoryMusicFilter.All) }
     var downloadsMusicFilter by rememberSaveable { mutableStateOf(HistoryMusicFilter.All) }
+    var downloadsQuery by rememberSaveable { mutableStateOf("") }
+    var downloadsGrouping by rememberSaveable { mutableStateOf(LibraryGrouping.None) }
+    var watchLaterGrouping by rememberSaveable { mutableStateOf(LibraryGrouping.None) }
+    var groupingDialog by rememberSaveable { mutableStateOf<LibraryFilter?>(null) }
+    var pendingGrouping by rememberSaveable { mutableStateOf(LibraryGrouping.None) }
+    var expandedCollectionGroups by androidx.compose.runtime.key(historyEntryGeneration) {
+        rememberSaveable { mutableStateOf(emptyList<String>()) }
+    }
+    if (groupingDialog != null) AlertDialog(onDismissRequest = { groupingDialog = null },
+        icon = { Icon(Icons.Outlined.FolderCopy, null) },
+        title = { Text(stringResource(R.string.library_group_settings)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()).selectableGroup()) {
+            Text(stringResource(R.string.library_group_explanation), Modifier.padding(bottom = 12.dp))
+            LibraryGrouping.entries.forEachIndexed { index, mode ->
+                Row(Modifier.fillMaxWidth().padding(bottom = if (index < LibraryGrouping.entries.lastIndex) 4.dp else 0.dp)
+                    .dialogChoiceRow(index, LibraryGrouping.entries.size).heightIn(min = 48.dp).selectable(pendingGrouping == mode,
+                    role = Role.RadioButton, onClick = { pendingGrouping = mode }).testTag("library-group-${mode.name.lowercase()}"),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    RadioButton(selected = pendingGrouping == mode, onClick = null)
+                    Text(stringResource(mode.labelRes))
+                }
+            }
+        } }, dismissButton = { TextButton(onClick = { groupingDialog = null }) { Text(stringResource(R.string.cancel)) } },
+        confirmButton = { TextButton(onClick = {
+            if (groupingDialog == LibraryFilter.Downloads) downloadsGrouping = pendingGrouping else watchLaterGrouping = pendingGrouping
+            expandedCollectionGroups = emptyList(); groupingDialog = null
+        }, modifier = Modifier.testTag("library-group-confirm")) { Text(stringResource(R.string.ok)) } })
     var expandedHistoryGroups by androidx.compose.runtime.key(historyEntryGeneration) {
         rememberSaveable { mutableStateOf(emptyList<String>()) }
     }
@@ -326,7 +370,7 @@ internal fun LibraryScreen(
     }
     LaunchedEffect(selectedFilter, downloadFocusVideoId) {
         val page = filters.indexOf(selectedFilter)
-        if (selectedFilter !in setOf(LibraryFilter.History, LibraryFilter.Playlists)) {
+        if (selectedFilter !in setOf(LibraryFilter.History, LibraryFilter.Playlists, LibraryFilter.Downloads)) {
             keyboardController?.hide()
             focusManager.clearFocus(force = true)
             focusedSearchFilter = null
@@ -421,28 +465,40 @@ internal fun LibraryScreen(
                         .filter { it.sourceId.equals("youtube", true) && it.isMusic == null }.map(VideoUiModel::id)
                     else emptyList()
                 }
-                val pageVideos = remember(musicFilteredPageVideos, pageFilter, historyQuery) {
-                    if (pageFilter != LibraryFilter.History || historyQuery.isBlank()) {
-                        musicFilteredPageVideos
-                    } else {
-                        videosMatchingLibraryQuery(musicFilteredPageVideos, historyQuery)
-                    }
+                val pageQuery = when (pageFilter) {
+                    LibraryFilter.History -> historyQuery
+                    LibraryFilter.Downloads -> downloadsQuery
+                    else -> ""
+                }
+                val pageVideos = remember(musicFilteredPageVideos, pageQuery) {
+                    videosMatchingLibraryQuery(musicFilteredPageVideos, pageQuery)
                 }
                 val isSelectedPage = pageFilter == selectedFilter
                 val groupedHistory = pageFilter == LibraryFilter.History && groupHistoryByPlaylist
-                val indexInput = remember(unfilteredPageVideos, pageVideos) { Any() }
-                val indexed by produceState<Pair<Any, HistoryPlaylistIndex>?>(null, indexInput, groupedHistory) {
-                    if (groupedHistory && value?.first !== indexInput) {
+                val collectionGrouping = when (pageFilter) {
+                    LibraryFilter.Downloads -> downloadsGrouping
+                    LibraryFilter.WatchLater -> watchLaterGrouping
+                    else -> LibraryGrouping.None
+                }
+                val grouped = groupedHistory || collectionGrouping != LibraryGrouping.None
+                val indexInput = remember(unfilteredPageVideos, pageVideos, collectionGrouping, if (groupedHistory) null else playlists) { Any() }
+                val indexed by produceState<Pair<Any, HistoryPlaylistIndex>?>(null, indexInput, grouped) {
+                    if (grouped && value?.first !== indexInput) {
                         value = withContext(Dispatchers.Default) {
                             val context = coroutineContext
-                            indexInput to indexHistoryPlaylists(unfilteredPageVideos,
+                            indexInput to if (groupedHistory) indexHistoryPlaylists(unfilteredPageVideos,
                                 pageVideos.mapTo(hashSetOf(), VideoUiModel::id)) { context.ensureActive() }
+                            else indexLibraryCollection(pageVideos, playlists, collectionGrouping) { context.ensureActive() }
                         }
                     }
                 }
-                val pageEntries = remember(indexed, indexInput, pageVideos, groupedHistory, expandedHistoryGroups) {
-                    if (groupedHistory && indexed?.first === indexInput)
-                        indexed!!.second.entries(expandedHistoryGroups.toSet())
+                val expandedGroups = if (groupedHistory) expandedHistoryGroups else expandedCollectionGroups
+                fun updateExpandedGroups(keys: List<String>) {
+                    if (groupedHistory) expandedHistoryGroups = keys else expandedCollectionGroups = keys
+                }
+                val pageEntries = remember(indexed, indexInput, pageVideos, grouped, expandedGroups) {
+                    if (grouped && indexed?.first === indexInput)
+                        indexed!!.second.entries(expandedGroups.toSet())
                     else historyVideoEntries(pageVideos)
                 }
                 val pageListState = rememberContentListState()
@@ -454,13 +510,14 @@ internal fun LibraryScreen(
                 LaunchedEffect(focusedSearchFilter, pageFilter) {
                     if (focusedSearchFilter == pageFilter) {
                         delay(120L)
-                        listState.animateScrollToItem(if (pageFilter == LibraryFilter.History) 1 else LIBRARY_SEARCH_FOCUSED_SCROLL_INDEX)
+                        listState.animateScrollToItem(1)
                     }
                 }
                 LaunchedEffect(
                     downloadFocusVideoId,
                     pageFilter,
                     pageVideos,
+                    pageEntries,
                     isSelectedPage,
                 ) {
                     if (
@@ -468,10 +525,20 @@ internal fun LibraryScreen(
                         isSelectedPage &&
                         downloadFocusVideoId != null
                     ) {
-                        val itemIndex = downloadListItemIndex(
-                            pageVideos,
-                            downloadFocusVideoId,
-                        )
+                        if (downloadsQuery.isNotEmpty() || downloadsMusicFilter != HistoryMusicFilter.All) {
+                            downloadsQuery = ""; downloadsMusicFilter = HistoryMusicFilter.All
+                            return@LaunchedEffect
+                        }
+                        if (grouped && indexed?.first !== indexInput) return@LaunchedEffect
+                        val folder = pageEntries.filterIsInstance<HistoryListEntry.Folder>().firstOrNull { folder ->
+                            folder.videos.any { it.id == downloadFocusVideoId }
+                        }
+                        if (folder != null && !folder.expanded) {
+                            updateExpandedGroups(expandedGroups + folder.key)
+                            return@LaunchedEffect
+                        }
+                        val itemIndex = pageEntries.indexOfFirst { it is HistoryListEntry.Video && it.video.id == downloadFocusVideoId }
+                            .takeIf { it >= 0 }?.plus(DOWNLOAD_LIST_CONTENT_START_INDEX)
                         if (itemIndex != null) {
                             listState.scrollToItem(itemIndex)
                             onDownloadFocusConsumed()
@@ -496,14 +563,14 @@ internal fun LibraryScreen(
                         end = 16.dp,
                         bottom = 16.dp,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(if (compactLayout) 8.dp else 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
         item {
-            if (!compactLayout || selectionMode || pageFilter in setOf(LibraryFilter.Downloads, LibraryFilter.Playlists, LibraryFilter.WatchLater)) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 48.dp),
+                    .heightIn(min = 40.dp)
+                    .testTag("library-section-header-${pageFilter.name.lowercase()}"),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -516,17 +583,27 @@ internal fun LibraryScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.testTag("library-count-${pageFilter.name.lowercase()}"))
                     }
+                    if (pageFilter in setOf(LibraryFilter.Downloads, LibraryFilter.WatchLater)) IconButton(onClick = {
+                        pendingGrouping = collectionGrouping; groupingDialog = pageFilter
+                    }, modifier = Modifier.testTag("library-group-settings-${pageFilter.name.lowercase()}")) {
+                        Icon(Icons.Outlined.FolderCopy, stringResource(R.string.library_group_settings),
+                            tint = if (collectionGrouping != LibraryGrouping.None) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (pageFilter == LibraryFilter.History) IconButton(onClick = { showHistoryGrouping = true },
+                    modifier = Modifier.testTag("history-group-settings")) {
+                    Icon(Icons.Outlined.FolderCopy, stringResource(R.string.history_group_settings),
+                        tint = if (groupHistoryByPlaylist) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (!selectionMode && pageFilter == LibraryFilter.Downloads && pageVideos.isNotEmpty()) {
                     AdaptiveButton(
                         onClick = { onPlayDownloads(pageVideos.map(VideoUiModel::id)) },
                         modifier = Modifier.testTag("downloads-play-all"),
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                        Text(stringResource(R.string.play_all))
+                        Icon(Icons.Filled.PlayArrow, contentDescription = if (compactLayout) stringResource(R.string.play_all) else null)
+                        if (!compactLayout) Text(stringResource(R.string.play_all))
                     }
                 }
-            }
             }
         }
         if (pageFilter !in setOf(LibraryFilter.History, LibraryFilter.Downloads, LibraryFilter.Playlists, LibraryFilter.WatchLater)) item {
@@ -540,36 +617,25 @@ internal fun LibraryScreen(
                 playlistCount = playlists.size,
             )
         }
-        if (pageFilter == LibraryFilter.Downloads) stickyHeader(key = "downloads-music-filters") {
-            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)
-                .horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HistoryMusicFilter.entries.forEach { filter ->
-                    AdaptiveFilterChip(selected = downloadsMusicFilter == filter,
-                        onClick = { downloadsMusicFilter = filter; leaveSelectionMode() },
-                        label = { Text(stringResource(filter.labelRes)) },
-                        modifier = Modifier.testTag("downloads-music-${filter.name.lowercase()}"))
-                }
-            }
-        }
-        if (pageFilter in setOf(LibraryFilter.History, LibraryFilter.Playlists)) {
+        if (pageFilter in setOf(LibraryFilter.History, LibraryFilter.Playlists, LibraryFilter.Downloads)) {
             stickyHeader(key = "library-search-${pageFilter.name}") {
                 Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
                 LibrarySearchField(
-                    query = if (pageFilter == LibraryFilter.History) historyQuery else playlistQuery,
+                    query = when (pageFilter) { LibraryFilter.History -> historyQuery; LibraryFilter.Downloads -> downloadsQuery; else -> playlistQuery },
                     onQueryChange = { value ->
                         if (pageFilter == LibraryFilter.History) {
                             historyQuery = value
                         }
-                        else playlistQuery = value
+                        else if (pageFilter == LibraryFilter.Downloads) downloadsQuery = value else playlistQuery = value
                     },
                     labelRes = if (pageFilter == LibraryFilter.History) {
                         R.string.search_watched_history
-                    } else {
+                    } else if (pageFilter == LibraryFilter.Downloads) R.string.search_downloads else {
                         R.string.search_playlists
                     },
                     testTag = if (pageFilter == LibraryFilter.History) {
                         "history-search"
-                    } else {
+                    } else if (pageFilter == LibraryFilter.Downloads) "downloads-search" else {
                         "playlist-search"
                     },
                     onFocusChange = { focused ->
@@ -581,32 +647,22 @@ internal fun LibraryScreen(
                         .background(MaterialTheme.colorScheme.background)
                         .padding(vertical = 6.dp),
                 )
-                if (pageFilter == LibraryFilter.History) {
+                if (pageFilter in setOf(LibraryFilter.History, LibraryFilter.Downloads)) {
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         HistoryMusicFilter.entries.forEach { musicFilter ->
                             AdaptiveFilterChip(
-                                selected = historyMusicFilter == musicFilter,
+                                selected = (if (pageFilter == LibraryFilter.Downloads) downloadsMusicFilter else historyMusicFilter) == musicFilter,
                                 onClick = {
-                                    historyMusicFilter = musicFilter
+                                    if (pageFilter == LibraryFilter.Downloads) downloadsMusicFilter = musicFilter else historyMusicFilter = musicFilter
                                     leaveSelectionMode()
                                 },
                                 label = { Text(stringResource(musicFilter.labelRes)) },
-                                modifier = Modifier.testTag("history-music-${musicFilter.name.lowercase()}"),
+                                modifier = Modifier.testTag("${if (pageFilter == LibraryFilter.Downloads) "downloads" else "history"}-music-${musicFilter.name.lowercase()}"),
                             )
                         }
-                    }
-                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                        .toggleable(value = groupHistoryByPlaylist, role = Role.Switch,
-                            onValueChange = onGroupHistoryByPlaylistChange)
-                        .testTag("history-group-toggle"),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(stringResource(R.string.group_history_by_playlist), Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium)
-                        AdaptiveSwitch(checked = groupHistoryByPlaylist, onCheckedChange = null)
                     }
                 }
                 }
@@ -656,15 +712,17 @@ internal fun LibraryScreen(
                     HistoryPlaylistFolderCard(entry,
                         selected = selectionMode && entry.videos.all { it.id in selectedHistoryVideoIds },
                         onToggle = {
-                            expandedHistoryGroups = if (entry.key in expandedHistoryGroups)
-                                expandedHistoryGroups - entry.key else (expandedHistoryGroups + entry.key).takeLast(128)
+                            updateExpandedGroups(if (entry.key in expandedGroups)
+                                expandedGroups - entry.key else (expandedGroups + entry.key).takeLast(128))
                         },
                         onLongClick = {
-                            selectionMode = true
-                            val selected = selectedVideoIds.toHashSet()
-                            selectedVideoIds.addAll(entry.videos.map(VideoUiModel::id).filterNot(selected::contains))
-                            if (entry.key !in expandedHistoryGroups)
-                                expandedHistoryGroups = (expandedHistoryGroups + entry.key).takeLast(128)
+                            if (pageFilter != LibraryFilter.WatchLater) {
+                                selectionMode = true
+                                val selected = selectedVideoIds.toHashSet()
+                                selectedVideoIds.addAll(entry.videos.map(VideoUiModel::id).filterNot(selected::contains))
+                            }
+                            if (entry.key !in expandedGroups)
+                                updateExpandedGroups((expandedGroups + entry.key).takeLast(128))
                         },
                         onOpenPlaylist = {
                             if (selectionMode) {
@@ -699,7 +757,7 @@ internal fun LibraryScreen(
                 } else {
                     video.metadata
                 }
-                Box(if (groupedHistory) Modifier.animateItem() else Modifier) {
+                Box(if (grouped) Modifier.animateItem() else Modifier) {
                 VideoCard(
                     video = video,
                     index = index,
@@ -716,7 +774,7 @@ internal fun LibraryScreen(
                     showProgress = pageFilter == LibraryFilter.History,
                     // Download progress invalidates active rows frequently. Per-item entrance
                     // layers on newly visible cards turn a fast fling into repeated GPU work.
-                    animateEntrance = !groupedHistory && pageFilter != LibraryFilter.Downloads &&
+                    animateEntrance = !grouped && pageFilter != LibraryFilter.Downloads &&
                         !listState.isScrollInProgress,
                     onClick = {
                         if (
@@ -746,8 +804,8 @@ internal fun LibraryScreen(
             (pageFilter == LibraryFilter.Playlists && playlists.isEmpty()) ||
             (pageFilter != LibraryFilter.Playlists &&
                 pageVideos.isEmpty() &&
-                !(pageFilter == LibraryFilter.History &&
-                    (historyQuery.isNotBlank() || historyMusicFilter != HistoryMusicFilter.All)))
+                !(pageQuery.isNotBlank() || (pageFilter == LibraryFilter.History && historyMusicFilter != HistoryMusicFilter.All) ||
+                    (pageFilter == LibraryFilter.Downloads && downloadsMusicFilter != HistoryMusicFilter.All)))
         ) {
             item {
                 Text(
@@ -759,8 +817,9 @@ internal fun LibraryScreen(
             }
         }
         if (
-            pageFilter == LibraryFilter.History &&
-            (historyQuery.isNotBlank() || historyMusicFilter != HistoryMusicFilter.All) &&
+            pageFilter in setOf(LibraryFilter.History, LibraryFilter.Downloads) &&
+            (pageQuery.isNotBlank() || (pageFilter == LibraryFilter.History && historyMusicFilter != HistoryMusicFilter.All) ||
+                (pageFilter == LibraryFilter.Downloads && downloadsMusicFilter != HistoryMusicFilter.All)) &&
             unfilteredPageVideos.isNotEmpty() &&
             pageVideos.isEmpty()
         ) {

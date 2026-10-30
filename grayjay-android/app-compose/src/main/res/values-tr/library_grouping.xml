@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">Öğeleri gruplandır</string>
+    <string name="library_group_explanation">Bu listeyi genişletilebilir klasörlerde düzenleyin. Bir öğe birden fazla oynatma listesinde olabilir. Grubu olmayan öğeler ayrı görünmeye devam eder.</string>
+    <string name="library_group_none">Gruplama yok</string>
+    <string name="library_group_playlist">Oynatma listesine göre</string>
+    <string name="library_group_channel">Kanala veya sanatçıya göre</string>
+    <string name="search_downloads">İndirilenlerde ara</string>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_audio_normalization_body">يقلل اختلاف مستوى الصوت بين الفيديوهات والأغاني لتحتاج إلى ضبطه أقل. لا يغير الملفات الأصلية. يمكنك إيقافه في أي وقت.</string>
+    <string name="audio_normalization_level">مستوى توحيد الصوت</string>
+    <string name="normalization_quieter">استماع أكثر هدوءًا</string>
+    <string name="normalization_louder">صوت أكثر وضوحًا</string>
+    <string name="setup_song_recognition_body">اضغط مطولًا على البحث للتعرف على أغنية. يستخدم Grayjoy خدمة Shazam ويتطلب اتصالًا بالإنترنت.</string>
+</resources>

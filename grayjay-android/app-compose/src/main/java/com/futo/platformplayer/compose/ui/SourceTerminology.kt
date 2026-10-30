@@ -1,8 +1,11 @@
 package com.futo.platformplayer.compose.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource as nativeStringResource
+import androidx.compose.ui.res.pluralStringResource as nativePluralStringResource
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.remember
 import com.futo.platformplayer.compose.R
 
 internal val LocalYoutubeOnly = staticCompositionLocalOf { false }
@@ -21,13 +24,26 @@ internal fun sourceTerminologyResource(id: Int, youtubeOnly: Boolean): Int = if 
     R.plurals.followed_creators -> R.plurals.followed_channels
     else -> id
 }
-@Composable internal fun sourceStringResource(id: Int): String =
-    stringResource(com.futo.platformplayer.compose.ui.screens.musicTerminologyResource(
-        sourceTerminologyResource(id, LocalYoutubeOnly.current),
-        com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation.current))
-@Composable internal fun sourcePluralStringResource(id: Int, quantity: Int, vararg args: Any): String =
-    pluralStringResource(sourceTerminologyResource(id, LocalYoutubeOnly.current), quantity, *args)
+@Composable internal fun sourceStringResource(id: Int, vararg args: Any): String {
+    val mapped = sourceTerminologyResource(id, LocalYoutubeOnly.current)
+    if (!com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation.current)
+        return if (args.isEmpty()) nativeStringResource(mapped) else nativeStringResource(mapped, *args)
+    val context = LocalContext.current
+    val config = LocalConfiguration.current
+    val resources = remember(context, config) { context.resources }
+    return musicProfileString(resources, mapped, true, *args)
+}
+@Composable internal fun sourcePluralStringResource(id: Int, quantity: Int, vararg args: Any): String {
+    val mapped = sourceTerminologyResource(id, LocalYoutubeOnly.current)
+    if (!com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation.current)
+        return if (args.isEmpty()) nativePluralStringResource(mapped, quantity) else nativePluralStringResource(mapped, quantity, *args)
+    val context = LocalContext.current
+    val config = LocalConfiguration.current
+    val resources = remember(context, config) { context.resources }
+    return musicProfileQuantity(resources, mapped, quantity, true, *args)
+}
 
 @Composable internal fun sourceCreatorFallback(value: String): String =
-    if (LocalYoutubeOnly.current && (value == stringResource(R.string.creator) || value.equals("Creator", true)))
-        stringResource(R.string.channel_label) else value
+    if ((LocalYoutubeOnly.current || com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation.current) &&
+        (value == nativeStringResource(R.string.creator) || value == nativeStringResource(R.string.channel_label) || value.equals("Creator", true)))
+        sourceStringResource(R.string.creator) else value

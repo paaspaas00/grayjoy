@@ -675,7 +675,7 @@
     <string name="job_finished_notice">任务结束：%1$s</string>
     <string name="update_download_job_title">更新下载</string>
     <string name="experimental_features">实验性功能</string>
-    <string name="audio_normalization">将音频响度标准化为 −23 LUFS</string>
+    <string name="audio_normalization">音量标准化</string>
     <string name="audio_normalization_description">播放时逐渐调整响度并限制峰值。关闭时绕过 DSP。不适用于投屏。</string>
     <string name="grayjoy_repository">Grayjoy 代码仓库</string>
     <string name="repository_open_failed">没有可打开此链接的应用。</string>

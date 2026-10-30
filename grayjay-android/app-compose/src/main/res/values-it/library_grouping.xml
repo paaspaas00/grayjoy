@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">Raggruppa elementi</string>
+    <string name="library_group_explanation">Organizza questa lista in cartelle espandibili. Un elemento può appartenere a più playlist. Gli elementi senza un gruppo restano visibili singolarmente.</string>
+    <string name="library_group_none">Nessun raggruppamento</string>
+    <string name="library_group_playlist">Per playlist</string>
+    <string name="library_group_channel">Per canale o artista</string>
+    <string name="search_downloads">Cerca nei download</string>
+</resources>

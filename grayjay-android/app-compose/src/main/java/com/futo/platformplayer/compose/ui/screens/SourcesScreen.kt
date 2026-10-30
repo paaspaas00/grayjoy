@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -62,8 +63,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourcePluralStringResource as pluralStringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -445,7 +446,7 @@ private fun SourceOptionsSheet(
         contentWindowInsets = { grayjoySheetInsets() },
     ) {
         Column(
-            modifier = Modifier.padding(bottom = 24.dp),
+            modifier = Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(
@@ -484,6 +485,7 @@ private fun SourceOptionsSheet(
                 )
             }
             HorizontalDivider()
+            if (source.id == "spotify") YoutubePlaybackAccountPreference()
             SourceOption(
                 title = stringResource(
                     if (source.isAuthenticated) R.string.sign_out else R.string.log_in_to_source,

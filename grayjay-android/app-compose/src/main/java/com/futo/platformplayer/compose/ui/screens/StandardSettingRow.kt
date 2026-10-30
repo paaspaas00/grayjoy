@@ -26,8 +26,8 @@ internal fun StandardSettingRow(
         content = {
             Box { leading() }
             Column {
-                Text(title, style = MaterialTheme.typography.bodyLarge)
-                Text(description, style = MaterialTheme.typography.bodyMedium,
+                Text(settingsHighlightedText(title), style = MaterialTheme.typography.bodyLarge)
+                Text(settingsHighlightedText(description), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Box { trailing() }

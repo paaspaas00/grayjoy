@@ -56,6 +56,11 @@ class AudioNormalizationTest {
             try {
                 val preferences = GrayjayPreferences(context, id)
                 assertFalse(preferences.audioNormalizationEnabled)
+                assertEquals(-32, preferences.audioNormalizationTargetLufs)
+                preferences.audioNormalizationTargetLufs = -14
+                assertEquals(-14, GrayjayPreferences(context, id).audioNormalizationTargetLufs)
+                preferences.audioNormalizationTargetLufs = 999
+                assertEquals(-14, GrayjayPreferences(context, id).audioNormalizationTargetLufs)
                 preferences.audioNormalizationEnabled = true
                 assertTrue(GrayjayPreferences(context, id).audioNormalizationEnabled)
                 preferences.audioNormalizationEnabled = false

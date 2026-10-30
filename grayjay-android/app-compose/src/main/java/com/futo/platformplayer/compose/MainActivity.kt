@@ -401,12 +401,15 @@ class MainActivity : FragmentActivity() {
                     }
                     onLogoutSource = viewModel::clearSourceAuthentication
                     onRefreshSourceAccount = viewModel::refreshSourceAccount
+                    onYoutubePlaybackAccountChanged = viewModel::reloadYoutubePlaybackAccount
                     onImportYoutube = viewModel::importYoutubeAccount
                     onDismissYoutubeImport = viewModel::dismissYoutubeImport
                     onYoutubeImportScheduleChange = viewModel::setYoutubeImportSchedule
                     onCancelYoutubeImportJobs = viewModel::cancelYoutubeImportJobs
                     onSearchQueryChange = viewModel::setSearchQuery
                     onSearchSubmit = viewModel::submitSearch
+                    onResolveRecognizedSong = viewModel::resolveRecognizedSong
+                    onOpenRecognizedSong = viewModel::openRecognizedSong
                     onSourceFilterSelectionChange = viewModel::setSourceFilterSelection
                     onLoadMoreSearch = viewModel::loadMoreSearch
                     onLoadMoreChannel = viewModel::loadMoreChannel
@@ -444,6 +447,7 @@ class MainActivity : FragmentActivity() {
                     onPerChannelPlaybackSpeedChange = viewModel::setPerChannelPlaybackSpeedEnabled
                     onHoldToSpeedChange = viewModel::setHoldToSpeedEnabled
                     onAudioNormalizationChange = viewModel::setAudioNormalizationEnabled
+                    onAudioNormalizationTargetChange = viewModel::setAudioNormalizationTarget
                     onOneHandedPlayerChange = viewModel::setOneHandedPlayerEnabled
                     onPlayQueuedVideo = viewModel::playQueuedVideo
                     onSponsorBlockEnabledChange = viewModel::setSponsorBlockEnabled

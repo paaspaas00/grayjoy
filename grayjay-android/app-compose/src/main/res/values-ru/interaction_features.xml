@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recognition_swipe_open">Смахните вверх, чтобы открыть на паузе</string>
+    <string name="recognition_privacy_short">Слушаем несколько секунд. В Shazam отправляется только музыкальный отпечаток, не запись. Нужен Интернет.</string>
+    <string name="music_artists">Исполнители</string>
+    <string name="music_artist">Исполнитель</string>
+    <string name="recognize_song">Распознать песню</string>
+    <string name="recognition_description">Удерживайте Поиск на панели навигации, чтобы узнать музыку вокруг вас и воспроизвести найденную песню.</string>
+    <string name="recognition_privacy">Микрофон слушает несколько секунд, только пока это окно открыто. В Shazam отправляется музыкальный отпечаток, а не аудиозапись. Нужен Интернет.</string>
+    <string name="recognition_disabled">Распознавание музыки отключено. Включите его в настройках.</string>
+    <string name="recognition_permission">Разрешите доступ к микрофону для распознавания музыки.</string>
+    <string name="recognition_error">Распознавание сейчас недоступно. Проверьте подключение и повторите попытку.</string>
+    <string name="recognition_no_match">Песня не найдена. Подойдите ближе к музыке и повторите попытку.</string>
+    <string name="recognition_listening">Слушаем музыку…</string>
+    <string name="recognition_searching">Ищем песню…</string>
+    <string name="recognition_play_failed">Не удалось запустить песню. Попробуйте чуть позже.</string>
+    <string name="left_handed_mode">Режим для левшей</string>
+    <string name="left_handed_description">Кнопки и меню плеера перемещаются влево. В полноэкранном музыкальном режиме обложка будет справа.</string>
+    <string name="library_shortcuts">Быстрый доступ к медиатеке</string>
+    <string name="library_shortcuts_description">Удерживайте Медиатека на панели навигации. В вертикальном меню сверху вниз: История, Плейлисты, Смотреть позже (Избранное для музыки), Загрузки. Нажмите значок для перехода или снаружи для закрытия.</string>
+    <string name="history_group_explanation">Последовательные видео из одного плейлиста могут отображаться в одной раскрываемой карточке. Меняется только вид истории; ничего не перемещается и не удаляется.</string>
+    <string name="history_group_settings">Группировка истории</string>
+    <string name="setup_handedness">Выберите удобную сторону</string>
+    <string name="hand_right">Правша</string>
+    <string name="hand_left">Левша</string>
+</resources>

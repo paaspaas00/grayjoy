@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="music_artist_tracks_search">Buscar canciones de este artista</string>
+    <string name="music_artist_tracks_no_match">Ninguna canción de este artista coincide con «%1$s».</string>
+    <string name="music_track_title_language">Idioma de los títulos de las canciones</string>
+    <string name="music_artist_playback_speed_description">Elige la velocidad que se aplica automáticamente a las canciones de este artista.</string>
+    <string name="music_per_artist_playback_speed_description">Recuerda una velocidad preferida para cada artista. La velocidad elegida para una canción tiene prioridad.</string>
+    <string name="music_search_hint">Buscar canciones, artistas y listas</string>
+</resources>

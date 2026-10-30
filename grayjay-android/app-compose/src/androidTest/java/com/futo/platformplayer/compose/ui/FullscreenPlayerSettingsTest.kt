@@ -53,7 +53,7 @@ class FullscreenPlayerSettingsTest {
         rule.onNodeWithTag("player-settings").performTouchInput { click() }
         val menu = rule.onNodeWithTag("fullscreen-settings-menu").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val viewport = rule.onNodeWithTag("fullscreen-player").fetchSemanticsNode().boundsInRoot
-        assertTrue("Fullscreen buttons need a visible gap", exit.left - anchor.right >= 16f)
+        assertTrue("Portrait fullscreen buttons need a vertical gap", exit.top - anchor.bottom >= 12f)
         assertTrue("Menu must cover the settings and lock button row", menu.top <= anchor.top && menu.bottom >= anchor.bottom)
         assertTrue(menu.left <= lock.left && menu.right >= anchor.right)
         rule.onNodeWithTag("player-settings").assertDoesNotExist()
@@ -65,6 +65,11 @@ class FullscreenPlayerSettingsTest {
         rule.onNodeWithTag("player-settings-back").assertIsDisplayed()
         rule.onNodeWithText("720p").assertIsDisplayed()
         capture("fullscreen-settings-quality")
+        // The label and the empty far end of the header are both Back targets.
+        rule.onNodeWithTag("player-settings-back").performTouchInput { click(Offset(width - 8f, centerY)) }
+        rule.onNodeWithTag("player-settings-quality").assertIsDisplayed()
+        rule.onNodeWithTag("player-settings-quality").performClick()
+        rule.onNodeWithText("720p").assertIsDisplayed()
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.onNodeWithTag("player-settings-quality").assertIsDisplayed()
         assertFalse(exited)

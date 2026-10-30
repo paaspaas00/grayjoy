@@ -34,7 +34,7 @@ class SourceProfilesUiTest {
             GuidedSetupDialog(state, actions, index, {}, {}, { it() })
         } }
         rule.onNodeWithTag("setup-next").performClick()
-        rule.onNodeWithTag("setup-page-help").assertIsDisplayed()
+        rule.onNodeWithTag("setup-page-diagnostics").assertIsDisplayed()
         rule.runOnIdle { assertNull(created) }
         rule.onNodeWithTag("setup-back").performClick()
         rule.onNodeWithText(rule.activity.getString(R.string.profile_split_yes)).performScrollTo().performClick()
@@ -46,6 +46,8 @@ class SourceProfilesUiTest {
         rule.onNodeWithTag("setup-create-source-profiles").performClick()
         rule.runOnIdle { assertEquals(setOf("youtube", "spotify", "twitch"), created) }
         rule.onNodeWithTag("setup-next").assertIsEnabled().performClick()
+        rule.onNodeWithTag("setup-page-diagnostics").assertIsDisplayed()
+        rule.onNodeWithTag("setup-next").performClick()
         rule.onNodeWithTag("setup-page-help").assertIsDisplayed()
     }
     @Test fun headerSwipeSkipsPinAndBiometricProfilesAndTapStillOpensPicker() {
@@ -95,7 +97,7 @@ class SourceProfilesUiTest {
         try {
             rule.setContent { GrayjayTheme(dynamicColor = false) { GrayjayApp(state, player, GrayjayAppActions()) } }
             rule.onNodeWithTag("nav-search").performClick()
-            rule.onNodeWithTag("video-card-song").performClick()
+            rule.onNodeWithTag("video-title-song", useUnmergedTree = true).performClick()
             rule.onNodeWithTag("now-playing-close").assertIsDisplayed()
             rule.onNodeWithTag("chromecast-button").assertDoesNotExist()
         } finally { rule.runOnUiThread { player.release() } }

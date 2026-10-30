@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">항목 그룹화</string>
+    <string name="library_group_explanation">목록을 펼칠 수 있는 폴더로 정리합니다. 항목 하나가 여러 재생목록에 속할 수 있습니다. 그룹이 없는 항목은 개별적으로 표시됩니다.</string>
+    <string name="library_group_none">그룹화 안 함</string>
+    <string name="library_group_playlist">재생목록별</string>
+    <string name="library_group_channel">채널 또는 아티스트별</string>
+    <string name="search_downloads">다운로드 검색</string>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_audio_normalization_body">Sesi daha az ayarlamanız için video ve şarkılar arasındaki ses farklarını azaltır. Orijinal dosyaları değiştirmez. İstediğiniz zaman kapatabilirsiniz.</string>
+    <string name="audio_normalization_level">Normalleştirme seviyesi</string>
+    <string name="normalization_quieter">Daha düşük ses</string>
+    <string name="normalization_louder">Daha belirgin ses</string>
+    <string name="setup_song_recognition_body">Bir şarkıyı tanımak için Ara düğmesini basılı tutun. Grayjoy Shazam kullanır ve İnternet bağlantısı gerektirir.</string>
+</resources>

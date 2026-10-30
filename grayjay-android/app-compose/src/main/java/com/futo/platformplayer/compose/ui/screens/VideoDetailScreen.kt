@@ -1,4 +1,6 @@
 package com.futo.platformplayer.compose.ui.screens
+import com.futo.platformplayer.compose.recognition.recognitionControlsReveal
+import androidx.compose.runtime.CompositionLocalProvider
 
 import com.futo.platformplayer.compose.ui.sourceCreatorFallback
 
@@ -15,6 +17,12 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import com.futo.platformplayer.compose.ui.LocalPlayerCardTransition
+import com.futo.platformplayer.compose.ui.cardMorphTarget
+import com.futo.platformplayer.compose.ui.cardDestinationLayer
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -147,8 +155,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourcePluralStringResource as pluralStringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -384,6 +392,7 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
             onToggleWatchLater, onToggleAudioDownload, onAddToPlaylist, onRetryPlayback,
             onVideoClick, onQueueVideoLongClick, onSpeedChange, onPlayerBoundsChanged,
             onFullscreen = onFullscreen,
+            active = isActive,
             onOpenSettings = { musicSettingsPage = PlayerSettingsPage.Main; musicSettingsVisible = true })
         PlayerSettingsSheet(visible = musicSettingsVisible, anchorBounds = null,
             page = musicSettingsPage, video = video, playback = playback,
@@ -514,7 +523,7 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
     }
     val playerHost: @Composable (Modifier) -> Unit = { modifier ->
         Box(
-            modifier = modifier.onGloballyPositioned { coordinates ->
+            modifier = modifier.testTag("inline-player-slot").onGloballyPositioned { coordinates ->
                 val position = coordinates.positionInRoot()
                 onPlayerBoundsChanged(
                     Rect(
@@ -634,7 +643,7 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
         Column(Modifier.fillMaxSize()) {
             if (oneHanded) VideoPrimaryInfo(video,
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
-                    .testTag("one-handed-video-info"), compact = true)
+                    .then(LocalMusicPlayerDrag.current).testTag("one-handed-video-info"), compact = true)
             playerHost(Modifier.fillMaxWidth().height(playerHeight))
             LazyColumn(
                 state = detailListState,
@@ -794,12 +803,19 @@ fun FullscreenPlayerScreen(
     if (musicContent != null) {
         var settingsVisible by rememberSaveable { mutableStateOf(false) }
         var settingsPage by remember { mutableStateOf(PlayerSettingsPage.Main) }
-        Surface(modifier.fillMaxSize().testTag("music-fullscreen-player")) {
+        var settingsOrigin by remember { mutableStateOf(Offset.Zero) }
+        var musicAnchor by remember { mutableStateOf<Rect?>(null) }
+        Surface(modifier.fillMaxSize().onGloballyPositioned { settingsOrigin = it.positionInRoot() }.testTag("music-fullscreen-player")) {
+        Box(Modifier.fillMaxSize()) {
+        CompositionLocalProvider(LocalMusicSettingsAnchor provides MusicSettingsAnchor(settingsVisible) { bounds ->
+            val local = bounds.translate(-settingsOrigin)
+            if (musicAnchor != local) musicAnchor = local
+        }) {
             musicContent { settingsPage = PlayerSettingsPage.Main; settingsVisible = true }
         }
-        PlayerSettingsSheet(visible = settingsVisible, anchorBounds = null,
+        PlayerSettingsSheet(visible = settingsVisible, anchorBounds = musicAnchor,
             page = settingsPage, video = video, playback = playback,
-            isFullscreen = false, isPortraitFullscreen = false,
+            isFullscreen = true, isPortraitFullscreen = false,
             perChannelPlaybackSpeedEnabled = perChannelPlaybackSpeedEnabled,
             videoPlaybackSpeedOverride = videoPlaybackSpeedOverride, channelPlaybackSpeed = channelPlaybackSpeed,
             sponsorBlockInheritedRule = sponsorBlockInheritedRule, sponsorBlockVideoOverride = sponsorBlockVideoOverride,
@@ -810,13 +826,17 @@ fun FullscreenPlayerScreen(
             onChannelSpeedChange = onChannelSpeedChange, onSponsorBlockVideoOverrideChange = onSponsorBlockVideoOverrideChange,
             onAudioLanguageChange = onAudioLanguageChange, onCaptionsEnabledChange = onCaptionsEnabledChange,
             onSubtitleLanguageChange = onSubtitleLanguageChange, onLockControls = {})
+        }
+        }
         return
     }
     val queueIndex = playback.queueVideoIds.indexOf(playback.currentVideoId)
     val canGoPrevious = queueIndex > 0 || player.currentPosition > 5_000L
     val canGoNext = queueIndex >= 0 && queueIndex < playback.queueVideoIds.lastIndex
 
-    Surface(modifier = modifier.fillMaxSize().testTag("fullscreen-player"), color = Color.Black) {
+    val cardMotion = LocalPlayerCardTransition.current
+    Surface(modifier = modifier.fillMaxSize().cardMorphTarget("video:${video.id}", "surface")
+        .cardDestinationLayer().testTag("fullscreen-player"), color = Color.Black) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val coverOrientationHandoff = shouldCoverFullscreenOrientationHandoff(
                 portraitFullscreen = portraitFullscreen,
@@ -869,7 +889,8 @@ fun FullscreenPlayerScreen(
                 onFullscreen = onExitFullscreen,
                 resumePositionFraction = resumePositionFraction,
                 onResumeFromHistory = onResumeFromHistory,
-                modifier = Modifier.fillMaxSize(),
+                videoAlpha = { if (cardMotion?.request?.source?.destination == "video:${video.id}" && cardMotion.progress < 1f) 0f else 1f },
+                modifier = Modifier.fillMaxSize().cardMorphTarget("video:${video.id}", "art"),
             )
             // A decision at the end of playback is not part of the auto-hiding transport
             // controls. Keep it in the fullscreen viewport, above the video and gestures.
@@ -931,8 +952,19 @@ internal fun PlayerSurface(
     topControlsAtStart: Boolean = false,
     resumePositionFraction: Float? = null,
     onResumeFromHistory: () -> Unit = {},
+    videoAlpha: () -> Float = { 1f },
+    drawVideoBackground: Boolean = true,
 ) {
     var isTimelineSeeking by remember(video.id) { mutableStateOf(false) }
+    val frameReady = rememberVideoFrameReady(player, video.id, isFullscreen to video.isDrmProtected)
+    val cardMotion = LocalPlayerCardTransition.current
+    var transitionFrame by remember(video.id, isFullscreen) { mutableStateOf(
+        cardMotion?.request?.source?.takeIf { it.destination == "video:${video.id}" && !isFullscreen }?.previewFrame)
+    }
+    val frameCover = remember(video.id, isFullscreen, video.isDrmProtected) { Animatable(1f) }
+    LaunchedEffect(frameReady) {
+        if (frameReady) { frameCover.animateTo(0f, tween(100)); transitionFrame = null } else frameCover.snapTo(1f)
+    }
     val seekPreviewPlayback = com.futo.platformplayer.compose.playback.LocalSeekPreviewPlayback.current
     val setTimelineSeeking: (Boolean) -> Unit = { seeking ->
         isTimelineSeeking = seeking
@@ -955,7 +987,10 @@ internal fun PlayerSurface(
     val inputEventTime = remember { longArrayOf(0L) }
     val latestPlayback by androidx.compose.runtime.rememberUpdatedState(playback)
     val latestSeekBy by androidx.compose.runtime.rememberUpdatedState(onSeekBy)
-    var controlsVisible by remember(video.id, isFullscreen) { mutableStateOf(true) }
+    val brainrot = com.futo.platformplayer.compose.ui.LocalBrainrotPlayer.current
+    val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.leftHanded
+    val actionsAtStart = leftHanded || topControlsAtStart
+    var controlsVisible by remember(video.id, isFullscreen, brainrot) { mutableStateOf(!brainrot) }
     var isPointerDown by remember(video.id, isFullscreen) { mutableStateOf(false) }
     var interactionSequence by remember(video.id, isFullscreen) { mutableStateOf(0) }
     var seekFeedbackSequence by remember(video.id, isFullscreen) { mutableStateOf(0) }
@@ -1024,7 +1059,7 @@ internal fun PlayerSurface(
                 surfaceHeightPx = it.size.height
                 surfaceOrigin = it.positionInRoot()
             } else Modifier)
-            .background(Color.Black)
+            .background(if (drawVideoBackground) Color.Black else Color.Transparent)
             // Seek previews and animated controls must never draw over the Now Playing header.
             .clipToBounds()
             .pointerInput(video.id, isFullscreen) {
@@ -1056,17 +1091,35 @@ internal fun PlayerSurface(
                         false,
                     ) as PlayerView).apply {
                         useController = false
+                        setKeepContentOnPlayerReset(false)
+                        setBackgroundColor(android.graphics.Color.BLACK)
                         (videoSurfaceView as? SurfaceView)?.setSecure(video.isDrmProtected)
                         if (android.os.Build.VERSION.SDK_INT == 34) setEnableComposeSurfaceSyncWorkaround(true)
                         keepScreenOn = true
                     }
                 },
-                update = { blurPlayerView = it; PlayerViewTargets.attach(it, player) },
+                update = {
+                    blurPlayerView = it
+                    it.alpha = videoAlpha().coerceIn(0f, 1f) * if (frameReady) 1f else 0f
+                    PlayerViewTargets.attach(it, player)
+                },
                 onReset = PlayerViewTargets::detach,
                 onRelease = PlayerViewTargets::detach,
                 modifier = Modifier.fillMaxSize(),
             )
             if (!video.playbackAudioOnly) SeekVideoBlur(blurPlayerView, isTimelineSeeking, video.isDrmProtected)
+        }
+        if (!video.playbackAudioOnly && (!frameReady || frameCover.value > .001f)) {
+            Box(Modifier.fillMaxSize().graphicsLayer {
+                alpha = videoAlpha() * if (frameReady) frameCover.value else 1f
+            }.background(MaterialTheme.colorScheme.surfaceContainerHighest).testTag("video-awaiting-frame")) {
+                val heldFrame = transitionFrame
+                if (heldFrame != null) Image(heldFrame.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                else if (video.thumbnailUrl.isNotBlank()) RemoteBitmapImage(video.thumbnailUrl,
+                    MaterialTheme.colorScheme.surfaceContainerHighest, Modifier.fillMaxSize(),
+                    requestHeaders = video.thumbnailRequestHeaders,
+                    requestSize = androidx.compose.ui.unit.IntSize(768, 768), cropToBounds = true)
+            }
         }
         if (video.playbackAudioOnly) {
             AudioOnlySpectrogram(
@@ -1176,6 +1229,7 @@ internal fun PlayerSurface(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer { alpha = controlsVisibilityAlpha.value }
+                    .recognitionControlsReveal()
                     .then(
                         if (isFullscreen) {
                             Modifier.windowInsetsPadding(WindowInsets.navigationBars)
@@ -1208,6 +1262,13 @@ internal fun PlayerSurface(
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (isFullscreen && !isPortraitFullscreen && leftHanded) PlayerTopActionButtons(
+                    isFullscreen = true, hideSettingsActions = showSettings,
+                    onLockControls = { tapSequence.reset(); controlsFadeMs = fastControlsFadeMs; controlsLocked = true; controlsVisible = true; showSettings = false },
+                    onSettingsBoundsChanged = { settingsButtonBounds = it },
+                    onSettings = { settingsPageName = PlayerSettingsPage.Main.name; showSettings = true; controlsVisible = true },
+                    onFullscreen = onFullscreen,
+                )
                 if (isFullscreen) {
                     Column(
                         modifier = Modifier
@@ -1230,9 +1291,9 @@ internal fun PlayerSurface(
                         )
                     }
                 } else {
-                    if (!topControlsAtStart) Spacer(Modifier.weight(1f))
+                    if (!actionsAtStart) Spacer(Modifier.weight(1f))
                 }
-                PlayerTopActionButtons(
+                if (!isPortraitFullscreen && (!isFullscreen || !leftHanded)) PlayerTopActionButtons(
                     isFullscreen = isFullscreen,
                     hideSettingsActions = isFullscreen && showSettings,
                     onLockControls = {
@@ -1250,7 +1311,28 @@ internal fun PlayerSurface(
                     },
                     onFullscreen = onFullscreen,
                 )
-                if (!isFullscreen && topControlsAtStart) Spacer(Modifier.weight(1f))
+                if (!isFullscreen && actionsAtStart) Spacer(Modifier.weight(1f))
+            }
+
+            if (isFullscreen && isPortraitFullscreen) Column(
+                Modifier.align(if (leftHanded) Alignment.BottomStart else Alignment.BottomEnd)
+                    .graphicsLayer { alpha = if (showSettings) 0f else 1f }
+                    .then(if (showSettings) Modifier.clearAndSetSemantics {} else Modifier)
+                    .padding(start = 16.dp, end = 16.dp, bottom = 124.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                IconButton(onClick = { controlsLocked = true; controlsVisible = true; showSettings = false },
+                    enabled = !showSettings, modifier = Modifier.size(52.dp).testTag("player-lock")) {
+                    Icon(Icons.Outlined.Lock, stringResource(R.string.lock_controls), tint = Color.White)
+                }
+                IconButton(onClick = { settingsPageName = PlayerSettingsPage.Main.name; showSettings = true; controlsVisible = true },
+                    enabled = !showSettings, modifier = Modifier.size(52.dp)
+                        .onGloballyPositioned { settingsButtonBounds = it.boundsInRoot() }.testTag("player-settings")) {
+                    Icon(Icons.Outlined.Settings, stringResource(R.string.player_settings), tint = Color.White)
+                }
+                IconButton(onClick = onFullscreen, modifier = Modifier.size(52.dp).testTag("player-fullscreen")) {
+                    Icon(Icons.Outlined.FullscreenExit, stringResource(R.string.exit_fullscreen), tint = Color.White)
+                }
             }
 
             Row(
@@ -1566,7 +1648,9 @@ private fun PlayerTopActionButtons(
     hideSettingsActions: Boolean,
     onSettingsBoundsChanged: (Rect) -> Unit = {},
 ) {
-    Row(modifier = Modifier.padding(end = if (isFullscreen) 34.dp else 0.dp),
+    val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.leftHanded
+    Row(modifier = Modifier.padding(start = if (isFullscreen && leftHanded) 34.dp else 0.dp,
+        end = if (isFullscreen && !leftHanded) 34.dp else 0.dp),
         horizontalArrangement = Arrangement.spacedBy(if (isFullscreen) 16.dp else 0.dp)) {
         Row(
             modifier = Modifier.offset(y = if (isFullscreen) 8.dp else 0.dp)
@@ -2085,6 +2169,7 @@ private fun PlayerSettingsSheet(
     onSubtitleLanguageChange: (String?) -> Unit,
     onLockControls: () -> Unit,
 ) {
+    val musicSettings = LocalMusicPresentation.current || video.sourceId.equals("spotify", true)
     val qualityDescription = playback.selectedVideoQuality?.let { "${it}p" }
         ?: playback.currentVideoHeight?.let { stringResource(R.string.auto_quality, it) }
         ?: stringResource(R.string.auto)
@@ -2154,14 +2239,18 @@ private fun PlayerSettingsSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(if (animatedPage != PlayerSettingsPage.Main) Modifier
+                        .clickable(onClickLabel = stringResource(R.string.back_to_player_settings)) { onPageChange(PlayerSettingsPage.Main) }
+                        .testTag("player-settings-back") else Modifier)
+                    .heightIn(min = 56.dp)
                     .padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (animatedPage != PlayerSettingsPage.Main) {
-                    IconButton(onClick = { onPageChange(PlayerSettingsPage.Main) }, modifier = Modifier.testTag("player-settings-back")) {
+                    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                         Icon(
                             Icons.Outlined.ChevronLeft,
-                            contentDescription = stringResource(R.string.back_to_player_settings),
+                            contentDescription = null,
                         )
                     }
                 } else {
@@ -2187,7 +2276,7 @@ private fun PlayerSettingsSheet(
                 .testTag("player-settings-options-${animatedPage.name.lowercase()}")) {
             when (animatedPage) {
                 PlayerSettingsPage.Main -> {
-                    PlayerSettingRow(
+                    if (!musicSettings) PlayerSettingRow(
                         icon = Icons.Outlined.Tune,
                         title = stringResource(R.string.quality),
                         value = qualityDescription,
@@ -2211,7 +2300,7 @@ private fun PlayerSettingsSheet(
                             onClick = { onPageChange(PlayerSettingsPage.ChannelSpeed) },
                         )
                     }
-                    if (video.sourceId.equals("youtube", ignoreCase = true)) {
+                    if (!musicSettings && video.sourceId.equals("youtube", ignoreCase = true)) {
                         PlayerSettingRow(
                             icon = Icons.Outlined.FastForward,
                             title = stringResource(R.string.sponsorblock),
@@ -2222,7 +2311,7 @@ private fun PlayerSettingsSheet(
                             onClick = { onPageChange(PlayerSettingsPage.SponsorBlock) },
                         )
                     }
-                    PlayerSettingRow(
+                    if (!musicSettings) PlayerSettingRow(
                         icon = Icons.Outlined.Language,
                         title = stringResource(R.string.audio_language),
                         value = audioLanguageDescription,
@@ -2231,7 +2320,7 @@ private fun PlayerSettingsSheet(
                         testTag = "player-settings-audio-language",
                         onClick = { onPageChange(PlayerSettingsPage.AudioLanguage) },
                     )
-                    PlayerSettingRow(
+                    if (!musicSettings) PlayerSettingRow(
                         icon = Icons.Outlined.ClosedCaption,
                         title = stringResource(R.string.subtitles),
                         value = subtitleDescription,
@@ -2239,7 +2328,7 @@ private fun PlayerSettingsSheet(
                         testTag = "player-settings-subtitles",
                         onClick = { onPageChange(PlayerSettingsPage.Subtitles) },
                     )
-                    if (!isFullscreen) PlayerSettingRow(
+                    if (!isFullscreen && !musicSettings) PlayerSettingRow(
                         icon = Icons.Outlined.Lock,
                         title = stringResource(R.string.lock_controls),
                         testTag = "player-settings-lock",
@@ -2437,6 +2526,9 @@ private fun PlayerSettingsSheet(
     if (isFullscreen) {
         FullscreenPlayerSettingsMenu(
             visible = visible, anchorBounds = anchorBounds,
+            preferredHeight = if (musicSettings && page == PlayerSettingsPage.Main) {
+                if (perChannelPlaybackSpeedEnabled) 144.dp else 80.dp
+            } else 480.dp,
             onDismiss = onDismiss,
             onBack = { if (page == PlayerSettingsPage.Main) onDismiss() else onPageChange(PlayerSettingsPage.Main) },
             content = content,
@@ -2691,6 +2783,14 @@ private fun LazyListScope.videoDetails(
                 modifier = Modifier.padding(horizontal = horizontalPadding),
             )
         }
+    } else if (nowPlaying.isLoadingExtras || nowPlaying.isLoadingPlayback) {
+        item(key = "detail-description-loading") {
+            Column(Modifier.fillMaxWidth().padding(horizontal = horizontalPadding).testTag("video-info-loading"),
+                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ShimmerBlock(Modifier.fillMaxWidth(.65f).height(16.dp))
+                ShimmerBlock(Modifier.fillMaxWidth().height(48.dp))
+            }
+        }
     }
     item(key = "detail-sections") {
         Row(
@@ -2869,8 +2969,10 @@ private fun VideoPrimaryInfo(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(video.title, style = MaterialTheme.typography.titleLarge,
-            maxLines = if (compact) 3 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis)
+        com.futo.platformplayer.compose.recognition.RecognitionSharedPart(video.id, "title") {
+            Text(video.title, style = MaterialTheme.typography.titleLarge,
+                maxLines = if (compact) 3 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis)
+        }
         if (video.metadata.isNotBlank()) {
             Text(
                 video.metadata,
@@ -2909,6 +3011,7 @@ private fun VideoActions(
     Row(
         modifier = Modifier
             .horizontalScroll(rememberScrollState()).helpAnchor("player-actions")
+            .recognitionControlsReveal()
             .padding(horizontal = horizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -3335,6 +3438,7 @@ private fun CreatorCard(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
+            .recognitionControlsReveal()
             .testTag("now-playing-creator"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
@@ -3670,7 +3774,8 @@ private fun shareVideo(context: Context, video: VideoUiModel) {
         putExtra(Intent.EXTRA_SUBJECT, video.title)
         putExtra(Intent.EXTRA_TEXT, "${video.title}\n$url")
     }
-    context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_video)))
+    context.startActivity(Intent.createChooser(intent, com.futo.platformplayer.compose.ui.musicProfileString(
+        context.resources, R.string.share_video, video.sourceId.equals("spotify", true))))
 }
 
 private fun formatPlaybackTime(milliseconds: Long): String {

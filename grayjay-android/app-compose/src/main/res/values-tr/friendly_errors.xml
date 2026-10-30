@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTube sorun çıkarıyor</string>
+    <string name="friendly_youtube_body">YouTube isteği reddediyor ve oturumunuzu doğrulamanızı isteyebilir. Kaynaklar → YouTube’u veya Spotify’a bağlı YouTube hesabını kontrol edip tekrar deneyin. Oturum doğruysa birkaç dakika bekleyin.</string>
+    <string name="friendly_network_title">Şu anda bağlanamıyoruz</string>
+    <string name="friendly_network_body">Hizmete ulaşılamıyor. Wi-Fi veya mobil bağlantınızı kontrol edip tekrar deneyin.</string>
+    <string name="friendly_timeout_title">Hizmet yavaş yanıt veriyor</string>
+    <string name="friendly_timeout_body">İstek beklenenden uzun sürdü. Biraz sonra tekrar deneyin.</string>
+    <string name="friendly_login_title">Giriş yapmanız gerekiyor</string>
+    <string name="friendly_login_body">Bu içerik bir hesap gerektiriyor. Kaynaklar’ı açın, hizmete giriş yapın ve hesabınızın erişimi olduğunu kontrol edin.</string>
+    <string name="friendly_limit_title">Hizmet biraz ara istiyor</string>
+    <string name="friendly_limit_body">Çok fazla istek gönderildi. Tekrar denemeden önce birkaç dakika bekleyin.</string>
+    <string name="friendly_source_title">Kaynakta bir sorun var</string>
+    <string name="friendly_source_body">Bu içerik yüklenemedi. Tekrar deneyin; sorun sürerse Ayarlar → Kaynaklar’dan kaynağı güncelleyin.</string>
+    <string name="friendly_unavailable_title">Bu içerik kullanılamıyor</string>
+    <string name="friendly_unavailable_body">Hizmet bu içeriği sunmuyor. Kaldırılmış veya gizli yapılmış olabilir. Başka bir içerik deneyin.</string>
+    <string name="friendly_region_title">Bölgenizde kullanılamıyor</string>
+    <string name="friendly_region_body">Hizmet bu içeriği bulunduğunuz bölgede sunmuyor.</string>
+    <string name="friendly_format_title">Bu biçim oynatılamıyor</string>
+    <string name="friendly_format_body">Başka bir kalite veya içerik deneyin. Sorun sürerse kaynağı ve uygulamayı güncelleyin.</string>
+    <string name="friendly_access_title">Hizmet erişimi reddetti</string>
+    <string name="friendly_access_body">Girişinizi kontrol edip tekrar deneyin. Sorun sürerse Ayarlar → Kaynaklar’dan kaynağı güncelleyin.</string>
+    <string name="friendly_drm_title">Bu içerik korumalı</string>
+    <string name="friendly_drm_body">Hizmet korumalı oynatmaya izin vermedi. Hesabınızı ve aboneliğinizi kontrol edin; indirme izni olmayabilir.</string>
+</resources>

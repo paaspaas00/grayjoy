@@ -5,6 +5,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VideoAvailabilityTest {
+    @Test fun pendingLiveInSecondaryEngineIsNotPermanentlyDeleted() {
+        val error = IllegalStateException("Both engines failed", IllegalArgumentException("Video unavailable"))
+        error.addSuppressed(IllegalStateException("LIVE_STREAM_OFFLINE: This live event will begin in a few moments."))
+        assertFalse(isPermanentlyUnavailableVideo(error, "An event (live)", true))
+    }
+    @Test fun explicitDeletionInSecondaryEngineIsDetected() {
+        val error = IllegalStateException("Both engines failed", IllegalArgumentException("No stream"))
+        error.addSuppressed(IllegalStateException("This video has been removed"))
+        assertTrue(isPermanentlyUnavailableVideo(error))
+    }
     @Test fun cyclicErrorsDoNotHangAvailabilityClassification() {
         val first = IllegalStateException("Network timeout")
         val second = IllegalStateException("Wrapped error")
@@ -20,7 +30,7 @@ class VideoAvailabilityTest {
             ),
         )
         assertTrue(isPermanentlyUnavailableVideo(IllegalStateException("Private video")))
-        assertTrue(
+        assertFalse(
             isPermanentlyUnavailableVideo(
                 IllegalStateException("The plugin returned no supported video or audio stream."),
                 videoTitle = "Resistori #3 (live)",

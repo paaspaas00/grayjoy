@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTube fa le storie</string>
+    <string name="friendly_youtube_body">YouTube non sta accettando questa richiesta e potrebbe chiederti di verificare l’accesso. Controlla Sorgenti → YouTube, oppure l’account YouTube collegato a Spotify, e riprova. Se il login è corretto, attendi qualche minuto.</string>
+    <string name="friendly_network_title">Non riesco a collegarmi</string>
+    <string name="friendly_network_body">Non riusciamo a raggiungere il servizio. Controlla il Wi-Fi o i dati mobili, poi riprova.</string>
+    <string name="friendly_timeout_title">Il servizio risponde lentamente</string>
+    <string name="friendly_timeout_body">La richiesta sta impiegando più tempo del previsto. Riprova tra poco.</string>
+    <string name="friendly_login_title">Serve accedere</string>
+    <string name="friendly_login_body">Questo contenuto richiede un account. Apri Sorgenti, accedi al servizio e verifica che il tuo account possa usarlo.</string>
+    <string name="friendly_limit_title">Il servizio chiede una pausa</string>
+    <string name="friendly_limit_body">Sono state inviate troppe richieste al servizio. Aspetta qualche minuto prima di riprovare.</string>
+    <string name="friendly_source_title">La sorgente ha un problema</string>
+    <string name="friendly_source_body">Non siamo riusciti a caricare questo contenuto. Riprova; se continua, aggiorna la sorgente da Prefs → Sorgenti.</string>
+    <string name="friendly_unavailable_title">Questo contenuto non è disponibile</string>
+    <string name="friendly_unavailable_body">Il servizio non rende disponibile questo contenuto. Potrebbe essere stato rimosso o reso privato. Prova un altro elemento.</string>
+    <string name="friendly_region_title">Non disponibile nella tua zona</string>
+    <string name="friendly_region_body">Il servizio non rende disponibile questo contenuto nella zona in cui ti trovi.</string>
+    <string name="friendly_format_title">Non riesco a riprodurre questo formato</string>
+    <string name="friendly_format_body">Prova una qualità diversa o un altro contenuto. Se succede ancora, aggiorna la sorgente e l’app.</string>
+    <string name="friendly_access_title">Il servizio non permette l’accesso</string>
+    <string name="friendly_access_body">Controlla il login e riprova. Se l’accesso continua a fallire, aggiorna la sorgente da Prefs → Sorgenti.</string>
+    <string name="friendly_drm_title">Questo contenuto è protetto</string>
+    <string name="friendly_drm_body">Il servizio non ha autorizzato la riproduzione protetta. Verifica account e abbonamento; il download potrebbe non essere consentito.</string>
+</resources>

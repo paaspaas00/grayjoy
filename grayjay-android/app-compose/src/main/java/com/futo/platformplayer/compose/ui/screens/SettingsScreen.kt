@@ -60,8 +60,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourcePluralStringResource as pluralStringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
@@ -175,6 +175,7 @@ fun SettingsScreen(
         pendingExportFormatName = null
     }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
+    var showNormalizationLevel by rememberSaveable { mutableStateOf(false) }
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     var showPairedComputers by rememberSaveable { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
@@ -187,12 +188,14 @@ fun SettingsScreen(
     val groupSpacing = if (performance.compactContent) 10.dp else 16.dp
     var searchQuery by rememberSaveable { mutableStateOf("") }
     val resources = androidx.compose.ui.platform.LocalContext.current.resources
-    val matching = androidx.compose.runtime.remember(searchQuery, configuration) {
-        matchingSettings(resources, searchQuery)
+    val musicLabels = LocalMusicPresentation.current
+    val matching = androidx.compose.runtime.remember(searchQuery, configuration, musicLabels) {
+        matchingSettings(resources, searchQuery, musicLabels)
     }
     val unfilteredList = rememberSettingsListState()
     val filteredList = androidx.compose.foundation.lazy.rememberLazyListState()
     androidx.compose.runtime.LaunchedEffect(searchQuery) { filteredList.scrollToItem(0) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalSettingsSearchQuery provides searchQuery) {
     Column {
     PreferencesSearchField(searchQuery, { searchQuery = it })
     LazyColumn(
@@ -205,6 +208,18 @@ fun SettingsScreen(
     ) {
         if (searchQuery.isNotBlank() && matching.isEmpty()) item {
             Text(stringResource(R.string.settings_no_matches), Modifier.padding(16.dp))
+        }
+        settingsGroup("interaction-features", null, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
+            setting("left-handed-mode", "toggle") {
+                val controls = com.futo.platformplayer.compose.ui.LocalInteractionControls.current
+                ToggleSetting(stringResource(R.string.left_handed_mode), stringResource(R.string.left_handed_description),
+                    Icons.Outlined.TouchApp, controls.leftHanded, controls.setLeftHanded, "left-handed-mode")
+            }
+            setting("song-recognition", "toggle") {
+                val controls = com.futo.platformplayer.compose.ui.LocalInteractionControls.current
+                ToggleSetting(stringResource(R.string.recognize_song), stringResource(R.string.recognition_description),
+                    Icons.Outlined.MusicNote, controls.recognitionEnabled, controls.setRecognitionEnabled, "song-recognition")
+            }
         }
         settingsGroup("settings-group-1", R.string.settings_appearance, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
             setting("app-language", "link") {
@@ -247,6 +262,18 @@ fun SettingsScreen(
             }
         }
         settingsGroup("settings-group-2", R.string.settings_playback, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
+            setting("one-handed-player", "toggle") {
+                ToggleSetting(stringResource(R.string.one_handed_player), stringResource(R.string.one_handed_player_description),
+                    Icons.Outlined.TouchApp, extras.oneHandedPlayerEnabled, extras.onOneHandedPlayerChange, "one-handed-player")
+            }
+            setting("audio-normalization", "toggle") {
+                ToggleSetting(stringResource(R.string.audio_normalization), stringResource(R.string.audio_normalization_description),
+                    Icons.Outlined.MusicNote, extras.audioNormalizationEnabled, extras.onAudioNormalizationChange, "audio-normalization")
+            }
+            setting("audio-normalization-level", "link") {
+                LinkSetting(stringResource(R.string.audio_normalization_level), "${extras.audioNormalizationTargetLufs} LUFS",
+                    Icons.Outlined.MusicNote, { showNormalizationLevel = true }, "audio-normalization-level")
+            }
             if (supportsShortsFeedPlayer(configuration.screenWidthDp, configuration.screenHeightDp, configuration.smallestScreenWidthDp)) setting("brainrot-shorts", "toggle") {
                 ToggleSetting(stringResource(R.string.brainrot_shorts), stringResource(R.string.brainrot_shorts_description), Icons.Outlined.PictureInPicture,
                     extras.brainrotEnabled, extras.onBrainrotChange, "brainrot-shorts")
@@ -614,19 +641,6 @@ fun SettingsScreen(
             LinkSetting(stringResource(R.string.voice_control), stringResource(R.string.voice_control_description),
                 Icons.Outlined.MusicNote, { showVoiceControl = true }, "voice-control-settings")
         }
-        settingsGroup("settings-experimental", R.string.experimental_features, groupSpacing,
-            matches = { searchQuery.isBlank() || it in matching }) {
-            setting("one-handed-player", "toggle") {
-                ToggleSetting(stringResource(R.string.one_handed_player),
-                    stringResource(R.string.one_handed_player_description), Icons.Outlined.TouchApp,
-                    extras.oneHandedPlayerEnabled, extras.onOneHandedPlayerChange, "one-handed-player")
-            }
-            setting("audio-normalization", "toggle") {
-                ToggleSetting(stringResource(R.string.audio_normalization),
-                    stringResource(R.string.audio_normalization_description), Icons.Outlined.MusicNote,
-                    extras.audioNormalizationEnabled, extras.onAudioNormalizationChange, "audio-normalization")
-            }
-        }
         if (searchQuery.isBlank()) item {
             Column(
                 modifier = Modifier
@@ -677,6 +691,7 @@ fun SettingsScreen(
 
     }
 
+    }
     if (showAdvanced) AdvancedPreferencesDialog(sources, onDismiss = { showAdvanced = false })
     if (showVoiceControl) VoiceControlPreferences(onDismiss = { showVoiceControl = false })
     if (showSponsorBlockDialog) {
@@ -711,6 +726,10 @@ fun SettingsScreen(
             },
         )
     }
+    if (showNormalizationLevel) AudioNormalizationLevelDialog(extras.audioNormalizationTargetLufs,
+        onDismiss = { showNormalizationLevel = false }, onConfirm = {
+            extras.onAudioNormalizationTargetChange(it); showNormalizationLevel = false
+        })
     if (showThemeDialog) {
         ChoiceDialog(
             title = stringResource(R.string.settings_appearance),
@@ -897,7 +916,8 @@ private fun <T> ChoiceDialog(
                 items(choices.size) { index ->
                     val (value, label) = choices[index]
                     ListItem(
-                        modifier = Modifier.clickable { onChoose(value) },
+                        modifier = Modifier.padding(bottom = if (index < choices.lastIndex) 4.dp else 0.dp)
+                            .dialogChoiceRow(index, choices.size).clickable { onChoose(value) },
                         headlineContent = { Text(label) },
                         leadingContent = {
                             RadioButton(selected = value == selected, onClick = null)
@@ -937,9 +957,9 @@ private fun ToggleSetting(
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, style = MaterialTheme.typography.labelLarge)
+                Text(settingsHighlightedText(title), style = MaterialTheme.typography.labelLarge)
                 Text(
-                    description,
+                    settingsHighlightedText(description),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     style = MaterialTheme.typography.bodySmall,
@@ -994,9 +1014,9 @@ private fun LinkSetting(
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, style = MaterialTheme.typography.labelLarge)
+                Text(settingsHighlightedText(title), style = MaterialTheme.typography.labelLarge)
                 Text(
-                    description,
+                    settingsHighlightedText(description),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     style = MaterialTheme.typography.bodySmall,

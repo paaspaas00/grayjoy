@@ -9,7 +9,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.HelpOutline
-import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.*
 import com.futo.platformplayer.compose.ui.screens.AdaptiveButton as Button
 import com.futo.platformplayer.compose.ui.screens.AdaptiveOutlinedButton as OutlinedButton
@@ -20,7 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -37,6 +38,15 @@ internal fun GuidedSetupDialog(
     onFinish: (Boolean) -> Unit,
     onExternalStep: (() -> Unit) -> Unit,
 ) {
+    CompositionLocalProvider(com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation provides
+        (com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation.current || state.usesMusicPresentation())) {
+        GuidedSetupDialogContent(state, actions, initialPage, onPage, onFinish, onExternalStep)
+    }
+}
+
+@Composable
+private fun GuidedSetupDialogContent(state: GrayjayUiState, actions: GrayjayAppActions,
+    initialPage: Int, onPage: (Int) -> Unit, onFinish: (Boolean) -> Unit, onExternalStep: (() -> Unit) -> Unit) {
     var importYoutube by rememberSaveable { mutableStateOf(state.youtubeImport.isRunning) }
     var importFiles by rememberSaveable { mutableStateOf(false) }
     var splitProfiles by rememberSaveable { mutableStateOf(state.sourceProfilesEnabled) }
@@ -113,6 +123,7 @@ internal fun GuidedSetupDialog(
                                 SetupToggle(stringResource(R.string.use_wallpaper_colors), state.dynamicColorsEnabled, actions.onDynamicColorsChange)
                             }
                             SetupStep.YoutubeLogin -> {
+                                YoutubeAccountArtwork(active = page == pager.settledPage && !pager.isScrollInProgress)
                                 Text(stringResource(R.string.setup_youtube_body), style = MaterialTheme.typography.bodyLarge)
                                 Text(stringResource(R.string.setup_skip_login), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (youtube?.isAuthenticated == true) Text(stringResource(R.string.setup_signed_in), color = MaterialTheme.colorScheme.primary)
@@ -186,11 +197,31 @@ internal fun GuidedSetupDialog(
                                 SetupToggle(stringResource(R.string.hold_to_speed), state.holdToSpeedEnabled, actions.onHoldToSpeedChange)
                             }
                             SetupStep.PlayerLayout -> {
-                                Text(stringResource(R.string.experimental_features),
-                                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                                 Text(stringResource(R.string.one_handed_player_description), style = MaterialTheme.typography.bodyLarge)
                                 OneHandedPlayerChoice(state.oneHandedPlayerEnabled, actions.onOneHandedPlayerChange)
                                 Text(stringResource(R.string.setup_later), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            SetupStep.AudioNormalization -> {
+                                AudioNormalizationArtwork(active = page == pager.settledPage && !pager.isScrollInProgress)
+                                Text(stringResource(R.string.setup_audio_normalization_body), style = MaterialTheme.typography.bodyLarge)
+                                SetupToggle(stringResource(R.string.audio_normalization), state.audioNormalizationEnabled, actions.onAudioNormalizationChange)
+                            }
+                            SetupStep.Handedness -> {
+                                val controls = LocalInteractionControls.current
+                                Text(stringResource(R.string.left_handed_description), style = MaterialTheme.typography.bodyLarge)
+                                HandednessChoice(controls.leftHanded, controls.setLeftHanded,
+                                    active = page == pager.settledPage && !pager.isScrollInProgress)
+                            }
+                            SetupStep.SongRecognition -> {
+                                val controls = LocalInteractionControls.current
+                                SongRecognitionArtwork(active = page == pager.settledPage && !pager.isScrollInProgress)
+                                Text(stringResource(R.string.setup_song_recognition_body), style = MaterialTheme.typography.bodyLarge)
+                                Text(stringResource(R.string.recognition_privacy), style = MaterialTheme.typography.bodyMedium)
+                                SetupToggle(stringResource(R.string.recognize_song), controls.recognitionEnabled, controls.setRecognitionEnabled)
+                            }
+                            SetupStep.LibraryShortcuts -> {
+                                LibraryShortcutsArtwork(active = page == pager.settledPage && !pager.isScrollInProgress)
+                                Text(stringResource(R.string.library_shortcuts_description), style = MaterialTheme.typography.bodyLarge)
                             }
                             SetupStep.SponsorBlock -> {
                                 SetupIllustration(SetupDemo.Sponsor, page == pager.currentPage)
@@ -201,10 +232,12 @@ internal fun GuidedSetupDialog(
                                 Text(stringResource(R.string.sponsorblock_manual_description))
                             }
                             SetupStep.Autoplay -> {
+                                YoutubeAutoplayArtwork(active = page == pager.settledPage && !pager.isScrollInProgress)
                                 Text(stringResource(R.string.setup_autoplay_body), style = MaterialTheme.typography.bodyLarge)
                                 SetupToggle(stringResource(R.string.youtube_autoplay), state.youtubeAutoplayEnabled, actions.onYoutubeAutoplayChange)
                             }
                             SetupStep.SourceProfiles -> {
+                                SourceProfilesArtwork(active = page == pager.settledPage && !pager.isScrollInProgress)
                                 Text(stringResource(R.string.profile_split_body), style = MaterialTheme.typography.bodyLarge)
                                 Text(stringResource(R.string.profile_split_privacy), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (state.sourceProfilesEnabled) Text(stringResource(R.string.profile_split_enabled))
@@ -229,7 +262,7 @@ internal fun GuidedSetupDialog(
                                 if (profilesReady) Text(stringResource(R.string.profile_split_enabled), color = MaterialTheme.colorScheme.primary)
                             }
                             SetupStep.Diagnostics -> {
-                                Icon(Icons.Outlined.BugReport, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+                                CrashLogBugArtwork(active = page == pager.settledPage && !pager.isScrollInProgress)
                                 Text(stringResource(R.string.setup_diagnostics_body), style = MaterialTheme.typography.bodyLarge)
                                 SetupToggle(stringResource(R.string.save_crash_logs), state.crashLoggingEnabled, actions.onCrashLoggingChange)
                                 SetupToggle(stringResource(R.string.crash_logs_downloads), state.crashLogsDownloadsCopy,

@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">Group items</string>
+    <string name="library_group_explanation">Organize this list into expandable folders. A saved item can belong to more than one playlist. Items without a group stay visible on their own.</string>
+    <string name="library_group_none">No grouping</string>
+    <string name="library_group_playlist">By playlist</string>
+    <string name="library_group_channel">By channel or artist</string>
+    <string name="search_downloads">Search downloads</string>
+</resources>

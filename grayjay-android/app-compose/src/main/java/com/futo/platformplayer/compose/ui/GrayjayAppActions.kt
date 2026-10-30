@@ -14,6 +14,8 @@ import com.futo.platformplayer.compose.data.LibraryExportFormat
  */
 @Stable
 class GrayjayAppActions {
+    var onResolveRecognizedSong: suspend (String) -> VideoUiModel = { error("Song lookup unavailable") }
+    var onOpenRecognizedSong: (String, Boolean) -> Unit = { _, _ -> }
     var onUiLanguageChange: (String) -> Unit = {}
     var onDarkThemeChange: (Boolean) -> Unit = {}
     var onThemeModeChange: (ThemeMode) -> Unit = {}
@@ -88,6 +90,7 @@ class GrayjayAppActions {
     var onRemoveSource: (String) -> Unit = { _ -> }
     var onLoginSource: (SourceUiModel) -> Unit = { _ -> }
     var onRefreshSourceAccount: (String) -> Unit = {}
+    var onYoutubePlaybackAccountChanged: () -> Unit = {}
     var onLogoutSource: (String) -> Unit = { _ -> }
     var onImportYoutube: (String, YoutubeImportSelection) -> Unit = { _, _ -> }
     var onDismissYoutubeImport: () -> Unit = {}
@@ -137,6 +140,7 @@ class GrayjayAppActions {
     var onPerChannelPlaybackSpeedChange: (Boolean) -> Unit = { _ -> }
     var onHoldToSpeedChange: (Boolean) -> Unit = {}
     var onAudioNormalizationChange: (Boolean) -> Unit = {}
+    var onAudioNormalizationTargetChange: (Int) -> Unit = {}
     var onOneHandedPlayerChange: (Boolean) -> Unit = {}
     var onPlayQueuedVideo: ((String) -> Unit)? = null
     var onSponsorBlockEnabledChange: (Boolean) -> Unit = {}

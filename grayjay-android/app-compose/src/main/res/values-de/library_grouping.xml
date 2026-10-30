@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">Elemente gruppieren</string>
+    <string name="library_group_explanation">Organisiere diese Liste in aufklappbare Ordner. Ein Eintrag kann zu mehreren Playlists gehören. Einträge ohne Gruppe bleiben einzeln sichtbar.</string>
+    <string name="library_group_none">Keine Gruppierung</string>
+    <string name="library_group_playlist">Nach Playlist</string>
+    <string name="library_group_channel">Nach Kanal oder Künstler</string>
+    <string name="search_downloads">Downloads durchsuchen</string>
+</resources>

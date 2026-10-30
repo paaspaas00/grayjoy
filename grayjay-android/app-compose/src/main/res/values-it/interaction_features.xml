@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recognition_swipe_open">Scorri verso l’alto per aprire in pausa</string>
+    <string name="recognition_privacy_short">Ascolto per pochi secondi. A Shazam va solo un’impronta musicale, mai la registrazione. Serve Internet.</string>
+    <string name="music_artists">Artisti</string>
+    <string name="music_artist">Artista</string>
+    <string name="recognize_song">Riconosci una canzone</string>
+    <string name="recognition_description">Tieni premuto Cerca nella barra di navigazione per riconoscere la musica intorno a te e riprodurre il brano trovato.</string>
+    <string name="recognition_privacy">Solo mentre questa finestra è aperta: il microfono ascolta per pochi secondi. A Shazam viene inviata un’impronta musicale, non la registrazione audio. Serve Internet.</string>
+    <string name="recognition_disabled">Riconoscimento musicale disattivato. Puoi attivarlo nelle Preferenze.</string>
+    <string name="recognition_permission">Consenti l’accesso al microfono per riconoscere la musica.</string>
+    <string name="recognition_error">Il riconoscimento non è disponibile ora. Controlla la connessione e riprova.</string>
+    <string name="recognition_no_match">Nessun brano trovato. Avvicinati alla musica e riprova.</string>
+    <string name="recognition_listening">Ascolto la musica…</string>
+    <string name="recognition_searching">Cerco il brano…</string>
+    <string name="recognition_play_failed">Non è stato possibile avviare il brano. Riprova tra poco.</string>
+    <string name="left_handed_mode">Modalità mancino</string>
+    <string name="left_handed_description">Pulsanti e menu del player si spostano a sinistra. Nella musica a schermo intero, la copertina va a destra.</string>
+    <string name="library_shortcuts">Scorciatoie della raccolta</string>
+    <string name="library_shortcuts_description">Tieni premuto Raccolta nella barra di navigazione: si apre un menu verticale. Dall’alto: Cronologia, Playlist, Guarda più tardi (Preferiti per la musica), Download. Tocca un’icona per aprire la pagina; tocca fuori per chiudere.</string>
+    <string name="history_group_explanation">I video riprodotti consecutivamente dalla stessa playlist possono comparire in una sola scheda espandibile. Cambia soltanto la visualizzazione della cronologia: non sposta né elimina nulla.</string>
+    <string name="history_group_settings">Raggruppamento cronologia</string>
+    <string name="setup_handedness">Scegli il lato più comodo</string>
+    <string name="hand_right">Destrimano</string>
+    <string name="hand_left">Mancino</string>
+</resources>

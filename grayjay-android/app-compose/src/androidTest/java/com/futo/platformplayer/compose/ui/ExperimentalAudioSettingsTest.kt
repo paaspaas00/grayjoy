@@ -25,7 +25,7 @@ class ExperimentalAudioSettingsTest {
     private lateinit var player: ExoPlayer
     @After fun release() { if (::player.isInitialized) rule.runOnUiThread { player.release() } }
 
-    @Test fun experimentalToggleDefaultsOffAndRepositoryIsImmediatelyAboveVersion() {
+    @Test fun normalizationIsAPlaybackOptionAndRepositoryIsImmediatelyAboveVersion() {
         rule.runOnUiThread { player = ExoPlayer.Builder(rule.activity).build() }
         var state by mutableStateOf(GrayjayUiState())
         var openedUrl: String? = null
@@ -34,24 +34,27 @@ class ExperimentalAudioSettingsTest {
         }
         val actions = GrayjayAppActions().apply {
             onAudioNormalizationChange = { state = state.copy(audioNormalizationEnabled = it) }
+            onAudioNormalizationTargetChange = { state = state.copy(audioNormalizationTargetLufs = it) }
         }
         rule.setContent { CompositionLocalProvider(LocalContext provides context) {
             GrayjayTheme(dynamicColor = false) { GrayjayApp(state, player, actions) }
         } }
         rule.onNodeWithTag("nav-settings").performClick()
         rule.onNodeWithTag("settings-list").performScrollToNode(hasTestTag("audio-normalization"))
-        rule.onNodeWithText(context.getString(R.string.experimental_features)).assertIsDisplayed()
+        rule.onNodeWithText(context.getString(R.string.experimental_features)).assertDoesNotExist()
         rule.onNodeWithTag("audio-normalization").assertIsOff().performClick().assertIsOn()
         assertTrue(state.audioNormalizationEnabled)
         rule.onNodeWithTag("audio-normalization").performClick().assertIsOff()
-        capture("experimental-audio-normalization")
+        rule.onNodeWithTag("settings-list").performScrollToNode(hasTestTag("audio-normalization-level"))
+        rule.onNodeWithTag("audio-normalization-level").performClick()
+        rule.onNodeWithTag("normalization-level--32").assertIsSelected()
+        rule.onNodeWithTag("normalization-level--14").performClick()
+        assertEquals(-32, state.audioNormalizationTargetLufs)
+        rule.onNodeWithTag("normalization-level-confirm").performClick()
+        assertEquals(-14, state.audioNormalizationTargetLufs)
+        capture("audio-normalization-preferences")
         rule.onNodeWithTag("settings-list").performScrollToNode(hasTestTag("version-information"))
-        val experimental = rule.onNodeWithText(context.getString(R.string.experimental_features)).fetchSemanticsNode().boundsInRoot
-        val voice = rule.onNodeWithTag("voice-control-settings").fetchSemanticsNode().boundsInRoot
-        val normalization = rule.onNodeWithTag("audio-normalization").fetchSemanticsNode().boundsInRoot
         val link = rule.onNodeWithTag("repository-link").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        assertTrue("Experimental features must be the last preference section", voice.bottom <= experimental.top)
-        assertTrue(normalization.bottom <= link.top)
         val versionText = context.getString(R.string.version_information, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
         val version = rule.onNodeWithText(versionText, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         assertTrue(link.bottom <= version.top)

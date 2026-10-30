@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTube fait des siennes</string>
+    <string name="friendly_youtube_body">YouTube refuse la requête et peut demander de vérifier votre connexion. Vérifiez Sources → YouTube ou le compte lié à Spotify, puis réessayez. Si la connexion est correcte, attendez quelques minutes.</string>
+    <string name="friendly_network_title">Connexion impossible pour le moment</string>
+    <string name="friendly_network_body">Le service est inaccessible. Vérifiez le Wi-Fi ou les données mobiles, puis réessayez.</string>
+    <string name="friendly_timeout_title">Le service répond lentement</string>
+    <string name="friendly_timeout_body">La requête a pris trop de temps. Réessayez dans un moment.</string>
+    <string name="friendly_login_title">Connexion au compte nécessaire</string>
+    <string name="friendly_login_body">Ce contenu exige un compte. Ouvrez Sources, connectez-vous au service et vérifiez que votre compte y a accès.</string>
+    <string name="friendly_limit_title">Le service demande une pause</string>
+    <string name="friendly_limit_body">Trop de requêtes ont été envoyées. Attendez quelques minutes avant de réessayer.</string>
+    <string name="friendly_source_title">La source rencontre un problème</string>
+    <string name="friendly_source_body">Impossible de charger ce contenu. Réessayez ; si cela continue, mettez la source à jour dans Paramètres → Sources.</string>
+    <string name="friendly_unavailable_title">Ce contenu est indisponible</string>
+    <string name="friendly_unavailable_body">Le service ne propose pas ce contenu. Il a peut-être été supprimé ou rendu privé. Essayez un autre élément.</string>
+    <string name="friendly_region_title">Indisponible dans votre région</string>
+    <string name="friendly_region_body">Le service ne propose pas ce contenu dans votre région actuelle.</string>
+    <string name="friendly_format_title">Impossible de lire ce format</string>
+    <string name="friendly_format_body">Essayez une autre qualité ou un autre contenu. Si cela continue, mettez la source et l’application à jour.</string>
+    <string name="friendly_access_title">Le service refuse l’accès</string>
+    <string name="friendly_access_body">Vérifiez votre connexion au compte et réessayez. Si cela persiste, mettez la source à jour dans Paramètres → Sources.</string>
+    <string name="friendly_drm_title">Ce contenu est protégé</string>
+    <string name="friendly_drm_body">Le service n’a pas autorisé la lecture protégée. Vérifiez votre compte et votre abonnement ; le téléchargement peut être interdit.</string>
+</resources>

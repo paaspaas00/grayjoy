@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">Regrouper les éléments</string>
+    <string name="library_group_explanation">Organisez cette liste en dossiers dépliables. Un élément peut appartenir à plusieurs playlists. Les éléments sans groupe restent visibles séparément.</string>
+    <string name="library_group_none">Aucun regroupement</string>
+    <string name="library_group_playlist">Par playlist</string>
+    <string name="library_group_channel">Par chaîne ou artiste</string>
+    <string name="search_downloads">Rechercher dans les téléchargements</string>
+</resources>

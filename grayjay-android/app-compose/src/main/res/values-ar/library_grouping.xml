@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">تجميع العناصر</string>
+    <string name="library_group_explanation">نظّم هذه القائمة في مجلدات قابلة للتوسيع. قد ينتمي العنصر إلى عدة قوائم تشغيل. تبقى العناصر التي لا تنتمي إلى مجموعة ظاهرة بشكل منفصل.</string>
+    <string name="library_group_none">بدون تجميع</string>
+    <string name="library_group_playlist">حسب قائمة التشغيل</string>
+    <string name="library_group_channel">حسب القناة أو الفنان</string>
+    <string name="search_downloads">البحث في التنزيلات</string>
+</resources>

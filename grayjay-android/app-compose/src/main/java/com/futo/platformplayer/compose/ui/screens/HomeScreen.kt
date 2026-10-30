@@ -1,4 +1,5 @@
 package com.futo.platformplayer.compose.ui.screens
+import androidx.compose.material3.TextButton
 
 import com.futo.platformplayer.compose.ui.sourceStringResource
 
@@ -46,7 +47,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.rememberDevicePerformanceProfile
@@ -399,7 +400,7 @@ fun HomeScreen(
             RequestNextPageEffect(
                 listState = listState,
                 canLoadMore = isSelectedPage && home.hasMore &&
-                    !home.isLoading && !home.isLoadingMore,
+                    !home.isLoading && !home.isLoadingMore && home.errorMessage == null,
                 onLoadMore = onLoadMore,
             )
             LaunchedEffect(listState, isSelectedPage) {
@@ -531,6 +532,8 @@ fun HomeScreen(
                                 color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodySmall,
                             )
+                            if (home.hasMore) TextButton(onClick = onLoadMore, enabled = !home.isLoadingMore,
+                                modifier = Modifier.testTag("home-load-more-retry")) { Text(stringResource(R.string.retry)) }
                         }
                     }
                 }

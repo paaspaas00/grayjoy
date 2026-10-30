@@ -39,8 +39,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourcePluralStringResource as pluralStringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.data.playlistTitleExists
@@ -339,14 +339,14 @@ fun RemotePlaylistDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(stringResource(R.string.sort_videos), style = MaterialTheme.typography.titleLarge)
-                RemotePlaylistSortMode.entries.forEach { option ->
+                RemotePlaylistSortMode.entries.forEachIndexed { index, option ->
                     val label = when (option) {
                         RemotePlaylistSortMode.PlaylistOrder -> R.string.playlist_order
                         RemotePlaylistSortMode.Popularity -> R.string.popularity
                         RemotePlaylistSortMode.UploadDate -> R.string.upload_date
                     }
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().dialogChoiceRow(index, RemotePlaylistSortMode.entries.size),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RadioButton(

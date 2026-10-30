@@ -4,6 +4,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ErrorCausesTest {
+    @Test fun randomizedFailureGraphsAreBoundedAndNeverVisitAnErrorTwice() {
+        val random = java.util.Random(42)
+        repeat(200) {
+            val nodes = List(80) { IllegalStateException("$it") }
+            nodes.forEach { node ->
+                repeat(4) { nodes[random.nextInt(nodes.size)].takeUnless { it === node }?.let(node::addSuppressed) }
+            }
+            val visited = nodes[0].boundedFailures().toList()
+            assertTrue(visited.size <= 32)
+            assertEquals(visited.size, visited.toSet().size)
+        }
+    }
     @Test fun cyclicPluginExceptionsTerminateAndKeepBothCauses() {
         val first = IllegalStateException("outer")
         val second = IllegalArgumentException("inner")

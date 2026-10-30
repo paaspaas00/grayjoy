@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="music_artist_tracks_search">Titel dieses Künstlers durchsuchen</string>
+    <string name="music_artist_tracks_no_match">Keine Titel dieses Künstlers passen zu „%1$s“.</string>
+    <string name="music_track_title_language">Sprache der Musiktitel</string>
+    <string name="music_artist_playback_speed_description">Wähle die automatisch verwendete Geschwindigkeit für Titel dieses Künstlers.</string>
+    <string name="music_per_artist_playback_speed_description">Merke dir eine bevorzugte Geschwindigkeit pro Künstler. Eine für einen Titel festgelegte Geschwindigkeit hat Vorrang.</string>
+    <string name="music_search_hint">Titel, Künstler und Playlists suchen</string>
+</resources>

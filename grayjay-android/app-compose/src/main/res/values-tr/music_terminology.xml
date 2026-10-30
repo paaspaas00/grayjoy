@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="music_artist_tracks_search">Bu sanatçının parçalarında ara</string>
+    <string name="music_artist_tracks_no_match">Bu sanatçının hiçbir parçası “%1$s” ile eşleşmiyor.</string>
+    <string name="music_track_title_language">Parça başlıklarının dili</string>
+    <string name="music_artist_playback_speed_description">Bu sanatçının parçaları için otomatik uygulanacak hızı seçin.</string>
+    <string name="music_per_artist_playback_speed_description">Her sanatçı için tercih edilen hızı hatırla. Tek bir parça için seçilen hız önceliklidir.</string>
+    <string name="music_search_hint">Parça, sanatçı ve çalma listesi ara</string>
+</resources>

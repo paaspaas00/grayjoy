@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recognition_swipe_open">위로 밀어 일시정지 상태로 열기</string>
+    <string name="recognition_privacy_short">잠시 듣습니다. Shazam에 녹음이 아닌 음악 지문만 전송됩니다. 인터넷이 필요합니다.</string>
+    <string name="music_artists">아티스트</string>
+    <string name="music_artist">아티스트</string>
+    <string name="recognize_song">노래 인식</string>
+    <string name="recognition_description">탐색 막대의 검색을 길게 눌러 주변 음악을 인식하고 찾은 노래를 재생하세요.</string>
+    <string name="recognition_privacy">이 창이 열려 있을 때만 마이크로 몇 초 동안 듣습니다. 녹음 파일이 아닌 음악 지문이 Shazam으로 전송됩니다. 인터넷이 필요합니다.</string>
+    <string name="recognition_disabled">음악 인식이 꺼져 있습니다. 환경설정에서 켜세요.</string>
+    <string name="recognition_permission">음악을 인식하려면 마이크 접근을 허용하세요.</string>
+    <string name="recognition_error">현재 인식할 수 없습니다. 연결을 확인하고 다시 시도하세요.</string>
+    <string name="recognition_no_match">노래를 찾지 못했습니다. 음악에 더 가까이 가서 다시 시도하세요.</string>
+    <string name="recognition_listening">음악을 듣는 중…</string>
+    <string name="recognition_searching">노래를 찾는 중…</string>
+    <string name="recognition_play_failed">노래를 시작하지 못했습니다. 잠시 후 다시 시도하세요.</string>
+    <string name="left_handed_mode">왼손잡이 모드</string>
+    <string name="left_handed_description">플레이어 버튼과 메뉴가 왼쪽으로 이동합니다. 전체 화면 음악에서는 앨범 표지가 오른쪽에 표시됩니다.</string>
+    <string name="library_shortcuts">라이브러리 바로가기</string>
+    <string name="library_shortcuts_description">탐색 막대의 라이브러리를 길게 누르세요. 세로 메뉴는 위에서부터 기록, 재생목록, 나중에 볼 동영상(음악은 즐겨찾기), 다운로드입니다. 아이콘을 눌러 이동하고 바깥을 눌러 닫으세요.</string>
+    <string name="history_group_explanation">같은 재생목록에서 연속으로 재생한 동영상을 하나의 펼칠 수 있는 카드로 표시할 수 있습니다. 기록 표시만 바뀌며 이동하거나 삭제하지 않습니다.</string>
+    <string name="history_group_settings">기록 그룹화</string>
+    <string name="setup_handedness">편한 쪽 선택</string>
+    <string name="hand_right">오른손잡이</string>
+    <string name="hand_left">왼손잡이</string>
+</resources>

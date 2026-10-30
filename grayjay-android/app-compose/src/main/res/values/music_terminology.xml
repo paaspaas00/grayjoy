@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="music_artist_tracks_search">Search this artist’s tracks</string>
+    <string name="music_artist_tracks_no_match">No tracks from this artist match “%1$s”.</string>
+    <string name="music_track_title_language">Track title language</string>
+    <string name="music_artist_playback_speed_description">Choose the speed used automatically for this artist’s tracks.</string>
+    <string name="music_per_artist_playback_speed_description">Remember a preferred speed for each artist. A speed selected for one track takes priority.</string>
+    <string name="music_search_hint">Search tracks, artists, and playlists</string>
+</resources>

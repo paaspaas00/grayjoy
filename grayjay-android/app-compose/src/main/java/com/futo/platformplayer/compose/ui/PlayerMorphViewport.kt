@@ -5,6 +5,15 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import kotlin.math.roundToInt
+import androidx.compose.ui.geometry.Rect
+
+internal fun fitPlayerViewport(slot: Rect, aspect: Float): Rect {
+    if (!aspect.isFinite() || aspect <= 0f || slot.width <= 0f || slot.height <= 0f) return slot
+    val width = minOf(slot.width, slot.height * aspect)
+    val height = width / aspect
+    return Rect(slot.center.x - width / 2f, slot.center.y - height / 2f,
+        slot.center.x + width / 2f, slot.center.y + height / 2f)
+}
 
 internal fun Modifier.playerMorphViewport(
     expandedHeightPx: Float,

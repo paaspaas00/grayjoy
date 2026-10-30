@@ -22,7 +22,7 @@ class CompactComponentsTest {
     @Test fun compactChannelSearchRetainsEditingClearAndKeyboardAction() {
         val query = androidx.compose.runtime.mutableStateOf("")
         rule.setContent { GrayjayTheme(dynamicColor = false) {
-            CompactChannelSearchField(query.value, { query.value = it }, 35)
+            CompactChannelSearchField(query.value, { query.value = it })
         } }
         val field = rule.onNode(hasSetTextAction())
         field.performClick().assertIsFocused().performTextInput("Terra")

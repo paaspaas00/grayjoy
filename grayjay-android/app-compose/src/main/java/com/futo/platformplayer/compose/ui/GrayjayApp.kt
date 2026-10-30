@@ -1,5 +1,6 @@
 package com.futo.platformplayer.compose.ui
 import androidx.compose.material3.Surface
+import com.futo.platformplayer.compose.recognition.recognitionDestinationLayer
 
 import com.futo.platformplayer.compose.onboarding.*
 import androidx.compose.runtime.SideEffect
@@ -107,6 +108,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -123,7 +125,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -302,6 +304,7 @@ private data class PlaybackPresentation(
     val isPlaying: Boolean,
     val queueSize: Int,
     val transition: PlayerTransitionState,
+    val playerBack: NowPlayingBackState,
     val navigationBackProgress: MutableFloatState,
     val navigationBackFromRight: Boolean,
     val navigationBackTarget: BrowsePage?,
@@ -592,16 +595,21 @@ fun GrayjayApp(
     pictureInPictureMode: Boolean = false,
 ) {
     val help = rememberHelpGuide()
+    CompositionLocalProvider(com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation provides uiState.usesMusicPresentation()) {
+    InteractionFeatureHost(uiState.activeProfileId, actions.onResolveRecognizedSong, actions.onOpenRecognizedSong) {
     com.futo.platformplayer.compose.ui.screens.CreatorSheetTransitionHost(
         uiState.activeProfileId, actions.onLoadChannel, uiState.channelDetail.channel, uiState.channelDetail.isLoading) {
     CompositionLocalProvider(LocalHelpGuide provides help, LocalYoutubeOnly provides uiState.sources.isYoutubeOnly(),
         com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation provides uiState.usesMusicPresentation(),
         com.futo.platformplayer.compose.ui.screens.LocalVideoLike provides actions.onToggleLiked,
+        com.futo.platformplayer.compose.ui.screens.LocalYoutubePlaybackAccountChanged provides actions.onYoutubePlaybackAccountChanged,
         com.futo.platformplayer.compose.playback.LocalSeekPreviewPlayback provides actions.onSeekPreviewChange,
         LocalProfileNavigation provides ProfileNavigation(uiState.profiles, uiState.activeProfileId,
             !uiState.isSwitchingProfile && !uiState.sourceProfileSetup.isRunning, actions.onSwitchProfile)) {
         GrayjayAppContent(uiState, player, actions, uiLanguageTag, isDarkTheme, updateDownload,
             deviceIsLandscape, automaticPlayerRotationEnabled, pictureInPictureMode)
+    }
+    }
     }
     }
 }
@@ -635,7 +643,7 @@ private fun GrayjayAppContent(
         ChannelArtworkIndex(listOfNotNull(uiState.channelDetail.channel) + uiState.channels)
     }
     val shareVideoLabel = stringResource(R.string.share_video)
-    val creatorLabel = sourceStringResource(R.string.creator)
+    val creatorLabel = stringResource(R.string.creator)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val backDispatcher = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
@@ -667,6 +675,8 @@ private fun GrayjayAppContent(
     val libraryPlaylistListState = rememberLazyListState()
     var nestedBackDestinationName by rememberSaveable { mutableStateOf<String?>(null) }
     var isFullscreen by rememberSaveable { mutableStateOf(false) }
+    var portraitFullscreenRequested by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(isFullscreen) { if (!isFullscreen) portraitFullscreenRequested = false }
     var shortsModeActive by rememberSaveable { mutableStateOf(false) }
     val shortsPhone = com.futo.platformplayer.compose.ui.screens.supportsShortsFeedPlayer(LocalConfiguration.current.screenWidthDp, LocalConfiguration.current.screenHeightDp, LocalConfiguration.current.smallestScreenWidthDp)
     val shortsVideos = remember(uiState.home.selectedFeed, uiState.home.videos) {
@@ -757,18 +767,59 @@ private fun GrayjayAppContent(
     var navigationBackFromRight by remember { mutableStateOf(false) }
     var navigationBackTarget by remember { mutableStateOf<BrowsePage?>(null) }
     val playerTransitionScope = rememberCoroutineScope()
+    val playerBack = remember { NowPlayingBackState() }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) { playerBack.reset() }
     var playerTransitionJob by remember { mutableStateOf<Job?>(null) }
     val snapPlayerTransition: (Float) -> Unit = { value ->
         // A navigation reset must also stop the old completion callback from reopening the player.
         playerTransitionJob?.cancel()
+        playerBack.reset()
         playerTransition.snapTo(value)
     }
+    val cardEntry = LocalPlayerCardTransition.current
+    LaunchedEffect(selectedVideoId, selectedChannelId, selectedPlaylistId, pictureInPictureMode, isFullscreen, portraitFullscreenRequested) {
+        val route = cardEntry?.request?.source?.destination
+        val matches = when {
+            route == null -> true
+            route.startsWith("channel:") -> route == "channel:$selectedChannelId" && selectedVideoId == null
+            route.startsWith("playlist:") -> route == "playlist:$selectedPlaylistId" && selectedVideoId == null
+            else -> route == "video:$selectedVideoId" && (!isFullscreen || portraitFullscreenRequested || shortsModeActive || usePortraitPlayerFullscreen(selectedVideo, uiState.playback))
+        }
+        if (cardEntry?.active == true && (!matches || pictureInPictureMode)) cardEntry.clear()
+    }
     val openPlayerDirectly: (String) -> Unit = { videoId ->
+        val changingPage = selectedVideoId != videoId
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         searchAutoFocusRequested = false
         snapPlayerTransition(0f)
         selectedVideoId = videoId
+        if (changingPage) cardEntry?.begin(videoId)
+    }
+    var fullscreenExitPending by remember { mutableStateOf(false) }
+    val exitFullscreen: () -> Unit = {
+        val video = selectedVideo ?: playbackVideo
+        if (!fullscreenExitPending) {
+            if (isFullscreen && video != null && !uiState.usesMusicPresentation() &&
+                (portraitFullscreenRequested || shortsModeActive || usePortraitPlayerFullscreen(video, uiState.playback))) {
+                fullscreenExitPending = true
+                playerTransitionScope.launch {
+                    try {
+                        val bounds = com.futo.platformplayer.compose.ui.screens.PlayerViewTargets.bounds(player)
+                        val frame = com.futo.platformplayer.compose.ui.screens.PlayerViewTargets.transitionFrame(player, video.isDrmProtected)
+                        if (isFullscreen && (selectedVideoId == video.id || selectedVideoId == null)) {
+                            if (bounds != null) {
+                                val source = CardMorphSource(video, false, artworkCornerDp = 0f, previewFrame = frame, surfaceCornerDp = 0f)
+                                source.capture("surface", bounds); source.capture("art", bounds)
+                                cardEntry?.arm(source); cardEntry?.begin(video.id)
+                            }
+                            shortsModeActive = false; fullscreenEnteredByRotation = false; portraitFullscreenRequested = false
+                            selectedVideoId = video.id; snapPlayerTransition(0f); isFullscreen = false
+                        }
+                    } finally { fullscreenExitPending = false }
+                }
+            } else { shortsModeActive = false; fullscreenEnteredByRotation = false; portraitFullscreenRequested = false; isFullscreen = false }
+        }
     }
     val restorePlaybackPlaylistDestination: () -> Unit = {
         uiState.playbackPlaylist?.let { playingPlaylist ->
@@ -872,6 +923,45 @@ private fun GrayjayAppContent(
         destinationName, selectedChannelId, selectedPlaylistId, libraryFilterName, selectedVideoId,
         nestedBackDestinationName,
     )
+    fun playerBackDestination(): BrowsePage {
+        val playing = uiState.playbackPlaylist?.let { queue ->
+            uiState.playlists.firstOrNull { it.id == queue.id } ?: queue.takeIf { it.sourceId.isNotBlank() }
+        }
+        val route = if (playing != null) currentBrowseRoute().copy(videoId = null, channelId = null,
+            playlistId = playing.id, destination = if (playing.sourceId.isBlank()) GrayjayDestination.Library.name else destinationName,
+            libraryFilter = if (playing.sourceId.isBlank()) LibraryFilter.Playlists.name else libraryFilterName)
+            else currentBrowseRoute().copy(videoId = null)
+        return BrowsePage(route, selectedChannel.takeIf { route.channelId != null }, playing ?: selectedPlaylist,
+            showBack = route.channelId != null || route.playlistId != null || browseHistory.isNotEmpty())
+    }
+    fun commitPlayerBack(origin: BrowseRoute, videoId: String, token: Long) {
+        if (playerBack.isCurrent(token) && currentBrowseRoute() == origin && selectedVideoId == videoId) {
+            restorePlaybackPlaylistDestination()
+            snapPlayerTransition(1f)
+            selectedVideoId = null
+        }
+        playerBack.clear(token)
+    }
+    fun preparePlayerBackFrame(token: Long) {
+        val video = selectedVideo ?: playbackVideo ?: return
+        playerTransitionScope.launch {
+            playerBack.frame(token, com.futo.platformplayer.compose.ui.screens.PlayerViewTargets.transitionFrame(player, video.isDrmProtected, 320))
+        }
+    }
+    fun animatePlayerBack() {
+        val videoId = selectedVideoId ?: return
+        val origin = currentBrowseRoute()
+        playerTransitionJob?.cancel()
+        playerTransition.snapTo(0f)
+        val token = playerBack.begin(playerBackDestination())
+        preparePlayerBackFrame(token)
+        playerTransitionScope.launch {
+            try {
+                animate(0f, 1f, animationSpec = tween(220, easing = FastOutSlowInEasing)) { value, _ -> playerBack.move(token, value) }
+                commitPlayerBack(origin, videoId, token)
+            } finally { playerBack.clear(token) }
+        }
+    }
     fun rememberBrowseOrigin() {
         selectedChannel?.let { visitedChannels[it.id] = it }
         selectedPlaylist?.let { visitedPlaylists[it.id] = it }
@@ -912,7 +1002,13 @@ private fun GrayjayAppContent(
         shortsModeActive = uiState.brainrotShortsEnabled && shortsPhone && it.id in shortsVideoIds &&
             selected == GrayjayDestination.Home && uiState.home.selectedFeed == HomeFeedType.Shorts &&
             selectedChannelId == null && selectedPlaylistId == null && !uiState.chromecast.isConnected
-        if (shortsModeActive) { isFullscreen = true; fullscreenEnteredByRotation = false }
+        if (shortsModeActive || (!uiState.usesMusicPresentation() && shortsPhone && !uiState.chromecast.isConnected &&
+                (isExplicitShort(it) || it.id in shortsVideoIds))) {
+            // Keep the chosen presentation while the backend replaces the feed model and
+            // before the decoder reports dimensions; missing metadata must not rotate it.
+            portraitFullscreenRequested = true
+            isFullscreen = true; fullscreenEnteredByRotation = false
+        }
         actions.onOpenVideo(it.id)
         if (it.isAvailable && it.scheduledStartAtMs <= System.currentTimeMillis()) {
             openPlayerDirectly(it.id)
@@ -936,6 +1032,7 @@ private fun GrayjayAppContent(
         selectedPlaylistId = null
         selectedVideoId = null
         snapPlayerTransition(1f)
+        cardEntry?.beginDestination("channel:${it.id}")
     }
     val latestChannels by rememberUpdatedState(uiState.channels)
     val latestSources by rememberUpdatedState(uiState.sources)
@@ -984,6 +1081,7 @@ private fun GrayjayAppContent(
         selectedChannelId = null
         selectedVideoId = null
         snapPlayerTransition(1f)
+        cardEntry?.beginDestination("playlist:${it.id}")
     }
     LaunchedEffect(uiState.externalNavigation?.requestId) {
         val request = uiState.externalNavigation ?: return@LaunchedEffect
@@ -1026,6 +1124,10 @@ private fun GrayjayAppContent(
         if (selectedVideoId == dialog.videoId) {
             settlePlayer(1f, dialog.videoId)
         }
+        if (!dialog.showAsDialog) {
+            android.widget.Toast.makeText(context, dialog.noticeMessage ?: dialog.message, android.widget.Toast.LENGTH_LONG).show()
+            actions.onDismissVideoOpenDialog()
+        }
     }
     LaunchedEffect(selected) {
         if (RELEASE_UPDATE_CHECK_ENABLED && selected == GrayjayDestination.Home) {
@@ -1037,7 +1139,7 @@ private fun GrayjayAppContent(
         keyboardController?.hide()
         searchAutoFocusRequested = false
         if (selectedVideoId != null) {
-            settlePlayer(1f, selectedVideoId)
+            animatePlayerBack()
         } else if (browseHistory.isNotEmpty()) {
             val route = browseHistory.last()
             browseHistory = browseHistory.dropLast(1)
@@ -1177,6 +1279,7 @@ private fun GrayjayAppContent(
             .ifEmpty { uiState.playback.queueVideoIds }
             .size,
         transition = playerTransition,
+        playerBack = playerBack,
         navigationBackProgress = navigationBackProgress,
         navigationBackFromRight = navigationBackFromRight,
         navigationBackTarget = navigationBackTarget,
@@ -1211,13 +1314,10 @@ private fun GrayjayAppContent(
         onSubtitleLanguageChange = actions.onSubtitleLanguageChange,
         onEnterFullscreen = {
             fullscreenEnteredByRotation = false
+            portraitFullscreenRequested = usePortraitPlayerFullscreen(selectedVideo ?: playbackVideo, uiState.playback)
             isFullscreen = true
         },
-        onExitFullscreen = {
-            shortsModeActive = false
-            fullscreenEnteredByRotation = false
-            isFullscreen = false
-        },
+        onExitFullscreen = exitFullscreen,
         onRetry = actions.onRetryPlayback,
         onStoryboardLoadFailure = actions.onStoryboardLoadFailure,
         onToggleFollowing = actions.onToggleFollowing,
@@ -1506,7 +1606,7 @@ private fun GrayjayAppContent(
     }
 
     val fullscreenVideo = selectedVideo ?: playbackVideo
-    val portraitFullscreen = !uiState.usesMusicPresentation() && ((shortsModeActive && shortsPhone) || usePortraitPlayerFullscreen(fullscreenVideo, uiState.playback))
+    val portraitFullscreen = !uiState.usesMusicPresentation() && (portraitFullscreenRequested || (shortsModeActive && shortsPhone) || usePortraitPlayerFullscreen(fullscreenVideo, uiState.playback))
     val currentConfiguration = LocalConfiguration.current
     val windowOrientation = currentConfiguration.orientation
     val automaticFullscreenAllowed = automaticFullscreenAllowedForViewport(
@@ -1553,14 +1653,25 @@ private fun GrayjayAppContent(
         val minimizesPlayer = !isFullscreen &&
             selectedVideo != null
         if (minimizesPlayer) {
-            playback.onTransitionDragStart()
+            val videoId = selectedVideoId!!
+            playerTransitionJob?.cancel()
+            playerTransition.snapTo(0f)
+            val token = playerBack.begin(playerBackDestination())
+            preparePlayerBackFrame(token)
             try {
                 backEvents.collect { event ->
-                    playback.onTransitionProgressChange(event.progress)
+                    playerBack.move(token, event.progress, event.swipeEdge == androidx.activity.BackEventCompat.EDGE_RIGHT)
                 }
-                playback.onCollapse()
+                if (playerBack.isCurrent(token)) {
+                    animate(playerBack.progress, 1f, animationSpec = tween(180, easing = FastOutSlowInEasing)) { value, _ -> playerBack.move(token, value) }
+                    commitPlayerBack(origin, videoId, token)
+                }
             } catch (_: CancellationException) {
-                playback.onTransitionRelease(0f)
+                withContext(NonCancellable) {
+                    if (playerBack.isCurrent(token)) animate(playerBack.progress, 0f,
+                        animationSpec = tween(160, easing = FastOutSlowInEasing)) { value, _ -> playerBack.move(token, value) }
+                    playerBack.clear(token)
+                }
             }
         } else {
             try {
@@ -1583,9 +1694,7 @@ private fun GrayjayAppContent(
                     navigationBackProgress.floatValue = event.progress
                 }
                 if (isFullscreen) {
-                    shortsModeActive = false
-                    fullscreenEnteredByRotation = false
-                    isFullscreen = false
+                    exitFullscreen()
                 } else {
                     if (navigationBackTarget != null) animate(navigationBackProgress.floatValue, 1f,
                         animationSpec = tween(180, easing = FastOutSlowInEasing)) { value, _ ->
@@ -1719,6 +1828,7 @@ private fun GrayjayAppContent(
             uiState.youtubeAutoplayEnabled, actions.onYoutubeAutoplayChange,
             uiState.audioNormalizationEnabled, actions.onAudioNormalizationChange,
             uiState.oneHandedPlayerEnabled, actions.onOneHandedPlayerChange,
+            uiState.audioNormalizationTargetLufs, actions.onAudioNormalizationTargetChange,
         ),
     ) {
         val navigationVideos = remember(uiState.videos, uiState.subscriptionVideos) {
@@ -1901,13 +2011,13 @@ private fun GrayjayAppContent(
             onDismiss = { transientUi.chromecastSheetVisible = false },
         )
     }
-    uiState.videoOpenDialog?.let { dialog ->
+    uiState.videoOpenDialog?.takeIf { it.showAsDialog }?.let { dialog ->
         AlertDialog(
             onDismissRequest = actions.onDismissVideoOpenDialog,
             title = {
                 Text(
                     stringResource(
-                        when {
+                        dialog.headlineRes ?: when {
                             dialog.scheduledStartAtMs > 0L -> R.string.video_scheduled_title
                             dialog.permanentlyUnavailable -> R.string.video_no_longer_available_title
                             else -> R.string.could_not_open_video
@@ -1951,18 +2061,18 @@ private fun GrayjayAppContent(
     com.futo.platformplayer.compose.diagnostics.PreviousCrashPrompt()
 }
 
+internal fun isExplicitShort(video: VideoUiModel): Boolean = video.isShort ||
+    sequenceOf(video.id, video.contentUrl, video.shareUrl).any { it.contains("/shorts/", ignoreCase = true) }
+
 internal fun usePortraitPlayerFullscreen(
     video: VideoUiModel?,
     playback: PlaybackUiState,
 ): Boolean {
     if (video == null) return false
-    val isShortsUrl = sequenceOf(video.id, video.contentUrl, video.shareUrl)
-        .filter(String::isNotBlank)
-        .any { url -> url.contains("/shorts/", ignoreCase = true) }
     val dimensionsMatchVideo = playback.currentVideoId == video.id
     val width = playback.currentVideoWidth?.takeIf { dimensionsMatchVideo } ?: 0
     val height = playback.currentVideoHeight?.takeIf { dimensionsMatchVideo } ?: 0
-    return isShortsUrl || (width > 0 && height > width)
+    return isExplicitShort(video) || (width > 0 && height > width)
 }
 
 @Composable
@@ -1994,6 +2104,9 @@ private fun BottomNavigationLayout(
 ) {
     val compactLayout = com.futo.platformplayer.compose.ui.screens.compactUi()
     val navInset = with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() }
+    val interactions = LocalInteractionControls.current
+    val shortcuts = remember { NavigationShortcutState() }
+    SideEffect { shortcuts.onSelect = { onSelect(GrayjayDestination.Library); playback.onLibraryFilterChange(it) } }
     GrayjayScaffold(
         selected = selected,
         selectedVideo = selectedVideo,
@@ -2018,14 +2131,24 @@ private fun BottomNavigationLayout(
         channels = channels,
         playlists = playlists,
         bottomNavigationProvidesInset = true,
+        navigationShortcuts = shortcuts,
         bottomBar = {
             NavigationBar(modifier = Modifier.testTag("bottom-navigation-bar").then(if (compactLayout) Modifier.height(64.dp + navInset) else Modifier)) {
                 GrayjayDestination.entries.filter { it.showInCompactNavigation }.forEach { destination ->
+                    val selectDestination = { shortcuts.visible = false; interactions.dismissRecognition(); onSelect(destination) }
+                    Box(Modifier.weight(1f)) {
+                    Row(Modifier.fillMaxWidth()) {
                     NavigationBarItem(
                         alwaysShowLabel = !compactLayout,
                         selected = navigationSelected == destination,
-                        onClick = { onSelect(destination) },
-                        modifier = Modifier.testTag("nav-${destination.name.lowercase()}"),
+                        onClick = selectDestination,
+                        modifier = Modifier.fillMaxWidth().testTag("nav-${destination.name.lowercase()}").then(
+                            when (destination) {
+                                GrayjayDestination.Search -> Modifier.navigationLongPress({ shortcuts.visible = false; interactions.recognize() }, selectDestination)
+                                GrayjayDestination.Library -> Modifier.navigationLongPress({ interactions.dismissRecognition(); shortcuts.visible = true }, selectDestination)
+                                    .onGloballyPositioned { shortcuts.anchor = it.boundsInRoot() }
+                                else -> Modifier
+                            }),
                         icon = {
                             Icon(
                                 destination.icon,
@@ -2036,6 +2159,8 @@ private fun BottomNavigationLayout(
                             style = if (compactLayout) MaterialTheme.typography.labelSmall else androidx.compose.material3.LocalTextStyle.current,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                     )
+                    }
+                    }
                 }
             }
         },
@@ -2068,6 +2193,8 @@ private fun RailNavigationLayout(
     channels: List<ChannelUiModel>,
     playlists: List<PlaylistUiModel>,
 ) {
+    val interactions = LocalInteractionControls.current
+    var showLibraryShortcuts by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxSize()) {
         NavigationRail(
             header = {
@@ -2076,8 +2203,13 @@ private fun RailNavigationLayout(
         ) {
             Spacer(Modifier.weight(1f))
             GrayjayDestination.entries.forEach { destination ->
+                Box {
                 NavigationRailItem(
-                    modifier = Modifier.testTag("nav-${destination.name.lowercase()}"),
+                    modifier = Modifier.testTag("nav-${destination.name.lowercase()}").then(when (destination) {
+                        GrayjayDestination.Search -> Modifier.navigationLongPress(interactions.recognize) { onSelect(destination) }
+                        GrayjayDestination.Library -> Modifier.navigationLongPress({ showLibraryShortcuts = true }) { onSelect(destination) }
+                        else -> Modifier
+                    }),
                     selected = selected == destination,
                     onClick = { onSelect(destination) },
                     icon = {
@@ -2085,6 +2217,11 @@ private fun RailNavigationLayout(
                     },
                     label = { Text(stringResource(destination.navigationLabelRes), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                 )
+                if (destination == GrayjayDestination.Library) LibraryShortcutPopup(showLibraryShortcuts,
+                    onDismiss = { showLibraryShortcuts = false }, onSelect = {
+                        onSelect(GrayjayDestination.Library); playback.onLibraryFilterChange(it)
+                    })
+                }
             }
             Spacer(Modifier.weight(1f))
         }
@@ -2236,6 +2373,7 @@ private fun GrayjayScaffold(
     playlists: List<PlaylistUiModel>,
     modifier: Modifier = Modifier,
     bottomNavigationProvidesInset: Boolean = false,
+    navigationShortcuts: NavigationShortcutState? = null,
     drawerVisible: Boolean = false,
     onToggleDrawer: (() -> Unit)? = null,
     bottomBar: @Composable () -> Unit = {},
@@ -2246,8 +2384,11 @@ private fun GrayjayScaffold(
     var miniPlayerBounds by remember { mutableStateOf<Rect?>(null) }
     var miniPlayerSlotBottomPx by remember { mutableStateOf<Float?>(null) }
     var rootHeightPx by remember { mutableFloatStateOf(0f) }
+    var rootWidthPx by remember { mutableFloatStateOf(0f) }
     var rootLeftPx by remember { mutableFloatStateOf(0f) }
     var rootTopPx by remember { mutableFloatStateOf(0f) }
+    var navigationTopPx by remember { mutableStateOf<Float?>(null) }
+    val interactions = LocalInteractionControls.current
     val isTransitionDragging = playback.transition.isDragging
     val pageStateHolder = LocalPageStateHolder.current
     val compactChrome = com.futo.platformplayer.compose.ui.screens.compactUi()
@@ -2255,6 +2396,7 @@ private fun GrayjayScaffold(
     val transitionActive = transitionVideo != null && selectedVideo != null
     var channelSearchModes by rememberSaveable { mutableStateOf(emptyMap<String, Boolean>()) }
     val dismissProgress = remember { Animatable(0f) }
+    val dismissing by remember { derivedStateOf { dismissProgress.value > 0f } }
     val dismissScope = rememberCoroutineScope()
     var dismissJob by remember { mutableStateOf<Job?>(null) }
     val latestPlayback by rememberUpdatedState(playback)
@@ -2264,10 +2406,10 @@ private fun GrayjayScaffold(
         dismissProgress.snapTo(0f)
     }
     val dismissMiniplayer: () -> Unit = {
-        if (dismissJob?.isActive != true) {
+        if (dismissJob?.isActive != true && dismissProgress.value == 0f) {
             val closingVideoId = playback.video?.id
             dismissJob = dismissScope.launch {
-                dismissProgress.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
+                dismissProgress.animateTo(1f, tween(220, easing = FastOutSlowInEasing))
                 if (latestPlayback.video?.id == closingVideoId) latestPlayback.onClose()
             }
         }
@@ -2284,7 +2426,7 @@ private fun GrayjayScaffold(
     }
     val transitionDragModifier = Modifier.draggable(
         state = dragState,
-        enabled = dismissJob?.isActive != true,
+        enabled = dismissJob?.isActive != true && !dismissing && !playback.playerBack.active,
         orientation = Orientation.Vertical,
         onDragStarted = {
             playback.onTransitionDragStart()
@@ -2325,6 +2467,7 @@ private fun GrayjayScaffold(
             rootLeftPx = position.x
             rootTopPx = position.y
             rootHeightPx = coordinates.size.height.toFloat()
+            rootWidthPx = coordinates.size.width.toFloat()
         },
     ) {
         Scaffold(
@@ -2334,7 +2477,8 @@ private fun GrayjayScaffold(
                 KeyboardAwarePlayerBar(
                     onMiniatureBottomChanged = { miniPlayerSlotBottomPx = it - rootTopPx },
                     navigation = {
-                        Box(if (bottomNavigationProvidesInset) Modifier else Modifier.navigationBarsPadding()) {
+                        Box((if (bottomNavigationProvidesInset) Modifier else Modifier.navigationBarsPadding())
+                            .onGloballyPositioned { navigationTopPx = it.positionInRoot().y - rootTopPx }) {
                             bottomBar()
                         }
                     },
@@ -2350,41 +2494,45 @@ private fun GrayjayScaffold(
                             },
                             player = playback.player.takeUnless { playback.state.isCasting },
                             canSkip = playback.queueSize > 1,
-                            chromeAlpha = if (transitionActive) 0f else 1f - dismissProgress.value,
+                            chromeAlpha = if (transitionActive) 0f else 1f,
+                            interactionEnabled = dismissJob?.isActive != true && !dismissing,
                             onExpand = playback.onExpand,
                             onTogglePlayback = playback.onToggle,
                             onSkipToNext = playback.onNext,
                             onClose = dismissMiniplayer,
                             onVideoBoundsChanged = { measuredBounds ->
-                                miniPlayerBounds = playerBoundsInsideScaffold(
-                                    boundsInRoot = measuredBounds,
-                                    scaffoldLeftInRoot = rootLeftPx,
-                                    scaffoldTopInRoot = rootTopPx,
-                                )
+                                if (dismissJob?.isActive != true && dismissProgress.value == 0f) {
+                                    miniPlayerBounds = playerBoundsInsideScaffold(
+                                        boundsInRoot = measuredBounds,
+                                        scaffoldLeftInRoot = rootLeftPx,
+                                        scaffoldTopInRoot = rootTopPx,
+                                    )
+                                }
                             },
                             // Keep the initiating pointer node alive throughout the morph.
                             // Removing it when details appear cancels the user's ongoing swipe.
-                            modifier = Modifier.offset {
-                                IntOffset(0, (24.dp.toPx() * dismissProgress.value).roundToInt())
-                            }.then(transitionDragModifier),
+                            modifier = Modifier.recognitionBlur()
+                                .miniplayerDismissMotion(enabled = !transitionActive) { dismissProgress.value }
+                                .then(transitionDragModifier),
                         )
                     }
                     },
                 )
             },
         ) { contentPadding ->
-            val currentPage = BrowsePage(BrowseRoute(selected.name, selectedChannel?.id, selectedPlaylist?.id,
-                playback.libraryFilter.name), selectedChannel, selectedPlaylist, nestedBackEnabled)
+            val currentPage = playback.playerBack.target.takeIf { playback.playerBack.active }
+                ?: BrowsePage(BrowseRoute(selected.name, selectedChannel?.id, selectedPlaylist?.id,
+                    playback.libraryFilter.name), selectedChannel, selectedPlaylist, nestedBackEnabled)
             PredictiveBrowseTransition(currentPage, playback.navigationBackTarget,
                 playback.navigationBackProgress, playback.navigationBackFromRight,
-                Modifier.fillMaxSize().padding(contentPadding)) { page, preview ->
+                Modifier.fillMaxSize().padding(contentPadding).recognitionBlur()) { page, preview ->
                 val selected = restoredEnumValue(page.route.destination, GrayjayDestination.Home)
                 val selectedChannel = page.channel
                 val selectedPlaylist = page.playlist
                 val channelSearchMode = channelSearchModes[selectedChannel?.id] == true
                 Column(Modifier.fillMaxSize()) {
                 Column(Modifier.statusBarsPadding()) {
-                if (!(page.route.channelId == null && page.route.playlistId == null && selected == GrayjayDestination.Search)) AnimatedVisibility(visible = !channelSearchMode,
+                AnimatedVisibility(visible = !channelSearchMode,
                     enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 Column {
                 CenterAlignedTopAppBar(
@@ -2397,6 +2545,7 @@ private fun GrayjayScaffold(
                     title = {
                         if (selectedChannel != null) {
                             Text(selectedChannel.name, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = if (compactChrome) Modifier.cardMorphTarget("channel:${selectedChannel.id}", "title") else Modifier,
                                 style = if (compactChrome) MaterialTheme.typography.titleMedium else androidx.compose.material3.LocalTextStyle.current)
                         } else if (selectedPlaylist != null) {
                             if (!com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation.current) Text(selectedPlaylist.title, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -2534,7 +2683,8 @@ private fun GrayjayScaffold(
                 }
                 QuickPageTransition(
                     targetKey = contentPageKey,
-                    animate = playback.navigationBackTarget == null && com.futo.platformplayer.compose.ui.screens.LocalCreatorSheet.current?.request?.phase !=
+                    animate = !playback.playerBack.active && com.futo.platformplayer.compose.recognition.LocalRecognitionTransition.current?.phase != com.futo.platformplayer.compose.recognition.RecognitionOpenPhase.Opening &&
+                        playback.navigationBackTarget == null && com.futo.platformplayer.compose.ui.screens.LocalCreatorSheet.current?.request?.phase !=
                         com.futo.platformplayer.compose.ui.screens.CreatorSheetPhase.Opening,
                     horizontalSlideDirection = playback.pageSlideDirection,
                     animationRequest = playback.pageSlideRequest,
@@ -2669,7 +2819,8 @@ private fun GrayjayScaffold(
                     onReorder = { playback.onReorderPlaylist(animatedPlaylist.id, it) },
                     shuffled = animatedPlaylist.id in playback.shuffledPlaylistIds,
                     onShuffleChange = { playback.onPlaylistShuffleChange(animatedPlaylist.id, it) },
-                    detail = playback.remotePlaylistDetail,
+                    detail = playback.remotePlaylistDetail.takeIf { it.playlist?.id == animatedPlaylist.id }
+                        ?: RemotePlaylistDetailUiState(playlist = animatedPlaylist, isLoading = true),
                     currentVideoId = playback.state.currentVideoId,
                     isPlaying = playback.isPlaying,
                     downloads = playback.downloads,
@@ -2905,7 +3056,8 @@ private fun GrayjayScaffold(
             val minimized = miniPlayerBounds
             val expandedTop = expanded?.top ?: 0f
             val minimizedTop = minimized?.top ?: 0f
-            val minimizedHeight = minimized?.height
+            // The video slot excludes the progress track; the moving chrome must include it.
+            val minimizedHeight = minimized?.height?.plus(with(density) { 2.dp.toPx() })
             val expandedSurfaceColor = MaterialTheme.colorScheme.surface
             val minimizedSurfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
             Box(
@@ -2919,6 +3071,8 @@ private fun GrayjayScaffold(
                         progress = { playback.transition.progress },
                     )
                     .then(if (transitionActive) Modifier else Modifier.clearAndSetSemantics { })
+                    .recognitionDestinationLayer().cardDestinationLayer()
+                    .nowPlayingBackDeparture(playback.playerBack)
                     .drawWithContent {
                         val transitionProgress = playback.transition.progress.coerceIn(0f, 1f)
                         clipRect(bottom = size.height) {
@@ -2935,6 +3089,8 @@ private fun GrayjayScaffold(
                     .zIndex(1f),
             ) {
                 Box(Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(com.futo.platformplayer.compose.recognition.LocalRecognitionDestinationActive provides transitionActive) {
+                    com.futo.platformplayer.compose.recognition.RecognitionSharedPart(transitionVideo.id, "surface", Modifier.fillMaxSize()) {
                     Scaffold(
                         modifier = Modifier
                             .fillMaxSize()
@@ -2945,7 +3101,7 @@ private fun GrayjayScaffold(
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         topBar = {
                             CenterAlignedTopAppBar(
-                                modifier = Modifier.graphicsLayer {
+                                modifier = Modifier.then(transitionDragModifier).testTag("now-playing-header").graphicsLayer {
                                     alpha = ((0.7f - playback.transition.progress) / 0.7f)
                                         .coerceIn(0f, 1f)
                                 },
@@ -2979,7 +3135,7 @@ private fun GrayjayScaffold(
                                                 )
                                             }
                                         }
-                                        IconButton(onClick = playback.onCollapse) {
+                                        IconButton(onClick = onVideoBack) {
                                             Icon(
                                                 Icons.AutoMirrored.Outlined.ArrowBack,
                                                 contentDescription = stringResource(R.string.back),
@@ -3138,6 +3294,7 @@ private fun GrayjayScaffold(
                                         bottom = localBounds.bottom - overlayTransformY,
                                     )
                                     if (
+                                        !playback.playerBack.active &&
                                         normalizedBounds.width > 1f &&
                                         normalizedBounds.height > 1f &&
                                         (expandedPlayerBounds == null || transitionProgress <= 0.001f)
@@ -3148,6 +3305,8 @@ private fun GrayjayScaffold(
                             )
                             }
                         }
+                    }
+                    }
                     }
                     if (transitionActive && minimized != null) {
                         TransitionMiniPlayerChrome(
@@ -3163,11 +3322,70 @@ private fun GrayjayScaffold(
         val minimized = miniPlayerBounds
         if (transitionVideo != null && (expanded != null || minimized != null)) {
             val start = expanded ?: minimized!!
-            val end = minimized ?: expanded!!
+            // Keep the video viewport's aspect fixed while it shrinks. Re-measuring the final
+            // mini slot must not change letterboxing in the last frame of the gesture.
+            val end = (minimized ?: expanded!!).let { slot ->
+                fitPlayerViewport(slot, start.width / start.height)
+            }
             val queueIndex = playback.state.queueVideoIds.indexOf(playback.state.currentVideoId)
             if (!com.futo.platformplayer.compose.ui.screens.LocalMusicPresentation.current &&
-                (!transitionVideo.playbackAudioOnly || transitionActive)) PlayerSurface(
+                (!transitionVideo.playbackAudioOnly || transitionActive)) {
+                val recognitionSurfaceModifier = (if (transitionActive && expanded != null) {
+                    Modifier
+                        .offset {
+                            val progress = playback.transition.progress.coerceIn(0f, 1f)
+                            val backProgress = if (playback.playerBack.active) playback.playerBack.progress else 0f
+                            val backScale = backDepartureScale(backProgress)
+                            val backShift = rootWidthPx * .22f * backProgress * if (playback.playerBack.fromRight) -1f else 1f
+                            IntOffset(
+                                (lerp(start.left, end.left, progress) * backScale + rootWidthPx * (1f - backScale) / 2f + backShift).roundToInt(),
+                                (lerp(start.top, end.top, progress) * backScale + rootHeightPx * (1f - backScale) / 2f).roundToInt(),
+                            )
+                        }
+                        .size(
+                            width = with(density) { start.width.toDp() },
+                            height = with(density) { start.height.toDp() },
+                        )
+                        .graphicsLayer {
+                            val progress = playback.transition.progress.coerceIn(0f, 1f)
+                            val backProgress = if (playback.playerBack.active) playback.playerBack.progress else 0f
+                            transformOrigin = TransformOrigin(0f, 0f)
+                            scaleX = lerp(start.width, end.width, progress) / start.width * backDepartureScale(backProgress)
+                            scaleY = lerp(start.height, end.height, progress) / start.height * backDepartureScale(backProgress)
+                            alpha = if (transitionVideo.playbackAudioOnly) {
+                                1f - progress
+                            } else {
+                                1f
+                            } * backDepartureAlpha(backProgress)
+                        }
+                } else {
+                    Modifier
+                        .offset {
+                            IntOffset(end.left.roundToInt(), end.top.roundToInt())
+                        }
+                        .size(
+                            width = with(density) { end.width.toDp() },
+                            height = with(density) { end.height.toDp() },
+                        )
+                })
+                    .then(transitionDragModifier)
+                    .drawWithContent {
+                        // The shared video sits above Scaffold, unlike its miniature chrome.
+                        // Keep its dismiss animation inside the same fixed slot so it passes
+                        // behind navigation instead of painting over the bar's buttons.
+                        if (transitionActive) drawContent() else clipRect(
+                            bottom = ((miniPlayerSlotBottomPx ?: end.bottom) - end.top)
+                                .coerceIn(0f, size.height),
+                        ) { this@drawWithContent.drawContent() }
+                    }
+                    .miniplayerDismissMotion(enabled = !transitionActive, fade = false) { dismissProgress.value }
+                    .zIndex(2f)
+                com.futo.platformplayer.compose.recognition.RecognitionSharedPart(transitionVideo.id.takeIf { transitionActive && expanded != null }, "art", recognitionSurfaceModifier) {
+                PlayerSurface(
                 video = transitionVideo,
+                videoAlpha = { (if (transitionActive) 1f else 1f - dismissProgress.value) *
+                    if (transitionVideo.isDrmProtected) backDepartureAlpha(if (playback.playerBack.active) playback.playerBack.progress else 0f) else 1f },
+                drawVideoBackground = transitionActive,
                 player = playback.player,
                 playback = playback.state,
                 isLoading = playback.nowPlaying.isLoadingPlayback || playback.state.isBuffering,
@@ -3213,53 +3431,47 @@ private fun GrayjayScaffold(
                 topControlsAtStart = onToggleDrawer != null && !drawerVisible,
                 resumePositionFraction = playback.nowPlaying.resumePositionFraction,
                 onResumeFromHistory = playback.onResumeFromHistory,
-                modifier = (if (transitionActive && expanded != null) {
-                    Modifier
-                        .offset {
-                            val progress = playback.transition.progress.coerceIn(0f, 1f)
-                            IntOffset(
-                                lerp(start.left, end.left, progress).roundToInt(),
-                                lerp(start.top, end.top, progress).roundToInt(),
-                            )
-                        }
-                        .size(
-                            width = with(density) { start.width.toDp() },
-                            height = with(density) { start.height.toDp() },
-                        )
-                        .graphicsLayer {
-                            val progress = playback.transition.progress.coerceIn(0f, 1f)
-                            transformOrigin = TransformOrigin(0f, 0f)
-                            scaleX = lerp(start.width, end.width, progress) / start.width
-                            scaleY = lerp(start.height, end.height, progress) / start.height
-                            alpha = if (transitionVideo.playbackAudioOnly) {
-                                1f - progress
-                            } else {
-                                1f
-                            }
-                        }
-                } else {
-                    Modifier
-                        .offset {
-                            IntOffset(end.left.roundToInt(), end.top.roundToInt())
-                        }
-                        .size(
-                            width = with(density) { end.width.toDp() },
-                            height = with(density) { end.height.toDp() },
-                        )
-                })
-                    .then(transitionDragModifier)
-                    .graphicsLayer { alpha = 1f - dismissProgress.value }
-                    .drawWithContent {
-                        // The shared video sits above Scaffold, unlike its miniature chrome.
-                        // Keep its dismiss animation inside the same fixed slot so it passes
-                        // behind navigation instead of painting over the bar's buttons.
-                        if (transitionActive) drawContent() else clipRect(
-                            bottom = ((miniPlayerSlotBottomPx ?: end.bottom) - end.top)
-                                .coerceIn(0f, size.height),
-                        ) { this@drawWithContent.drawContent() }
-                    }
-                    .zIndex(2f),
+                modifier = Modifier.fillMaxSize(),
             )
+            }
+            }
+        }
+        if (playback.playerBack.active && playback.video != null) {
+            val miniTop = miniPlayerBounds?.top ?: (navigationTopPx ?: rootHeightPx) - with(density) { 72.dp.toPx() }
+            val miniBottom = miniPlayerSlotBottomPx ?: navigationTopPx ?: rootHeightPx
+            val miniHeight = (miniBottom - miniTop).coerceAtLeast(1f)
+            Box(Modifier.fillMaxWidth().offset { IntOffset(0, miniTop.roundToInt()) }
+                .height(with(density) { miniHeight.toDp() }).clipToBounds().zIndex(.5f)
+                .testTag("back-miniplayer-slot")) {
+                Box(Modifier.clearAndSetSemantics { }) {
+                Surface(Modifier.fillMaxWidth().graphicsLayer {
+                    translationY = miniHeight * (1f - playback.playerBack.progress)
+                }.testTag("back-miniplayer-enter"), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                    com.futo.platformplayer.compose.ui.screens.MiniPlayerChrome(playback.video, playback.isPlaying,
+                        if (playback.state.durationMs > 0) playback.state.positionMs.toFloat() / playback.state.durationMs else 0f,
+                        canSkip = playback.queueSize > 1, onTogglePlayback = {}, onSkipToNext = {}, onClose = {},
+                        applyTestTags = false, controlsEnabled = false, showArtwork = true, previewFrame = playback.playerBack.previewFrame)
+                }
+                }
+            }
+        }
+        // Bounds, drawing and hit testing all stop above navigation. Animated content can
+        // travel below that edge, visually behind the bar, without covering its touch targets.
+        val overlayHeight = navigationTopPx.takeIf { bottomNavigationProvidesInset }
+            ?: (rootHeightPx - WindowInsets.navigationBars.getBottom(density))
+        Box(Modifier.fillMaxWidth().height(with(density) { overlayHeight.coerceAtLeast(0f).toDp() })
+            .clipToBounds().zIndex(10f).testTag("navigation-feature-layer")) {
+            AnimatedVisibility(visible = interactions.recognizing &&
+                com.futo.platformplayer.compose.recognition.LocalRecognitionTransition.current?.phase != com.futo.platformplayer.compose.recognition.RecognitionOpenPhase.Opening &&
+                com.futo.platformplayer.compose.recognition.LocalRecognitionTransition.current?.phase != com.futo.platformplayer.compose.recognition.RecognitionOpenPhase.Completed,
+                enter = fadeIn(tween(180)), exit = fadeOut(tween(180))) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .22f))
+                    .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null, onClick = interactions.dismissRecognition))
+            }
+            com.futo.platformplayer.compose.recognition.SongRecognitionPanel(interactions.recognizing,
+                interactions.dismissRecognition)
+            navigationShortcuts?.let { NavigationShortcutOverlay(it, rootLeftPx) }
         }
     }
 }

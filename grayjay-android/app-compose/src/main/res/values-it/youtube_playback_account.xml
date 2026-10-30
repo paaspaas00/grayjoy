@@ -1,0 +1,8 @@
+<resources>
+    <string name="youtube_playback_account">Account YouTube per la riproduzione</string>
+    <string name="youtube_playback_account_description">Usa il login di un profilo non protetto per riprodurre YouTube e trovare l’audio di Spotify. Le richieste saranno associate a quell’account. Si salva solo un collegamento revocabile, senza copiare cookie. NewPipe resta anonimo; la riproduzione autenticata usa Grayjay.</string>
+    <string name="youtube_playback_account_current">Solo l’eventuale login di questo profilo</string>
+    <string name="youtube_playback_account_unavailable">L’account YouTube collegato non è disponibile. Accedi di nuovo nel suo profilo oppure rimuovi il collegamento.</string>
+    <string name="youtube_playback_account_empty">Accedi a YouTube in un profilo non protetto, poi torna qui per selezionarlo.</string>
+    <string name="youtube_login_verification_required">YouTube richiede una nuova verifica dell’accesso. Apri il profilo YouTube, accedi di nuovo alla sorgente e completa l’eventuale verifica sul sito, quindi riprova.</string>
+</resources>

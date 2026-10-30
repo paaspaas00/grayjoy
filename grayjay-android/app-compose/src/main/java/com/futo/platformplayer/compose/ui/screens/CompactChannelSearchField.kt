@@ -18,8 +18,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -27,13 +26,13 @@ import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 
 @Composable
-internal fun CompactChannelSearchField(value: String, onValueChange: (String) -> Unit, count: Int, modifier: Modifier = Modifier) {
+internal fun CompactChannelSearchField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier,
+    searchHint: String? = null, clearLabel: String? = null) {
     var focused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val shape = SearchFieldShape
-    val searchLabel = stringResource(R.string.search_channel_videos)
-    val countLabel = pluralStringResource(R.plurals.video_count, count, count)
+    val searchLabel = searchHint ?: stringResource(R.string.search_channel_videos)
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
@@ -57,11 +56,8 @@ internal fun CompactChannelSearchField(value: String, onValueChange: (String) ->
                     if (value.isEmpty()) Text(stringResource(R.string.nav_search), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     input()
                 }
-                Text(count.toString(), style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.semantics { contentDescription = countLabel })
                 if (value.isNotEmpty()) IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.clear_video_search), modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.Close, contentDescription = clearLabel ?: stringResource(R.string.clear_video_search), modifier = Modifier.size(18.dp))
                 }
             }
         },

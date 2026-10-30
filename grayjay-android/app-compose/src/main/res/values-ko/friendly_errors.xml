@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTube가 말썽이에요</string>
+    <string name="friendly_youtube_body">YouTube가 요청을 거부하며 로그인 확인을 요구할 수 있습니다. 소스 → YouTube 또는 Spotify에 연결된 YouTube 계정을 확인하고 다시 시도하세요. 로그인이 올바르다면 몇 분 기다려 주세요.</string>
+    <string name="friendly_network_title">지금 연결할 수 없어요</string>
+    <string name="friendly_network_body">서비스에 연결할 수 없습니다. Wi-Fi나 모바일 데이터를 확인하고 다시 시도하세요.</string>
+    <string name="friendly_timeout_title">서비스 응답이 느려요</string>
+    <string name="friendly_timeout_body">요청이 예상보다 오래 걸렸습니다. 잠시 후 다시 시도하세요.</string>
+    <string name="friendly_login_title">로그인이 필요해요</string>
+    <string name="friendly_login_body">이 콘텐츠에는 계정이 필요합니다. 소스를 열어 서비스에 로그인하고 계정에 접근 권한이 있는지 확인하세요.</string>
+    <string name="friendly_limit_title">서비스가 잠시 쉬어야 해요</string>
+    <string name="friendly_limit_body">너무 많은 요청을 보냈습니다. 몇 분 기다린 후 다시 시도하세요.</string>
+    <string name="friendly_source_title">소스에 문제가 있어요</string>
+    <string name="friendly_source_body">콘텐츠를 불러오지 못했습니다. 다시 시도하고, 계속 문제가 생기면 설정 → 소스에서 업데이트하세요.</string>
+    <string name="friendly_unavailable_title">이 콘텐츠를 이용할 수 없어요</string>
+    <string name="friendly_unavailable_body">서비스가 이 콘텐츠를 제공하지 않습니다. 삭제되거나 비공개로 바뀌었을 수 있습니다. 다른 항목을 시도하세요.</string>
+    <string name="friendly_region_title">현재 지역에서 이용할 수 없어요</string>
+    <string name="friendly_region_body">서비스가 현재 지역에 이 콘텐츠를 제공하지 않습니다.</string>
+    <string name="friendly_format_title">이 형식을 재생할 수 없어요</string>
+    <string name="friendly_format_body">다른 화질이나 콘텐츠를 시도하세요. 문제가 계속되면 소스와 앱을 업데이트하세요.</string>
+    <string name="friendly_access_title">서비스가 접근을 거부했어요</string>
+    <string name="friendly_access_body">로그인을 확인하고 다시 시도하세요. 계속 실패하면 설정 → 소스에서 업데이트하세요.</string>
+    <string name="friendly_drm_title">이 콘텐츠는 보호되어 있어요</string>
+    <string name="friendly_drm_body">서비스가 보호된 재생을 허용하지 않았습니다. 계정과 구독을 확인하세요. 다운로드가 허용되지 않을 수 있습니다.</string>
+</resources>

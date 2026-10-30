@@ -1,0 +1,3 @@
+<resources>
+    <string name="live_not_started_message">This live stream has not started yet. Try again when it is live; it has not been removed.</string>
+</resources>

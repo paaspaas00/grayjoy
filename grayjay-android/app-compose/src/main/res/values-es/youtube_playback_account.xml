@@ -1,0 +1,8 @@
+<resources>
+    <string name="youtube_playback_account">Cuenta de YouTube para reproducir</string>
+    <string name="youtube_playback_account_description">Usa un perfil con sesión iniciada y sin protección para YouTube y la búsqueda de audio de Spotify. Las solicitudes se asociarán a esa cuenta. Solo se guarda un vínculo revocable; no se copian cookies. NewPipe sigue siendo anónimo; la reproducción autenticada usa Grayjay.</string>
+    <string name="youtube_playback_account_current">Solo la sesión de este perfil</string>
+    <string name="youtube_playback_account_unavailable">La cuenta de YouTube vinculada no está disponible. Inicia sesión de nuevo en su perfil o elimina el vínculo.</string>
+    <string name="youtube_playback_account_empty">Inicia sesión en YouTube en un perfil sin protección y vuelve aquí para seleccionarlo.</string>
+    <string name="youtube_login_verification_required">YouTube requiere verificar de nuevo tu sesión. Abre el perfil de YouTube, inicia sesión de nuevo en la fuente y completa cualquier verificación en el sitio. Después, vuelve a intentarlo.</string>
+</resources>

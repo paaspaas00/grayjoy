@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTube is being difficult</string>
+    <string name="friendly_youtube_body">YouTube is refusing this request and may need you to verify your sign-in. Check Sources → YouTube, or the YouTube account linked to Spotify, then retry. If the login is correct, wait a few minutes.</string>
+    <string name="friendly_network_title">Cannot connect right now</string>
+    <string name="friendly_network_body">We cannot reach the service. Check your Wi-Fi or mobile connection, then try again.</string>
+    <string name="friendly_timeout_title">The service is taking too long</string>
+    <string name="friendly_timeout_body">The request took longer than expected. Try again in a little while.</string>
+    <string name="friendly_login_title">Sign-in needed</string>
+    <string name="friendly_login_body">This content requires an account. Open Sources, sign in to the service and check that your account can access it.</string>
+    <string name="friendly_limit_title">The service needs a break</string>
+    <string name="friendly_limit_body">Too many requests were sent to the service. Wait a few minutes before trying again.</string>
+    <string name="friendly_source_title">The source has a problem</string>
+    <string name="friendly_source_body">We could not load this content. Try again; if the problem continues, update the source from Settings → Sources.</string>
+    <string name="friendly_unavailable_title">This content is unavailable</string>
+    <string name="friendly_unavailable_body">The service is not making this content available. It may have been removed or made private. Try another item.</string>
+    <string name="friendly_region_title">Unavailable in your region</string>
+    <string name="friendly_region_body">The service does not make this content available in your current region.</string>
+    <string name="friendly_format_title">Cannot play this format</string>
+    <string name="friendly_format_body">Try another quality or content. If it keeps happening, update the source and the app.</string>
+    <string name="friendly_access_title">The service refused access</string>
+    <string name="friendly_access_body">Check your sign-in and try again. If access still fails, update the source from Settings → Sources.</string>
+    <string name="friendly_drm_title">This content is protected</string>
+    <string name="friendly_drm_body">The service could not authorize protected playback. Check your account and subscription; downloading this content may not be allowed.</string>
+</resources>

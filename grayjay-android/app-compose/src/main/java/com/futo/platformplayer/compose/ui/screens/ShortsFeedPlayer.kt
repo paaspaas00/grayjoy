@@ -93,7 +93,8 @@ internal fun ShortsFeedPlayer(
         modifier = Modifier.fillMaxSize().background(Color.Black).testTag("shorts-fullscreen-pager")) { page ->
         val video = videos[page]
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            if (page == pager.settledPage && video.id == activeVideoId) content()
+            if (page == pager.settledPage && video.id == activeVideoId)
+                CompositionLocalProvider(com.futo.platformplayer.compose.ui.LocalBrainrotPlayer provides true) { content() }
             else {
                 if (video.thumbnailUrl.isNotBlank()) RemoteBitmapImage(video.thumbnailUrl, Color.Black,
                     Modifier.fillMaxSize(), requestHeaders = video.thumbnailRequestHeaders)

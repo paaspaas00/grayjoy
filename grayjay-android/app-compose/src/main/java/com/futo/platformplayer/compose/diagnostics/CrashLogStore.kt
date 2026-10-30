@@ -50,13 +50,22 @@ internal object CrashLogStore {
     val pendingCrash = pending.asStateFlow()
     private var previousLaunchAt = 0L
 
-    fun recordEvent(component: String, level: String, error: Throwable? = null) {
+    fun recordEvent(component: String, level: String, error: Throwable? = null,
+        message: String? = null, fields: Map<String, String> = emptyMap()) {
         if (!enabled) return
         runCatching {
             val event = JSONObject().put("time", Instant.now().toString())
                 .put("component", component.filter { it.isLetterOrDigit() || it in "._-" }.take(80))
                 .put("level", level.take(16))
             if (error != null) event.put("trace", technicalStackTrace(error, 6000))
+            if (!message.isNullOrBlank()) event.put("message", redactDiagnosticMessage(message, 1000))
+            if (error != null) event.put("details", privateExceptionMessages(error).take(2000))
+            safeBackendEventFields(fields).forEach { (key, value) -> event.put(key, value) }
+            if (event.toString().length > 15_000) {
+                event.put("message", event.optString("message").take(500))
+                event.put("details", event.optString("details").take(1000))
+                event.put("trace", event.optString("trace").take(3000))
+            }
             if (eventQueue.trySend(EventWrite(record = event.toString())).isFailure) droppedEvents.incrementAndGet()
         }
     }
@@ -104,8 +113,27 @@ internal object CrashLogStore {
     }
 
     fun install(context: Context) {
+        com.futo.platformplayer.backend.BackendLog.sink = { level, tag, message, error ->
+            when (level) {
+                "error" -> DiagnosticLog.e(tag, message, error)
+                "warning" -> DiagnosticLog.w(tag, message, error)
+                "info" -> DiagnosticLog.i(tag, message, error)
+                else -> DiagnosticLog.d(tag, message, error)
+            }
+        }
         val appContext = context.applicationContext
         if (!installed.compareAndSet(false, true)) return
+        com.futo.platformplayer.logging.Logger.setLogConsumers(listOf(object : com.futo.platformplayer.logging.ILogConsumer {
+            override fun willConsume(level: com.futo.platformplayer.logging.LogLevel, tag: String): Boolean =
+                level == com.futo.platformplayer.logging.LogLevel.ERROR || level == com.futo.platformplayer.logging.LogLevel.WARNING
+            override fun consume(level: com.futo.platformplayer.logging.LogLevel, tag: String, text: String?, e: Throwable?) {
+                when {
+                    level == com.futo.platformplayer.logging.LogLevel.ERROR -> DiagnosticLog.e("SourceRuntime", text, e)
+                    level == com.futo.platformplayer.logging.LogLevel.WARNING -> DiagnosticLog.w("SourceRuntime", text, e)
+                    text?.take(512)?.contains(Regex("error|fail|exception|fallback|retry|login.required", RegexOption.IGNORE_CASE)) == true -> DiagnosticLog.i("SourceRuntime", text, e)
+                }
+            }
+        }))
         enabled = isEnabled(appContext)
         val preferences = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
         previousLaunchAt = runCatching { preferences.getLong("last_launch", 0L) }.getOrDefault(0L)
@@ -162,10 +190,12 @@ internal object CrashLogStore {
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
             appendLine("Thread: ${if (thread === android.os.Looper.getMainLooper().thread) "main" else "background"}")
             appendLine()
+            appendLine("Private details: " + JSONObject.quote(privateExceptionMessages(throwable)))
+            appendLine()
             append(stack)
         }
         destination.writeText(contents)
-        if (isDownloadsCopyEnabled(context)) runCatching { writePublicCrashLog(context, destination.name, contents) }
+        if (isDownloadsCopyEnabled(context)) runCatching { writePublicCrashLog(context, destination.name, sanitizeLegacyDiagnostic(contents)) }
         trimPrivateLogs(directory)
         return destination
     }
@@ -279,7 +309,10 @@ internal object CrashLogStore {
                     JSONObject().put("time", json.optString("time").filter { it in "0123456789TZ:.-+" }.take(40))
                         .put("component", json.optString("component").filter { it.isLetterOrDigit() || it in "._-" }.take(80))
                         .put("level", json.optString("level").filter(Char::isLetter).take(16))
-                        .put("trace", sanitizeLegacyDiagnostic(json.optString("trace"))).toString()
+                        .put("trace", sanitizeLegacyDiagnostic(json.optString("trace"))).apply {
+                            safeBackendEventFields(listOf("operation", "from", "to", "phase", "reason")
+                                .associateWith { json.optString(it) }).forEach { (key, value) -> put(key, value) }
+                        }.toString()
                 }.getOrNull()?.let { zip.write((it + "\n").toByteArray(Charsets.UTF_8)) } }
                 zip.closeEntry()
             }

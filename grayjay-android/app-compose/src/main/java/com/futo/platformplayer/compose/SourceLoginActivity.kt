@@ -56,7 +56,7 @@ class SourceLoginActivity : ComponentActivity() {
                 }
             }.getOrElse {
                 if (it is CancellationException) throw it
-                finishWithError(it.localizedMessage ?: getString(R.string.source_login_page_failed))
+                finishWithError(com.futo.platformplayer.compose.errors.friendlyBackendMessage(this@SourceLoginActivity, it, R.string.source_login_page_failed))
                 return@launch
             }
             val auth = config.authentication
@@ -338,7 +338,7 @@ class SourceLoginActivity : ComponentActivity() {
                 finish()
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                finishWithError(error.localizedMessage ?: getString(R.string.source_login_page_failed))
+                finishWithError(com.futo.platformplayer.compose.errors.friendlyBackendMessage(this@SourceLoginActivity, error, R.string.source_login_page_failed))
             }
         }
     }

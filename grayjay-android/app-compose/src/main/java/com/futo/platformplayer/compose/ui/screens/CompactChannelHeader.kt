@@ -15,11 +15,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.ChannelUiModel
+import com.futo.platformplayer.compose.ui.cardMorphTarget
 
 @Composable
 internal fun CompactChannelHeader(channel: ChannelUiModel, following: Boolean, onToggleFollow: () -> Unit, actions: List<PlaylistMenuAction>, onSettings: (() -> Unit)? = null) {
@@ -27,7 +28,8 @@ internal fun CompactChannelHeader(channel: ChannelUiModel, following: Boolean, o
     Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ChannelAvatarImage(channel.name, channel.thumbnailUrl,
-                modifier = Modifier.creatorSharedElement(channel.id, "avatar").size(32.dp).testTag("channel-header-avatar"))
+                modifier = Modifier.creatorSharedElement(channel.id, "avatar").cardMorphTarget("channel:${channel.id}", "art", 16f)
+                    .size(32.dp).testTag("channel-header-avatar"))
             Column(Modifier.weight(1f)) {
                 Text(sourceCreatorFallback(channel.followerCount), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(channel.source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)

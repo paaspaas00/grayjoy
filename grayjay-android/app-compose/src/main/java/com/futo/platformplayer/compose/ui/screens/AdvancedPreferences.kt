@@ -10,7 +10,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.BuildConfig
 import com.futo.platformplayer.compose.R
@@ -31,6 +31,8 @@ internal data class ExtraPreferences(
     val onAudioNormalizationChange: (Boolean) -> Unit = {},
     val oneHandedPlayerEnabled: Boolean = false,
     val onOneHandedPlayerChange: (Boolean) -> Unit = {},
+    val audioNormalizationTargetLufs: Int = -32,
+    val onAudioNormalizationTargetChange: (Int) -> Unit = {},
 )
 internal val LocalExtraPreferences = compositionLocalOf { ExtraPreferences() }
 

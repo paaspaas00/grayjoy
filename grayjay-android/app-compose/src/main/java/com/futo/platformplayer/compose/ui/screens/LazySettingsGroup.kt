@@ -13,7 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.rememberDevicePerformanceProfile
@@ -38,7 +38,7 @@ internal fun LazyListScope.settingsGroup(
     if (rows.isEmpty()) return
     if (titleRes != null) item(key = "$key-heading", contentType = "settings-heading") {
         Text(
-            stringResource(titleRes),
+            settingsHighlightedText(stringResource(titleRes)),
             modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
             color = MaterialTheme.colorScheme.primary,
             style = if (compactUi()) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,

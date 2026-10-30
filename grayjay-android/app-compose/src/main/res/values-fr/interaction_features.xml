@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recognition_swipe_open">Balayez vers le haut pour ouvrir en pause</string>
+    <string name="recognition_privacy_short">Écoute quelques secondes. Seule une empreinte musicale est envoyée à Shazam, jamais l’enregistrement. Internet requis.</string>
+    <string name="music_artists">Artistes</string>
+    <string name="music_artist">Artiste</string>
+    <string name="recognize_song">Reconnaître un morceau</string>
+    <string name="recognition_description">Maintenez Rechercher dans la barre de navigation pour identifier la musique autour de vous et lire le résultat.</string>
+    <string name="recognition_privacy">Le micro écoute quelques secondes uniquement lorsque cette fenêtre est ouverte. Une empreinte musicale, pas un enregistrement audio, est envoyée à Shazam. Internet est nécessaire.</string>
+    <string name="recognition_disabled">La reconnaissance musicale est désactivée. Activez-la dans les préférences.</string>
+    <string name="recognition_permission">Autorisez le micro pour reconnaître la musique.</string>
+    <string name="recognition_error">La reconnaissance est indisponible. Vérifiez la connexion et réessayez.</string>
+    <string name="recognition_no_match">Aucun morceau trouvé. Rapprochez-vous de la musique et réessayez.</string>
+    <string name="recognition_listening">Écoute de la musique…</string>
+    <string name="recognition_searching">Recherche du morceau…</string>
+    <string name="recognition_play_failed">Impossible de lancer le morceau. Réessayez dans un instant.</string>
+    <string name="left_handed_mode">Mode gaucher</string>
+    <string name="left_handed_description">Les boutons et menus du lecteur passent à gauche. En plein écran musical, la pochette passe à droite.</string>
+    <string name="library_shortcuts">Raccourcis de la bibliothèque</string>
+    <string name="library_shortcuts_description">Maintenez Bibliothèque dans la barre de navigation. Le menu vertical affiche de haut en bas : Historique, Playlists, À regarder plus tard (Favoris pour la musique), Téléchargements. Touchez une icône pour ouvrir ou en dehors pour fermer.</string>
+    <string name="history_group_explanation">Les vidéos consécutives issues de la même playlist peuvent apparaître dans une carte dépliable. Seule la vue de l’historique change : rien n’est déplacé ou supprimé.</string>
+    <string name="history_group_settings">Regrouper l’historique</string>
+    <string name="setup_handedness">Choisissez le côté le plus pratique</string>
+    <string name="hand_right">Droitier</string>
+    <string name="hand_left">Gaucher</string>
+</resources>

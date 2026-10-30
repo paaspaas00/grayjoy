@@ -27,6 +27,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.outlined.Sort
@@ -77,6 +79,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -95,10 +98,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.rememberDevicePerformanceProfile
@@ -107,6 +111,7 @@ import com.futo.platformplayer.compose.ui.ChannelDetailUiState
 import com.futo.platformplayer.compose.ui.ChannelUiModel
 import com.futo.platformplayer.compose.ui.PlaylistUiModel
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.ui.cardMorphTarget
 import com.futo.platformplayer.compose.sponsorblock.SponsorBlockRule
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -164,6 +169,23 @@ fun ChannelDetailScreen(
     val sortMode = runCatching { ChannelSortMode.valueOf(sortModeName) }
         .getOrDefault(ChannelSortMode.UploadDate)
     val listState = rememberContentListState()
+    // Every tab shares the same pinned search header, including playlists and releases.
+    var searchHeaderHeight by remember(channel.id, compactLayout) { mutableIntStateOf(0) }
+    var previousTab by remember(channel.id) { mutableStateOf(detail.selectedTab) }
+    fun selectTab(tab: ChannelContentTab) {
+        if (tab != detail.selectedTab) {
+            val anchor = channelTabAnchor(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, listState.layoutInfo.beforeContentPadding)
+            listState.requestScrollToItem(anchor.index, anchor.offset)
+        }
+        onTabSelected(tab)
+    }
+    LaunchedEffect(detail.selectedTab) {
+        if (previousTab != detail.selectedTab) {
+            val anchor = channelTabAnchor(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, listState.layoutInfo.beforeContentPadding)
+            listState.requestScrollToItem(anchor.index, anchor.offset)
+            previousTab = detail.selectedTab
+        }
+    }
     val openingFromSheet = LocalCreatorSheet.current?.request?.let {
         it.channel.id == channel.id && it.phase == CreatorSheetPhase.Opening
     } == true
@@ -174,22 +196,32 @@ fun ChannelDetailScreen(
         }
     }
     fun onSearchFocusChanged(focused: Boolean) {
-        if (focused && !detail.selectedTab.isPlaylistTab) {
+        if (focused) {
             searchMode = true
             // Pin before the IME starts. A delayed animated scroll exposes the old field bounds
             // to Android's bring-into-view request and can pan the entire window offscreen.
             listState.requestScrollToItem(CHANNEL_SEARCH_FOCUSED_SCROLL_INDEX)
         }
     }
+    val usesListingPager = channelSearchUsesListingPager(detail.selectedTab, query)
+    var settledPlaylistQuery by remember(channel.id) { mutableStateOf("") }
+    LaunchedEffect(channel.id, detail.selectedTab, query) {
+        if (detail.selectedTab.isPlaylistTab && query.isNotBlank()) delay(250)
+        settledPlaylistQuery = query
+    }
     RequestNextPageEffect(
         listState = listState,
-        canLoadMore = if (query.isBlank()) {
-            detail.hasMore && !detail.isLoading && !detail.isLoadingMore
+        canLoadMore = if (usesListingPager) {
+            detail.hasMore && !detail.isLoading && !detail.isLoadingMore && detail.errorMessage == null &&
+                (!detail.selectedTab.isPlaylistTab || query.isBlank() || settledPlaylistQuery == query)
         } else {
             detail.searchIsRemote && detail.searchHasMore &&
                 !detail.isSearching && !detail.isSearchLoadingMore
         },
-        onLoadMore = if (query.isBlank()) onLoadMore else onLoadMoreSearch,
+        onLoadMore = if (usesListingPager) onLoadMore else onLoadMoreSearch,
+        // A cached page can complete before Compose observes the loading state. Its data
+        // revision must still advance the pager when filtered results remain empty.
+        pageKey = if (detail.selectedTab.isPlaylistTab) detail.playlists.size to detail.continuationId else null,
     )
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
@@ -223,7 +255,6 @@ fun ChannelDetailScreen(
     }
     LaunchedEffect(searchMode) { onSearchModeChange(searchMode) }
     DisposableEffect(channel.id) { onDispose { onSearchModeChange(false) } }
-    LaunchedEffect(detail.selectedTab) { if (detail.selectedTab.isPlaylistTab && searchMode) revealChannel() }
     val revealBounds = remember(channel.id) { ChannelSearchRevealBounds() }
     val revealHeaderModifier = Modifier.pointerInput(searchMode) {
         if (!searchMode) return@pointerInput
@@ -243,7 +274,8 @@ fun ChannelDetailScreen(
             }
         }
     }
-    val displayedChannel = detail.channel ?: channel
+    val displayedChannel = detail.channel?.takeIf { it.id == channel.id } ?: channel
+    val visibleLinks = remember(displayedChannel.sourceId, displayedChannel.links) { channelPageLinks(displayedChannel) }
     val currentVideos = remember(detail.selectedTab, detail.videos, detail.shorts, detail.liveStreams) {
         when (detail.selectedTab) {
             ChannelContentTab.Videos -> detail.videos
@@ -275,15 +307,25 @@ fun ChannelDetailScreen(
             selectedVideoIds = selectedVideoIds.filter(visibleVideoIds::contains)
         }
     }
-    val visiblePlaylists = remember(detail.playlists, detail.releases, detail.selectedTab, sortAscending) {
-        sortChannelPlaylists(if (detail.selectedTab == ChannelContentTab.Releases) detail.releases else detail.playlists, sortAscending)
+    val visiblePlaylists = remember(detail.playlists, detail.releases, detail.selectedTab, sortAscending, query) {
+        sortChannelPlaylists(filterChannelPlaylists(
+            if (detail.selectedTab == ChannelContentTab.Releases) detail.releases else detail.playlists, query), sortAscending)
     }
+    val playlistSearchPending = detail.selectedTab.isPlaylistTab && query.isNotBlank() &&
+        visiblePlaylists.isEmpty() && detail.hasMore && detail.errorMessage == null
     val tabs = channelTabsFor(detail)
+    val sectionLabel: @Composable (Modifier) -> Unit = { modifier ->
+        Text(stringResource(detail.selectedTab.labelRes), style = MaterialTheme.typography.titleLarge,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = modifier.onGloballyPositioned { revealBounds.headingBottom = it.boundsInRoot().bottom }
+                .testTag("channel-result-heading"))
+    }
     val searchField: @Composable (Modifier) -> Unit = { modifier ->
         if (compactLayout) CompactChannelSearchField(
             value = query,
             onValueChange = onSearchQueryChange,
-            count = if (query.isBlank()) currentVideos.size else visibleVideos.size,
+            searchHint = stringResource(if (detail.selectedTab.isPlaylistTab) R.string.search_playlists else R.string.search_channel_videos),
+            clearLabel = stringResource(if (detail.selectedTab.isPlaylistTab) R.string.clear_search else R.string.clear_video_search),
             modifier = modifier.onFocusChanged { onSearchFocusChanged(it.isFocused) }.testTag("channel-video-search"),
         ) else GrayjoySearchField(
             value = query,
@@ -293,20 +335,25 @@ fun ChannelDetailScreen(
                 .onFocusChanged { state -> onSearchFocusChanged(state.isFocused) }
                 .testTag("channel-video-search"),
             singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = {
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+            }),
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
             trailingIcon = {
                 if (query.isNotEmpty()) {
                     IconButton(onClick = { onSearchQueryChange("") }) {
                         Icon(
                             Icons.Outlined.Close,
-                            contentDescription = stringResource(R.string.clear_video_search),
+                            contentDescription = stringResource(if (detail.selectedTab.isPlaylistTab) R.string.clear_search else R.string.clear_video_search),
                         )
                     }
                 }
             },
             placeholder = {
                 Text(
-                    stringResource(R.string.search_channel_videos),
+                    stringResource(if (detail.selectedTab.isPlaylistTab) R.string.search_playlists else R.string.search_channel_videos),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -339,11 +386,22 @@ fun ChannelDetailScreen(
         )
     }
 
+    val resultSpacing = if (compactLayout) 4.dp else if (performance.compactContent) 8.dp else 16.dp
+    val bottomPadding = if (compactLayout) { if (searchMode) 0.dp else 4.dp } else if (performance.compactContent) 8.dp else 16.dp
     Column(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+    val density = LocalDensity.current
+    val minimumRowHeight = minOf(84.dp,
+        (videoCardThumbnailWidth(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp,
+            compactLayout || performance.compactContent) * 9f / 16f + if (compactLayout || performance.compactContent) 12f else 20f).dp)
+    val resultCount = if (detail.selectedTab.isPlaylistTab) visiblePlaylists.size else visibleVideos.size
+    val boundedResults = detail.isLoading || (detail.isSearching && visibleVideos.isEmpty()) ||
+        resultCount * minimumRowHeight.value < maxHeight.value
+    val minimumResultsHeight = (maxHeight - with(density) { searchHeaderHeight.toDp() } - resultSpacing - bottomPadding).coerceAtLeast(0.dp)
     LazyColumn(
         state = listState,
         modifier = Modifier
-            .weight(1f)
+            .fillMaxSize()
             .then(revealHeaderModifier)
             .onGloballyPositioned { revealBounds.listTop = it.boundsInRoot().top }
             .testTag("channel-detail-${channel.id}"),
@@ -353,9 +411,7 @@ fun ChannelDetailScreen(
                 end = if (performance.compactContent) 8.dp else 16.dp,
                 top = if (searchMode) 0.dp else if (performance.compactContent) 8.dp else 16.dp,
                 bottom = if (performance.compactContent) 8.dp else 16.dp),
-        verticalArrangement = Arrangement.spacedBy(
-            if (compactLayout) 4.dp else if (performance.compactContent) 8.dp else 16.dp,
-        ),
+        verticalArrangement = Arrangement.spacedBy(resultSpacing),
     ) {
         item(key = "channel-summary") {
             // Short/empty result lists cannot scroll a full summary out of the viewport.
@@ -375,7 +431,7 @@ fun ChannelDetailScreen(
                             putExtra(Intent.EXTRA_TEXT, displayedChannel.id)
                         }, shareLabel))
                     }))
-                    displayedChannel.links.entries.take(6).forEach { (label, url) ->
+                    visibleLinks.entries.take(6).forEach { (label, url) ->
                         add(PlaylistMenuAction(label.ifBlank { stringResource(R.string.link) }, Icons.Outlined.Link,
                             tag = "channel-link-$url", onClick = { runCatching { uriHandler.openUri(url) } }))
                     }
@@ -399,6 +455,7 @@ fun ChannelDetailScreen(
                         name = displayedChannel.name,
                         thumbnailUrl = displayedChannel.thumbnailUrl,
                         modifier = Modifier.align(Alignment.Center).creatorSharedElement(displayedChannel.id, "avatar")
+                            .cardMorphTarget("channel:${displayedChannel.id}", "art", if (performance.compactContent) 36f else 48f)
                             .testTag("channel-header-avatar")
                             .size(if (performance.compactContent) 72.dp else 96.dp),
                     )
@@ -407,6 +464,7 @@ fun ChannelDetailScreen(
                     }
                     }
                     SharedCreatorText(displayedChannel.id, "name", displayedChannel.name,
+                        modifier = Modifier.cardMorphTarget("channel:${displayedChannel.id}", "title"),
                         textAlign = TextAlign.Center,
                         style = if (performance.compactContent) {
                             MaterialTheme.typography.titleLarge
@@ -444,12 +502,12 @@ fun ChannelDetailScreen(
                             }
                         }
                     }
-                    if (displayedChannel.links.isNotEmpty()) {
+                    if (visibleLinks.isNotEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            displayedChannel.links.entries.take(6).forEach { (label, url) ->
+                            visibleLinks.entries.take(6).forEach { (label, url) ->
                                 AdaptiveAssistChip(
                                     onClick = { runCatching { uriHandler.openUri(url) } },
                                     leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) },
@@ -499,6 +557,7 @@ fun ChannelDetailScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onSizeChanged { searchHeaderHeight = it.height }
                     .onGloballyPositioned { revealBounds.controlsBottom = it.boundsInRoot().bottom }
                     .testTag("channel-search-header")
                     .background(MaterialTheme.colorScheme.background)
@@ -509,7 +568,7 @@ fun ChannelDetailScreen(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             tabs.forEach { tab ->
-                                AdaptiveFilterChip(selected = detail.selectedTab == tab, onClick = { onTabSelected(tab) },
+                                AdaptiveFilterChip(selected = detail.selectedTab == tab, onClick = { selectTab(tab) },
                                     label = { Text(stringResource(tab.labelRes)) }, modifier = Modifier.testTag("channel-tab-${tab.name.lowercase()}"))
                             }
                         }
@@ -517,7 +576,7 @@ fun ChannelDetailScreen(
                             Icon(Icons.AutoMirrored.Outlined.Sort, contentDescription = stringResource(R.string.sort))
                         }
                     }
-                    if (!detail.selectedTab.isPlaylistTab) searchField(Modifier.fillMaxWidth())
+                    searchField(Modifier.fillMaxWidth())
                 } else {
                 Row(
                     modifier = Modifier
@@ -528,7 +587,7 @@ fun ChannelDetailScreen(
                     tabs.forEach { tab ->
                         AdaptiveFilterChip(
                             selected = detail.selectedTab == tab,
-                            onClick = { onTabSelected(tab) },
+                            onClick = { selectTab(tab) },
                             label = { Text(stringResource(tab.labelRes)) },
                             modifier = Modifier.testTag("channel-tab-${tab.name.lowercase()}"),
                         )
@@ -537,13 +596,13 @@ fun ChannelDetailScreen(
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     if (channelSearchUsesStackedLayout(maxWidth.value)) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (!detail.selectedTab.isPlaylistTab) {
-                                searchField(Modifier.fillMaxWidth())
-                            }
+                            searchField(Modifier.fillMaxWidth())
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
+                                sectionLabel(Modifier.weight(1f))
                                 sortChip()
                             }
                         }
@@ -553,9 +612,8 @@ fun ChannelDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            if (!detail.selectedTab.isPlaylistTab) {
-                                searchField(Modifier.weight(1f))
-                            }
+                            searchField(Modifier.weight(1f))
+                            sectionLabel(Modifier)
                             sortChip()
                         }
                     }
@@ -564,32 +622,23 @@ fun ChannelDetailScreen(
             }
         }
 
+        channelResultsPane(boundedResults, minimumResultsHeight, resultSpacing) {
         detail.errorMessage?.let { message ->
             item {
+                Column {
                 Text(
                     message,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                if (detail.hasMore) TextButton(onClick = onLoadMore, enabled = !detail.isLoadingMore) {
+                    Text(stringResource(R.string.retry))
+                }
+                }
             }
         }
 
-        if (!compactLayout || detail.selectedTab.isPlaylistTab) item {
-            val count = if (detail.selectedTab.isPlaylistTab) {
-                visiblePlaylists.size
-            } else if (query.isBlank()) {
-                currentVideos.size
-            } else {
-                visibleVideos.size
-            }
-            Box(Modifier.onGloballyPositioned { revealBounds.headingBottom = it.boundsInRoot().bottom }
-                .testTag("channel-result-heading")) { SectionHeading(
-                if (query.isNotBlank()) stringResource(R.string.results_with_count, count)
-                else "${stringResource(detail.selectedTab.labelRes)} ($count)",
-            ) }
-        }
-
-        if (detail.isLoading || (detail.isSearching && visibleVideos.isEmpty())) {
+        if (detail.isLoading || playlistSearchPending || (detail.isSearching && !detail.selectedTab.isPlaylistTab && visibleVideos.isEmpty())) {
             item {
                 Box(Modifier.testTag("channel-loading")) {
                     if (detail.selectedTab.isPlaylistTab) {
@@ -631,7 +680,7 @@ fun ChannelDetailScreen(
             }
         }
 
-        if (detail.isLoadingMore || detail.isSearchLoadingMore) {
+        if (!playlistSearchPending && (detail.isLoadingMore || detail.isSearchLoadingMore)) {
             item {
                 if (detail.selectedTab.isPlaylistTab) {
                     SuggestionListSkeleton(count = 2)
@@ -640,7 +689,7 @@ fun ChannelDetailScreen(
                 }
             }
         }
-        if (!detail.isLoading && !detail.isSearching &&
+        if (!detail.isLoading && !detail.isSearching && !playlistSearchPending && detail.errorMessage == null &&
             (if (detail.selectedTab.isPlaylistTab) {
                 visiblePlaylists.isEmpty()
             } else {
@@ -650,6 +699,7 @@ fun ChannelDetailScreen(
             item {
                 Text(
                     if (query.isBlank()) stringResource(R.string.source_returned_no_content)
+                    else if (detail.selectedTab.isPlaylistTab) stringResource(R.string.no_playlists_found)
                     else stringResource(R.string.no_channel_videos_match, query.trim()),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -657,6 +707,8 @@ fun ChannelDetailScreen(
         }
     }
 
+    }
+    }
     if (selectionMode) Surface(modifier = Modifier.fillMaxWidth().testTag("channel-selection-bar"), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically) {
@@ -857,9 +909,10 @@ private fun ChannelSpeedPreference(value: Float?, defaultSpeed: Float, onChange:
                     HorizontalDivider()
                     Column(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 320.dp)
                         .onSizeChanged { listHeight = it.height }.verticalScroll(scroll).selectableGroup()) {
-                        (listOf<Float?>(null) + playbackSpeedChoices).forEach { speed ->
+                        (listOf<Float?>(null) + playbackSpeedChoices).forEachIndexed { index, speed ->
                             Row(
                                 Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                                    .dialogChoiceRow(index, playbackSpeedChoices.size + 1)
                                     .selectable(selected = pendingSpeed == speed, role = Role.RadioButton,
                                         onClick = { pendingSpeed = speed })
                                     .padding(horizontal = 24.dp, vertical = 8.dp)

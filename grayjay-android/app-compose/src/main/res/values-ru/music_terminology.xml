@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="music_artist_tracks_search">Поиск треков этого исполнителя</string>
+    <string name="music_artist_tracks_no_match">У исполнителя нет треков по запросу «%1$s».</string>
+    <string name="music_track_title_language">Язык названий треков</string>
+    <string name="music_artist_playback_speed_description">Выберите скорость для автоматического воспроизведения треков этого исполнителя.</string>
+    <string name="music_per_artist_playback_speed_description">Запоминать скорость для каждого исполнителя. Настройка отдельного трека имеет приоритет.</string>
+    <string name="music_search_hint">Поиск треков, исполнителей и плейлистов</string>
+</resources>

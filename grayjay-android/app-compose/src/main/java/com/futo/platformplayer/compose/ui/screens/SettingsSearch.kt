@@ -14,8 +14,11 @@ internal fun settingsTextMatches(text: String, query: String): Boolean {
 }
 
 internal val settingsSearchResources = mapOf(
-    "one-handed-player" to listOf(R.string.experimental_features, R.string.one_handed_player, R.string.one_handed_player_description),
-    "audio-normalization" to listOf(R.string.experimental_features, R.string.audio_normalization, R.string.audio_normalization_description),
+    "left-handed-mode" to listOf(R.string.left_handed_mode, R.string.left_handed_description),
+    "song-recognition" to listOf(R.string.recognize_song, R.string.recognition_description),
+    "one-handed-player" to listOf(R.string.settings_playback, R.string.one_handed_player, R.string.one_handed_player_description),
+    "audio-normalization" to listOf(R.string.settings_playback, R.string.audio_normalization, R.string.audio_normalization_description),
+    "audio-normalization-level" to listOf(R.string.audio_normalization, R.string.audio_normalization_level, R.string.normalization_quieter, R.string.normalization_louder),
     "app-language" to listOf(R.string.system_default_language, R.string.app_language, R.string.app_language_description),
     "theme-mode" to listOf(R.string.settings_appearance, R.string.automatic, R.string.use_light_theme, R.string.use_dark_theme),
     "toggle-dynamic-colors" to listOf(R.string.use_wallpaper_colors, R.string.material_you_dynamic_color),
@@ -57,7 +60,7 @@ internal val settingsSearchResources = mapOf(
     "guided-setup" to listOf(R.string.setup_title, R.string.setup_reopen),
 )
 
-internal fun matchingSettings(resources: Resources, query: String): Set<String> =
+internal fun matchingSettings(resources: Resources, query: String, music: Boolean = false): Set<String> =
     settingsSearchResources.filter { (_, ids) ->
-        settingsTextMatches(ids.joinToString(" ") { resources.getString(it) }, query)
+        settingsTextMatches(ids.joinToString(" ") { com.futo.platformplayer.compose.ui.musicProfileString(resources, it, music) }, query)
     }.keys

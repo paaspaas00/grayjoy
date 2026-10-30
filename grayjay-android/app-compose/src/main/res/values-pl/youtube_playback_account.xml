@@ -1,0 +1,8 @@
+<resources>
+    <string name="youtube_playback_account">Konto YouTube do odtwarzania</string>
+    <string name="youtube_playback_account_description">Użyj zalogowanego, niechronionego profilu do odtwarzania YouTube i dopasowywania muzyki Spotify. Żądania będą powiązane z tym kontem. Zapisywane jest tylko odwołanie, które można usunąć, bez kopiowania plików cookie. NewPipe pozostaje anonimowy; odtwarzanie po zalogowaniu używa Grayjay.</string>
+    <string name="youtube_playback_account_current">Tylko logowanie bieżącego profilu</string>
+    <string name="youtube_playback_account_unavailable">Powiązane konto YouTube jest niedostępne. Zaloguj się ponownie w jego profilu lub usuń powiązanie.</string>
+    <string name="youtube_playback_account_empty">Zaloguj się do YouTube w niechronionym profilu, a następnie wróć tutaj, aby go wybrać.</string>
+    <string name="youtube_login_verification_required">YouTube wymaga ponownej weryfikacji logowania. Otwórz profil YouTube, zaloguj się ponownie do źródła i wykonaj ewentualną weryfikację na stronie, a potem spróbuj ponownie.</string>
+</resources>

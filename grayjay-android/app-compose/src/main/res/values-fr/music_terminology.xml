@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="music_artist_tracks_search">Rechercher les titres de cet artiste</string>
+    <string name="music_artist_tracks_no_match">Aucun titre de cet artiste ne correspond à « %1$s ».</string>
+    <string name="music_track_title_language">Langue des titres des morceaux</string>
+    <string name="music_artist_playback_speed_description">Choisissez la vitesse appliquée automatiquement aux titres de cet artiste.</string>
+    <string name="music_per_artist_playback_speed_description">Mémorisez une vitesse préférée par artiste. La vitesse choisie pour un titre est prioritaire.</string>
+    <string name="music_search_hint">Rechercher des titres, artistes et playlists</string>
+</resources>

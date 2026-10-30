@@ -1,0 +1,8 @@
+<resources>
+    <string name="youtube_playback_account">再生用YouTubeアカウント</string>
+    <string name="youtube_playback_account_description">ログイン済みの保護されていないプロフィールをYouTube再生とSpotify音声検索に使います。リクエストはそのアカウントに関連付けられます。解除可能な参照のみ保存し、Cookieはコピーしません。NewPipeは匿名のまま、認証付き再生にはGrayjayを使います。</string>
+    <string name="youtube_playback_account_current">このプロフィール自身のログインのみ</string>
+    <string name="youtube_playback_account_unavailable">連携したYouTubeアカウントを利用できません。そのプロフィールで再ログインするか、連携を解除してください。</string>
+    <string name="youtube_playback_account_empty">保護されていないプロフィールでYouTubeにログインし、ここに戻って選択してください。</string>
+    <string name="youtube_login_verification_required">YouTubeでログインの再確認が必要です。YouTubeプロフィールを開き、ソースに再ログインしてサイト上の確認を完了してから再試行してください。</string>
+</resources>

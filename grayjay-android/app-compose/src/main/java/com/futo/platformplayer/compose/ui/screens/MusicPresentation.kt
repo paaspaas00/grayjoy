@@ -1,4 +1,5 @@
 package com.futo.platformplayer.compose.ui.screens
+import com.futo.platformplayer.compose.recognition.recognitionControlsReveal
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -18,11 +19,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
@@ -32,12 +34,17 @@ import com.futo.platformplayer.compose.ui.*
 
 internal val LocalMusicPresentation = staticCompositionLocalOf { false }
 internal val LocalMusicPlayerDrag = staticCompositionLocalOf<Modifier> { Modifier }
+internal data class MusicSettingsAnchor(val visible: Boolean = false, val onBounds: (Rect) -> Unit = {})
+internal val LocalMusicSettingsAnchor = staticCompositionLocalOf { MusicSettingsAnchor() }
 
 @Composable
-internal fun MusicArtwork(url: String, modifier: Modifier = Modifier, large: Boolean = false) {
+internal fun MusicArtwork(url: String, modifier: Modifier = Modifier, large: Boolean = false, fallbackUrl: String? = null) {
     Box(modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center) {
         Icon(Icons.Outlined.MusicNote, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!fallbackUrl.isNullOrBlank() && fallbackUrl != url) RemoteBitmapImage(fallbackUrl,
+            MaterialTheme.colorScheme.surfaceContainerHigh, Modifier.fillMaxSize(),
+            requestSize = if (large) androidx.compose.ui.unit.IntSize(768, 768) else null)
         if (url.isNotBlank()) RemoteBitmapImage(url = url, modifier = Modifier.fillMaxSize(),
             placeholderColor = MaterialTheme.colorScheme.surfaceContainerHigh, showParentPlaceholderWhileLoading = true,
             requestSize = if (large) androidx.compose.ui.unit.IntSize(768, 768) else null)
@@ -59,12 +66,15 @@ internal fun MusicTrackRow(
     onMore: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val cardMotion = LocalPlayerCardTransition.current
+    val cardSource = remember(video) { CardMorphSource(video, true) }
     Row(modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)
+        .onGloballyPositioned { cardSource.captureCoordinates("surface", it) }
         .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)
-        .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+        .combinedClickable(onClick = { cardMotion?.arm(cardSource); onClick() }, onLongClick = onLongClick)
         .heightIn(min = 68.dp).padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        if (artwork) Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
+        if (artwork) Box(Modifier.size(52.dp).onGloballyPositioned { cardSource.captureCoordinates("art", it) }, contentAlignment = Alignment.Center) {
             MusicArtwork(video.thumbnailUrl, Modifier.fillMaxSize())
             if (current) Icon(if (playing) Icons.Outlined.GraphicEq else Icons.Outlined.Pause, null,
                 tint = MaterialTheme.colorScheme.primary, modifier = Modifier.background(MaterialTheme.colorScheme.surface.copy(alpha = .8f), MaterialTheme.shapes.small))
@@ -75,7 +85,7 @@ internal fun MusicTrackRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(video.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            Text(video.title, modifier = Modifier.onGloballyPositioned { cardSource.captureCoordinates("title", it) }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
             Text(listOf(video.creator, video.duration).filter(String::isNotBlank).joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -94,9 +104,10 @@ internal fun MusicPlaylistHeader(playlist: PlaylistUiModel, videos: List<VideoUi
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             MusicArtwork(playlist.thumbnailUrl.ifBlank { videos.firstOrNull()?.thumbnailUrl.orEmpty() },
-                Modifier.weight(.43f).aspectRatio(1f))
+                Modifier.weight(.43f).aspectRatio(1f).cardMorphTarget("playlist:${playlist.id}", "art", 12f))
             Column(Modifier.weight(.57f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(playlist.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Text(playlist.title, modifier = Modifier.cardMorphTarget("playlist:${playlist.id}", "title"),
+                    style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 if (playlist.description.isNotBlank()) Text(playlist.description, maxLines = 2,
                     overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -140,71 +151,126 @@ internal fun MusicNowPlaying(
     onOpenSettings: (() -> Unit)? = null,
     fullscreen: Boolean = false,
     onFullscreen: (() -> Unit)? = null,
+    active: Boolean = true,
 ) {
     var showQueue by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     val queueActions = LocalTemporaryQueue.current
     val currentIndex = playback.queueVideoIds.indexOf(video.id)
+    val artworkQueue = remember(video.id, playback.fullQueueVideoIds, playback.queueVideoIds) {
+        playback.fullQueueVideoIds.takeIf { video.id in it } ?: playback.queueVideoIds
+    }
+    val coverMotion = remember { MusicCoverMotion(video.id, artworkQueue) }
+    val fallbackArtwork = com.futo.platformplayer.compose.recognition.LocalRecognitionTransition.current?.artworkFallback
+        ?.takeIf { it.first == video.id }?.second
+    val cover = coverMotion.frame(video.id, video.thumbnailUrl, fallbackArtwork, artworkQueue)
+    val entryOpening = LocalPlayerCardTransition.current?.active == true ||
+        com.futo.platformplayer.compose.recognition.LocalRecognitionTransition.current?.phase ==
+            com.futo.platformplayer.compose.recognition.RecognitionOpenPhase.Opening
+    val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.leftHanded
+    val settingsAnchor = LocalMusicSettingsAnchor.current
+    PrepareAdjacentMusicArtwork(video.id, artworkQueue, queue, active)
     val timelineVideo = remember(video) { video.copy(storyboard = null) }
     BoxWithConstraints(Modifier.fillMaxSize().then(if (fullscreen) Modifier.safeDrawingPadding() else Modifier).testTag("music-now-playing")) {
         val landscape = maxWidth > maxHeight
+        val toolbarHeight = if (fullscreen) 56.dp else 0.dp
+        val bodyHeight = (maxHeight - toolbarHeight).coerceAtLeast(1.dp)
+        val controlsWidth = if (landscape) maxWidth / 2 else maxWidth
+        val controlsPadding = minOf(24.dp, ((controlsWidth - 264.dp) / 2).coerceAtLeast(0.dp))
+        val playButtonSize = (controlsWidth - controlsPadding * 2 - 192.dp).coerceIn(48.dp, 72.dp)
         val coverSize = minOf(if (landscape) maxWidth * .42f else maxWidth - 48.dp,
-            maxHeight * if (landscape) .8f else .49f).coerceAtLeast(120.dp)
+            bodyHeight * if (landscape) .8f else .49f).coerceAtLeast(120.dp)
         val art: @Composable () -> Unit = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (fullscreen) Text(stringResource(R.string.now_playing), style = MaterialTheme.typography.titleMedium)
-                MusicArtwork(video.thumbnailUrl, Modifier.size(coverSize).then(if (fullscreen) Modifier else LocalMusicPlayerDrag.current)
-                    .onGloballyPositioned { if (!fullscreen) onArtworkBounds(it.boundsInRoot()) }.testTag("music-player-artwork"), large = true)
+                com.futo.platformplayer.compose.recognition.RecognitionSharedPart(video.id, "art",
+                    Modifier.size(coverSize).then(if (fullscreen) Modifier else LocalMusicPlayerDrag.current)
+                        .onGloballyPositioned { if (!fullscreen) onArtworkBounds(it.boundsInRoot()) }.testTag("music-player-artwork"),
+                    cornerRadius = 12.dp) {
+                    AnimatedMusicArtwork(cover, animate = active && !entryOpening, modifier = Modifier.fillMaxSize())
+                }
             }
         }
         val controls: @Composable () -> Unit = {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(video.title, style = MaterialTheme.typography.headlineSmall, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(video.creator, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column(Modifier.fillMaxWidth().padding(horizontal = controlsPadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                com.futo.platformplayer.compose.recognition.RecognitionSharedPart(video.id, "title") {
+                    AnimatedMusicTrackText(cover, video.title, "title", animate = active && !entryOpening,
+                        style = MaterialTheme.typography.headlineSmall, lines = 2)
+                }
+                com.futo.platformplayer.compose.recognition.RecognitionSharedPart(video.id, "artist") {
+                    AnimatedMusicTrackText(cover, video.creator, "artist", animate = active && !entryOpening,
+                        style = MaterialTheme.typography.titleMedium, lines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 PlayerTimelineRow(video = timelineVideo, player = player,
                     remotePositionMs = playback.positionMs.takeIf { playback.isCasting }, durationMs = playback.durationMs,
                     bufferedPercentage = playback.bufferedPercentage, sponsorBlockSegments = nowPlaying.sponsorBlockSegments,
                     isFullscreen = false, isPortraitFullscreen = false, onSeek = onSeek, onSeekingChanged = {},
+                    modifier = Modifier.recognitionControlsReveal(),
                     labelColor = MaterialTheme.colorScheme.onSurface)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().recognitionControlsReveal().testTag("music-transport-controls"), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onWatchLater, modifier = Modifier.testTag("music-favorite").helpAnchor("music-favorite")) {
                         Icon(watchLaterIcon(video.isWatchLater), stringResource(R.string.music_favorites))
                     }
-                    IconButton(onClick = onPrevious, enabled = currentIndex > 0 || player.currentPosition > 5_000) {
+                    IconButton(onClick = {
+                        val index = artworkQueue.indexOf(video.id)
+                        coverMotion.request(artworkQueue.getOrNull(index - 1), -1); onPrevious()
+                    }, enabled = currentIndex > 0 || player.currentPosition > 5_000, modifier = Modifier.testTag("music-previous")) {
                         Icon(Icons.Outlined.SkipPrevious, stringResource(R.string.previous_video), Modifier.size(32.dp))
                     }
-                    FilledTonalIconButton(onClick = onToggle, modifier = Modifier.size(72.dp).testTag("music-play-pause"), shape = RoundedCornerShape(24.dp)) {
+                    FilledTonalIconButton(onClick = onToggle, enabled = !nowPlaying.isLoadingPlayback,
+                        modifier = Modifier.size(playButtonSize).testTag("music-play-pause"), shape = RoundedCornerShape(24.dp)) {
                         if (nowPlaying.isLoadingPlayback || playback.isBuffering) CircularProgressIndicator(Modifier.size(30.dp), strokeWidth = 3.dp)
                         else MorphingPlayPauseIcon(playback.isPlaying, stringResource(if (playback.isPlaying) R.string.pause else R.string.play), Modifier.size(36.dp), MaterialTheme.colorScheme.onSecondaryContainer)
                     }
-                    IconButton(onClick = onNext, enabled = currentIndex in 0 until playback.queueVideoIds.lastIndex) {
+                    IconButton(onClick = {
+                        val index = artworkQueue.indexOf(video.id)
+                        coverMotion.request(artworkQueue.getOrNull(index + 1), 1); onNext()
+                    }, enabled = currentIndex in 0 until playback.queueVideoIds.lastIndex, modifier = Modifier.testTag("music-next")) {
                         Icon(Icons.Outlined.SkipNext, stringResource(R.string.next_video), Modifier.size(32.dp))
                     }
-                    IconButton(onClick = { onOpenSettings?.invoke() ?: run { showSettings = true } }) { Icon(Icons.Outlined.MoreHoriz, stringResource(R.string.nav_settings)) }
+                    IconButton(onClick = { onOpenSettings?.invoke() ?: run { showSettings = true } },
+                        enabled = !settingsAnchor.visible,
+                        modifier = Modifier.onGloballyPositioned { settingsAnchor.onBounds(it.boundsInRoot()) }
+                            .graphicsLayer { alpha = if (settingsAnchor.visible) 0f else 1f }.testTag("music-settings")) {
+                        Icon(if (fullscreen) Icons.Outlined.Settings else Icons.Outlined.MoreHoriz, stringResource(R.string.nav_settings))
+                    }
                 }
-                playback.errorMessage?.let { error ->
+                (nowPlaying.errorMessage ?: playback.errorMessage)?.let { error ->
                     Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp).recognitionControlsReveal().testTag("music-secondary-controls"),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
                     IconButton(onClick = { showQueue = true }, modifier = Modifier.testTag("music-open-queue")) { Icon(Icons.AutoMirrored.Outlined.QueueMusic, stringResource(R.string.queue)) }
-                    IconButton(onClick = onDownload) { Icon(Icons.Outlined.Download, stringResource(R.string.download_all_audio)) }
-                    IconButton(onClick = onAddToPlaylist) { Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, stringResource(R.string.add_to_playlist)) }
-                    if (onFullscreen != null) IconButton(onClick = onFullscreen, modifier = Modifier.testTag("music-fullscreen")) {
-                        Icon(if (fullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
-                            stringResource(if (fullscreen) R.string.exit_fullscreen else R.string.enter_fullscreen))
+                    IconButton(onClick = onDownload, modifier = Modifier.testTag("music-download")) { Icon(Icons.Outlined.Download, stringResource(R.string.download_all_audio)) }
+                    IconButton(onClick = onAddToPlaylist, modifier = Modifier.testTag("music-add-playlist")) { Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, stringResource(R.string.add_to_playlist)) }
+                    if (onFullscreen != null && !fullscreen) IconButton(onClick = onFullscreen, modifier = Modifier.testTag("music-fullscreen")) {
+                        Icon(Icons.Outlined.Fullscreen, stringResource(R.string.enter_fullscreen))
                     }
                 }
             }
         }
-        if (landscape) Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { art() }
+        if (landscape) Row(Modifier.fillMaxSize().padding(top = toolbarHeight), verticalAlignment = Alignment.CenterVertically) {
+            if (!leftHanded) Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { art() }
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(vertical = 16.dp)) { item { controls() } }
-        } else LazyColumn(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
+            if (leftHanded) Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { art() }
+        } else LazyColumn(Modifier.fillMaxSize().padding(top = toolbarHeight), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp), contentPadding = PaddingValues(top = 12.dp, bottom = 16.dp)) {
             item { art() }
             item { controls() }
+        }
+        if (fullscreen) Box(
+            Modifier.align(if (landscape && leftHanded) androidx.compose.ui.AbsoluteAlignment.TopRight else androidx.compose.ui.AbsoluteAlignment.TopLeft)
+                .padding(top = 16.dp).fillMaxWidth(if (landscape) .5f else 1f).height(toolbarHeight),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(stringResource(R.string.now_playing), style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = if (landscape) 24.dp else 80.dp).testTag("music-fullscreen-heading"),
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (fullscreen && onFullscreen != null) IconButton(onClick = onFullscreen,
+            modifier = Modifier.align(if (leftHanded) androidx.compose.ui.AbsoluteAlignment.TopLeft else androidx.compose.ui.AbsoluteAlignment.TopRight)
+                .padding(horizontal = 24.dp, vertical = 8.dp).testTag("music-fullscreen")) {
+            Icon(Icons.Outlined.FullscreenExit, stringResource(R.string.exit_fullscreen))
         }
     }
     if (showQueue) ModalBottomSheet(onDismissRequest = { showQueue = false }, contentWindowInsets = { grayjoySheetInsets() }) {
@@ -219,10 +285,11 @@ internal fun MusicNowPlaying(
     if (showSettings) ModalBottomSheet(onDismissRequest = { showSettings = false }, contentWindowInsets = { grayjoySheetInsets() }) {
         Text(stringResource(R.string.playback_speed), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(20.dp))
         LazyColumn(Modifier.navigationBarsPadding()) {
-            itemsIndexed(listOf(.5f, .75f, 1f, 1.25f, 1.5f, 1.75f, 2f)) { _, speed ->
+            itemsIndexed(listOf(.5f, .75f, 1f, 1.25f, 1.5f, 1.75f, 2f)) { index, speed ->
                 ListItem(headlineContent = { Text("${speed}×") }, leadingContent = {
                     RadioButton(selected = playback.playbackSpeed == speed, onClick = { onSpeed(speed); showSettings = false })
-                }, modifier = Modifier.combinedClickable(onClick = { onSpeed(speed); showSettings = false }))
+                }, modifier = Modifier.dialogChoiceRow(index, 7)
+                    .combinedClickable(onClick = { onSpeed(speed); showSettings = false }))
             }
         }
     }

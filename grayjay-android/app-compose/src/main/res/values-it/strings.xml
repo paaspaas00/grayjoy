@@ -850,7 +850,7 @@
     <string name="job_finished_notice">Job terminato: %1$s</string>
     <string name="update_download_job_title">Download aggiornamento</string>
     <string name="experimental_features">Funzioni sperimentali</string>
-    <string name="audio_normalization">Normalizza audio a −23 LUFS</string>
+    <string name="audio_normalization">Normalizzazione audio</string>
     <string name="audio_normalization_description">Adatta gradualmente la sonorità durante la riproduzione, con protezione dai picchi. Se disattivata, il DSP è escluso. Non si applica al casting.</string>
     <string name="grayjoy_repository">Repository di Grayjoy</string>
     <string name="repository_open_failed">Nessuna app disponibile per aprire questo link.</string>

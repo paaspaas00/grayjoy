@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">将项目分组</string>
+    <string name="library_group_explanation">将列表整理为可展开的文件夹。同一项目可以属于多个播放列表。没有分组的项目仍会单独显示。</string>
+    <string name="library_group_none">不分组</string>
+    <string name="library_group_playlist">按播放列表</string>
+    <string name="library_group_channel">按频道或艺术家</string>
+    <string name="search_downloads">搜索下载内容</string>
+</resources>

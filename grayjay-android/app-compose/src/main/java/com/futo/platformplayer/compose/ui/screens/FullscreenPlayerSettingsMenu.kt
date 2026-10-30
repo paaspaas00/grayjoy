@@ -3,6 +3,7 @@ package com.futo.platformplayer.compose.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateIntOffsetAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -15,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
@@ -22,6 +24,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.zIndex
 import com.futo.platformplayer.compose.ui.PageBackHandler
 import kotlin.math.roundToInt
@@ -33,6 +36,7 @@ internal fun FullscreenPlayerSettingsMenu(
     anchorBounds: Rect?,
     onDismiss: () -> Unit,
     onBack: () -> Unit,
+    preferredHeight: Dp = 480.dp,
     content: @Composable () -> Unit,
 ) {
     val visibility = remember { MutableTransitionState(false) }
@@ -45,18 +49,21 @@ internal fun FullscreenPlayerSettingsMenu(
         val menuWidth = minOf(360.dp, (maxWidth - margin * 2).coerceAtLeast(1.dp))
         val marginPx = with(density) { margin.toPx() }
         val widthPx = with(density) { menuWidth.toPx() }
-        val x = (anchorBounds.right - widthPx).coerceIn(marginPx,
+        val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.leftHanded
+        val x = (if (leftHanded) anchorBounds.left else anchorBounds.right - widthPx).coerceIn(marginPx,
             (constraints.maxWidth - widthPx - marginPx).coerceAtLeast(marginPx))
+        val preferredHeightPx = with(density) { preferredHeight.toPx() }
         val y = anchorBounds.top.coerceIn(marginPx,
-            (constraints.maxHeight - marginPx).coerceAtLeast(marginPx))
-        val menuHeight = with(density) { (constraints.maxHeight - y - marginPx).coerceAtLeast(1f).toDp() }
+            (constraints.maxHeight - minOf(preferredHeightPx, constraints.maxHeight - marginPx * 2) - marginPx).coerceAtLeast(marginPx))
+        val position by animateIntOffsetAsState(IntOffset(x.roundToInt(), y.roundToInt()), tween(180), label = "settings-menu-position")
+        val menuHeight = with(density) { (constraints.maxHeight - position.y - marginPx).coerceAtLeast(1f).toDp() }
         Box(Modifier.fillMaxSize().clickable(
             interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss,
         ).testTag("fullscreen-settings-outside"))
         AnimatedVisibility(
             visibleState = visibility,
             enter = fadeIn(tween(90)), exit = fadeOut(tween(90)),
-            modifier = Modifier.offset { IntOffset(x.roundToInt(), y.roundToInt()) },
+            modifier = Modifier.offset { position },
         ) {
             Surface(
                 modifier = Modifier.width(menuWidth).heightIn(max = menuHeight)

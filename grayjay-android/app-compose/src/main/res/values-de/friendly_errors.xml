@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTube macht Schwierigkeiten</string>
+    <string name="friendly_youtube_body">YouTube lehnt die Anfrage ab und verlangt möglicherweise eine erneute Anmeldung. Prüfe Quellen → YouTube oder das mit Spotify verknüpfte Konto. Ist die Anmeldung korrekt, warte einige Minuten.</string>
+    <string name="friendly_network_title">Verbindung nicht möglich</string>
+    <string name="friendly_network_body">Der Dienst ist nicht erreichbar. Prüfe WLAN oder mobile Daten und versuche es erneut.</string>
+    <string name="friendly_timeout_title">Der Dienst antwortet langsam</string>
+    <string name="friendly_timeout_body">Die Anfrage hat zu lange gedauert. Versuche es später erneut.</string>
+    <string name="friendly_login_title">Anmeldung erforderlich</string>
+    <string name="friendly_login_body">Dieser Inhalt benötigt ein Konto. Öffne Quellen, melde dich beim Dienst an und prüfe deine Zugriffsrechte.</string>
+    <string name="friendly_limit_title">Der Dienst braucht eine Pause</string>
+    <string name="friendly_limit_body">Es wurden zu viele Anfragen gesendet. Warte einige Minuten und versuche es erneut.</string>
+    <string name="friendly_source_title">Die Quelle hat ein Problem</string>
+    <string name="friendly_source_body">Der Inhalt konnte nicht geladen werden. Versuche es erneut. Bleibt das Problem bestehen, aktualisiere die Quelle unter Einstellungen → Quellen.</string>
+    <string name="friendly_unavailable_title">Dieser Inhalt ist nicht verfügbar</string>
+    <string name="friendly_unavailable_body">Der Dienst stellt diesen Inhalt nicht bereit. Er wurde möglicherweise entfernt oder auf privat gestellt. Wähle einen anderen Inhalt.</string>
+    <string name="friendly_region_title">In deiner Region nicht verfügbar</string>
+    <string name="friendly_region_body">Der Dienst bietet diesen Inhalt in deiner aktuellen Region nicht an.</string>
+    <string name="friendly_format_title">Dieses Format kann nicht abgespielt werden</string>
+    <string name="friendly_format_body">Wähle eine andere Qualität oder einen anderen Inhalt. Aktualisiere bei weiteren Problemen Quelle und App.</string>
+    <string name="friendly_access_title">Der Dienst verweigert den Zugriff</string>
+    <string name="friendly_access_body">Prüfe die Anmeldung und versuche es erneut. Aktualisiere bei weiteren Problemen die Quelle unter Einstellungen → Quellen.</string>
+    <string name="friendly_drm_title">Dieser Inhalt ist geschützt</string>
+    <string name="friendly_drm_body">Der Dienst konnte die geschützte Wiedergabe nicht erlauben. Prüfe Konto und Abonnement. Downloads sind möglicherweise nicht erlaubt.</string>
+</resources>

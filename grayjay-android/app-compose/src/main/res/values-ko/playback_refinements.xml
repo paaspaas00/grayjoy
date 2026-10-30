@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_audio_normalization_body">동영상과 노래 사이의 음량 차이를 줄여 볼륨을 덜 조절하게 해줍니다. 원본 파일은 바뀌지 않으며 언제든 끌 수 있습니다.</string>
+    <string name="audio_normalization_level">음량 조정 수준</string>
+    <string name="normalization_quieter">더 조용한 음량</string>
+    <string name="normalization_louder">더 또렷한 음량</string>
+    <string name="setup_song_recognition_body">검색 버튼을 길게 눌러 노래를 알아보세요. Grayjoy는 Shazam을 사용하며 인터넷 연결이 필요합니다.</string>
+</resources>

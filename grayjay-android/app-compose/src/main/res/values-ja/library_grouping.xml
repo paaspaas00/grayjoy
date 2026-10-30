@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">項目をグループ化</string>
+    <string name="library_group_explanation">このリストを展開できるフォルダに整理します。1つの項目が複数のプレイリストに属することもあります。グループのない項目は個別に表示されます。</string>
+    <string name="library_group_none">グループ化しない</string>
+    <string name="library_group_playlist">プレイリスト別</string>
+    <string name="library_group_channel">チャンネル・アーティスト別</string>
+    <string name="search_downloads">ダウンロード内を検索</string>
+</resources>

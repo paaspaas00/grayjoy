@@ -25,13 +25,17 @@ class DiagnosticArchivePrivacyTest {
             DiagnosticEventRing(File(logs, "events")).append(org.json.JSONObject()
                 .put("time", "2026-10-24T12:00:00Z").put("component", "Playback").put("level", "error")
                 .put("trace", "java.lang.IllegalArgumentException: COOKIE_SECRET\n at Example.run(Player.kt:10)")
-                .put("message", "user@example.test").toString())
+                .put("message", "user@example.test").put("details", "PRIVATE_BACKEND_TEXT")
+                .put("operation", "playback").put("from", "NewPipe").put("to", "Grayjay")
+                .put("phase", "attempt").put("reason", "YoutubeCheck").toString())
             val archive = CrashLogStore.createShareArchive(context)
             val contents = ZipFile(archive).use { zip -> zip.entries().asSequence().joinToString("\n") { entry ->
                 zip.getInputStream(entry).bufferedReader().use { it.readText() }
             } }
             assertTrue(contents.contains("Player.kt:42")); assertTrue(contents.contains("Player.kt:10"))
             assertFalse(contents.contains("COOKIE_SECRET")); assertFalse(contents.contains("user@")); assertFalse(contents.contains("https://private"))
+            assertFalse(contents.contains("PRIVATE_BACKEND_TEXT"))
+            assertTrue(contents.contains("YoutubeCheck")); assertTrue(contents.contains("NewPipe")); assertTrue(contents.contains("Grayjay"))
         } finally { root.deleteRecursively() }
     }
 }

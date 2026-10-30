@@ -50,6 +50,8 @@ internal fun RemoteBitmapImage(
     requestSize: IntSize? = null,
     artworkKind: ArtworkKind = if (circleCrop) ArtworkKind.Avatar else ArtworkKind.Thumbnail,
     showParentPlaceholderWhileLoading: Boolean = false,
+    cropToBounds: Boolean = false,
+    previewRequestSize: IntSize? = null,
     onLoadFailure: () -> Unit = {},
 ) {
     val context = LocalContext.current.applicationContext
@@ -88,11 +90,11 @@ internal fun RemoteBitmapImage(
     val model: Any? = if (web) artwork?.file else url
     val measuredSize = remember { mutableStateOf(IntSize.Zero) }
     val targetSize = requestSize ?: measuredSize.value
-    val bitmap = remember(url, fallbackUrl, requestHeaders, circleCrop, targetSize, generation) {
+    val bitmap = remember(url, fallbackUrl, requestHeaders, circleCrop, cropToBounds, targetSize, generation) {
         mutableStateOf<ImageBitmap?>(null)
     }
     if (model != null && url.isNotBlank() && targetSize.width > 0 && targetSize.height > 0) {
-    DisposableEffect(context, model, artwork?.revision, requestHeaders, circleCrop, targetSize, generation) {
+    DisposableEffect(context, model, artwork?.revision, requestHeaders, circleCrop, cropToBounds, targetSize, previewRequestSize, generation) {
         var active = true
         val manager = Glide.with(context)
         val target = object : CustomTarget<Bitmap>() {
@@ -105,18 +107,24 @@ internal fun RemoteBitmapImage(
             }
         }
         run {
-            fun request(address: String) = manager.asBitmap()
+            fun request(address: String, size: IntSize = targetSize, crop: Boolean = cropToBounds) = manager.asBitmap()
                 .load(if (requestHeaders.isEmpty()) address else GlideUrl(address, LazyHeaders.Builder().apply {
                     requestHeaders.forEach { (name, value) -> addHeader(name, value) }
                 }.build()))
-                .override(targetSize.width, targetSize.height)
+                .override(size.width, size.height)
                 .dontAnimate()
-                .let { if (circleCrop) it.circleCrop() else it.centerCrop() }
+                .let { if (circleCrop) it.circleCrop() else if (crop) it.fitCenter() else it.centerCrop() }
             val primary = if (web) manager.asBitmap().load(model).signature(ObjectKey(artwork?.revision ?: 0L))
                 .diskCacheStrategy(DiskCacheStrategy.NONE).override(targetSize.width, targetSize.height).dontAnimate()
-                .let { if (circleCrop) it.circleCrop() else it.centerCrop() }
+                .let { if (circleCrop) it.circleCrop() else if (cropToBounds) it.fitCenter() else it.centerCrop() }
                 else request(url)
-            (if (!web && fallbackUrl != null && fallbackUrl != url) primary.error(request(fallbackUrl)) else primary).into(target)
+            val preview = previewRequestSize?.takeIf { it.width > 0 && it.height > 0 && it != targetSize }?.let { size ->
+                if (web) manager.asBitmap().load(model).signature(ObjectKey(artwork?.revision ?: 0L))
+                    .diskCacheStrategy(DiskCacheStrategy.NONE).override(size.width, size.height).dontAnimate().centerCrop()
+                else request(url, size, false)
+            }
+            val progressive = if (preview != null) primary.thumbnail(preview) else primary
+            (if (!web && fallbackUrl != null && fallbackUrl != url) progressive.error(request(fallbackUrl)) else progressive).into(target)
         }
         onDispose {
             active = false
@@ -131,14 +139,27 @@ internal fun RemoteBitmapImage(
     } else Modifier)) {
         if (bitmap.value != null || !showParentPlaceholderWhileLoading) drawRect(placeholderColor)
         bitmap.value?.let { image ->
+            val crop = if (cropToBounds) centeredArtworkCrop(image.width, image.height, size.width, size.height) else null
             drawImage(
                 image = image,
-                srcOffset = IntOffset.Zero,
-                srcSize = IntSize(image.width, image.height),
+                srcOffset = crop?.let { IntOffset(it.left, it.top) } ?: IntOffset.Zero,
+                srcSize = crop?.let { IntSize(it.width, it.height) } ?: IntSize(image.width, image.height),
                 dstOffset = IntOffset.Zero,
                 dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
                 filterQuality = FilterQuality.Low,
             )
         }
     }
+}
+
+/** Keeps a cached decode stable while the destination aspect ratio changes during a morph. */
+internal fun centeredArtworkCrop(width: Int, height: Int, targetWidth: Float, targetHeight: Float): androidx.compose.ui.unit.IntRect {
+    if (width <= 0 || height <= 0 || !targetWidth.isFinite() || !targetHeight.isFinite() || targetWidth <= 0 || targetHeight <= 0)
+        return androidx.compose.ui.unit.IntRect(0, 0, width.coerceAtLeast(1), height.coerceAtLeast(1))
+    val ratio = targetWidth / targetHeight
+    val cropWidth = minOf(width, (height * ratio).roundToInt().coerceAtLeast(1))
+    val cropHeight = minOf(height, (width / ratio).roundToInt().coerceAtLeast(1))
+    val x = (width - cropWidth) / 2
+    val y = (height - cropHeight) / 2
+    return androidx.compose.ui.unit.IntRect(x, y, x + cropWidth, y + cropHeight)
 }

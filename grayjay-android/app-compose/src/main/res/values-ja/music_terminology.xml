@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="music_artist_tracks_search">このアーティストの曲を検索</string>
+    <string name="music_artist_tracks_no_match">「%1$s」に一致するこのアーティストの曲はありません。</string>
+    <string name="music_track_title_language">曲名の言語</string>
+    <string name="music_artist_playback_speed_description">このアーティストの曲に自動適用する再生速度を選択します。</string>
+    <string name="music_per_artist_playback_speed_description">アーティストごとの再生速度を記憶します。曲ごとに設定した速度が優先されます。</string>
+    <string name="music_search_hint">曲、アーティスト、プレイリストを検索</string>
+</resources>

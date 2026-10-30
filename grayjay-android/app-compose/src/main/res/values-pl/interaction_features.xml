@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recognition_swipe_open">Przesuń w górę, aby otworzyć bez odtwarzania</string>
+    <string name="recognition_privacy_short">Słucha przez chwilę. Do Shazam trafia tylko odcisk muzyczny, nigdy nagranie. Wymagany Internet.</string>
+    <string name="music_artists">Artyści</string>
+    <string name="music_artist">Artysta</string>
+    <string name="recognize_song">Rozpoznaj utwór</string>
+    <string name="recognition_description">Przytrzymaj Szukaj na pasku nawigacji, aby rozpoznać muzykę w otoczeniu i odtworzyć znaleziony utwór.</string>
+    <string name="recognition_privacy">Mikrofon słucha przez kilka sekund tylko wtedy, gdy to okno jest otwarte. Do Shazam wysyłany jest odcisk muzyczny, nie nagranie audio. Wymagany jest Internet.</string>
+    <string name="recognition_disabled">Rozpoznawanie muzyki jest wyłączone. Włącz je w Ustawieniach.</string>
+    <string name="recognition_permission">Zezwól na dostęp do mikrofonu, aby rozpoznawać muzykę.</string>
+    <string name="recognition_error">Rozpoznawanie jest teraz niedostępne. Sprawdź połączenie i spróbuj ponownie.</string>
+    <string name="recognition_no_match">Nie znaleziono utworu. Zbliż się do muzyki i spróbuj ponownie.</string>
+    <string name="recognition_listening">Słuchanie muzyki…</string>
+    <string name="recognition_searching">Wyszukiwanie utworu…</string>
+    <string name="recognition_play_failed">Nie udało się uruchomić utworu. Spróbuj ponownie za chwilę.</string>
+    <string name="left_handed_mode">Tryb leworęczny</string>
+    <string name="left_handed_description">Przyciski i menu odtwarzacza przesuwają się w lewo. Okładka w pełnoekranowym odtwarzaczu muzyki jest po prawej.</string>
+    <string name="library_shortcuts">Skróty biblioteki</string>
+    <string name="library_shortcuts_description">Przytrzymaj Bibliotekę na pasku nawigacji, aby otworzyć pionowe menu. Od góry: Historia, Playlisty, Do obejrzenia (Ulubione dla muzyki), Pobrane. Dotknij ikony, aby przejść; dotknij poza menu, aby je zamknąć.</string>
+    <string name="history_group_explanation">Kolejne filmy odtworzone z tej samej playlisty mogą być wyświetlane na jednej rozwijanej karcie. Zmienia to tylko widok historii; nic nie jest przenoszone ani usuwane.</string>
+    <string name="history_group_settings">Grupowanie historii</string>
+    <string name="setup_handedness">Wybierz wygodniejszą stronę</string>
+    <string name="hand_right">Praworęczny</string>
+    <string name="hand_left">Leworęczny</string>
+</resources>

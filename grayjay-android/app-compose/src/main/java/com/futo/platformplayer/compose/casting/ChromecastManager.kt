@@ -424,7 +424,7 @@ internal class ChromecastManager(context: Context) {
     }
 
     private fun publishFailure(error: Throwable) {
-        val message = error.localizedMessage ?: "Cast connection failed."
+        val message = com.futo.platformplayer.compose.errors.friendlyBackendMessage(appContext, error, com.futo.platformplayer.compose.R.string.chromecast_same_wifi)
         disconnectInternal(stopRemotePlayback = false, publishState = false)
         _state.update {
             it.copy(

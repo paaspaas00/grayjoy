@@ -1,4 +1,7 @@
 package com.futo.platformplayer.compose
+import com.futo.platformplayer.compose.errors.BackendFailureKind
+import com.futo.platformplayer.compose.errors.classifyBackendFailure
+import com.futo.platformplayer.compose.errors.friendlyBackendMessage
 
 import android.app.Application
 import android.content.Context
@@ -58,6 +61,8 @@ import com.futo.platformplayer.compose.downloads.OfflinePlaylistDownload
 import com.futo.platformplayer.compose.downloads.QueuedDownload
 import com.futo.platformplayer.compose.downloads.NetworkMonitor
 import com.futo.platformplayer.compose.downloads.isRecoverableConnectivityFailure
+import com.futo.platformplayer.compose.engine.boundedFailures
+import com.futo.platformplayer.compose.engine.isPendingLiveFailure
 import com.futo.platformplayer.compose.pclink.PcLinkManager
 import com.futo.platformplayer.compose.pclink.PcLinkProtocol
 import com.futo.platformplayer.compose.pclink.PcLinkService
@@ -362,18 +367,14 @@ internal fun isPermanentlyUnavailableVideo(
     videoTitle: String = "",
     isLive: Boolean = false,
 ): Boolean {
-    val messages = error.boundedCauses()
-        .map { it.message?.lowercase(Locale.ROOT).orEmpty() }
-        .toList()
-    return error.boundedCauses()
+    if (error.isPendingLiveFailure() || error.boundedFailures().any { it is GrayjayScheduledVideoException }) return false
+    // A missing stream is not proof of deletion, even for a title labelled live.
+    return error.boundedFailures()
         .any { cause ->
             if (cause is ScriptUnavailableException) return@any true
-            val message = cause.message?.lowercase(Locale.ROOT).orEmpty()
+            val message = runCatching { cause.message }.getOrNull().orEmpty().take(4096).lowercase(Locale.ROOT)
             PERMANENT_UNAVAILABLE_MESSAGES.any(message::contains)
-        } || (
-        messages.any { it.contains("no supported video or audio stream") } &&
-            (isLive || videoTitle.contains("(live)", ignoreCase = true))
-        )
+        }
 }
 
 private val PERMANENT_UNAVAILABLE_MESSAGES = listOf(
@@ -391,7 +392,7 @@ private fun Throwable.hasMessageInChain(value: String): Boolean =
         .any { it.message?.contains(value, ignoreCase = true) == true }
 
 private fun Throwable.scheduledVideoException(): GrayjayScheduledVideoException? =
-    boundedCauses()
+    boundedFailures()
         .filterIsInstance<GrayjayScheduledVideoException>()
         .firstOrNull()
 
@@ -472,11 +473,18 @@ internal fun VideoUiModel.asAudioDownloadDescriptor(
 }
 
 class GrayjayViewModel(application: Application) : AndroidViewModel(application) {
+    private var terminologyStateReady = false
+    private fun musicWordsEnabled(): Boolean = enabledSourceIds == setOf("spotify") ||
+        if (terminologyStateReady) _uiState.value.profiles.firstOrNull { it.id == activeProfileId }?.let {
+            it.sourceId.equals("spotify", true) || it.name.trim().equals("spotify", true)
+        } == true else initialMusicProfile
     private fun text(@StringRes id: Int, vararg args: Any): String =
-        getApplication<Application>().getString(com.futo.platformplayer.compose.ui.sourceTerminologyResource(id, enabledSourceIds == setOf("youtube")), *args)
+        com.futo.platformplayer.compose.ui.musicProfileString(getApplication<Application>().resources,
+            com.futo.platformplayer.compose.ui.sourceTerminologyResource(id, enabledSourceIds == setOf("youtube")), musicWordsEnabled(), *args)
 
     private fun quantityText(@PluralsRes id: Int, quantity: Int, vararg args: Any): String =
-        getApplication<Application>().resources.getQuantityString(com.futo.platformplayer.compose.ui.sourceTerminologyResource(id, enabledSourceIds == setOf("youtube")), quantity, *args)
+        com.futo.platformplayer.compose.ui.musicProfileQuantity(getApplication<Application>().resources,
+            com.futo.platformplayer.compose.ui.sourceTerminologyResource(id, enabledSourceIds == setOf("youtube")), quantity, musicWordsEnabled(), *args)
 
     private val contentRepository: ContentRepository = LocalContentRepository()
     private val crashPauseHook: () -> Unit = { pauseJobsForTermination() }
@@ -485,6 +493,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private val profileRepository = ProfileRepository(application)
     private var sourceProfileJob: Job? = null
     private var activeProfileId = profileRepository.activeProfileId()
+    private val initialMusicProfile = profileRepository.profiles().firstOrNull { it.id == activeProfileId }?.let {
+        it.sourceId.equals("spotify", true) || it.name.trim().equals("spotify", true)
+    } == true
     private var preferences = GrayjayPreferences(application, activeProfileId)
     private var playlistPlaybackPreferences = com.futo.platformplayer.compose.data.PlaylistPlaybackPreferences(application, activeProfileId)
     private var libraryRepository: LibraryRepository =
@@ -733,6 +744,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             perChannelPlaybackSpeedEnabled = preferences.perChannelPlaybackSpeedEnabled,
             holdToSpeedEnabled = preferences.holdToSpeedEnabled,
             audioNormalizationEnabled = preferences.audioNormalizationEnabled,
+            audioNormalizationTargetLufs = preferences.audioNormalizationTargetLufs,
             oneHandedPlayerEnabled = preferences.oneHandedPlayerEnabled,
             brainrotShortsEnabled = preferences.brainrotShortsEnabled,
             youtubeAutoplayEnabled = preferences.youtubeAutoplayEnabled,
@@ -778,10 +790,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     val player get() = engine.player
 
     init {
+        terminologyStateReady = true
         CrashLogStore.setBeforeCrashHook(crashPauseHook)
         com.futo.platformplayer.compose.jobs.RunningJobs.register(crashPauseHook)
         engine.player.addListener(sponsorSeekListener)
         engine.setProfile(activeProfileId)
+        engine.setAudioNormalizationTarget(preferences.audioNormalizationTargetLufs)
         engine.setAudioNormalizationEnabled(preferences.audioNormalizationEnabled)
         configureVideoTitleLanguage()
         configureYoutubeBackend()
@@ -1127,6 +1141,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         engine.setAudioNormalizationEnabled(enabled)
     }
 
+    fun setAudioNormalizationTarget(targetLufs: Int) {
+        if (targetLufs != -32 && targetLufs != -14) return
+        preferences.audioNormalizationTargetLufs = targetLufs
+        _uiState.update { it.copy(audioNormalizationTargetLufs = targetLufs) }
+        engine.setAudioNormalizationTarget(targetLufs)
+    }
+
     fun setOneHandedPlayerEnabled(enabled: Boolean) {
         preferences.oneHandedPlayerEnabled = enabled
         _uiState.update { it.copy(oneHandedPlayerEnabled = enabled) }
@@ -1425,6 +1446,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.e("GrayjayViewModel", "PC playback handoff failed.", error)
                 Toast.makeText(
                     getApplication(),
@@ -1742,13 +1764,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 if (!followingRequests.isCurrent(request) || activeProfileId != profile) return@launch
                 _uiState.update {
                     it.copy(
                         followingFeedLoading = false,
-                        followingFeedError = error.localizedMessage
-                            ?: text(R.string.home_feed_refresh_failed),
+                        followingFeedError = friendlyError(error, R.string.home_feed_refresh_failed),
                     )
                 }
             }
@@ -1975,13 +1997,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 _uiState.update { state ->
                     if (homeLoadGeneration != loadGeneration || state.home.selectedFeed != feed) state else state.copy(
                         home = state.home.copy(
                             isLoading = false,
                             isRefreshing = false,
                             isLoadingMore = false,
-                            errorMessage = error.localizedMessage ?: text(R.string.home_feed_refresh_failed),
+                            errorMessage = friendlyError(error, R.string.home_feed_refresh_failed),
                         ),
                     )
                 }
@@ -2090,6 +2113,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 _uiState.update { state ->
                     val home = state.home
                     if (
@@ -2101,8 +2125,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         home = home.copy(
                             isLoading = false,
                             isRefreshing = false,
-                            errorMessage = error.localizedMessage
-                                ?: text(R.string.home_feed_refresh_failed),
+                            errorMessage = friendlyError(error, R.string.home_feed_refresh_failed),
                         ),
                     )
                 }
@@ -2127,7 +2150,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val requestProfile = activeProfileId
         val requestGeneration = homeLoadGeneration
         homePagingJob?.cancel()
-        _uiState.update { it.copy(home = it.home.copy(isLoadingMore = true)) }
+        _uiState.update { it.copy(home = it.home.copy(isLoadingMore = true, errorMessage = null)) }
         homePagingJob = viewModelScope.launch {
             try {
                 val page = engine.loadMoreHome(feed, continuationId)
@@ -2182,6 +2205,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 _uiState.update { state ->
                     if (
                         state.home.selectedFeed != feed ||
@@ -2191,7 +2215,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     ) state else state.copy(
                         home = state.home.copy(
                             isLoadingMore = false,
-                            errorMessage = error.localizedMessage ?: text(R.string.home_feed_refresh_failed),
+                            errorMessage = friendlyError(error, R.string.home_feed_refresh_failed),
                         ),
                     )
                 }
@@ -2271,7 +2295,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 restoreOriginIfUnpublished()
                 Log.e("SourceProfiles", "Could not prepare source profiles", error)
                 _uiState.update { it.copy(sourceProfileSetup = SourceProfileSetupUiState(
-                    error = error.localizedMessage ?: text(R.string.profile_split_failed))) }
+                    error = friendlyError(error, R.string.profile_split_failed))) }
             } finally {
                 _uiState.update { it.copy(isSwitchingProfile = false,
                     sourceProfileSetup = it.sourceProfileSetup.copy(isRunning = false)) }
@@ -2394,6 +2418,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         activeProfileId = profileId
         jobsNeedRestoration = false
         preferences = nextPreferences
+        engine.setAudioNormalizationTarget(preferences.audioNormalizationTargetLufs)
         engine.setAudioNormalizationEnabled(preferences.audioNormalizationEnabled)
         playlistPlaybackPreferences = nextPlaylistPreferences
         configureVideoTitleLanguage()
@@ -2456,6 +2481,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             holdToSpeedEnabled = preferences.holdToSpeedEnabled,
             audioNormalizationEnabled = preferences.audioNormalizationEnabled,
             oneHandedPlayerEnabled = preferences.oneHandedPlayerEnabled,
+            audioNormalizationTargetLufs = preferences.audioNormalizationTargetLufs,
             brainrotShortsEnabled = preferences.brainrotShortsEnabled,
             youtubeAutoplayEnabled = preferences.youtubeAutoplayEnabled,
             channelPlaybackSpeeds = preferences.channelPlaybackSpeeds(),
@@ -2686,10 +2712,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.e("GrayjayViewModel", "Opening external URL failed: $normalizedUrl", error)
                 Toast.makeText(
                     getApplication(),
-                    error.localizedMessage ?: text(R.string.link_not_supported_by_sources),
+                    friendlyError(error, R.string.link_not_supported_by_sources),
                     Toast.LENGTH_LONG,
                 ).show()
             }
@@ -2726,6 +2753,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 // Prefs must remain instant and usable offline. A failed background check is
                 // intentionally silent; entering Prefs later retries it.
                 Log.d("GrayjayViewModel", "Could not check GitHub releases.", error)
@@ -2770,6 +2798,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 if (activeProfileId != profileAtStart || metadataHydrationGeneration != metadataGenerationAtStart) return@launchTracked
                 val scheduled = error.scheduledVideoException()
                 if (scheduled != null) {
@@ -2858,6 +2887,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
+                    com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                     Log.w("GrayjayViewModel", "Could not persist visible video metadata", error)
                     return@launch
                 }
@@ -2925,7 +2955,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         sourceAccountJob = viewModelScope.launch {
             val name = try { engine.refreshSourceAccountName(sourceId) }
                 catch (cancel: CancellationException) { throw cancel }
-                catch (_: Exception) { null }
+                catch (error: Exception) { com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error); null }
             if (profile != activeProfileId || request != sourceAccountRequest || name.isNullOrBlank()) return@launch
             _uiState.update { state ->
                 if (state.activeProfileId != profile) state else state.copy(sources = state.sources.map {
@@ -2934,6 +2964,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             }
         }
     }
+
+    fun reloadYoutubePlaybackAccount() { engine.reloadYoutubePlaybackAccount() }
 
     fun reloadSourceAuthentication(sourceId: String) {
         sourceAccountJob?.cancel()
@@ -3094,12 +3126,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 }
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 if (importGeneration == youtubeImportGeneration) {
                     _uiState.update {
                         it.copy(
                             youtubeImport = YoutubeImportUiState(
-                                errorMessage = error.localizedMessage
-                                    ?: text(R.string.youtube_import_failed),
+                                errorMessage = friendlyError(error, R.string.youtube_import_failed),
                             ),
                         )
                     }
@@ -3182,10 +3214,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.e("GrayjayViewModel", "Library export failed.", error)
                 Toast.makeText(
                     getApplication(),
-                    error.localizedMessage ?: text(R.string.export_failed),
+                    friendlyError(error, R.string.export_failed),
                     Toast.LENGTH_LONG,
                 ).show()
             } finally {
@@ -3236,6 +3269,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Throwable) {
+                    com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                     Log.w("GrayjayViewModel", "Could not observe background imports.", error)
                     delay(2_000L)
                     continue
@@ -3329,6 +3363,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     private fun openVideoInternal(
         videoId: String,
         publishNavigationWhenStarted: Boolean = false,
+        playWhenReadyOverride: Boolean? = null,
     ) {
         val video = findVideo(videoId) ?: return
         if (video.scheduledStartAtMs > System.currentTimeMillis()) {
@@ -3418,7 +3453,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 scheduleResumePromptDismiss(resolved.id, resumePositionFraction)
                 openLocallyOrCast(
                     video = resolved,
-                    playWhenReady = resolved.playbackFromDownload || resolved.contentUrl.isNotBlank(),
+                    playWhenReady = playWhenReadyOverride ?: (resolved.playbackFromDownload || resolved.contentUrl.isNotBlank()),
                 )
                 _uiState.update { state ->
                     if (state.nowPlaying.video?.id != resolved.id) state else state.copy(
@@ -3433,6 +3468,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 if (
                     requestGeneration != videoOpenRequestGeneration ||
                     pendingPlaybackVideoId != video.id
@@ -3465,7 +3501,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     requestSponsorBlockSegments(previousNowPlaying.video)
                     return@launch
                 }
-                val permanentlyUnavailable = isPermanentlyUnavailableVideo(
+                val kind = classifyBackendFailure(error, video.sourceId)
+                val permanentlyUnavailable = kind !in setOf(BackendFailureKind.YoutubeCheck, BackendFailureKind.Login,
+                    BackendFailureKind.Network, BackendFailureKind.Timeout, BackendFailureKind.RateLimit) && isPermanentlyUnavailableVideo(
                     error = error,
                     videoTitle = video.title,
                     isLive = video.isLive,
@@ -3486,14 +3524,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     saveHomeToSession()
                     requestSponsorBlockSegments(previousNowPlaying.video)
                 } else {
-                    val message = if (error is ScriptLoginRequiredException) {
-                        text(
-                            R.string.source_login_required_for_video,
-                            video.sourceName.ifBlank { video.sourceId },
-                        )
-                    } else {
-                        error.localizedMessage ?: text(R.string.video_details_load_failed)
-                    }
+                    val message = friendlyBackendMessage(getApplication(), error, source = video.sourceId)
                     _uiState.update { state ->
                         state.copy(
                             nowPlaying = previousNowPlaying,
@@ -3501,6 +3532,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                                 video = video,
                                 permanentlyUnavailable = false,
                                 message = message,
+                                failureKind = kind,
                             ),
                         )
                     }
@@ -3537,6 +3569,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         permanentlyUnavailable: Boolean,
         message: String? = null,
         scheduledStartAtMs: Long = 0L,
+        failureKind: BackendFailureKind? = null,
     ) = com.futo.platformplayer.compose.ui.VideoOpenDialogUiModel(
         videoId = video.id,
         title = video.title,
@@ -3550,6 +3583,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         },
         permanentlyUnavailable = permanentlyUnavailable,
         scheduledStartAtMs = scheduledStartAtMs,
+        headlineRes = failureKind?.title,
+        showAsDialog = failureKind?.needsAction ?: true,
+        noticeMessage = failureKind?.let {
+            (if (it == BackendFailureKind.Source && !message.isNullOrBlank()) message.substringBefore(". ").trimEnd('.') else text(it.title)) +
+                ". " + text(R.string.try_again)
+        },
     )
 
     private fun scheduledVideoDate(startAtMs: Long): String =
@@ -3565,6 +3604,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.d("GrayjayViewModel", "Storyboard lookup failed for ${video.id}.", error)
                 null
             } ?: return@launch
@@ -3687,6 +3727,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 engine.player.prepare()
                 engine.resumePlayback()
             } catch (error: Exception) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 session.knownVideoIds.remove(next.id)
                 session.orderedVideoIds.remove(next.id)
                 autoplayCancelledFor = current
@@ -3926,6 +3967,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 if (generation != playbackGeneration) return@launch
                 Log.e(
                     "GrayjayViewModel",
@@ -3942,14 +3984,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         nowPlaying = state.nowPlaying.copy(
                             isLoadingPlayback = false,
                             isLoadingExtras = false,
-                            errorMessage = if (error is ScriptLoginRequiredException) {
-                                text(
-                                    R.string.source_login_required_for_video,
-                                    queue.first().sourceName.ifBlank { queue.first().sourceId },
-                                )
-                            } else {
-                                error.localizedMessage ?: text(R.string.video_details_load_failed)
-                            },
+                            errorMessage = friendlyBackendMessage(getApplication(), error, source = queue.first().sourceId),
                         ),
                     )
                 }
@@ -4025,6 +4060,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
+                    com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                     if (error.hasMessageInChain("TOO_MANY_ACTIVE_STREAMS")) {
                         // Crunchyroll counts every resolved episode as an active stream. Keep the
                         // item pending and back off instead of walking the whole season and
@@ -4061,6 +4097,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 try {
                     engine.appendToQueue(listOf(resolved), session.orderedVideoIds.toList())
                 } catch (error: Throwable) {
+                    com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                     Log.w(
                         "GrayjayViewModel",
                         "Could not append queued video ${resolved.id}; continuing with the queue.",
@@ -4363,6 +4400,22 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             result
         }
 
+    suspend fun resolveRecognizedSong(query: String): VideoUiModel = withContext(Dispatchers.Main.immediate) {
+        val profile = activeProfileId
+        val results = engine.search(query.take(600), setOf("youtube"), SearchCorpus(emptyList(), emptyList(), emptyList()))
+        if (activeProfileId != profile) throw CancellationException("Profile changed during song lookup")
+        val video = results.videos.firstOrNull { it.isAvailable } ?: error("No playable result for recognized song")
+        remoteVideos[video.id] = video
+        registerRemoteChannel(video)
+        video
+    }
+
+    fun openRecognizedSong(videoId: String, playWhenReady: Boolean) {
+        check(findVideo(videoId) != null) { "Recognized song is no longer available in this profile" }
+        pendingVoicePlayback = null
+        openVideoInternal(videoId, publishNavigationWhenStarted = true, playWhenReadyOverride = playWhenReady)
+    }
+
     fun skipToNext() {
         if (!chromecastManager.state.value.isConnected) {
             engine.skipToNext()
@@ -4469,8 +4522,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
+            com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
             Log.e("GrayjayViewModel", "Could not change the video quality", error)
-            Toast.makeText(getApplication(), R.string.video_quality_change_failed, Toast.LENGTH_LONG).show()
+            Toast.makeText(getApplication(), text(R.string.video_quality_change_failed), Toast.LENGTH_LONG).show()
             return
         }
         val cast = chromecastManager.state.value
@@ -4499,6 +4553,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.e("GrayjayViewModel", "Could not prepare online cast source.", error)
                 return@launch
             }
@@ -4629,13 +4684,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 if (generation != playbackGeneration || profileAtStart != activeProfileId ||
                     _uiState.value.nowPlaying.video?.id != currentVideoId) return@launch
                 Log.e("GrayjayViewModel", "Could not change audio language.", error)
                 Toast.makeText(
                     getApplication(),
-                    error.localizedMessage ?: text(R.string.audio_language_change_failed),
+                    friendlyError(error, R.string.audio_language_change_failed),
                     Toast.LENGTH_LONG,
                 ).show()
             }
@@ -4690,9 +4746,10 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 if (isCurrentRequest()) {
                     Log.e("GrayjayViewModel", "Could not refresh playback source.", error)
-                    Toast.makeText(getApplication(), error.localizedMessage, Toast.LENGTH_LONG).show()
+                    Toast.makeText(getApplication(), friendlyError(error), Toast.LENGTH_LONG).show()
                 }
             } finally {
                 engine.player.removeListener(intentListener)
@@ -4825,12 +4882,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 _uiState.update { state ->
                     if (state.channelDetail.channelId != initialChannel.id) state else state.copy(
                         channelDetail = state.channelDetail.copy(
                             isLoading = false,
-                            errorMessage = error.localizedMessage
-                                ?: text(R.string.creator_load_failed),
+                            errorMessage = friendlyError(error, R.string.creator_load_failed),
                         ),
                     )
                 }
@@ -4924,11 +4981,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 _uiState.update { state ->
                     if (state.channelDetail.channelId != channel.id || state.channelDetail.selectedTab != tab) state else state.copy(
                         channelDetail = state.channelDetail.copy(
                             isLoading = false,
-                            errorMessage = error.localizedMessage ?: text(R.string.creator_load_failed),
+                            errorMessage = friendlyError(error, R.string.creator_load_failed),
                         ),
                     )
                 }
@@ -4948,7 +5006,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 channelDetail = state.channelDetail.copy(
                     searchQuery = query,
                     searchVideos = emptyList(),
-                    isSearching = query.isNotBlank(),
+                    isSearching = query.isNotBlank() && !tab.isPlaylistTab,
                     searchIsRemote = false,
                     isSearchLoadingMore = false,
                     searchContinuationId = null,
@@ -4993,6 +5051,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.w("GrayjayViewModel", "Remote channel search failed; using local results.", error)
                 _uiState.update { state ->
                     if (
@@ -5002,7 +5061,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         channelDetail = state.channelDetail.copy(
                             isSearching = false,
                             searchIsRemote = false,
-                            searchErrorMessage = error.localizedMessage,
+                            searchErrorMessage = friendlyError(error),
                         ),
                     )
                 }
@@ -5049,11 +5108,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 _uiState.update { state ->
                     if (state.channelDetail.channelId != channelId) state else state.copy(
                         channelDetail = state.channelDetail.copy(
                             isSearchLoadingMore = false,
-                            searchErrorMessage = error.localizedMessage,
+                            searchErrorMessage = friendlyError(error),
                         ),
                     )
                 }
@@ -5068,7 +5128,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         if (!current.hasMore || current.isLoading || current.isLoadingMore || continuationId == null) return
         val channelId = current.channelId ?: return
         channelPagingJob?.cancel()
-        _uiState.update { it.copy(channelDetail = it.channelDetail.copy(isLoadingMore = true)) }
+        _uiState.update { it.copy(channelDetail = it.channelDetail.copy(isLoadingMore = true, errorMessage = null)) }
         channelPagingJob = viewModelScope.launch {
             try {
                 val page = engine.loadMoreChannel(continuationId)
@@ -5118,11 +5178,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 _uiState.update { state ->
                     if (state.channelDetail.channelId != channelId) state else state.copy(
                         channelDetail = state.channelDetail.copy(
                             isLoadingMore = false,
-                            errorMessage = error.localizedMessage ?: text(R.string.creator_load_failed),
+                            errorMessage = friendlyError(error, R.string.creator_load_failed),
                         ),
                     )
                 }
@@ -5157,7 +5218,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
 
     private fun remotePlaylistFailureMessage(error: Throwable): String =
         if (error is RemotePlaylistPaginationException) text(R.string.playlist_load_failed)
-        else error.localizedMessage ?: text(R.string.playlist_load_failed)
+        else friendlyError(error, R.string.playlist_load_failed)
 
     fun loadRemotePlaylist(playlist: PlaylistUiModel) {
         if (playlist.sourceId.isBlank()) return
@@ -5214,6 +5275,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.e("GrayjayViewModel", "Loading remote playlist ${playlist.id} failed.", error)
                 _uiState.update { state ->
                     if (!remotePlaylistRequestMatches(state.remotePlaylistDetail, playlist.id, generation, remotePlaylistGeneration)) state else state.copy(
@@ -5243,6 +5305,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.e("GrayjayViewModel", "Loading another page for remote playlist $playlistId failed.", error)
                 _uiState.update { state ->
                     if (!remotePlaylistRequestMatches(state.remotePlaylistDetail, playlistId, generation, remotePlaylistGeneration)) state else state.copy(
@@ -5336,6 +5399,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.e("GrayjayViewModel", "Completing remote playlist ${playlist.id} failed.", error)
                 _uiState.update { state ->
                     if (!remotePlaylistRequestMatches(state.remotePlaylistDetail, playlist.id, generation, remotePlaylistGeneration)) state
@@ -5570,7 +5634,8 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 }
             } catch (error: CancellationException) {
                 throw error
-            } catch (_: Throwable) {
+            } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("suggestions", error)
                 currentCoroutineContext().ensureActive()
                 if (!searchRequests.isCurrent(request) || profile != activeProfileId) return@launch
                 _uiState.update { state ->
@@ -5660,6 +5725,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 if (!searchRequests.isCurrent(request) || profile != activeProfileId) return@launch
                 _uiState.update { state ->
@@ -5667,7 +5733,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         search = state.search.copy(
                             isLoading = false,
                             hasSearched = true,
-                            errorMessage = error.localizedMessage ?: text(R.string.search_failed),
+                            errorMessage = friendlyError(error, R.string.search_failed),
                         ),
                     )
                 }
@@ -5711,13 +5777,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 if (!searchRequests.isCurrent(request) || profile != activeProfileId) return@launch
                 _uiState.update { state ->
                     if (state.search.continuationId != continuationId) state else state.copy(
                         search = state.search.copy(
                             isLoadingMore = false,
-                            errorMessage = error.localizedMessage ?: text(R.string.search_failed),
+                            errorMessage = friendlyError(error, R.string.search_failed),
                         ),
                     )
                 }
@@ -5799,6 +5866,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.e("GrayjayViewModel", "Exporting downloads failed.", error)
                 val storageFailure = error as? com.futo.platformplayer.compose.downloads.InsufficientStorageException
                 if (storageFailure != null) {
@@ -5929,13 +5997,14 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
+                    com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                     // Keep the complete offline item intact if a safe online hand-off cannot be
                     // prepared. Deleting underneath the active cache-only source would strand the
                     // player on PlaceholderDataSource.
                     _uiState.update { current ->
                         if (current.nowPlaying.video?.id != videoId) current else current.copy(
                             nowPlaying = current.nowPlaying.copy(
-                                errorMessage = error.localizedMessage ?: text(R.string.download_failed),
+                                errorMessage = friendlyError(error, R.string.download_failed),
                             ),
                         )
                     }
@@ -6603,6 +6672,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Throwable) {
+                        com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                         currentCoroutineContext().ensureActive()
                         if (networkMonitor.isAvailable() && !error.isRecoverableConnectivityFailure()) {
                             throw error
@@ -6619,6 +6689,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 if (profileAtStart != activeProfileId) return@download
                 Log.e(
@@ -6642,7 +6713,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     error is IllegalStateException &&
                         error.cause is TimeoutCancellationException ->
                         text(R.string.download_preparation_timed_out)
-                    else -> text(R.string.download_failed_retry_source)
+                    else -> friendlyError(error, R.string.download_failed_retry_source)
                 }
                 downloadPreparationStates[jobKey] = DownloadUiModel(
                     profileId = profileAtStart,
@@ -6957,11 +7028,11 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 _uiState.update {
                     it.copy(
                         sourceOperationInProgress = false,
-                        sourceOperationMessage = error.localizedMessage
-                            ?: text(R.string.source_install_failed),
+                        sourceOperationMessage = friendlyError(error, R.string.source_install_failed),
                     )
                 }
             }
@@ -6992,12 +7063,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 _uiState.update {
                     it.copy(
                         sourceOperationInProgress = false,
                         sourceTrustRequest = null,
-                        sourceOperationMessage = error.localizedMessage
-                            ?: text(R.string.trusted_source_install_failed),
+                        sourceOperationMessage = friendlyError(error, R.string.trusted_source_install_failed),
                     )
                 }
             }
@@ -7057,8 +7128,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.w("GrayjayViewModel", "Content cache rebuild failed.", error)
-                Toast.makeText(getApplication(), error.localizedMessage ?: text(R.string.home_feed_refresh_failed), Toast.LENGTH_LONG).show()
+                Toast.makeText(getApplication(), friendlyError(error, R.string.home_feed_refresh_failed), Toast.LENGTH_LONG).show()
             } finally {
                 _uiState.update { it.copy(rebuildingCaches = false) }
             }
@@ -7114,7 +7186,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                     state.copy(channels = visibleKnownChannels(), channelDetail = state.channelDetail.copy(channel = updated))
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { /* Retain old artwork and apply the bounded retry delay. */ }
+            catch (error: Exception) { com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error) /* Keep the old artwork until retry. */ }
         }
     }
 
@@ -7207,6 +7279,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 _uiState.update {
                     it.copy(
@@ -7272,6 +7345,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 _uiState.update {
                     it.copy(
@@ -7329,7 +7403,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                                     warnings += text(
                                         R.string.source_warning,
                                         pluginId,
-                                        error.localizedMessage.orEmpty(),
+                                        friendlyError(error, R.string.source_install_failed),
                                     )
                                 }
                         }
@@ -7421,12 +7495,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 _uiState.update {
                     it.copy(
                         databaseImport = it.databaseImport.copy(
                             isBusy = false,
-                            errorMessage = error.localizedMessage ?: text(R.string.database_import_failed),
+                            errorMessage = friendlyError(error, R.string.database_import_failed),
                         ),
                     )
                 }
@@ -7497,6 +7572,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 _uiState.update {
                     it.copy(
@@ -7712,6 +7788,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         }
     }.getOrNull().orEmpty().ifBlank { uri.lastPathSegment ?: text(R.string.grayjay_backup) }
 
+    private fun friendlyError(error: Throwable, fallback: Int = R.string.friendly_source_body): String =
+        friendlyBackendMessage(getApplication(), error, fallback, music = musicWordsEnabled())
+
     private fun localizedBackupError(error: Throwable): String {
         val message = error.localizedMessage.orEmpty()
         return when {
@@ -7733,15 +7812,13 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             message == "The backup expands beyond the safe import limit." -> text(R.string.backup_too_large)
             message == "This is not a Grayjay export database." -> text(R.string.not_grayjay_export)
             message == "The decrypted data is not a valid Grayjay export." -> text(R.string.decrypted_data_invalid)
-            message.isNotBlank() -> message
+            message.isNotBlank() -> friendlyError(error, R.string.backup_read_failed)
             else -> text(R.string.backup_read_failed)
         }
     }
 
     private fun localizedNewPipeError(error: Throwable): String {
-        val detail = error.localizedMessage.orEmpty()
-        return if (detail.isBlank()) text(R.string.newpipe_import_failed)
-        else "${text(R.string.newpipe_import_failed)} $detail"
+        return friendlyError(error, R.string.newpipe_import_failed)
     }
 
     private fun EnginePlaybackState.toUiState(
@@ -7822,11 +7899,12 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
+            com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
             _uiState.update { state ->
                 if (state.nowPlaying.video?.id != video.id) state else state.copy(
                     nowPlaying = state.nowPlaying.copy(
                         isLoadingExtras = false,
-                        errorMessage = error.localizedMessage ?: text(R.string.more_from_source_load_failed),
+                        errorMessage = friendlyError(error, R.string.more_from_source_load_failed),
                     ),
                 )
             }
@@ -7877,6 +7955,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 if (!commentReplyRequests.isCurrent(request) || playbackAtStart != playbackGeneration) return@launch
                 _uiState.update { state ->
@@ -7885,8 +7964,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         nowPlaying = state.nowPlaying.copy(
                             commentReplies = replies.copy(
                                 isLoading = false,
-                                errorMessage = error.localizedMessage
-                                    ?: text(R.string.comment_replies_load_failed),
+                                errorMessage = friendlyError(error, R.string.comment_replies_load_failed),
                             ),
                         ),
                     )
@@ -7950,6 +8028,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 if (!commentReplyRequests.isCurrent(request) || playbackAtStart != playbackGeneration) return@launch
                 _uiState.update { state ->
@@ -7958,8 +8037,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                         nowPlaying = state.nowPlaying.copy(
                             commentReplies = replies.copy(
                                 isLoadingMore = false,
-                                errorMessage = error.localizedMessage
-                                    ?: text(R.string.comment_replies_load_failed),
+                                errorMessage = friendlyError(error, R.string.comment_replies_load_failed),
                             ),
                         ),
                     )
@@ -8031,6 +8109,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 currentCoroutineContext().ensureActive()
                 _uiState.update { state ->
                     if (state.nowPlaying.video?.id != videoId) state else state.copy(
@@ -8372,6 +8451,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 if (activeProfileId == profile && appliedDownloadIndexSignature == signature) {
                     appliedDownloadIndexSignature = null
                 }
@@ -8681,6 +8761,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (error: Exception) {
+        com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
         Log.e("GrayjayViewModel", "Could not complete the profile operation", error)
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             Toast.makeText(getApplication(), R.string.profile_operation_failed, Toast.LENGTH_LONG).show()
@@ -8815,6 +8896,7 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                com.futo.platformplayer.compose.errors.BackendDiagnostics.failure("request", error)
                 Log.w("SponsorBlock", "Could not load skip segments.", error)
                 emptyList()
             }

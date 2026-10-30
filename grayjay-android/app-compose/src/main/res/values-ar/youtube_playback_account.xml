@@ -1,0 +1,8 @@
+<resources>
+    <string name="youtube_playback_account">حساب YouTube للتشغيل</string>
+    <string name="youtube_playback_account_description">استخدم ملفًا غير محمي ومسجّل الدخول لتشغيل YouTube والبحث عن صوت Spotify. ترتبط الطلبات بذلك الحساب. يُحفظ رابط قابل للإلغاء فقط دون نسخ ملفات الارتباط. يبقى NewPipe مجهولًا ويستخدم التشغيل المسجّل Grayjay.</string>
+    <string name="youtube_playback_account_current">تسجيل الدخول الخاص بهذا الملف فقط</string>
+    <string name="youtube_playback_account_unavailable">حساب YouTube المرتبط غير متاح. سجّل الدخول مجددًا في ملفه أو أزل الرابط.</string>
+    <string name="youtube_playback_account_empty">سجّل الدخول إلى YouTube في ملف غير محمي ثم ارجع لاختياره هنا.</string>
+    <string name="youtube_login_verification_required">يطلب YouTube التحقق من تسجيل الدخول مجددًا. افتح ملف YouTube وسجّل الدخول إلى المصدر وأكمل أي تحقق على الموقع ثم أعد المحاولة.</string>
+</resources>

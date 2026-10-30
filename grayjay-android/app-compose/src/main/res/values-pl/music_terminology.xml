@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="music_artist_tracks_search">Szukaj w utworach tego artysty</string>
+    <string name="music_artist_tracks_no_match">Żaden utwór tego artysty nie pasuje do „%1$s”.</string>
+    <string name="music_track_title_language">Język tytułów utworów</string>
+    <string name="music_artist_playback_speed_description">Wybierz prędkość stosowaną automatycznie do utworów tego artysty.</string>
+    <string name="music_per_artist_playback_speed_description">Zapamiętaj preferowaną prędkość dla każdego artysty. Prędkość wybrana dla pojedynczego utworu ma pierwszeństwo.</string>
+    <string name="music_search_hint">Szukaj utworów, artystów i playlist</string>
+</resources>

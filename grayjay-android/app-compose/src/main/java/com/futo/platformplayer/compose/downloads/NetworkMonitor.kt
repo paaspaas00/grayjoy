@@ -14,6 +14,7 @@ import java.net.ConnectException
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import com.futo.platformplayer.compose.engine.boundedFailures
 
 /**
  * Process-local connectivity gate for the plugin-resolution portion of a download.
@@ -116,7 +117,7 @@ internal class NetworkAvailabilityTracker<N>(initialNetwork: N? = null, initiall
 
 /** Network failures that should pause a queued preparation rather than become source failures. */
 internal fun Throwable.isRecoverableConnectivityFailure(): Boolean {
-    val causes = generateSequence(this) { it.cause }.take(12).toList()
+    val causes = boundedFailures().toList()
     if (causes.any {
             it is UnknownHostException ||
                 it is ConnectException ||
@@ -127,7 +128,7 @@ internal fun Throwable.isRecoverableConnectivityFailure(): Boolean {
         }
     ) return true
 
-    val combinedMessage = causes.joinToString(" ") { it.message.orEmpty() }.lowercase()
+    val combinedMessage = causes.joinToString(" ") { runCatching { it.message }.getOrNull().orEmpty().take(4096) }.lowercase(java.util.Locale.ROOT)
     return RECOVERABLE_NETWORK_MESSAGES.any(combinedMessage::contains)
 }
 

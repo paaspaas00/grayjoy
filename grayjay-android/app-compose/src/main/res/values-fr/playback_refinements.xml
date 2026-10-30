@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_audio_normalization_body">Réduit les écarts de volume entre les vidéos et les morceaux pour éviter de régler sans cesse le volume. Les fichiers originaux restent inchangés. Désactivable à tout moment.</string>
+    <string name="audio_normalization_level">Niveau de normalisation</string>
+    <string name="normalization_quieter">Volume plus discret</string>
+    <string name="normalization_louder">Volume plus présent</string>
+    <string name="setup_song_recognition_body">Maintenez Rechercher pour reconnaître un morceau. Grayjoy utilise Shazam et nécessite une connexion Internet.</string>
+</resources>

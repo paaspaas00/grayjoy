@@ -1,0 +1,3 @@
+<resources>
+    <string name="live_not_started_message">이 라이브 방송은 아직 시작되지 않았습니다. 방송이 시작되면 다시 시도하세요. 콘텐츠가 삭제된 것은 아닙니다.</string>
+</resources>

@@ -11,7 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
@@ -33,9 +33,9 @@ internal fun CompactSettingRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            Text(settingsHighlightedText(title), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 onTextLayout = { titleOverflows = it.hasVisualOverflow })
-            if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodySmall,
+            if (description.isNotBlank()) Text(settingsHighlightedText(description), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 onTextLayout = { descriptionOverflows = it.hasVisualOverflow })
         }

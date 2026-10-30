@@ -42,8 +42,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourcePluralStringResource as pluralStringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.futo.platformplayer.compose.R
@@ -307,7 +307,10 @@ internal fun downloadStatusText(
         ?.takeIf(String::isNotEmpty)
         ?.let { message ->
             if (isTechnicalDownloadError(message)) {
-                stringResource(R.string.download_failed_retry_source)
+                val kind = androidx.compose.runtime.remember(message) {
+                    com.futo.platformplayer.compose.errors.classifyBackendFailure(IllegalStateException(message))
+                }
+                stringResource(kind.body)
             } else {
                 message.replace(DOWNLOAD_ERROR_WHITESPACE, " ").take(180)
             }
@@ -330,6 +333,9 @@ internal fun isTechnicalDownloadError(message: String): Boolean {
 
 private val TECHNICAL_DOWNLOAD_ERROR_MARKERS = listOf(
     "exception",
+    "login_required",
+    "login required",
+    "recaptcha",
     "unable to resolve host",
     "grayjay.internal",
     "java.",

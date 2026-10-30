@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">Группировать элементы</string>
+    <string name="library_group_explanation">Объедините элементы списка в раскрывающиеся папки. Элемент может входить в несколько плейлистов. Элементы без группы остаются видны отдельно.</string>
+    <string name="library_group_none">Без группировки</string>
+    <string name="library_group_playlist">По плейлисту</string>
+    <string name="library_group_channel">По каналу или исполнителю</string>
+    <string name="search_downloads">Поиск в загрузках</string>
+</resources>

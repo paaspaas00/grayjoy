@@ -675,7 +675,7 @@
     <string name="job_finished_notice">ジョブ終了: %1$s</string>
     <string name="update_download_job_title">更新のダウンロード</string>
     <string name="experimental_features">試験的な機能</string>
-    <string name="audio_normalization">音声を −23 LUFS に正規化</string>
+    <string name="audio_normalization">音量の均一化</string>
     <string name="audio_normalization_description">再生中に音量感を徐々に調整し、ピークを抑えます。オフの場合は DSP を使用しません。キャストには適用されません。</string>
     <string name="grayjoy_repository">Grayjoy リポジトリ</string>
     <string name="repository_open_failed">このリンクを開けるアプリがありません。</string>

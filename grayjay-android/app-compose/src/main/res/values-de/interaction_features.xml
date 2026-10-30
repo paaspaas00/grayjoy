@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recognition_swipe_open">Nach oben wischen, um pausiert zu öffnen</string>
+    <string name="recognition_privacy_short">Hört kurz zu. An Shazam geht nur ein musikalischer Fingerabdruck, keine Aufnahme. Internet erforderlich.</string>
+    <string name="music_artists">Künstler</string>
+    <string name="music_artist">Künstler</string>
+    <string name="recognize_song">Lied erkennen</string>
+    <string name="recognition_description">Halte Suchen in der Navigationsleiste gedrückt, um Musik in deiner Umgebung zu erkennen und das Ergebnis abzuspielen.</string>
+    <string name="recognition_privacy">Das Mikrofon hört nur bei geöffnetem Fenster einige Sekunden zu. An Shazam wird ein musikalischer Fingerabdruck gesendet, keine Audioaufnahme. Internet ist erforderlich.</string>
+    <string name="recognition_disabled">Musikerkennung ist deaktiviert. Aktiviere sie in den Einstellungen.</string>
+    <string name="recognition_permission">Erlaube den Mikrofonzugriff, um Musik zu erkennen.</string>
+    <string name="recognition_error">Die Erkennung ist momentan nicht verfügbar. Prüfe die Verbindung und versuche es erneut.</string>
+    <string name="recognition_no_match">Kein Treffer. Gehe näher an die Musik und versuche es erneut.</string>
+    <string name="recognition_listening">Musik wird angehört…</string>
+    <string name="recognition_searching">Lied wird gesucht…</string>
+    <string name="recognition_play_failed">Das Lied konnte nicht gestartet werden. Versuche es gleich noch einmal.</string>
+    <string name="left_handed_mode">Linkshändermodus</string>
+    <string name="left_handed_description">Player-Tasten und Menüs wandern nach links. Im Musik-Vollbild wird das Cover rechts angezeigt.</string>
+    <string name="library_shortcuts">Bibliothekskürzel</string>
+    <string name="library_shortcuts_description">Halte Bibliothek in der Navigationsleiste gedrückt. Das vertikale Menü zeigt von oben: Verlauf, Playlists, Später ansehen (Favoriten für Musik), Downloads. Tippe ein Symbol zum Öffnen oder außerhalb zum Schließen.</string>
+    <string name="history_group_explanation">Aufeinanderfolgende Videos derselben Playlist können in einer aufklappbaren Karte erscheinen. Dies ändert nur die Verlaufsansicht; nichts wird verschoben oder gelöscht.</string>
+    <string name="history_group_settings">Verlauf gruppieren</string>
+    <string name="setup_handedness">Wähle die bequemere Seite</string>
+    <string name="hand_right">Rechtshändig</string>
+    <string name="hand_left">Linkshändig</string>
+</resources>

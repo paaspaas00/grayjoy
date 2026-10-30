@@ -752,7 +752,7 @@
     <string name="job_finished_notice">Zadanie zakończone: %1$s</string>
     <string name="update_download_job_title">Pobieranie aktualizacji</string>
     <string name="experimental_features">Funkcje eksperymentalne</string>
-    <string name="audio_normalization">Normalizuj dźwięk do −23 LUFS</string>
+    <string name="audio_normalization">Normalizacja dźwięku</string>
     <string name="audio_normalization_description">Stopniowo dostosowuje głośność podczas odtwarzania, z ochroną przed przesterowaniem. Po wyłączeniu DSP jest pomijany. Nie dotyczy przesyłania na inne urządzenia.</string>
     <string name="grayjoy_repository">Repozytorium Grayjoy</string>
     <string name="repository_open_failed">Brak aplikacji do otwarcia tego linku.</string>

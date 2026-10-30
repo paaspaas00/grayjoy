@@ -12,6 +12,7 @@ import kotlin.math.roundToInt
 @UnstableApi
 internal class LoudnessNormalizationAudioProcessor : BaseAudioProcessor() {
     @Volatile var enabled: Boolean = false
+    @Volatile var targetLufs: Int = -32
     private val streamGeneration = AtomicInteger()
     private var appliedGeneration = -1
     private var normalizer: LoudnessNormalizer? = null
@@ -52,7 +53,7 @@ internal class LoudnessNormalizationAudioProcessor : BaseAudioProcessor() {
         }
         val generation = streamGeneration.get()
         if (normalizer == null || appliedGeneration != generation) {
-            normalizer = LoudnessNormalizer(inputAudioFormat.sampleRate, inputAudioFormat.channelCount)
+            normalizer = LoudnessNormalizer(inputAudioFormat.sampleRate, inputAudioFormat.channelCount, targetLufs.toDouble())
             normalizerFormat = inputAudioFormat
             frame = DoubleArray(inputAudioFormat.channelCount)
             appliedGeneration = generation
@@ -62,6 +63,7 @@ internal class LoudnessNormalizationAudioProcessor : BaseAudioProcessor() {
         val frameBytes = frame.size * if (floatPcm) 4 else 2
         val output = replaceOutputBuffer(inputBuffer.remaining())
         val activeNormalizer = normalizer!!
+        activeNormalizer.targetLufs = targetLufs.toDouble()
         while (inputBuffer.remaining() >= frameBytes) {
             for (channel in frame.indices) frame[channel] =
                 if (floatPcm) inputBuffer.float.toDouble() else inputBuffer.short / 32768.0

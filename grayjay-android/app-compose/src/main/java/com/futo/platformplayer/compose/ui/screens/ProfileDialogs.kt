@@ -39,7 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
+import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
@@ -151,9 +151,8 @@ fun ProfileSwitcherDialogs(
                     .build(),
             )
         }.onFailure { error ->
-            unlockError = error.localizedMessage
-                ?.takeIf(String::isNotBlank)
-                ?: deviceAuthStartFailed
+            com.futo.platformplayer.compose.diagnostics.DiagnosticLog.w("ProfileUnlock", "Device authentication could not start", error)
+            unlockError = deviceAuthStartFailed
         }
     }
 
@@ -180,10 +179,11 @@ fun ProfileSwitcherDialogs(
         text = {
             Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 HelpGuideWindow("profile-picker")
-                profiles.forEach { profile ->
+                profiles.forEachIndexed { index, profile ->
                     ListItem(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .dialogChoiceRow(index, profiles.size)
                             .combinedClickable(
                                 onClick = {
                                     when {

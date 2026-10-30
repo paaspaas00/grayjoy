@@ -1,0 +1,8 @@
+<resources>
+    <string name="library_group_settings">Agrupar elementos</string>
+    <string name="library_group_explanation">Organiza esta lista en carpetas desplegables. Un elemento puede pertenecer a varias listas. Los elementos sin grupo siguen visibles por separado.</string>
+    <string name="library_group_none">Sin agrupar</string>
+    <string name="library_group_playlist">Por lista de reproducción</string>
+    <string name="library_group_channel">Por canal o artista</string>
+    <string name="search_downloads">Buscar en descargas</string>
+</resources>

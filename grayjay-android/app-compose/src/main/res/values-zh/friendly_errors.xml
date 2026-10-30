@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTube 又闹脾气了</string>
+    <string name="friendly_youtube_body">YouTube 拒绝了请求，可能需要验证登录。请检查来源 → YouTube，或关联到 Spotify 的 YouTube 账号，然后重试。如果登录正常，请等待几分钟。</string>
+    <string name="friendly_network_title">暂时无法连接</string>
+    <string name="friendly_network_body">无法连接到服务。请检查 Wi-Fi 或移动数据后重试。</string>
+    <string name="friendly_timeout_title">服务响应较慢</string>
+    <string name="friendly_timeout_body">请求耗时超过预期。请稍后重试。</string>
+    <string name="friendly_login_title">需要登录</string>
+    <string name="friendly_login_body">此内容需要账号。请打开来源并登录服务，确认账号有访问权限。</string>
+    <string name="friendly_limit_title">服务需要休息一下</string>
+    <string name="friendly_limit_body">发送的请求过多。请等待几分钟后重试。</string>
+    <string name="friendly_source_title">来源遇到了问题</string>
+    <string name="friendly_source_body">无法加载此内容。请重试；如果问题持续，请在设置 → 来源中更新。</string>
+    <string name="friendly_unavailable_title">此内容不可用</string>
+    <string name="friendly_unavailable_body">服务未提供此内容。它可能已被删除或设为私密。请尝试其他内容。</string>
+    <string name="friendly_region_title">你所在的地区不可用</string>
+    <string name="friendly_region_body">服务不向你当前所在地区提供此内容。</string>
+    <string name="friendly_format_title">无法播放此格式</string>
+    <string name="friendly_format_body">请尝试其他画质或内容。如果问题持续，请更新来源和应用。</string>
+    <string name="friendly_access_title">服务拒绝了访问</string>
+    <string name="friendly_access_body">请检查登录后重试。如果仍然失败，请在设置 → 来源中更新。</string>
+    <string name="friendly_drm_title">此内容受到保护</string>
+    <string name="friendly_drm_body">服务未授权播放受保护的内容。请检查账号和订阅；可能不允许下载。</string>
+</resources>

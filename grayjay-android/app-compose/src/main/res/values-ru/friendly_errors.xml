@@ -1,0 +1,24 @@
+<resources>
+    <string name="friendly_youtube_title">YouTube капризничает</string>
+    <string name="friendly_youtube_body">YouTube отклоняет запрос и может требовать проверки входа. Проверьте Источники → YouTube или аккаунт YouTube, связанный со Spotify, и повторите попытку. Если вход выполнен правильно, подождите несколько минут.</string>
+    <string name="friendly_network_title">Сейчас не удаётся подключиться</string>
+    <string name="friendly_network_body">Сервис недоступен. Проверьте Wi-Fi или мобильный интернет и повторите попытку.</string>
+    <string name="friendly_timeout_title">Сервис отвечает медленно</string>
+    <string name="friendly_timeout_body">Запрос занял больше времени, чем ожидалось. Попробуйте немного позже.</string>
+    <string name="friendly_login_title">Нужно войти в аккаунт</string>
+    <string name="friendly_login_body">Для этого контента нужен аккаунт. Откройте Источники, войдите в сервис и проверьте права доступа.</string>
+    <string name="friendly_limit_title">Сервису нужна пауза</string>
+    <string name="friendly_limit_body">Отправлено слишком много запросов. Подождите несколько минут перед новой попыткой.</string>
+    <string name="friendly_source_title">Проблема с источником</string>
+    <string name="friendly_source_body">Не удалось загрузить контент. Повторите попытку. Если проблема остаётся, обновите источник в Настройки → Источники.</string>
+    <string name="friendly_unavailable_title">Этот контент недоступен</string>
+    <string name="friendly_unavailable_body">Сервис не предоставляет этот контент. Возможно, он удалён или стал приватным. Выберите другой.</string>
+    <string name="friendly_region_title">Недоступно в вашем регионе</string>
+    <string name="friendly_region_body">Сервис не предоставляет этот контент в вашем текущем регионе.</string>
+    <string name="friendly_format_title">Не удаётся воспроизвести этот формат</string>
+    <string name="friendly_format_body">Попробуйте другое качество или контент. Если проблема остаётся, обновите источник и приложение.</string>
+    <string name="friendly_access_title">Сервис отказал в доступе</string>
+    <string name="friendly_access_body">Проверьте вход и повторите попытку. Если ошибка остаётся, обновите источник в Настройки → Источники.</string>
+    <string name="friendly_drm_title">Этот контент защищён</string>
+    <string name="friendly_drm_body">Сервис не разрешил защищённое воспроизведение. Проверьте аккаунт и подписку. Скачивание может быть запрещено.</string>
+</resources>

@@ -1,0 +1,8 @@
+<resources>
+    <string name="youtube_playback_account">Аккаунт YouTube для воспроизведения</string>
+    <string name="youtube_playback_account_description">Используйте незащищённый профиль с активным входом для YouTube и поиска аудио Spotify. Запросы будут связаны с этим аккаунтом. Сохраняется только отключаемая ссылка, без копирования cookie. NewPipe остаётся анонимным; для входа используется Grayjay.</string>
+    <string name="youtube_playback_account_current">Только вход текущего профиля</string>
+    <string name="youtube_playback_account_unavailable">Связанный аккаунт YouTube недоступен. Войдите снова в его профиле или удалите связь.</string>
+    <string name="youtube_playback_account_empty">Войдите в YouTube в незащищённом профиле, затем вернитесь сюда и выберите его.</string>
+    <string name="youtube_login_verification_required">YouTube требует повторно подтвердить вход. Откройте профиль YouTube, снова войдите в источник и пройдите проверку на сайте, затем повторите попытку.</string>
+</resources>

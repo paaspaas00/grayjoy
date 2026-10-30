@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_audio_normalization_body">動画や曲ごとの音量差を抑え、音量を調整する手間を減らします。元のファイルは変更しません。いつでもオフにできます。</string>
+    <string name="audio_normalization_level">音量の調整レベル</string>
+    <string name="normalization_quieter">控えめな音量</string>
+    <string name="normalization_louder">はっきりした音量</string>
+    <string name="setup_song_recognition_body">検索を長押しすると曲を認識できます。GrayjoyはShazamを使用し、インターネット接続が必要です。</string>
+</resources>
