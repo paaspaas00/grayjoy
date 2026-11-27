@@ -15,6 +15,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
@@ -139,9 +142,16 @@ private fun CreatorTransitionSheet(controller: CreatorSheetController, request: 
             }
             .background(if (request.phase == CreatorSheetPhase.Opening) MaterialTheme.colorScheme.background else Color.Black.copy(alpha = .48f))
             .clickable { if (request.phase == CreatorSheetPhase.Preview) controller.dismiss() })
+        val sheetColor = MaterialTheme.colorScheme.surfaceContainerLow
         Surface(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().widthIn(max = 640.dp).fillMaxWidth()
             .offset { IntOffset(0, (drag + (1f - appearing.value) * 64f + if (request.phase == CreatorSheetPhase.Dismissing) leaving * 200f else 0f).roundToInt()) }
             .graphicsLayer { alpha = 1f - leaving }
+            .drawWithContent {
+                drawContent()
+                // Dragging upward stretches the bottom of the sheet instead of exposing the page.
+                if (drag < 0f) drawRect(sheetColor, Offset(0f, size.height - 1f),
+                    Size(size.width, -drag + 56.dp.toPx()))
+            }
             .pointerInput(channel.id, request.phase) {
                 if (request.phase == CreatorSheetPhase.Preview) detectVerticalDragGestures(
                     onDragStart = { settleJob?.cancel() },

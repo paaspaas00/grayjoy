@@ -1,0 +1,9 @@
+<resources>
+    <string name="fullscreen_volume_gesture">全画面で音量ジェスチャー</string>
+    <string name="fullscreen_volume_gesture_description">右半分を上下にスワイプしてメディア音量を調整します。</string>
+    <string name="fullscreen_brightness_gesture">全画面で明るさジェスチャー</string>
+    <string name="fullscreen_brightness_gesture_description">左半分を上下にスワイプしてプレーヤーの明るさを調整します。</string>
+    <string name="youtube_autoplay_timer">次の動画までの待ち時間</string>
+    <string name="youtube_autoplay_timer_description">秒（0～120）。0にすると次の動画をすぐに再生します。</string>
+    <string name="seconds_value">%1$d 秒</string>
+</resources>

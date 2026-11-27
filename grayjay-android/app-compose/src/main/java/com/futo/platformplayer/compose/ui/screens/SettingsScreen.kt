@@ -176,6 +176,7 @@ fun SettingsScreen(
     }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showNormalizationLevel by rememberSaveable { mutableStateOf(false) }
+    var showAutoplayTimer by rememberSaveable { mutableStateOf(false) }
     var showDuckVolumeDialog by rememberSaveable { mutableStateOf(false) }
     var showPairedComputers by rememberSaveable { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
@@ -210,6 +211,16 @@ fun SettingsScreen(
             Text(stringResource(R.string.settings_no_matches), Modifier.padding(16.dp))
         }
         settingsGroup("interaction-features", null, groupSpacing, matches = { searchQuery.isBlank() || it in matching }) {
+            setting("fullscreen-volume-gesture", "toggle") {
+                val controls = com.futo.platformplayer.compose.ui.LocalInteractionControls.current
+                ToggleSetting(stringResource(R.string.fullscreen_volume_gesture), stringResource(R.string.fullscreen_volume_gesture_description),
+                    Icons.Outlined.TouchApp, controls.volumeGesture, controls.setVolumeGesture, "fullscreen-volume-gesture")
+            }
+            setting("fullscreen-brightness-gesture", "toggle") {
+                val controls = com.futo.platformplayer.compose.ui.LocalInteractionControls.current
+                ToggleSetting(stringResource(R.string.fullscreen_brightness_gesture), stringResource(R.string.fullscreen_brightness_gesture_description),
+                    Icons.Outlined.TouchApp, controls.brightnessGesture, controls.setBrightnessGesture, "fullscreen-brightness-gesture")
+            }
             setting("left-handed-mode", "toggle") {
                 val controls = com.futo.platformplayer.compose.ui.LocalInteractionControls.current
                 ToggleSetting(stringResource(R.string.left_handed_mode), stringResource(R.string.left_handed_description),
@@ -290,6 +301,12 @@ fun SettingsScreen(
             setting("youtube-autoplay", "toggle") {
                 ToggleSetting(stringResource(R.string.youtube_autoplay), stringResource(R.string.youtube_autoplay_description),
                     Icons.Outlined.PlayArrow, extras.youtubeAutoplayEnabled, extras.onYoutubeAutoplayChange, "youtube-autoplay")
+            }
+            setting("youtube-autoplay-timer", "link") {
+                val controls = com.futo.platformplayer.compose.ui.LocalInteractionControls.current
+                LinkSetting(stringResource(R.string.youtube_autoplay_timer),
+                    stringResource(R.string.seconds_value, controls.autoplayDelaySeconds),
+                    Icons.Outlined.Speed, { showAutoplayTimer = true }, "youtube-autoplay-timer")
             }
             setting("per-channel-playback-speed", "toggle") {
                 ToggleSetting(
@@ -730,6 +747,10 @@ fun SettingsScreen(
         onDismiss = { showNormalizationLevel = false }, onConfirm = {
             extras.onAudioNormalizationTargetChange(it); showNormalizationLevel = false
         })
+    if (showAutoplayTimer) {
+        val controls = com.futo.platformplayer.compose.ui.LocalInteractionControls.current
+        AutoplayTimerDialog(controls.autoplayDelaySeconds, controls.setAutoplayDelay) { showAutoplayTimer = false }
+    }
     if (showThemeDialog) {
         ChoiceDialog(
             title = stringResource(R.string.settings_appearance),

@@ -16,8 +16,9 @@ internal data class YoutubeAutoplayControls(val state: YoutubeAutoplayUiState? =
 internal val LocalYoutubeAutoplay = compositionLocalOf { YoutubeAutoplayControls() }
 
 internal suspend fun youtubeAutoplayCountdown(valid: () -> Boolean, tick: (Int) -> Unit,
-    wait: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) }): Boolean {
-    for (seconds in 10 downTo 1) {
+    wait: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
+    delaySeconds: Int = 10): Boolean {
+    for (seconds in delaySeconds.coerceIn(0, 120) downTo 1) {
         if (!valid()) return false
         tick(seconds)
         wait(1_000L)

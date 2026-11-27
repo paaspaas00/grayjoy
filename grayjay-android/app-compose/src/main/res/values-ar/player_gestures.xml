@@ -1,0 +1,9 @@
+<resources>
+    <string name="fullscreen_volume_gesture">إيماءات الصوت بملء الشاشة</string>
+    <string name="fullscreen_volume_gesture_description">اسحب لأعلى أو لأسفل في النصف الأيمن لضبط صوت الوسائط.</string>
+    <string name="fullscreen_brightness_gesture">إيماءات السطوع بملء الشاشة</string>
+    <string name="fullscreen_brightness_gesture_description">اسحب لأعلى أو لأسفل في النصف الأيسر لضبط سطوع المشغل.</string>
+    <string name="youtube_autoplay_timer">الانتظار قبل الفيديو التالي</string>
+    <string name="youtube_autoplay_timer_description">ثوانٍ (0–120). اختر 0 لتشغيل الفيديو التالي فورًا.</string>
+    <string name="seconds_value">%1$d ث</string>
+</resources>

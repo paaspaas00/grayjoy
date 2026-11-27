@@ -91,8 +91,10 @@ class MiniplayerQueueRegressionTest {
         rule.onNodeWithTag("media-player").performTouchInput { swipe(center, center + Offset(0f, 1300f), 700) }
         rule.onNodeWithTag("nav-library").performClick()
         rule.onNodeWithTag("video-card-${videos[1].id}").performScrollTo().performTouchInput { longClick() }
-        for (item in videos.drop(2)) rule.onNodeWithTag("video-card-${item.id}").performScrollTo()
-            .performSemanticsAction(SemanticsActions.OnClick) { it() }
+        for (item in videos.drop(2)) {
+            rule.onNodeWithTag("library-list", useUnmergedTree = true).performScrollToNode(hasTestTag("video-card-${item.id}"))
+            rule.onNodeWithTag("video-card-${item.id}", useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick) { it() }
+        }
         rule.onNodeWithTag("history-enqueue").performClick()
         rule.runOnIdle { assertEquals(videos.drop(1).map { it.id }.toSet(), enqueued.toSet()) }
         rule.onNodeWithTag("mini-player").performTouchInput { click(Offset(width * .4f, height * .5f)) }

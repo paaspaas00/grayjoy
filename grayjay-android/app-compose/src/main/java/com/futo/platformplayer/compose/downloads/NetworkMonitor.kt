@@ -32,16 +32,37 @@ internal class NetworkMonitor(context: Context) : Closeable {
         } == true)
     }
     private val callback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = availability.onAvailable(network)
-        override fun onLost(network: Network) = availability.onLost(network)
+        override fun onAvailable(network: Network) {
+            availability.onAvailable(network)
+            logNetworkChange("available; waiting for capabilities")
+        }
+        override fun onLost(network: Network) {
+            availability.onLost(network)
+            logNetworkChange("lost; usable=${isAvailable()}")
+        }
 
         override fun onCapabilitiesChanged(
             network: Network,
             networkCapabilities: NetworkCapabilities,
-        ) = availability.onCapabilitiesChanged(network, networkCapabilities.hasValidatedInternet())
+        ) {
+            availability.onCapabilitiesChanged(network, networkCapabilities.hasValidatedInternet())
+            logNetworkChange("capabilities: vpn=${networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)}, " +
+                "mobile=${networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)}, " +
+                "internet=${networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)}, " +
+                "validated=${networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)}, usable=${isAvailable()}")
+        }
 
-        override fun onBlockedStatusChanged(network: Network, blocked: Boolean) =
+        override fun onBlockedStatusChanged(network: Network, blocked: Boolean) {
             availability.onBlockedStatusChanged(network, blocked)
+            logNetworkChange("blocked=$blocked; usable=${isAvailable()}")
+        }
+    }
+    @Volatile private var lastNetworkDiagnostic = ""
+    private fun logNetworkChange(state: String) {
+        if (state == lastNetworkDiagnostic) return
+        lastNetworkDiagnostic = state
+        // Technical state only: do not record network identifiers, addresses or account data.
+        com.futo.platformplayer.compose.diagnostics.DiagnosticLog.i("NetworkMonitor", state)
     }
 
     init {

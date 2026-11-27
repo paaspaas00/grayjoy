@@ -5,6 +5,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class YoutubeAutoplayTest {
+    @Test fun zeroDelayStartsImmediatelyWithoutShowingACountdown() = runBlocking {
+        assertTrue(youtubeAutoplayCountdown({ true }, { fail("No countdown at zero") },
+            { fail("No delay at zero") }, delaySeconds = 0))
+        assertFalse(youtubeAutoplayCountdown({ false }, {}, {}, delaySeconds = 0))
+    }
+    @Test fun customTimerUsesTheConfiguredDuration() = runBlocking {
+        var waited = 0L
+        val ticks = mutableListOf<Int>()
+        assertTrue(youtubeAutoplayCountdown({ true }, { ticks += it }, { waited += it }, delaySeconds = 3))
+        assertEquals(3000L, waited)
+        assertEquals(listOf(3, 2, 1), ticks)
+    }
     @Test fun disabledByDefault() { assertFalse(GrayjayUiState().youtubeAutoplayEnabled) }
     @Test fun keepsYoutubeOrderAndExcludesSeenUnavailableAndNonVideos() {
         val first = VideoUiModel("one", "One", "", "", "", sourceId = "youtube")

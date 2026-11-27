@@ -3141,9 +3141,6 @@ private fun GrayjayScaffold(
                                                 contentDescription = stringResource(R.string.back),
                                             )
                                         }
-                                    }
-                                },
-                                actions = {
                                     if (!selectedVideo?.sourceId.equals("spotify", ignoreCase = true) &&
                                         !sourcePresentation.sources.isSpotifyOnly()) IconButton(
                                         onClick = playback.onOpenChromecast,
@@ -3160,6 +3157,9 @@ private fun GrayjayScaffold(
                                             },
                                         )
                                     }
+                                    }
+                                },
+                                actions = {
                                     IconButton(
                                         onClick = playback.onClose,
                                         modifier = Modifier.testTag("now-playing-close"),

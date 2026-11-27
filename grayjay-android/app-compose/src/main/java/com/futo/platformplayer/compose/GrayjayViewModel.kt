@@ -3698,7 +3698,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
         val profile = activeProfileId
         val request = autoplayRequests.current()
         autoplayCountdownJob = viewModelScope.launch {
-            val completed = youtubeAutoplayCountdown(valid = {
+            val completed = youtubeAutoplayCountdown(
+                delaySeconds = com.futo.platformplayer.compose.ui.InteractionFeatures(getApplication()).autoplayDelaySeconds,
+                valid = {
                 autoplayRequests.isCurrent(request) && generation == playbackGeneration && profile == activeProfileId &&
                     preferences.youtubeAutoplayEnabled && engine.playback.value.currentVideoId == current &&
                     engine.player.playbackState == androidx.media3.common.Player.STATE_ENDED &&

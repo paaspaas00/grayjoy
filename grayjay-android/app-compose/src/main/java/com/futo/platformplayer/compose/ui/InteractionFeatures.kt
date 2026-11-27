@@ -19,12 +19,24 @@ internal class InteractionFeatures(context: Context) {
     var recognitionEnabled: Boolean
         get() = prefs.getBoolean("song_recognition", true)
         set(value) { prefs.edit().putBoolean("song_recognition", value).apply() }
+    var fullscreenVolumeGesture: Boolean
+        get() = prefs.getBoolean("fullscreen_volume_gesture", false)
+        set(value) { prefs.edit().putBoolean("fullscreen_volume_gesture", value).apply() }
+    var fullscreenBrightnessGesture: Boolean
+        get() = prefs.getBoolean("fullscreen_brightness_gesture", false)
+        set(value) { prefs.edit().putBoolean("fullscreen_brightness_gesture", value).apply() }
+    var autoplayDelaySeconds: Int
+        get() = prefs.getInt("autoplay_delay_seconds", 10).coerceIn(0, 120)
+        set(value) { prefs.edit().putInt("autoplay_delay_seconds", value.coerceIn(0, 120)).apply() }
 }
 internal data class InteractionControls(
     val leftHanded: Boolean = false, val recognitionEnabled: Boolean = true,
     val setLeftHanded: (Boolean) -> Unit = {}, val setRecognitionEnabled: (Boolean) -> Unit = {},
     val recognizing: Boolean = false, val recognize: () -> Unit = {},
     val dismissRecognition: () -> Unit = {},
+    val volumeGesture: Boolean = false, val brightnessGesture: Boolean = false,
+    val setVolumeGesture: (Boolean) -> Unit = {}, val setBrightnessGesture: (Boolean) -> Unit = {},
+    val autoplayDelaySeconds: Int = 10, val setAutoplayDelay: (Int) -> Unit = {},
 )
 internal val LocalInteractionControls = compositionLocalOf { InteractionControls() }
 
@@ -54,7 +66,9 @@ internal fun InteractionFeatureHost(profileId: String, resolve: suspend (String)
         { prefs.leftHanded = it }, { prefs.recognitionEnabled = it }, recognizing,
         { if (prefs.recognitionEnabled) recognizing = true else android.widget.Toast.makeText(context,
             com.futo.platformplayer.compose.R.string.recognition_disabled, android.widget.Toast.LENGTH_SHORT).show() },
-        { recognizing = false }) }
+        { recognizing = false }, prefs.fullscreenVolumeGesture, prefs.fullscreenBrightnessGesture,
+        { prefs.fullscreenVolumeGesture = it }, { prefs.fullscreenBrightnessGesture = it },
+        prefs.autoplayDelaySeconds, { prefs.autoplayDelaySeconds = it }) }
     CompositionLocalProvider(LocalInteractionControls provides controls) {
         com.futo.platformplayer.compose.recognition.RecognitionTransitionHost(profileId, resolve, open,
             dismiss = { recognizing = false }, isVisible = { recognizing }) {

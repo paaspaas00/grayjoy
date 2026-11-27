@@ -1,0 +1,9 @@
+<resources>
+    <string name="fullscreen_volume_gesture">Gestes de volume en plein écran</string>
+    <string name="fullscreen_volume_gesture_description">Balaye vers le haut ou le bas sur la moitié droite pour régler le volume multimédia.</string>
+    <string name="fullscreen_brightness_gesture">Gestes de luminosité en plein écran</string>
+    <string name="fullscreen_brightness_gesture_description">Balaye vers le haut ou le bas sur la moitié gauche pour régler la luminosité du lecteur.</string>
+    <string name="youtube_autoplay_timer">Délai avant la vidéo suivante</string>
+    <string name="youtube_autoplay_timer_description">Secondes (0–120). Choisis 0 pour lancer immédiatement la vidéo suivante.</string>
+    <string name="seconds_value">%1$d s</string>
+</resources>

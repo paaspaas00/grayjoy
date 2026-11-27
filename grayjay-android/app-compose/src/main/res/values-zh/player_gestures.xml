@@ -1,0 +1,9 @@
+<resources>
+    <string name="fullscreen_volume_gesture">全屏音量手势</string>
+    <string name="fullscreen_volume_gesture_description">在右半屏上下滑动可调整媒体音量。</string>
+    <string name="fullscreen_brightness_gesture">全屏亮度手势</string>
+    <string name="fullscreen_brightness_gesture_description">在左半屏上下滑动可调整播放器亮度。</string>
+    <string name="youtube_autoplay_timer">下一视频前的等待时间</string>
+    <string name="youtube_autoplay_timer_description">秒（0–120）。设为0可立即播放下一视频。</string>
+    <string name="seconds_value">%1$d 秒</string>
+</resources>

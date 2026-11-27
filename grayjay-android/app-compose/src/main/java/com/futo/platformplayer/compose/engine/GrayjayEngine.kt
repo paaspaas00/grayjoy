@@ -853,8 +853,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     // fallback. Escalate repeated failures without losing the playback position.
                     if (onlineYoutube) {
                         resetConnectivityRecovery()
-                        if (startYoutubeRuntimeFallback(error)) return
+                        // A VPN/mobile handover can invalidate an otherwise healthy socket.
+                        // Retry the same source once before spending the alternate engine.
                         if (!repeatedOnlineFailure && scheduleConnectivityRecovery(error)) return
+                        if (startYoutubeRuntimeFallback(error)) return
                     } else if (scheduleConnectivityRecovery(error)) return
                     resetConnectivityRecovery()
                     if (startYoutubeRuntimeFallback(error)) return
@@ -892,7 +894,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             while (exoPlayer.playbackState == Player.STATE_BUFFERING) {
                 kotlinx.coroutines.delay(250L)
                 val id = exoPlayer.currentMediaItem?.mediaId ?: return@launch
-                if (!exoPlayer.playWhenReady || !networkMonitor.isAvailable() || exoPlayer.currentPosition <= 0L) {
+                if (!exoPlayer.playWhenReady || !networkMonitor.isAvailable()) {
                     guard = fallbackGuard()
                     giveUpGuard = PlaybackStallGuard(GIVE_UP_STALL_TIMEOUT_MS)
                     warmGuard = PlaybackStallGuard(1_250L)

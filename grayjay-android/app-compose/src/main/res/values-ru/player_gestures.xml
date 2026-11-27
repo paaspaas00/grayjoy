@@ -1,0 +1,9 @@
+<resources>
+    <string name="fullscreen_volume_gesture">Жесты громкости на полном экране</string>
+    <string name="fullscreen_volume_gesture_description">Проведите вверх или вниз по правой половине, чтобы изменить громкость мультимедиа.</string>
+    <string name="fullscreen_brightness_gesture">Жесты яркости на полном экране</string>
+    <string name="fullscreen_brightness_gesture_description">Проведите вверх или вниз по левой половине, чтобы изменить яркость плеера.</string>
+    <string name="youtube_autoplay_timer">Задержка перед следующим видео</string>
+    <string name="youtube_autoplay_timer_description">Секунды (0–120). Укажите 0 для немедленного запуска следующего видео.</string>
+    <string name="seconds_value">%1$d с</string>
+</resources>

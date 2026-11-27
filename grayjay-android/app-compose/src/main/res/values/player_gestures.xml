@@ -1,0 +1,9 @@
+<resources>
+    <string name="fullscreen_volume_gesture">Volume gestures in fullscreen</string>
+    <string name="fullscreen_volume_gesture_description">Swipe up or down on the right half to change media volume.</string>
+    <string name="fullscreen_brightness_gesture">Brightness gestures in fullscreen</string>
+    <string name="fullscreen_brightness_gesture_description">Swipe up or down on the left half to change this player’s brightness.</string>
+    <string name="youtube_autoplay_timer">Delay before the next video</string>
+    <string name="youtube_autoplay_timer_description">Seconds (0–120). Choose 0 to play the next video immediately.</string>
+    <string name="seconds_value">%1$d s</string>
+</resources>

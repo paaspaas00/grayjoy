@@ -455,6 +455,11 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
         showCreatorSheet = false
     }
     val selectedSection = com.futo.platformplayer.compose.ui.restoredEnumValue(selectedSectionName, DetailSection.UpNext)
+    val sectionReveal = remember(video.id) { Animatable(1f) }
+    LaunchedEffect(selectedSection) {
+        sectionReveal.snapTo(0f)
+        sectionReveal.animateTo(1f, tween(220))
+    }
     val topPlayerControlsAtStart = shouldUseSideBySideNowPlaying(
         drawerHidden = allowSideBySideLayout,
         availableWidthDp = LocalConfiguration.current.screenWidthDp.toFloat(),
@@ -603,6 +608,7 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
                         nowPlaying = nowPlaying,
                         queueVideos = queueVideos,
                         selectedSection = selectedSection,
+                        sectionReveal = sectionReveal.asState(),
                         includePrimaryInfo = !placement.primaryInfoUnderPlayer,
                         includeActions = !placement.actionsUnderPlayer,
                         includeCreatorInfo = !placement.creatorUnderPlayer,
@@ -660,6 +666,7 @@ private fun VideoDetailContent(parameters: VideoDetailParameters): Unit = with(p
                     nowPlaying = nowPlaying,
                     queueVideos = queueVideos,
                     selectedSection = selectedSection,
+                    sectionReveal = sectionReveal.asState(),
                     horizontalPadding = 16.dp,
                     includePrimaryInfo = !oneHanded,
                     includeActions = true,
@@ -1002,6 +1009,7 @@ internal fun PlayerSurface(
         mutableStateOf(PlayerSettingsPage.Main.name)
     }
     var controlsLocked by rememberSaveable(video.id, isFullscreen) { mutableStateOf(false) }
+    val levelGesture = rememberPlayerLevelGesture(isFullscreen)
     var lastSkipNoticeCategory by remember(video.id) {
         mutableStateOf(SponsorBlockCategory.Sponsor)
     }
@@ -1037,7 +1045,11 @@ internal fun PlayerSurface(
         }
     }
     LaunchedEffect(controlsAlpha) {
-        if (controlsAlpha < 0.9f) showSettings = false
+        if (controlsAlpha < 0.9f) {
+            showSettings = false
+            controlsVisible = false
+            tapSequence.reset()
+        }
     }
     LaunchedEffect(isPointerDown, speedHolding, holdToSpeedEnabled) {
         if (speedHolding && (!isPointerDown || !holdToSpeedEnabled)) {
@@ -1171,6 +1183,7 @@ internal fun PlayerSurface(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .fullscreenLevelGestures(isFullscreen, controlsLocked, levelGesture)
                 .pointerInput(video.id, controlsLocked, holdToSpeedEnabled) {
                     detectTapGestures(
                         onPress = {
@@ -1211,6 +1224,7 @@ internal fun PlayerSurface(
                 },
         )
 
+        PlayerLevelIndicator(levelGesture, Modifier.align(Alignment.Center).zIndex(8f))
         if (seekFeedbackSequence > 0) {
             key(seekFeedbackSequence) {
                 DoubleTapSeekFeedback(
@@ -1657,7 +1671,7 @@ private fun PlayerTopActionButtons(
     val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.controlsAtLayoutStart
     Row(modifier = Modifier.padding(start = if (isFullscreen && leftHanded) 34.dp else 0.dp,
         end = if (isFullscreen && !leftHanded) 34.dp else 0.dp),
-        horizontalArrangement = Arrangement.spacedBy(if (isFullscreen) 16.dp else 0.dp)) {
+        horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(
             modifier = Modifier.offset(y = if (isFullscreen) 8.dp else 0.dp)
                 .onGloballyPositioned { onSettingsBoundsChanged(it.boundsInRoot()) }
@@ -2722,6 +2736,7 @@ private fun LazyListScope.videoDetails(
     nowPlaying: NowPlayingUiState,
     queueVideos: List<VideoUiModel>,
     selectedSection: DetailSection,
+    sectionReveal: androidx.compose.runtime.State<Float>,
     includePrimaryInfo: Boolean = true,
     includeActions: Boolean = includePrimaryInfo,
     includeCreatorInfo: Boolean = true,
@@ -2745,6 +2760,15 @@ private fun LazyListScope.videoDetails(
     showFullQueue: Boolean,
     onShowFullQueueChange: (Boolean) -> Unit,
 ) {
+    fun sectionItem(key: Any? = null, contentType: Any? = null, content: @Composable () -> Unit) {
+        item(key = key, contentType = contentType) {
+            Box(Modifier.graphicsLayer {
+                alpha = sectionReveal.value
+                translationX = (if (selectedSection == DetailSection.Comments) 1f else -1f) *
+                    20.dp.toPx() * (1f - sectionReveal.value)
+            }.testTag("detail-section-transition")) { content() }
+        }
+    }
     if (includePrimaryInfo) {
         item(key = "detail-primary") {
             VideoPrimaryInfo(
@@ -2852,12 +2876,12 @@ private fun LazyListScope.videoDetails(
                 recommendation.id != currentId && queue.none { it.id == recommendation.id }
             }
             if (queueVideos.isNotEmpty()) {
-                item {
+                sectionItem {
                     QueueSectionHeader(Modifier.padding(horizontal = horizontalPadding))
                 }
                 val visibleQueue = if (showFullQueue) queue else queue.take(3)
                 visibleQueue.forEachIndexed { index, queuedVideo ->
-                    item(key = lazyVideoItemKey("queue", index, queuedVideo.id), contentType = "video") {
+                    sectionItem(key = lazyVideoItemKey("queue", index, queuedVideo.id), contentType = "video") {
                         val queueActions = LocalTemporaryQueue.current
                         Box(Modifier.padding(horizontal = horizontalPadding)) {
                             CompactVideoCard(
@@ -2869,7 +2893,7 @@ private fun LazyListScope.videoDetails(
                         }
                     }
                 }
-                if (queue.size > 3) item {
+                if (queue.size > 3) sectionItem {
                     TextButton(
                         onClick = { onShowFullQueueChange(!showFullQueue) },
                         modifier = Modifier.padding(horizontal = horizontalPadding),
@@ -2882,7 +2906,7 @@ private fun LazyListScope.videoDetails(
                 }
             }
             if (nowPlaying.isLoadingExtras) {
-                item {
+                sectionItem {
                     Box(
                         Modifier
                             .padding(horizontal = horizontalPadding)
@@ -2893,7 +2917,7 @@ private fun LazyListScope.videoDetails(
                 }
             }
             if (recommendations.isNotEmpty()) {
-                item {
+                sectionItem {
                     Text(
                         stringResource(R.string.recommended),
                         modifier = Modifier.padding(horizontal = horizontalPadding),
@@ -2901,7 +2925,7 @@ private fun LazyListScope.videoDetails(
                     )
                 }
                 recommendations.forEachIndexed { index, recommendation ->
-                    item(
+                    sectionItem(
                         key = lazyVideoItemKey("recommended", index, recommendation.id),
                         contentType = "video",
                     ) {
@@ -2916,7 +2940,7 @@ private fun LazyListScope.videoDetails(
                     }
                 }
             } else if (!nowPlaying.isLoadingExtras && queue.isEmpty()) {
-                item {
+                sectionItem {
                     SectionMessage(
                         title = stringResource(R.string.nothing_queued),
                         body = stringResource(R.string.nothing_queued_body),
@@ -2927,14 +2951,14 @@ private fun LazyListScope.videoDetails(
         }
         DetailSection.Comments -> {
             if (nowPlaying.isLoadingExtras) {
-                item {
+                sectionItem {
                     CommentListSkeleton(
                         modifier = Modifier.padding(horizontal = horizontalPadding),
                     )
                 }
             } else if (nowPlaying.comments.isNotEmpty()) {
                 nowPlaying.comments.forEachIndexed { index, comment ->
-                    item(
+                    sectionItem(
                         key = "comment-$index-${comment.id.ifBlank { comment.author }}",
                         contentType = "comment",
                     ) {
@@ -2946,7 +2970,7 @@ private fun LazyListScope.videoDetails(
                     }
                 }
             } else if (!nowPlaying.isLoadingExtras) {
-                item {
+                sectionItem {
                     SectionMessage(
                         title = stringResource(
                             if (nowPlaying.commentsAvailable) R.string.no_comments_yet
