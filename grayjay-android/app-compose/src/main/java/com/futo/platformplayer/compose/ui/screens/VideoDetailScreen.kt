@@ -32,6 +32,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -1224,7 +1225,11 @@ internal fun PlayerSurface(
                 },
         )
 
-        PlayerLevelIndicator(levelGesture, Modifier.align(Alignment.Center).zIndex(8f))
+        PlayerLevelIndicator(levelGesture, Modifier
+            .align(if (levelGesture.volume) androidx.compose.ui.AbsoluteAlignment.TopRight
+                else androidx.compose.ui.AbsoluteAlignment.TopLeft)
+            .windowInsetsPadding(WindowInsets.displayCutout)
+            .padding(horizontal = 24.dp, vertical = 84.dp).zIndex(8f))
         if (seekFeedbackSequence > 0) {
             key(seekFeedbackSequence) {
                 DoubleTapSeekFeedback(
@@ -1362,7 +1367,8 @@ internal fun PlayerSurface(
                     .testTag("player-transport-controls"),
                 horizontalArrangement = Arrangement.spacedBy(
                     if (isPlaylistPlayback) {
-                        if (isFullscreen) 44.dp else 30.dp
+                        if (isFullscreen) ((LocalConfiguration.current.screenWidthDp.dp - 144.dp - 136.dp - 24.dp) / 2)
+                            .coerceIn(4.dp, 44.dp) else 30.dp
                     } else {
                         0.dp
                     },
@@ -1370,24 +1376,26 @@ internal fun PlayerSurface(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (isPlaylistPlayback) {
-                    IconButton(
+                    Surface(
                         onClick = onSkipPrevious,
                         enabled = previousAvailable,
-                        modifier = Modifier.size(if (isFullscreen) 68.dp else 60.dp),
+                        modifier = Modifier.size(if (isFullscreen) 68.dp else 60.dp).testTag("player-previous"),
+                        shape = CircleShape, color = Color.Black.copy(alpha = if (previousAvailable) .62f else .30f),
+                        contentColor = Color.White,
                     ) {
                         Icon(
                             Icons.Outlined.SkipPrevious,
                             contentDescription = stringResource(R.string.previous_video),
                             tint = Color.White.copy(alpha = if (previousAvailable) 1f else 0.38f),
-                            modifier = Modifier.size(if (isFullscreen) 42.dp else 36.dp),
+                            modifier = Modifier.padding(if (isFullscreen) 13.dp else 12.dp).fillMaxSize(),
                         )
                     }
                 }
                 if (isLoading) {
-                    Spacer(Modifier.size(if (isFullscreen) 96.dp else 86.dp))
+                    Spacer(Modifier.size(if (isFullscreen) 144.dp else 86.dp))
                 } else {
                     Surface(
-                        modifier = Modifier.size(if (isFullscreen) 96.dp else 86.dp)
+                        modifier = Modifier.size(if (isFullscreen) 144.dp else 86.dp)
                             .testTag("player-play-pause"),
                         onClick = onTogglePlayback,
                         shape = CircleShape,
@@ -1399,21 +1407,23 @@ internal fun PlayerSurface(
                             description = stringResource(
                                 if (playback.isPlaying) R.string.pause else R.string.play,
                             ),
-                            modifier = Modifier.padding(if (isFullscreen) 22.dp else 20.dp),
+                            modifier = Modifier.padding(if (isFullscreen) 33.dp else 20.dp),
                         )
                     }
                 }
                 if (isPlaylistPlayback) {
-                    IconButton(
+                    Surface(
                         onClick = onSkipNext,
                         enabled = canGoNext,
-                        modifier = Modifier.size(if (isFullscreen) 68.dp else 60.dp),
+                        modifier = Modifier.size(if (isFullscreen) 68.dp else 60.dp).testTag("player-next"),
+                        shape = CircleShape, color = Color.Black.copy(alpha = if (canGoNext) .62f else .30f),
+                        contentColor = Color.White,
                     ) {
                         Icon(
                             Icons.Outlined.SkipNext,
                             contentDescription = stringResource(R.string.next_video),
                             tint = Color.White.copy(alpha = if (canGoNext) 1f else 0.38f),
-                            modifier = Modifier.size(if (isFullscreen) 42.dp else 36.dp),
+                            modifier = Modifier.padding(if (isFullscreen) 13.dp else 12.dp).fillMaxSize(),
                         )
                     }
                 }

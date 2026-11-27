@@ -20,6 +20,8 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.futo.platformplayer.compose.ui.LocalInteractionControls
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -107,13 +109,21 @@ internal fun Modifier.fullscreenLevelGestures(fullscreen: Boolean, locked: Boole
 }
 
 @Composable internal fun PlayerLevelIndicator(state: PlayerLevelGesture, modifier: Modifier) {
-    AnimatedVisibility(state.showing, modifier, enter = fadeIn(), exit = fadeOut()) {
-        Surface(color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = .94f), shape = MaterialTheme.shapes.large) {
-            Column(Modifier.width(132.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-                Icon(if (state.volume) Icons.AutoMirrored.Outlined.VolumeUp else Icons.Outlined.Brightness6, null)
-                Text("${(state.level * 100).roundToInt()}%", Modifier.testTag("player-level-percent"))
-                LinearProgressIndicator(progress = { state.level }, modifier = Modifier.fillMaxWidth())
+    AnimatedVisibility(state.showing, modifier.testTag("player-level-indicator"),
+        enter = fadeIn(androidx.compose.animation.core.tween(100)),
+        exit = fadeOut(androidx.compose.animation.core.tween(140))) {
+        Surface(color = Color.Black.copy(alpha = .8f), contentColor = Color.White,
+            shape = RoundedCornerShape(24.dp)) {
+            Row(Modifier.widthIn(min = 100.dp).padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Icon(if (state.volume) Icons.AutoMirrored.Outlined.VolumeUp else Icons.Outlined.Brightness6,
+                    com.futo.platformplayer.compose.ui.sourceStringResource(if (state.volume)
+                        com.futo.platformplayer.compose.R.string.fullscreen_volume_gesture
+                        else com.futo.platformplayer.compose.R.string.fullscreen_brightness_gesture),
+                    Modifier.size(22.dp), tint = Color.White)
+                Text("${(state.level * 100).roundToInt()}%", Modifier.testTag("player-level-percent"),
+                    style = MaterialTheme.typography.titleSmall, color = Color.White)
             }
         }
     }

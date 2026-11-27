@@ -178,7 +178,9 @@ internal fun MusicNowPlaying(
         val bodyHeight = (maxHeight - toolbarHeight).coerceAtLeast(1.dp)
         val controlsWidth = if (landscape) maxWidth / 2 else maxWidth
         val controlsPadding = minOf(24.dp, ((controlsWidth - 264.dp) / 2).coerceAtLeast(0.dp))
-        val playButtonSize = (controlsWidth - controlsPadding * 2 - 192.dp).coerceIn(48.dp, 72.dp)
+        val availablePlayWidth = (controlsWidth - controlsPadding * 2 - 192.dp).coerceAtLeast(48.dp)
+        val basePlaySize = availablePlayWidth.coerceIn(48.dp, 72.dp)
+        val playButtonSize = minOf(basePlaySize * if (fullscreen) 1.5f else 1f, availablePlayWidth)
         val coverSize = minOf(if (landscape) maxWidth * .42f else maxWidth - 48.dp,
             bodyHeight * if (landscape) .8f else .49f).coerceAtLeast(120.dp)
         val art: @Composable () -> Unit = {
@@ -211,21 +213,25 @@ internal fun MusicNowPlaying(
                     IconButton(onClick = onWatchLater, modifier = Modifier.testTag("music-favorite").helpAnchor("music-favorite")) {
                         Icon(watchLaterIcon(video.isWatchLater), stringResource(R.string.music_favorites))
                     }
-                    IconButton(onClick = {
+                    FilledTonalIconButton(onClick = {
                         val index = artworkQueue.indexOf(video.id)
                         coverMotion.request(artworkQueue.getOrNull(index - 1), -1); onPrevious()
-                    }, enabled = currentIndex > 0 || player.currentPosition > 5_000, modifier = Modifier.testTag("music-previous")) {
+                    }, enabled = currentIndex > 0 || player.currentPosition > 5_000,
+                        shape = RoundedCornerShape(16.dp), modifier = Modifier.size(48.dp).testTag("music-previous")) {
                         Icon(Icons.Outlined.SkipPrevious, stringResource(R.string.previous_video), Modifier.size(32.dp))
                     }
                     FilledTonalIconButton(onClick = onToggle, enabled = !nowPlaying.isLoadingPlayback,
-                        modifier = Modifier.size(playButtonSize).testTag("music-play-pause"), shape = RoundedCornerShape(24.dp)) {
+                        modifier = Modifier.size(playButtonSize).testTag("music-play-pause"),
+                        shape = RoundedCornerShape(if (fullscreen) 36.dp else 24.dp)) {
                         if (nowPlaying.isLoadingPlayback || playback.isBuffering) CircularProgressIndicator(Modifier.size(30.dp), strokeWidth = 3.dp)
-                        else MorphingPlayPauseIcon(playback.isPlaying, stringResource(if (playback.isPlaying) R.string.pause else R.string.play), Modifier.size(36.dp), MaterialTheme.colorScheme.onSecondaryContainer)
+                        else MorphingPlayPauseIcon(playback.isPlaying, stringResource(if (playback.isPlaying) R.string.pause else R.string.play),
+                            Modifier.size(if (fullscreen) 54.dp else 36.dp), MaterialTheme.colorScheme.onSecondaryContainer)
                     }
-                    IconButton(onClick = {
+                    FilledTonalIconButton(onClick = {
                         val index = artworkQueue.indexOf(video.id)
                         coverMotion.request(artworkQueue.getOrNull(index + 1), 1); onNext()
-                    }, enabled = currentIndex in 0 until playback.queueVideoIds.lastIndex, modifier = Modifier.testTag("music-next")) {
+                    }, enabled = currentIndex in 0 until playback.queueVideoIds.lastIndex,
+                        shape = RoundedCornerShape(16.dp), modifier = Modifier.size(48.dp).testTag("music-next")) {
                         Icon(Icons.Outlined.SkipNext, stringResource(R.string.next_video), Modifier.size(32.dp))
                     }
                     IconButton(onClick = { onOpenSettings?.invoke() ?: run { showSettings = true } },

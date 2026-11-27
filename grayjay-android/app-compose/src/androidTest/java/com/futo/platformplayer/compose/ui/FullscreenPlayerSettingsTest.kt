@@ -146,9 +146,9 @@ class FullscreenPlayerSettingsTest {
                 onQualityChange = {}, onCaptionsEnabledChange = {}, onSubtitleLanguageChange = {},
                 onRetryPlayback = {}, onExitFullscreen = {}, portraitFullscreen = true)
         } }
-        rule.onNodeWithTag("player-play-pause").assertWidthIsEqualTo(96.dp).assertHeightIsEqualTo(96.dp)
+        rule.onNodeWithTag("player-play-pause").assertWidthIsEqualTo(144.dp).assertHeightIsEqualTo(144.dp)
         val icon = rule.onNodeWithTag("player-play-pause-icon", useUnmergedTree = true)
-        icon.assertWidthIsEqualTo(52.dp).assertHeightIsEqualTo(52.dp)
+        icon.assertWidthIsEqualTo(78.dp).assertHeightIsEqualTo(78.dp)
         rule.mainClock.autoAdvance = false
         val play = icon.captureToImage()
         rule.onNodeWithTag("player-play-pause").performClick()

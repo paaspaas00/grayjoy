@@ -153,7 +153,8 @@ class MusicWorkflowRegressionTest {
             rule.onNodeWithTag("music-fullscreen").performScrollTo().performClick()
             rule.onNodeWithTag("music-fullscreen-player").assertIsDisplayed()
             rule.onNodeWithTag("fullscreen-player").assertDoesNotExist()
-            rule.onNodeWithTag("music-fullscreen").performScrollTo().performClick()
+            // Fullscreen exit is in the fixed toolbar, not inside the scrolling controls.
+            rule.onNodeWithTag("music-fullscreen").performClick()
             rule.onNodeWithTag("now-playing-close").assertIsDisplayed()
             rule.onNodeWithTag("music-fullscreen").performScrollTo().performClick()
             rule.onNodeWithTag("music-open-queue").performScrollTo().performClick()
