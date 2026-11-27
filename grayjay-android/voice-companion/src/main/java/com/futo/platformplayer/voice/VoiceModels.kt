@@ -94,7 +94,10 @@ class VoiceModelWorker(context: Context, parameters: WorkerParameters) : Corouti
         try {
             // Disk pressure must not consume the reserve required by playback/download jobs.
             check(parent.usableSpace > model.bytes * (if (model.format in setOf("gguf", "onnx")) 1 else 3) + 128L * 1024 * 1024) { "Spazio insufficiente per il modello" }
-            val client = OkHttpClient.Builder().callTimeout(20, TimeUnit.MINUTES).build()
+            // No whole-call limit: a 2 GB model needs far more than 20 minutes on a slow link and
+            // could never finish. A stalled connection is still detected by the read timeout.
+            val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS).callTimeout(0, TimeUnit.MILLISECONDS).build()
             call = client.newCall(Request.Builder().url(model.url).build())
             val activeCall = call
             withCancellableVoiceDownload(activeCall) { response ->
@@ -139,7 +142,10 @@ class VoiceModelWorker(context: Context, parameters: WorkerParameters) : Corouti
             Result.success()
         } catch (cancelled: kotlinx.coroutines.CancellationException) { call?.cancel(); throw cancelled }
         catch (error: Exception) {
-            Result.failure(workDataOf("error" to (error.message?.take(200) ?: "Download failed")))
+            // A dropped connection is transient: use the configured backoff a few times before
+            // reporting failure. Size, space, HTTP status and checksum errors fail immediately.
+            if (error is java.io.IOException && runAttemptCount < 3) Result.retry()
+            else Result.failure(workDataOf("error" to (error.message?.take(200) ?: "Download failed")))
         } finally { archive.delete(); staging.deleteRecursively() }
     }
 

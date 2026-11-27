@@ -189,7 +189,7 @@ private fun CardMorphOverlay(motion: PlayerCardTransition, request: CardMorphReq
         recognitionMorphRect(from.bounds, target[part]?.bounds ?: from.bounds, p).translate(-origin)
     }
     fun place(rect: Rect): Modifier = with(density) {
-        Modifier.offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }.size(rect.width.toDp(), rect.height.toDp())
+        Modifier.physicalOffset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }.size(rect.width.toDp(), rect.height.toDp())
     }
     val surface = rect("surface") ?: return
     val art = rect("art")

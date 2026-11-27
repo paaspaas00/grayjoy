@@ -384,7 +384,8 @@ class GrayjoyDownloadStore private constructor(context: Context) {
     private val metadataCache = ConcurrentHashMap<String, Pair<ByteArray, DownloadRequestMetadata?>>()
     private val requestDataSourceFactories = ConcurrentHashMap<String, DataSource.Factory>()
     private val previousRootCaches = ConcurrentHashMap<String, PreviousRootCache>()
-    private val failureMessages = mutableMapOf<String, String>()
+    // Written by DownloadManager callbacks on the main looper, read by aggregate() on callers' threads.
+    private val failureMessages = ConcurrentHashMap<String, String>()
     private val handler = Handler(Looper.getMainLooper())
     private var unmetRequirements = 0
     private var tickerRunning = false

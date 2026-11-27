@@ -67,7 +67,9 @@ internal class CastHttpServer {
         start()
         val generation = routes.reset()
         var rewritten = manifest
-        DASH_URL.findAll(manifest).map { it.value }.distinct().forEach { encodedUrl ->
+        // Replace the longest URLs first: a URL that is a prefix of another one would otherwise
+        // rewrite the head of the longer URL and leave its tail glued to the proxy path.
+        DASH_URL.findAll(manifest).map { it.value }.distinct().sortedByDescending(String::length).forEach { encodedUrl ->
             val upstream = encodedUrl.xmlUnescape()
             val proxyPath = addProxyRoute(
                 upstreamUrl = upstream,

@@ -27,6 +27,15 @@ internal data class InteractionControls(
     val dismissRecognition: () -> Unit = {},
 )
 internal val LocalInteractionControls = compositionLocalOf { InteractionControls() }
+
+/**
+ * Handedness is a physical side. Rows and start/end paddings follow the layout direction, so in a
+ * right-to-left layout the left-hand controls belong at the row's end, not its start.
+ */
+internal val InteractionControls.controlsAtLayoutStart: Boolean
+    @Composable @androidx.compose.runtime.ReadOnlyComposable
+    get() = leftHanded != (androidx.compose.ui.platform.LocalLayoutDirection.current ==
+        androidx.compose.ui.unit.LayoutDirection.Rtl)
 internal val LocalBrainrotPlayer = compositionLocalOf { false }
 
 @Composable

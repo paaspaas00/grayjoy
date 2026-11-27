@@ -1,5 +1,6 @@
 package com.futo.platformplayer.compose.ui.screens
 
+import com.futo.platformplayer.compose.ui.controlsAtLayoutStart
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
@@ -137,7 +138,8 @@ internal fun MiniPlayerChrome(
             delay(if (isPlaying) 500L else 1_500L)
         }
     }
-    val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.leftHanded
+    // Layout-relative: handedness is physical, Row order follows the layout direction.
+    val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.controlsAtLayoutStart
     val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 360
     val artwork: @Composable () -> Unit = {
             Box(

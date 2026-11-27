@@ -3169,7 +3169,7 @@ class GrayjayPluginBackend(
             author = author.name,
             authorThumbnailUrl = author.thumbnail,
             message = message,
-            age = formatRelativeDate(date),
+            age = formatRelativeDate(date, Locale.forLanguageTag(videoTitleLanguageTag)),
             likeCount = likes,
             replyCount = replyCount,
         )
@@ -3243,18 +3243,21 @@ private fun inferStreamType(url: String): GrayjayStreamType {
     }
 }
 
-fun formatRelativeDate(value: OffsetDateTime?): String {
+/** [locale] is the language chosen in the app, which can differ from the device default. */
+fun formatRelativeDate(value: OffsetDateTime?, locale: Locale = Locale.getDefault()): String {
     if (value == null || value == OffsetDateTime.MIN || value == OffsetDateTime.MAX) return ""
     val now = OffsetDateTime.now()
     val hours = ChronoUnit.HOURS.between(value, now).coerceAtLeast(0)
-    if (Locale.getDefault().language == Locale.ITALIAN.language) {
+    if (locale.language == Locale.ITALIAN.language) {
+        val months = hours / (24 * 30)
+        val years = hours / (24 * 365)
         return when {
             hours < 1 -> "adesso"
             hours < 24 -> "${hours} h fa"
             hours < 24 * 7 -> "${hours / 24} g fa"
             hours < 24 * 30 -> "${hours / (24 * 7)} sett fa"
-            hours < 24 * 365 -> "${hours / (24 * 30)} mesi fa"
-            else -> "${hours / (24 * 365)} anni fa"
+            hours < 24 * 365 -> if (months == 1L) "1 mese fa" else "$months mesi fa"
+            else -> if (years == 1L) "1 anno fa" else "$years anni fa"
         }
     }
     return when {

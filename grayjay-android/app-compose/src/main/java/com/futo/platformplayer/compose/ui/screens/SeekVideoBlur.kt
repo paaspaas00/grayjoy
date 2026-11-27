@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.media3.ui.PlayerView
+import com.futo.platformplayer.compose.ui.physicalOffset
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -113,7 +114,7 @@ internal fun SeekVideoBlur(playerView: PlayerView?, seeking: Boolean, protectedC
     }
     val snapshot = frame ?: return
     val density = LocalDensity.current
-    Canvas(Modifier.offset { IntOffset(snapshot.bounds.left.roundToInt(), snapshot.bounds.top.roundToInt()) }
+    Canvas(Modifier.physicalOffset { IntOffset(snapshot.bounds.left.roundToInt(), snapshot.bounds.top.roundToInt()) }
         .size(with(density) { snapshot.bounds.width.toDp() }, with(density) { snapshot.bounds.height.toDp() })
         .testTag("player-seek-blur-frame")
         .graphicsLayer {

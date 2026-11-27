@@ -50,7 +50,9 @@ internal fun NavigationShortcutOverlay(state: NavigationShortcutState, rootLeftP
         AnimatedVisibility(visibleState = transition,
             enter = slideInVertically(tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { it + originOffset.toInt() } + fadeIn(tween(140)),
             exit = slideOutVertically(tween(200, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { it + originOffset.toInt() } + fadeOut(tween(160)),
-            modifier = Modifier.align(Alignment.BottomStart).offset { IntOffset(x.toInt(), -with(density) { 12.dp.roundToPx() }) }) {
+            // x is a physical distance from the left edge; start alignment and offset {} would mirror it.
+            modifier = Modifier.align(androidx.compose.ui.AbsoluteAlignment.BottomLeft)
+                .absoluteOffset { IntOffset(x.toInt(), -with(density) { 12.dp.roundToPx() }) }) {
             LibraryShortcutButtons { state.onSelect(it); state.visible = false }
         }
     }

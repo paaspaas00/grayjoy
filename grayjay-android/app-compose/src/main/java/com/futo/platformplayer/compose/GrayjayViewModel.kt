@@ -3846,6 +3846,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                 orderedVideoIds = currentPlayback.queueVideoIds.toMutableList(),
             )
         playbackQueueSession = queueSession
+        // A look-ahead already resolving for the previous session object would discard its result
+        // and leave nothing running; restart it for the session that now owns the queue.
+        queuePreparation.cancel()
         additions.forEach { video ->
             if (queueSession.knownVideoIds.add(video.id)) {
                 queueSession.pendingVideos += video
@@ -5993,6 +5996,9 @@ class GrayjayViewModel(application: Application) : AndroidViewModel(application)
                             )
                         }
                     }
+                    // performDownloadRemoval acts on the active profile. After a profile switch
+                    // it would delete the other profile's copy of this video instead.
+                    if (profileAtStart != activeProfileId) return@launch
                     performDownloadRemoval(videoId, mediaType, currentDownload)
                 } catch (error: CancellationException) {
                     throw error
@@ -9125,9 +9131,9 @@ internal fun pluginUrlFromQrContent(content: String): String? {
 }
 
 private fun formatCompactCount(value: Long): String = when {
-    value >= 1_000_000_000 -> "%.1fB".format(value / 1_000_000_000.0).trimEnd('0').trimEnd('.')
-    value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0).trimEnd('0').trimEnd('.')
-    value >= 1_000 -> "%.1fK".format(value / 1_000.0).trimEnd('0').trimEnd('.')
+    value >= 1_000_000_000 -> "%.1f".format(value / 1_000_000_000.0).removeSuffix("0").trimEnd('.', ',') + "B"
+    value >= 1_000_000 -> "%.1f".format(value / 1_000_000.0).removeSuffix("0").trimEnd('.', ',') + "M"
+    value >= 1_000 -> "%.1f".format(value / 1_000.0).removeSuffix("0").trimEnd('.', ',') + "K"
     else -> value.toString()
 }
 

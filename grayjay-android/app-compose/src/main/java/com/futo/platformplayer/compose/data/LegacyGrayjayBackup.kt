@@ -430,8 +430,8 @@ private fun formatDuration(seconds: Long): String {
 }
 
 private fun formatCompactCount(value: Long): String = when {
-    value >= 1_000_000_000 -> "%.1fB".format(value / 1_000_000_000.0).trimEnd('0').trimEnd('.')
-    value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0).trimEnd('0').trimEnd('.')
-    value >= 1_000 -> "%.1fK".format(value / 1_000.0).trimEnd('0').trimEnd('.')
+    value >= 1_000_000_000 -> "%.1f".format(value / 1_000_000_000.0).removeSuffix("0").trimEnd('.', ',') + "B"
+    value >= 1_000_000 -> "%.1f".format(value / 1_000_000.0).removeSuffix("0").trimEnd('.', ',') + "M"
+    value >= 1_000 -> "%.1f".format(value / 1_000.0).removeSuffix("0").trimEnd('.', ',') + "K"
     else -> value.toString()
 }

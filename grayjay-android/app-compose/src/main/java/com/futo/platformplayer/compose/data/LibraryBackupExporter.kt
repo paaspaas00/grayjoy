@@ -339,7 +339,8 @@ internal class LibraryBackupExporter(private val context: Context) {
     private fun String.newPipeServiceId(): Int = when (lowercase()) {
         "youtube" -> 0
         "soundcloud" -> 1
-        "media_ccc", "mediaccc" -> 2
+        // "media-ccc" is the id the NewPipe importer itself assigns to media.ccc.de items.
+        "media-ccc", "media_ccc", "mediaccc" -> 2
         "peertube" -> 3
         "bandcamp" -> 4
         "bilibili" -> 5

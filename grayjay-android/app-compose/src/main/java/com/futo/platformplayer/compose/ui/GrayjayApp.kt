@@ -3332,7 +3332,7 @@ private fun GrayjayScaffold(
                 (!transitionVideo.playbackAudioOnly || transitionActive)) {
                 val recognitionSurfaceModifier = (if (transitionActive && expanded != null) {
                     Modifier
-                        .offset {
+                        .physicalOffset {
                             val progress = playback.transition.progress.coerceIn(0f, 1f)
                             val backProgress = if (playback.playerBack.active) playback.playerBack.progress else 0f
                             val backScale = backDepartureScale(backProgress)
@@ -3360,7 +3360,7 @@ private fun GrayjayScaffold(
                         }
                 } else {
                     Modifier
-                        .offset {
+                        .physicalOffset {
                             IntOffset(end.left.roundToInt(), end.top.roundToInt())
                         }
                         .size(

@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.zIndex
 import com.futo.platformplayer.compose.ui.PageBackHandler
+import com.futo.platformplayer.compose.ui.physicalOffset
 import kotlin.math.roundToInt
 
 /** In-window overlay: opening settings must not reveal system bars or replace the video surface. */
@@ -63,7 +64,8 @@ internal fun FullscreenPlayerSettingsMenu(
         AnimatedVisibility(
             visibleState = visibility,
             enter = fadeIn(tween(90)), exit = fadeOut(tween(90)),
-            modifier = Modifier.offset { position },
+            // The anchor bounds are physical pixels; offset {} would mirror them in RTL.
+            modifier = Modifier.physicalOffset { position },
         ) {
             Surface(
                 modifier = Modifier.width(menuWidth).heightIn(max = menuHeight)

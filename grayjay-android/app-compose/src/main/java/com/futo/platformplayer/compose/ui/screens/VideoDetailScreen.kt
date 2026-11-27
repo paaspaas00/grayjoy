@@ -1,4 +1,5 @@
 package com.futo.platformplayer.compose.ui.screens
+import com.futo.platformplayer.compose.ui.controlsAtLayoutStart
 import com.futo.platformplayer.compose.recognition.recognitionControlsReveal
 import androidx.compose.runtime.CompositionLocalProvider
 
@@ -988,7 +989,7 @@ internal fun PlayerSurface(
     val latestPlayback by androidx.compose.runtime.rememberUpdatedState(playback)
     val latestSeekBy by androidx.compose.runtime.rememberUpdatedState(onSeekBy)
     val brainrot = com.futo.platformplayer.compose.ui.LocalBrainrotPlayer.current
-    val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.leftHanded
+    val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.controlsAtLayoutStart
     val actionsAtStart = leftHanded || topControlsAtStart
     var controlsVisible by remember(video.id, isFullscreen, brainrot) { mutableStateOf(!brainrot) }
     var isPointerDown by remember(video.id, isFullscreen) { mutableStateOf(false) }
@@ -1217,7 +1218,12 @@ internal fun PlayerSurface(
                     seconds = seekFeedbackSeconds,
                     isFullscreen = isFullscreen,
                     modifier = Modifier
-                        .align(if (seekFeedbackForward) Alignment.CenterEnd else Alignment.CenterStart)
+                        // The tap zones are physical (right half = forward), so the feedback must
+                        // not be mirrored to the opposite side in right-to-left layouts.
+                        .align(
+                            if (seekFeedbackForward) androidx.compose.ui.AbsoluteAlignment.CenterRight
+                            else androidx.compose.ui.AbsoluteAlignment.CenterLeft,
+                        )
                         .fillMaxHeight()
                         .fillMaxWidth(0.43f),
                 )
@@ -1648,7 +1654,7 @@ private fun PlayerTopActionButtons(
     hideSettingsActions: Boolean,
     onSettingsBoundsChanged: (Rect) -> Unit = {},
 ) {
-    val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.leftHanded
+    val leftHanded = com.futo.platformplayer.compose.ui.LocalInteractionControls.current.controlsAtLayoutStart
     Row(modifier = Modifier.padding(start = if (isFullscreen && leftHanded) 34.dp else 0.dp,
         end = if (isFullscreen && !leftHanded) 34.dp else 0.dp),
         horizontalArrangement = Arrangement.spacedBy(if (isFullscreen) 16.dp else 0.dp)) {
@@ -3801,8 +3807,8 @@ private fun formatSpeed(speed: Float): String =
     if (speed == speed.toInt().toFloat()) "${speed.toInt()}×" else "${speed}×"
 
 private fun formatCount(value: Long): String = when {
-    value >= 1_000_000_000 -> "%.1fB".format(value / 1_000_000_000.0).trimEnd('0').trimEnd('.')
-    value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0).trimEnd('0').trimEnd('.')
-    value >= 1_000 -> "%.1fK".format(value / 1_000.0).trimEnd('0').trimEnd('.')
+    value >= 1_000_000_000 -> "%.1f".format(value / 1_000_000_000.0).removeSuffix("0").trimEnd('.', ',') + "B"
+    value >= 1_000_000 -> "%.1f".format(value / 1_000_000.0).removeSuffix("0").trimEnd('.', ',') + "M"
+    value >= 1_000 -> "%.1f".format(value / 1_000.0).removeSuffix("0").trimEnd('.', ',') + "K"
     else -> value.toString()
 }

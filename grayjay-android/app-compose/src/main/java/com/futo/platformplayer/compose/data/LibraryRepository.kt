@@ -1050,7 +1050,9 @@ private fun JSONArray?.toSubtitleTracks(): List<SubtitleUiModel> = if (this == n
             add(
                 SubtitleUiModel(
                     name = json.optString("name"),
-                    language = json.optString("language").takeIf(String::isNotBlank),
+                    // Android's optString() turns the stored JSON null into the text "null".
+                    language = if (json.isNull("language")) null
+                        else json.optString("language").takeIf(String::isNotBlank),
                     uri = uri,
                     mimeType = json.optString("mimeType"),
                     requestHeaders = json.optJSONObject("requestHeaders").toStringMap(),

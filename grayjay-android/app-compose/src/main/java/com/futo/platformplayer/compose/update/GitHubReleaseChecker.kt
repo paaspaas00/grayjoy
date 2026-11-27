@@ -68,7 +68,9 @@ internal fun latestInstallableRelease(
     return GitHubRelease(
         versionName = release.optString("tag_name").removePrefix("v"),
         releaseUrl = release.optString("html_url"),
-        changelog = release.optString("body"),
+        // GitHub sends "body": null for a release without notes; Android's optString() would
+        // otherwise show the literal text "null" as the changelog.
+        changelog = if (release.isNull("body")) "" else release.optString("body"),
         releaseApkUrl = selectReleaseApkUrl(
             assets = (release.optJSONArray("assets") ?: JSONArray()).let { assets ->
                 (0 until assets.length()).mapNotNull { index ->

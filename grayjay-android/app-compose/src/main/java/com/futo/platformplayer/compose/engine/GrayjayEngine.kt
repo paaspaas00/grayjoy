@@ -717,6 +717,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     private var youtubeFallbackGeneration = 0L
     private var youtubeFallbackVideoId: String? = null
     private var playbackStallJob: Job? = null
+    /** True from a prepare or seek until the player first reaches READY again. */
+    private var freshLoadPending = true
     private var lastFallbackWarmupAtMs = -15_000L
     private val networkMonitor = NetworkMonitor(appContext)
     private val connectivityRecoveryScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -764,7 +766,10 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         exoPlayer.addListener(
             object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_READY) resetConnectivityRecovery()
+                    if (playbackState == Player.STATE_READY) {
+                        freshLoadPending = false
+                        resetConnectivityRecovery()
+                    }
                     watchPlaybackStall(playbackState)
                     syncPlayback()
                 }
@@ -810,6 +815,16 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                     )
                     syncPlayback()
                     PlaybackNotificationService.refresh(appContext, exoPlayer)
+                }
+
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) {
+                    // A seek (including resuming a video part-way through) starts a new load,
+                    // which needs the same allowance as preparing a source.
+                    if (reason == Player.DISCONTINUITY_REASON_SEEK) freshLoadPending = true
                 }
 
                 override fun onTracksChanged(tracks: Tracks) = syncPlayback()
@@ -861,7 +876,15 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         playbackStallJob = null
         if (state != Player.STATE_BUFFERING) return
         playbackStallJob = youtubeFallbackScope.launch {
-            var guard = PlaybackStallGuard()
+            // Opening or seeking a DASH stream must fetch its index and a whole media chunk before
+            // the buffered position moves at all. Four seconds is not enough for that on a slow
+            // or throttled connection, and treating it as a dead stream used the only fallback.
+            fun fallbackGuard() = PlaybackStallGuard(
+                if (freshLoadPending) INITIAL_LOAD_STALL_TIMEOUT_MS else REBUFFER_STALL_TIMEOUT_MS,
+            )
+            var guard = fallbackGuard()
+            // Without another resolver left, keep waiting: a slow source still recovers by itself.
+            var giveUpGuard = PlaybackStallGuard(GIVE_UP_STALL_TIMEOUT_MS)
             var warmGuard = PlaybackStallGuard(1_250L)
             var prepared: PreparedYoutubeFallback? = null
             var transferred = false
@@ -870,7 +893,8 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 kotlinx.coroutines.delay(250L)
                 val id = exoPlayer.currentMediaItem?.mediaId ?: return@launch
                 if (!exoPlayer.playWhenReady || !networkMonitor.isAvailable() || exoPlayer.currentPosition <= 0L) {
-                    guard = PlaybackStallGuard()
+                    guard = fallbackGuard()
+                    giveUpGuard = PlaybackStallGuard(GIVE_UP_STALL_TIMEOUT_MS)
                     warmGuard = PlaybackStallGuard(1_250L)
                     prepared?.source?.cancel(); prepared = null
                     continue
@@ -892,12 +916,16 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                         })
                     }
                 }
-                if (guard.stalled(id, exoPlayer.currentPosition, exoPlayer.bufferedPosition, android.os.SystemClock.elapsedRealtime())) {
+                val now = android.os.SystemClock.elapsedRealtime()
+                val givingUp = giveUpGuard.stalled(id, exoPlayer.currentPosition, exoPlayer.bufferedPosition, now)
+                if (guard.stalled(id, exoPlayer.currentPosition, exoPlayer.bufferedPosition, now)) {
                     val failure = PlaybackException("YouTube stream stopped making progress",
-                        java.net.SocketTimeoutException("No playback or buffer progress for 4 seconds"),
+                        java.net.SocketTimeoutException("No playback or buffer progress"),
                         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT)
                     if (startYoutubeRuntimeFallback(failure, prepared)) { transferred = true; return@launch }
+                    if (!givingUp) continue
                     // Both sources have had a chance. Keep retry available instead of an endless spinner.
+                    Log.w(TAG, "YouTube stream made no progress for ${GIVE_UP_STALL_TIMEOUT_MS / 1_000}s; stopping playback.")
                     lastError = appContext.getString(R.string.source_could_not_play)
                     exoPlayer.stop()
                     syncPlayback()
@@ -935,6 +963,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             // Read these at recovery time so pause/seek commands issued while offline win over
             // the state captured when the socket failed.
             exoPlayer.seekTo(exoPlayer.currentPosition.coerceAtLeast(0L))
+            freshLoadPending = true
             exoPlayer.prepare()
             PlaybackNotificationService.refresh(appContext, exoPlayer)
             syncPlayback(videoId)
@@ -2036,7 +2065,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
                 if (source.viewCount > 0) {
                     append(appContext.getString(R.string.views_count_compact, formatCount(source.viewCount)))
                 }
-                formatRelativeDate(source.datetime).takeIf(String::isNotBlank)?.let {
+                formatRelativeDate(source.datetime, appContext.resources.configuration.locales[0]).takeIf(String::isNotBlank)?.let {
                     if (isNotEmpty()) append(" • ")
                     append(it)
                 }
@@ -2395,6 +2424,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         exoPlayer.shuffleModeEnabled = false
         exoPlayer.playWhenReady = false
         exoPlayer.setMediaSources(mediaSources, currentIndex, 0L)
+        freshLoadPending = true
         exoPlayer.prepare()
         requestHostedPlayback(playWhenReady)
         syncPlayback(currentVideoId)
@@ -2426,6 +2456,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             currentIndex,
             positionMs.coerceAtLeast(0L),
         )
+        freshLoadPending = true
         exoPlayer.prepare()
         exoPlayer.playWhenReady = playWhenReady
         PlaybackNotificationService.refresh(appContext, exoPlayer)
@@ -2792,6 +2823,9 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
         // Official Grayjay maps its default/automatic preferred quality to a 1280x720 target.
         // Treating automatic as "unbounded" made raw plugin sources start at 3K/4K instead.
         const val AUTOMATIC_VIDEO_HEIGHT = 720
+        const val INITIAL_LOAD_STALL_TIMEOUT_MS = 12_000L
+        const val REBUFFER_STALL_TIMEOUT_MS = 6_000L
+        const val GIVE_UP_STALL_TIMEOUT_MS = 30_000L
         const val CLOSE_NOTIFICATION_ACTION =
             "com.futo.platformplayer.compose.action.CLOSE_PLAYBACK"
         const val SUBTITLE_USER_AGENT =
@@ -2854,6 +2888,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             val playWhenReady = exoPlayer.playWhenReady
             exoPlayer.stop()
             exoPlayer.seekTo(index, position)
+            freshLoadPending = true
             exoPlayer.prepare()
             exoPlayer.playWhenReady = playWhenReady
         }
@@ -2892,6 +2927,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
             activeQualityVariantVideoId = nextVariantVideoId
             lastError = null
             exoPlayer.setMediaSources(sources, currentVideoIndex, currentPosition)
+            freshLoadPending = true
             exoPlayer.prepare()
             exoPlayer.playWhenReady = shouldPlay
         } else {
@@ -3033,6 +3069,7 @@ class AndroidGrayjayEngine(context: Context) : GrayjayEngine {
     override fun retryPlayback() {
         resetConnectivityRecovery()
         lastError = null
+        freshLoadPending = true
         exoPlayer.prepare()
         exoPlayer.play()
         syncPlayback()
@@ -3280,7 +3317,7 @@ private fun GrayjaySearchItem.toVideoUiModel(endpoint: PluginEndpoint?, context:
         if (viewCount > 0) {
             append(context.getString(R.string.views_count_compact, formatCount(viewCount)))
         }
-        formatRelativeDate(datetime).takeIf(String::isNotBlank)?.let {
+        formatRelativeDate(datetime, context.resources.configuration.locales[0]).takeIf(String::isNotBlank)?.let {
             if (isNotEmpty()) append(" • ")
             append(it)
         }
@@ -3580,9 +3617,9 @@ private fun formatDuration(seconds: Long): String {
 }
 
 private fun formatCount(value: Long): String = when {
-    value >= 1_000_000_000 -> "%.1fB".format(value / 1_000_000_000.0).trimEnd('0').trimEnd('.')
-    value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0).trimEnd('0').trimEnd('.')
-    value >= 1_000 -> "%.1fK".format(value / 1_000.0).trimEnd('0').trimEnd('.')
+    value >= 1_000_000_000 -> "%.1f".format(value / 1_000_000_000.0).removeSuffix("0").trimEnd('.', ',') + "B"
+    value >= 1_000_000 -> "%.1f".format(value / 1_000_000.0).removeSuffix("0").trimEnd('.', ',') + "M"
+    value >= 1_000 -> "%.1f".format(value / 1_000.0).removeSuffix("0").trimEnd('.', ',') + "K"
     else -> value.toString()
 }
 

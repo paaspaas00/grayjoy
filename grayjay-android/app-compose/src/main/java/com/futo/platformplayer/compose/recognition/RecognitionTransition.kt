@@ -28,6 +28,7 @@ import com.futo.platformplayer.compose.ui.sourceStringResource as stringResource
 import androidx.compose.material3.*
 import com.futo.platformplayer.compose.R
 import com.futo.platformplayer.compose.ui.VideoUiModel
+import com.futo.platformplayer.compose.ui.physicalOffset
 import com.futo.platformplayer.compose.diagnostics.DiagnosticLog
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -268,7 +269,7 @@ private fun RecognitionMorphOverlay(controller: RecognitionTransitionController,
     val art = recognitionMorphRect(sourceArt.bounds, targetArt.bounds, p).translate(-origin)
     val density = androidx.compose.ui.platform.LocalDensity.current
     fun rectModifier(rect: androidx.compose.ui.geometry.Rect): Modifier = with(density) {
-        Modifier.offset { androidx.compose.ui.unit.IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
+        Modifier.physicalOffset { androidx.compose.ui.unit.IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
             .size(rect.width.toDp(), rect.height.toDp())
     }
     val surfaceAlpha = recognitionMotionFraction(p, 0f, .18f) * (1f - recognitionMotionFraction(p, .78f, 1f))

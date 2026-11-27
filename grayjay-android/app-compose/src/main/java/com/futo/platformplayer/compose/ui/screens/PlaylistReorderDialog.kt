@@ -79,6 +79,8 @@ internal fun ReorderPlaylistDialog(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val edgePx = with(density) { 48.dp.toPx() }
+    val handleOnLeft = androidx.compose.ui.platform.LocalLayoutDirection.current ==
+        androidx.compose.ui.unit.LayoutDirection.Rtl
     val hysteresisPx = with(density) { 5.dp.toPx() }
     var draggedId by remember { mutableStateOf<String?>(null) }
     var dragTop by remember { mutableFloatStateOf(0f) }
@@ -225,10 +227,13 @@ internal fun ReorderPlaylistDialog(
                     modifier = Modifier.fillMaxWidth().testTag("playlist-reorder-list")
                         // Gesture ownership is on the stable list, not on a row that moves or
                         // leaves composition. Only the trailing handle starts a reorder.
-                        .pointerInput(listState, edgePx) {
+                        .pointerInput(listState, edgePx, handleOnLeft) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                                if (locked || dropping || down.position.x < size.width - edgePx) return@awaitEachGesture
+                                // The handle is the row's trailing element: on the left in right-to-left layouts.
+                                val onHandle = if (handleOnLeft) down.position.x <= edgePx
+                                    else down.position.x >= size.width - edgePx
+                                if (locked || dropping || !onHandle) return@awaitEachGesture
                                 val row = listState.layoutInfo.visibleItemsInfo.firstOrNull {
                                     down.position.y >= it.offset && down.position.y < it.offset + it.size
                                 } ?: return@awaitEachGesture

@@ -1,4 +1,5 @@
 package com.futo.platformplayer.compose.ui.screens
+import com.futo.platformplayer.compose.ui.controlsAtLayoutStart
 import com.futo.platformplayer.compose.recognition.recognitionControlsReveal
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -250,9 +251,10 @@ internal fun MusicNowPlaying(
             }
         }
         if (landscape) Row(Modifier.fillMaxSize().padding(top = toolbarHeight), verticalAlignment = Alignment.CenterVertically) {
-            if (!leftHanded) Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { art() }
+            val artFirst = !com.futo.platformplayer.compose.ui.LocalInteractionControls.current.controlsAtLayoutStart
+            if (artFirst) Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { art() }
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(vertical = 16.dp)) { item { controls() } }
-            if (leftHanded) Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { art() }
+            if (!artFirst) Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { art() }
         } else LazyColumn(Modifier.fillMaxSize().padding(top = toolbarHeight), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp), contentPadding = PaddingValues(top = 12.dp, bottom = 16.dp)) {
             item { art() }

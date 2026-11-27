@@ -227,7 +227,11 @@ internal class ChromecastManager(context: Context) {
                 }
                 DeviceConnectionState.Connecting,
                 DeviceConnectionState.Reconnecting,
-                -> _state.update { it.copy(isConnecting = true, isConnected = false) }
+                -> {
+                    // A device replaced by a newer connect() can still report its own retries.
+                    if (device !== activeDevice) return
+                    _state.update { it.copy(isConnecting = true, isConnected = false) }
+                }
                 DeviceConnectionState.Disconnected -> {
                     if (device !== activeDevice) return
                     activeDevice = null
