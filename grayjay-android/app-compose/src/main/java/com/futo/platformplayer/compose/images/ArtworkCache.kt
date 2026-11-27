@@ -122,7 +122,8 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
 
     /** Bound pending work as well as completed entries; disk trimming alone cannot do that. */
     private fun pruneMemory(protected: Entry?) {
-        val idle = entries.values.filter { it.observers == 0 }.sortedBy { it.lastUsed }
+        val idle = com.futo.platformplayer.compose.util.snapshotSortedBy(
+            entries.values.filter { it.observers == 0 }) { it.lastUsed }
         var idleRequests = idle.count { it.job?.isCompleted == false }
         val requestLimit = if (entries.values.any { it.observers > 0 }) 0 else MAX_IDLE_REQUESTS
         for (entry in idle) {
@@ -302,7 +303,9 @@ class ArtworkCache internal constructor(context: Context, networkEvents: Boolean
         val images = directory.listFiles { file -> file.extension == "img" }.orEmpty()
         var bytes = images.sumOf(File::length)
         var count = images.size
-        if (bytes > MAX_BYTES || count > 2048) images.sortedBy { File(directory, it.nameWithoutExtension + ".json").lastModified() }.forEach { file ->
+        if (bytes > MAX_BYTES || count > 2048) com.futo.platformplayer.compose.util.snapshotSortedBy(images.asList()) {
+            File(directory, it.nameWithoutExtension + ".json").lastModified()
+        }.forEach { file ->
             if (bytes <= MAX_BYTES && count <= 2048) return@forEach
             if (entries[file.nameWithoutExtension]?.observers?.let { it > 0 } == true) return@forEach
             val length = file.length()

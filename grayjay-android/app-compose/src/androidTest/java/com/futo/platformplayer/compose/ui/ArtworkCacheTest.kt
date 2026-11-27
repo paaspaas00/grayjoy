@@ -27,6 +27,33 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class ArtworkCacheTest {
+    @Test fun evictionRemainsSafeWhileOtherRequestsTouchMetadataDates() = runBlocking {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(app.cacheDir, "trim-race-${UUID.randomUUID()}").apply { mkdirs() }
+        val context = object : ContextWrapper(app) {
+            override fun getApplicationContext(): Context = this
+            override fun getCacheDir(): File = root
+        }
+        val directory = File(root, "artwork-v1").apply { mkdirs() }
+        val metadata = (0 until 2200).map { index ->
+            File(directory, "$index.img").writeBytes(byteArrayOf(1))
+            File(directory, "$index.json").apply { writeText("{}"); setLastModified(index.toLong()) }
+        }
+        val running = java.util.concurrent.atomic.AtomicBoolean(true)
+        val toucher = Thread {
+            val random = java.util.Random(73)
+            while (running.get()) metadata[random.nextInt(metadata.size)].setLastModified(random.nextInt(10_000).toLong())
+        }.apply { start() }
+        val cache = ArtworkCache(context, networkEvents = false)
+        try {
+            val trim = ArtworkCache::class.java.getDeclaredMethod("trim").apply { isAccessible = true }
+            repeat(3) { trim.invoke(cache) }
+            assertTrue(directory.listFiles { file -> file.extension == "img" }!!.size <= 2048)
+        } finally {
+            running.set(false); toucher.join()
+            cache.close(); root.deleteRecursively()
+        }
+    }
     @Test fun rapidScrollBoundsPendingWorkAndRevivesAnEvictedFlow() = runBlocking {
         val app = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(app.cacheDir, "cache-stress-${UUID.randomUUID()}").apply { mkdirs() }
